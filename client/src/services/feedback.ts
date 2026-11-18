@@ -111,6 +111,12 @@ async function collectContext(
 
 /** 发送反馈到后端 */
 export async function submitFeedback(feedbackText: string, options?: { includeTranscript?: boolean }): Promise<FeedbackResult> {
+  // [自訂] 意見回饋上傳已停用：不送出任何文字或視窗資訊。
+  void feedbackText; void options
+  return { ok: false, message: 'Feedback upload is disabled in this build' }
+}
+
+export async function _disabledSubmitFeedback(feedbackText: string, options?: { includeTranscript?: boolean }): Promise<FeedbackResult> {
   const includeTranscript = options?.includeTranscript ?? true
 
   // 校验

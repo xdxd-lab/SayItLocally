@@ -4,10 +4,11 @@ import { Mic, Clock, Type, Zap } from 'lucide-react'
 import { getStats, type Stats, getSetting } from '@/services/store'
 import { SHORTCUTS_CHANGED_EVENT, listen } from '@/services/bridge'
 import FeedbackSection from '@/components/FeedbackSection'
-import NoticeBanner from '@/components/NoticeBanner'
 import { displayShortcut } from '@/lib/shortcutKeys'
 import { getLocale } from '@/i18n'
 import { useT } from '@/i18n/useT'
+// [自訂] 啟動公告已註解停用（日後移除）：
+// import NoticeBanner from '@/components/NoticeBanner'
 
 /**
  * 把带 `{key}` 占位的文案渲染成「文字 + 键帽 + 文字」。
@@ -119,7 +120,7 @@ export default function Home() {
         />
       </p>
 
-      <NoticeBanner />
+      {/* [自訂] 啟動公告已註解停用（日後移除）：<NoticeBanner /> */}
 
       {isNewUser && (
         <div className="mb-6 rounded-xl border border-border bg-muted/30 px-5 py-5 text-center">

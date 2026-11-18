@@ -42,7 +42,7 @@ const TRAY_AI: &str = "tray-ai";
 const TRAY_QUIT: &str = "tray-quit";
 
 fn current_ai_enabled(storage: &Storage) -> bool {
-    storage.get("aiEnabled", None).as_bool().unwrap_or(true)
+    storage.get("aiEnabled", None).as_bool().unwrap_or(false) // [自訂] 預設關閉
 }
 
 fn show_main(app: &AppHandle) {

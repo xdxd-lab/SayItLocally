@@ -3,6 +3,12 @@
 import { getBackendBaseUrl } from './runtimeConfig'
 
 async function fetchAPI<T>(path: string, options?: RequestInit): Promise<T> {
+  // [自訂] 作者伺服器 API 已停用（熱詞、healthz 等）
+  void path; void options
+  throw new Error('Server API is disabled in this build')
+}
+
+export async function _disabledFetchAPI<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${getBackendBaseUrl()}${path}`, options)
   if (!res.ok) throw new Error(`API error: ${res.status}`)
   return res.json()

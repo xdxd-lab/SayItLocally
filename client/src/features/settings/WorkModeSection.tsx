@@ -25,18 +25,6 @@ const modes: Array<{ value: WorkMode; labelKey: TranslationKey; descKey: Transla
     privacyKey: 'workMode.local.privacy',
     icon: Cpu,
   },
-  {
-    value: 'cloud_api', labelKey: 'mode.cloudApi',
-    descKey: 'workMode.cloudApi.desc',
-    privacyKey: 'workMode.cloudApi.privacy',
-    icon: Cloud,
-  },
-  {
-    value: 'server', labelKey: 'mode.server',
-    descKey: 'workMode.server.desc',
-    privacyKey: 'workMode.server.privacy',
-    icon: Server,
-  },
 ]
 
 const statusConfig = {

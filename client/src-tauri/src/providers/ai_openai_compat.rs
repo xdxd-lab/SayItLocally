@@ -77,6 +77,12 @@ fn thinking_overrides(config: &AiProviderConfig) -> Option<serde_json::Value> {
     Some(disable_thinking_overrides())
 }
 
+/// [自訂] 嚴禁 DeepSeek：任何主機名稱含 "deepseek" 的端點一律拒絕連線。
+fn is_forbidden_ai_host(api_url: &str) -> bool {
+    host_of(api_url).map_or(false, |h| h.contains("deepseek"))
+        || api_url.to_ascii_lowercase().contains("deepseek")
+}
+
 fn host_of(api_url: &str) -> Option<String> {
     reqwest::Url::parse(api_url.trim())
         .ok()
@@ -347,6 +353,9 @@ pub async fn polish(
         });
     }
 
+    if is_forbidden_ai_host(&config.api_url) {
+        return Err("DeepSeek endpoints are forbidden in this build".to_string());
+    }
     let base_url = normalize_base_url(&config.api_url);
     let url = format!("{}/chat/completions", base_url);
 
@@ -481,6 +490,9 @@ pub async fn polish(
 
 /// 测试 AI 连接 — 发送一个简短的聊天请求，验证地址、Key、模型是否都可用
 pub async fn test_connection(config: &AiProviderConfig) -> TestResult {
+    if is_forbidden_ai_host(&config.api_url) {
+        return TestResult { ok: false, message: "DeepSeek endpoints are forbidden in this build".to_string(), elapsed_ms: 0, detail: String::new() };
+    }
     let base_url = normalize_base_url(&config.api_url);
     let url = format!("{}/chat/completions", base_url);
 

@@ -109,7 +109,7 @@ export class HistoryWriter {
     const { runId } = params
     let artifact: { recordId: string; audioFilePath?: string; pendingLate?: boolean } | null = null
     try {
-      const historyEnabled = await getSetting('historyEnabled', true)
+      const historyEnabled = await getSetting('historyEnabled', false)
       if (!historyEnabled) return 'none'
       artifact = await this.audioArchive.take(runId)
       if (!artifact) return 'none'
@@ -201,7 +201,7 @@ export class HistoryWriter {
     const wallSec = params.wallTimeSec
     let historyArtifact: HistoryArtifact | null = null
     try {
-      const historyEnabled = await getSetting('historyEnabled', true)
+      const historyEnabled = await getSetting('historyEnabled', false)
       if (!params.isRunCurrent()) return { aborted: true }
       if (historyEnabled) {
         // 音频在 stopRecording 时就开始写盘了；这里只等它落定，不再写第二份。

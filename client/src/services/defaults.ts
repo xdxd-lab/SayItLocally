@@ -23,7 +23,7 @@ export const DEFAULTS: Record<string, unknown> = {
   'ui.language': 'auto', // 可选: 'auto'（跟随系统）| 'zh-CN' | 'en'
 
   // ── 工作模式 ──
-  workMode: 'server', // 可选: 'server' | 'cloud_api' | 'local'
+  workMode: 'local', // [自訂 local-only] 只支援 'local'
 
   // ── 快捷键 ──
   // 按住说话。旧单键保持 DOM code；组合键使用物理 code 格式，如 'ControlLeft+MetaLeft' 或 'ControlLeft+KeyK'。
@@ -50,7 +50,7 @@ export const DEFAULTS: Record<string, unknown> = {
   protectClipboard: true, // 插入文本后自动还原剪贴板为插入前内容，避免占用用户剪贴板。默认开启
 
   // ── AI 校对 ──
-  aiEnabled: true, // 是否开启 AI 校对。可选: true | false
+  aiEnabled: false, // [自訂：預設關閉] 是否开启 AI 校对。可选: true | false
   // 0 = 每段语音都整理；大于 0 时，仅录音达到该秒数才调用 AI（最多 300 秒）。
   aiMinDurationSec: 0,
   // 读取光标附近文字/选区并交给 AI，用于上下文续写与语音编辑。涉及正文读取，默认关闭。
@@ -154,11 +154,11 @@ export const DEFAULTS: Record<string, unknown> = {
   // autoCheckUpdate 在界面上已经没有开关了（更新是必走的：后台下载 + 用户点击或退出时安装）。
   // 这里保留默认值与读取，是给更新链路自己出故障时留一条不用发新版的止血通道
   // （0.0.8 那次更新器把用户锁在死循环里，当时只能靠这个开关关掉）。
-  autoCheckUpdate: true, // 是否检查更新。可选: true | false
+  autoCheckUpdate: false, // [自訂] 更新功能已移除；此值保留為 false // 是否检查更新。可选: true | false
   // 已下载待安装的更新包 { version, filePath, sha512 }。Rust 侧退出时会读它做兜底安装。
   pendingUpdate: null,
-  historyEnabled: true, // 保存历史记录（文本+录音）。关闭后不再保存新记录，适合共享电脑。可选: true | false
-  audioRetentionEnabled: true, // 保留录音文件。可选: true | false
+  historyEnabled: false, // [自訂：預設關閉] 保存历史记录（文本+录音）。关闭后不再保存新记录，适合共享电脑。可选: true | false
+  audioRetentionEnabled: false, // [自訂：預設關閉] 保留录音文件。可选: true | false
   audioRetentionDays: -1, // 录音保留天数。可选: 7 | 30 | 90 | -1（永久）
   logRetentionDays: 30, // 日志保留天数。可选: 7 | 15 | 30 | 90
 

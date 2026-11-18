@@ -61,8 +61,8 @@ export class AudioArchiveService {
       try {
         if (chunks.length === 0) return null
         const [historyEnabled, retentionEnabled] = await Promise.all([
-          getSetting('historyEnabled', true),
-          getSetting('audioRetentionEnabled', true),
+          getSetting('historyEnabled', false),
+          getSetting('audioRetentionEnabled', false),
         ])
         if (!historyEnabled || !retentionEnabled) return null
         const savedPath = await saveRecordingAudio(recordId, chunks)
