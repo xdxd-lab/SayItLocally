@@ -1,3 +1,22 @@
+<!-- fork-notice:start -->
+> [!IMPORTANT]
+> **這是 [crosswk/SayIt](https://github.com/crosswk/SayIt) 的個人自用 fork（分支 `hardening/local-only`），目標是「只用本機辨識，語音、文字與使用資訊都不外流」。**
+>
+> - 基準版本：上游 commit `4fdeae9`（2026-11-09），client `0.2.5`；強化 commit `de5a362`（2026-11-19 05:44，UTC+08:00）
+> - 只保留 **Local 模式**（Server、Cloud API 入口已移除）；**AI 校對預設關閉**；**歷史記錄與錄音預設不保存**
+> - 已停用：啟動公告、自動更新（檢查、下載、結束時安裝）、Google Fonts、意見回饋／診斷／ASR 校正上傳；CSP 已收緊
+> - 嚴禁 DeepSeek；日後 AI 校對只考慮本機 Ollama
+> - 不使用官方安裝檔，一律從原始碼自行建置
+>
+> 外流風險的完整登錄、處理方式與進度見 **[`security/`](security/README.md)**。目前仍有 14 項待處理、1 項審查中。
+>
+> ⚠️ 所有修改**尚未實際執行、尚未斷網實測、尚未抓封包驗證**。
+>
+> 依 AGPL-3.0 第 5 條聲明：本 fork 自 2026-11-19 起修改上游程式碼，修改處以 `[自訂]` 註解標示，完整變更見 git 歷史。
+<!-- fork-notice:end -->
+
+---
+
 <div align="center">
 
 <img src="docs/images/readme/icon.png" width="80" height="80" alt="SayIt">
