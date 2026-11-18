@@ -17,10 +17,10 @@ import { initTheme } from './stores/theme'
 import { initAiEnabled } from './stores/aiEnabled'
 import { initActivePreset } from './stores/activePreset'
 import { getSetting, setSetting } from './services/store'
-import { startUpdateService } from './features/update/autoUpdate'
+// [自訂] 更新已註解停用：import { startUpdateService } from './features/update/autoUpdate'
 import { startWebDavBackupService } from './features/backup/autoWebdavBackup'
-import UpdateDialog from './features/update/UpdateDialog'
-import UpdateNotificationHost from './features/update/UpdateNotificationHost'
+// [自訂] 更新已註解停用：import UpdateDialog from './features/update/UpdateDialog'
+// [自訂] 更新已註解停用：import UpdateNotificationHost from './features/update/UpdateNotificationHost'
 import * as bridge from './services/bridge'
 
 export default function App() {
@@ -38,7 +38,7 @@ export default function App() {
     void initAiEnabled()
     void initActivePreset()
     initRecorder()
-    void startUpdateService()
+    // [自訂] 更新已註解停用：void startUpdateService()
     void startWebDavBackupService()
 
       // 检查是否需要显示欢迎向导（仅首次安装）
@@ -105,8 +105,8 @@ export default function App() {
         </main>
       </div>
       {showWelcome && <WelcomeGuide onComplete={handleWelcomeComplete} />}
-      <UpdateDialog />
-      <UpdateNotificationHost enabled={!showWelcome} />
+      {/* [自訂] 更新已註解停用：<UpdateDialog /> */}
+      {/* [自訂] 更新已註解停用：<UpdateNotificationHost enabled=(!showWelcome) /> */}
     </div>
   )
 }

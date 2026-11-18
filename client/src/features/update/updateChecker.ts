@@ -87,6 +87,8 @@ async function updateChannel(): Promise<string> {
   return info?.arch === 'x86_64' ? 'darwin/x64' : 'darwin/arm64'
 }
 
+const UPDATE_CHECK_DISABLED = true as boolean // [自訂]
+
 async function fetchManifest(currentVersion: string, baseUrl: string): Promise<VersionInfo> {
   const base: VersionInfo = {
     hasUpdate: false,
@@ -98,6 +100,8 @@ async function fetchManifest(currentVersion: string, baseUrl: string): Promise<V
     error: null,
     sourceUrl: baseUrl,
   }
+  // [自訂] 更新檢查已停用：不連網
+  if (UPDATE_CHECK_DISABLED) return base
 
   try {
     const channel = await updateChannel()

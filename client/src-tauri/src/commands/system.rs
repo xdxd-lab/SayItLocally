@@ -428,6 +428,11 @@ pub async fn download_update(
     url: String,
     sha512: Option<String>,
 ) -> Result<String, String> {
+    // [自訂] 下載更新已停用：不從網路下載任何安裝檔。
+    let _ = (&app, &storage, &url, &sha512);
+    if true {
+        return Err("Update download is disabled in this build".to_string());
+    }
 
     let fail = |msg: String| {
         write_log_line(&format!("[update] download refused: {}", msg));
@@ -813,6 +818,11 @@ pub fn install_downloaded_update(
 /// 理由是退出路径不能卡几百毫秒；实际 15 MB 的包算一次 SHA-512 是几十毫秒，
 /// 而"只看文件在不在"正是恶意备份能让退出时运行任意 exe 的那个口子（审核 S3）。
 pub fn install_pending_update_on_exit(app: &AppHandle) {
+    // [自訂] 結束時自動安裝已停用：絕不以官方安裝檔覆蓋自建版本。
+    let _ = app;
+    if true {
+        return;
+    }
     use std::sync::atomic::Ordering;
     use tauri::Manager;
 

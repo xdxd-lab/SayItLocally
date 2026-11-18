@@ -194,7 +194,10 @@ async function ensureDownloaded(info: VersionInfo): Promise<void> {
 }
 
 /** 检查一次，发现新版本就在后台下载。所有触发路径最终都走这里。 */
+const UPDATES_DISABLED = true as boolean // [自訂]
+
 async function runCheckAndDownload(): Promise<void> {
+  if (UPDATES_DISABLED) return // [自訂] 自動更新已停用（手動「檢查更新」也不會連網）
   if (currentState.phase === 'installing') return
   if (inFlight) { await inFlight; return }
 
@@ -250,6 +253,12 @@ async function runCheckAndDownload(): Promise<void> {
  * 在 App.tsx 挂载时调用一次。
  */
 export async function startUpdateService(): Promise<void> {
+  // [自訂] 自動更新已停用：不檢查、不下載、不安裝。更新方式改為 git pull 後自行建置。
+  addRuntimeEvent('info', 'update', 'update service disabled in this build')
+  return
+}
+
+export async function _disabledStartUpdateService(): Promise<void> {
   // 整个函数包一层：调用方是 `void startUpdateService()`，没有 catch，
   // 这里任何一处抛异常都会被 Promise 静默吞掉，表现成"更新功能毫无反应"。
   try {

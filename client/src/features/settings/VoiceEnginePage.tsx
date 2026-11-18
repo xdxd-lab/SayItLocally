@@ -8,9 +8,7 @@ import { refreshRecorderSettings, reconnectProvider } from '@/services/recorder'
 import { refreshModeStatus } from '@/stores/modeStatus'
 import { setEngineDraftDirty } from '@/stores/engineDraft'
 import WorkModeSection from './WorkModeSection'
-import CloudAPISection from './CloudAPISection'
 import LocalModeSection, { LocalModeAdvancedSection } from './LocalModeSection'
-import ServerSection from './ServerSection'
 import AsrTestSection from './AsrTestSection'
 import { useT } from '@/i18n/useT'
 import { PageTitle } from '@/components/ui/info-tip'
@@ -23,16 +21,14 @@ export default function VoiceEnginePage() {
   const [advancedOpen, setAdvancedOpen] = useState(false)
 
   useEffect(() => {
-    getSetting('workMode', 'server').then((value) => {
-      const v = value as WorkMode
-      if (v === 'server' || v === 'cloud_api' || v === 'local') setWorkMode(v)
-    })
+    setWorkMode('local') // [自訂 local-only]
   }, [])
 
   const handleWorkModeChange = async (mode: WorkMode) => {
     // 换模式会整体替换下方的配置卡，上一套里没保存的输入随之消失——脏标记要跟着清，
     // 否则「识别测试」会一直以为有未保存的改动
     setEngineDraftDirty(false)
+    mode = 'local' // [自訂 local-only]
     setWorkMode(mode)
     await setSetting('workMode', mode)
     await switchProvider(mode)
@@ -51,8 +47,6 @@ export default function VoiceEnginePage() {
         {/* id 供「工作模式」右上角的「待配置」徽标点击后滚动定位 */}
         <div id="engine-config" className="space-y-6">
           {workMode === 'local' && <LocalModeSection />}
-          {workMode === 'server' && <ServerSection />}
-          {workMode === 'cloud_api' && <CloudAPISection />}
         </div>
 
         <AsrTestSection workMode={workMode} />

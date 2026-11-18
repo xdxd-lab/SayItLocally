@@ -105,10 +105,13 @@ function classifyServerError(error: string): AsrCorrectionErrorCode {
   return 'server'
 }
 
+const ASR_CORRECTION_DISABLED = true as boolean // [自訂]
+
 export async function submitAsrCorrection(
   record: HistoryRecord,
   correctedText: string,
 ): Promise<AsrCorrectionResult> {
+  if (ASR_CORRECTION_DISABLED) throw new Error('ASR correction upload is disabled in this build') // [自訂] 不上傳錄音與文字
   const original = normalizeForDiff(record.asrText || '')
   const corrected = normalizeForDiff(correctedText)
   if (!original || !corrected) {

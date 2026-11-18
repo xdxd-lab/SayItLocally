@@ -336,7 +336,7 @@ export default function AIProviderSection() {
     // 来源默认 managed，已保存 custom 的用户会看见开关自己滑一下（pitfalls #11）。
     // 只在值到齐后才首次渲染，两者都不存在，也就不需要 ready/animate 那套过渡开关。
     void Promise.all([
-      getSetting('workMode', 'server').catch(() => 'server'),
+      getSetting('workMode', 'local').catch(() => 'local'),
       getSetting(SERVER_AI_SOURCE_KEY, 'managed').catch(() => 'managed'),
     ]).then(([mode, value]) => {
       if (cancelled) return

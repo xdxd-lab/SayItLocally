@@ -1,10 +1,9 @@
 // Provider 管理器 — 根据 workMode 返回对应的 TranscriptionProvider
 
 import { invoke } from '@tauri-apps/api/core'
-import { getSetting } from '../store'
+import { getSetting, setSetting } from '../store'
 import { addRuntimeEvent } from '../debugLog'
-import { ServerProvider } from './ServerProvider'
-import { CloudAPIProvider } from './CloudAPIProvider'
+// [自訂 local-only] Server / Cloud API provider 不再匯入，只保留 LocalProvider。
 import { LocalProvider } from './LocalProvider'
 import type { TranscriptionProvider, WorkMode } from './types'
 
@@ -23,20 +22,14 @@ export type {
 export { MID_SESSION_DISCONNECT_ERROR } from './types'
 
 let currentProvider: TranscriptionProvider | null = null
-let currentMode: WorkMode = 'server'
+let currentMode: WorkMode = 'local'
 
 function createProvider(mode: WorkMode): TranscriptionProvider {
-  switch (mode) {
-    case 'server':
-      return new ServerProvider()
-    case 'cloud_api':
-      return new CloudAPIProvider()
-    case 'local':
-      return new LocalProvider()
-    default:
-      addRuntimeEvent('warn', 'transcription', `Unknown processing mode "${mode}"; falling back to server mode`)
-      return new ServerProvider()
+  // [自訂 local-only] 任何模式一律使用本機辨識。
+  if (mode !== 'local') {
+    addRuntimeEvent('warn', 'transcription', `Mode "${mode}" is disabled in this build; using local mode`)
   }
+  return new LocalProvider()
 }
 
 /** 获取当前 Provider 实例（懒初始化） */
@@ -57,7 +50,8 @@ export function getWorkMode(): WorkMode {
  * 会断开旧 Provider 并创建新的。
  * 调用方需要重新 connect。
  */
-export async function switchProvider(mode: WorkMode): Promise<TranscriptionProvider> {
+export async function switchProvider(_requested: WorkMode): Promise<TranscriptionProvider> {
+  const mode: WorkMode = 'local' // [自訂 local-only]
   if (mode === currentMode && currentProvider) {
     return currentProvider
   }
@@ -90,9 +84,10 @@ export async function switchProvider(mode: WorkMode): Promise<TranscriptionProvi
 
 /** 从 store 读取保存的 workMode 并初始化 */
 export async function initProviderFromStore(): Promise<void> {
-  const stored = await getSetting('workMode', 'server')
-  const mode = (stored === 'server' || stored === 'cloud_api' || stored === 'local') ? stored : 'server'
-  currentMode = mode as WorkMode
+  // [自訂 local-only] 不論儲存值為何，一律 local，並寫回設定。
+  const stored = await getSetting('workMode', 'local')
+  if (stored !== 'local') await setSetting('workMode', 'local')
+  currentMode = 'local'
   currentProvider = createProvider(currentMode)
   addRuntimeEvent('info', 'transcription', 'Provider initialized', { mode: currentMode })
 }

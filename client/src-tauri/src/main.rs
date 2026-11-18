@@ -842,12 +842,12 @@ fn main() {
             commands::system::get_system_ui_language,
             commands::system::get_auto_launch,
             commands::system::set_auto_launch,
-            commands::system::install_downloaded_update,
-            commands::system::download_update,
-            commands::system::verify_update_package,
-            commands::update_notification::sync_update_notification,
-            commands::update_notification::get_update_notification,
-            commands::update_notification::fit_update_notification,
+            // [自訂] 更新已註解停用：commands::system::install_downloaded_update,
+            // [自訂] 更新已註解停用：commands::system::download_update,
+            // [自訂] 更新已註解停用：commands::system::verify_update_package,
+            // [自訂] 更新已註解停用：commands::update_notification::sync_update_notification,
+            // [自訂] 更新已註解停用：commands::update_notification::get_update_notification,
+            // [自訂] 更新已註解停用：commands::update_notification::fit_update_notification,
             commands::system::append_debug_log,
             commands::system::save_audio_to_downloads,
             commands::system::reveal_file_in_folder,
@@ -988,7 +988,9 @@ fn main() {
                 }
             }
             if let tauri::RunEvent::Exit = event {
-                commands::system::install_pending_update_on_exit(app_handle);
+                // [自訂] 結束時自動安裝更新已註解停用：
+                // commands::system::install_pending_update_on_exit(app_handle);
+                let _ = app_handle;
             }
         });
 }

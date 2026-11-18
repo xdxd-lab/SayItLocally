@@ -112,6 +112,12 @@ export async function downloadDiagnostics(data: DiagnosticsSubmission): Promise<
 }
 
 async function uploadDiagnosticsZip(zipPath: string): Promise<string> {
+  // [自訂] 診斷上傳已停用
+  void zipPath
+  throw new Error('Diagnostics upload is disabled in this build')
+}
+
+export async function _disabledUploadDiagnosticsZip(zipPath: string): Promise<string> {
   const zipData = await bridge.readDiagnosticsZipBytes(zipPath)
 
   if (!zipData) {
