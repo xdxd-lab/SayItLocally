@@ -195,10 +195,11 @@ describe('policyFromSnapshot：缓冲型 Provider 复原策略', () => {
     expect(p.workMode).toBe('server')
   })
 
-  it('快照缺失时兜底为"开启、无门槛"，而不是静默不整理', () => {
+  // [自訂] S23：快照缺失時預設關閉 AI（原為「開啟、無門檻」）
+  it('快照缺失时兜底为关闭 AI', () => {
     const p = policyFromSnapshot(undefined, 'cloud_api', 1)
-    expect(p.allowCall).toBe(true)
-    expect(p.route).toBe('custom')
+    expect(p.allowCall).toBe(false)
+    expect(p.reason).toBe('ai_off')
   })
 })
 

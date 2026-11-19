@@ -18,7 +18,7 @@ import { initAiEnabled } from './stores/aiEnabled'
 import { initActivePreset } from './stores/activePreset'
 import { getSetting, setSetting } from './services/store'
 // [自訂] 更新已註解停用：import { startUpdateService } from './features/update/autoUpdate'
-import { startWebDavBackupService } from './features/backup/autoWebdavBackup'
+// [自訂] S18／L-19 WebDAV 自動備份已註解停用：import { startWebDavBackupService } from './features/backup/autoWebdavBackup'
 // [自訂] 更新已註解停用：import UpdateDialog from './features/update/UpdateDialog'
 // [自訂] 更新已註解停用：import UpdateNotificationHost from './features/update/UpdateNotificationHost'
 import * as bridge from './services/bridge'
@@ -39,7 +39,7 @@ export default function App() {
     void initActivePreset()
     initRecorder()
     // [自訂] 更新已註解停用：void startUpdateService()
-    void startWebDavBackupService()
+    // [自訂] S18／L-19 WebDAV 自動備份已註解停用：void startWebDavBackupService()
 
       // 检查是否需要显示欢迎向导（仅首次安装）
       ; (async () => {

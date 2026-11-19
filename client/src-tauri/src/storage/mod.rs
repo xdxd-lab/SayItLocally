@@ -11,7 +11,7 @@ pub(crate) const DEFAULT_SETTINGS: &[(&str, &str)] = &[
     ("shortcutPTTCombo", r#""Alt+Q""#),
     ("shortcutHandsFree", concat!("\"", crate::default_shortcut_hands_free!(), "\"")),
     ("shortcutToggleAi", r#""""#),
-    ("autoLaunch", "true"),
+    ("autoLaunch", "false"), // [自訂] S30：預設不開機自啟（原為 "true"）
     ("selectedMic", r#""""#),
     ("hotwords", "[]"),
     ("builtinHotwordSets", r#"{"ai":false}"#),
@@ -623,7 +623,11 @@ impl Storage {
 impl Storage {
     /// Migrate data from the Electron app's SQLite database (one-time).
     /// Looks for sayit.db in common Electron userData paths.
+    ///
+    /// [自訂] S37：一律不做任何事（不檢查、不匯入舊資料夾）。呼叫處在 main.rs 也已註解停用。
+    #[allow(dead_code, unreachable_code)]
     pub fn migrate_from_electron(&self) -> Result<(), String> {
+        return Ok(()); // [自訂] S37：短路，下方原碼保留供日後移除
         let db = self.conn();
 
         // Check if already migrated
@@ -722,7 +726,9 @@ impl Storage {
         Ok(())
     }
 
+    #[allow(unreachable_code)]
     fn find_electron_db() -> Option<PathBuf> {
+        return None; // [自訂] S37：不探測舊 SayIt／sayit／SayIt-dev／sayit-dev 資料夾
         // Electron's app.getPath('userData') on Windows is typically:
         //   C:\Users\<user>\AppData\Roaming\<appName>
         // The app name could be "SayIt", "sayit", or "SayIt-dev"
@@ -838,6 +844,17 @@ fn parse_stats(json: &Option<String>) -> (f64, i64) {
 }
 
 // ─── 备份 / 恢复辅助（导入导出用）───
+
+/// [自訂] S35／S36：排除清單比對。一般項目整個 key 相同才算；結尾為 `*` 的項目做前綴比對
+/// （例如 `cloudAi.*` 會排除 `cloudAi.apiKey`、`cloudAi.profiles`、`cloudAi.deepseek.apiKey`）。
+/// 匯出與匯入共用這一個判斷，兩個方向不會不一致。
+pub fn is_settings_key_excluded(key: &str, exclude: &[&str]) -> bool {
+    exclude.iter().any(|pattern| match pattern.strip_suffix('*') {
+        Some(prefix) => key.starts_with(prefix),
+        None => key == *pattern,
+    })
+}
+
 impl Storage {
     /// 导出 app_settings 为 { key: value } 对象；exclude 中的 key 会被跳过。
     pub fn export_app_settings(&self, exclude: &[&str]) -> Value {
@@ -850,7 +867,7 @@ impl Storage {
             if let Ok(rows) = rows {
                 for row in rows.flatten() {
                     let (key, value_json) = row;
-                    if exclude.contains(&key.as_str()) {
+                    if is_settings_key_excluded(&key, exclude) { // [自訂] S35：支援前綴比對
                         continue;
                     }
                     let val: Value = serde_json::from_str(&value_json).unwrap_or(Value::Null);
@@ -874,7 +891,7 @@ impl Storage {
         let now = chrono::Utc::now().timestamp_millis();
 
         for (key, value) in app_settings {
-            if exclude.contains(&key.as_str()) {
+            if is_settings_key_excluded(key, exclude) { // [自訂] S36：支援前綴比對
                 continue;
             }
             let json_str = serde_json::to_string(value).unwrap_or_else(|_| "null".to_string());

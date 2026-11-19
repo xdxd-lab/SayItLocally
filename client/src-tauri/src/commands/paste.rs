@@ -53,7 +53,14 @@ pub fn paste_text(
     // If injection failed because target is not editable, trigger overlay fallback
     if !result.ok {
         if result.reason.as_deref() == Some("not_editable") {
-            let _ = inject_to_clipboard(&text);
+            // [自訂] S11／L-27：兜底寫入剪貼簿後，60 秒內若沒有人再改過剪貼簿，就清掉，
+            // 辨識結果不會一直留在剪貼簿裡。寫入本身已是 transient＋只限本機（見 copy_to_clipboard）。
+            if inject_to_clipboard(&text).is_ok() {
+                #[cfg(target_os = "macos")]
+                schedule_clipboard_clear_if_unchanged(
+                    crate::platform::macos::appkit::pasteboard_change_count(),
+                );
+            }
 
             let fallback_data = serde_json::json!({
                 "state": "fallback",
@@ -166,6 +173,28 @@ pub fn get_active_app_context(detector: State<ContextDetector>) -> Result<Option
 #[tauri::command]
 pub fn copy_text(text: String) -> Result<(), String> {
     inject_to_clipboard(&text).map_err(|e| e.to_string())
+}
+
+/// [自訂] S11／L-27：not_editable 兜底專用。60 秒後若剪貼簿的 changeCount 沒變
+/// （沒有人複製別的東西、也沒按結果卡的「複製」），就清空剪貼簿；變了就不動。
+/// 只用在 not_editable 分支：結果卡的「複製」是使用者明確要的，不自動清除。
+#[cfg(target_os = "macos")]
+fn schedule_clipboard_clear_if_unchanged(written_change_count: isize) {
+    const CLEAR_AFTER: std::time::Duration = std::time::Duration::from_secs(60);
+    if written_change_count < 0 {
+        return;
+    }
+    let _ = std::thread::Builder::new()
+        .name("clipboard-expiry".to_string())
+        .spawn(move || {
+            std::thread::sleep(CLEAR_AFTER);
+            if crate::platform::macos::appkit::pasteboard_change_count() == written_change_count {
+                crate::platform::macos::appkit::pasteboard_clear();
+                crate::commands::system::write_log_line(
+                    "[RUST] [paste] cleared fallback clipboard after 60s (unchanged)",
+                );
+            }
+        });
 }
 
 fn inject_to_clipboard(text: &str) -> Result<(), String> {

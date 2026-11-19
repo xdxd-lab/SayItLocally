@@ -124,6 +124,9 @@ export function AsrCorrectionDialog({
         asrCorrectionSubmittedAt: Date.now(),
         asrCorrectedText: normalizeForDiff(correctedText),
       })
+    } catch {
+      // [自訂] S43：本 fork 停用上傳，submitAsrCorrection 會拋錯；在這裡接住，不成為未處理例外
+      setError(t('asrCorrection.errorNetwork'))
     } finally {
       setSubmitting(false)
     }
@@ -147,6 +150,9 @@ export function AsrCorrectionDialog({
         asrCorrectionSubmittedAt: null,
         asrCorrectedText: null,
       })
+    } catch {
+      // [自訂] S43／S16：撤回同樣停用，拋錯在這裡接住
+      setError(t('asrCorrection.errorNetwork'))
     } finally {
       setWithdrawing(false)
     }

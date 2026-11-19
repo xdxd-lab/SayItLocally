@@ -233,15 +233,18 @@ export default function DiagnosticsPage() {
       if (!aiProvider || (!aiApiKey && aiProvider !== 'ollama') || !aiApiUrl) {
         items.push({ id: 'ai', label: t('diagnostics.health.ai'), status: 'error', detail: t('diagnostics.incomplete') })
       } else {
-        // 实际测试连通性
-        try {
-          const result = await invoke<{ ok: boolean; message: string }>('test_ai_connection', {
-            config: { provider: aiProvider, api_url: aiApiUrl, api_key: aiApiKey, model: aiModel },
-          })
-          items.push({ id: 'ai', label: t('diagnostics.health.ai'), status: result.ok ? 'ok' : 'error', detail: result.ok ? t('diagnostics.providerModel', { provider: displayName, model: aiModel }) : `${displayName} — ${result.message}` })
-        } catch (err) {
-          items.push({ id: 'ai', label: t('diagnostics.health.ai'), status: 'error', detail: `${displayName} — ${String(err)}` })
-        }
+        // [自訂] S19／L-20：開啟診斷頁（以及按「重新整理」）時不再自動測試 AI 連線，
+        // 只顯示已設定的供應商與模型；要測試請到「AI 服務」頁手動按「檢查連線」（Rust 端只允許本機 Ollama）。
+        items.push({ id: 'ai', label: t('diagnostics.health.ai'), status: 'ok', detail: t('diagnostics.providerModel', { provider: displayName, model: aiModel }) })
+        // [自訂] 原自動測試已註解停用：
+        // try {
+        //   const result = await invoke<{ ok: boolean; message: string }>('test_ai_connection', {
+        //     config: { provider: aiProvider, api_url: aiApiUrl, api_key: aiApiKey, model: aiModel },
+        //   })
+        //   items.push({ id: 'ai', label: t('diagnostics.health.ai'), status: result.ok ? 'ok' : 'error', detail: result.ok ? t('diagnostics.providerModel', { provider: displayName, model: aiModel }) : `${displayName} — ${result.message}` })
+        // } catch (err) {
+        //   items.push({ id: 'ai', label: t('diagnostics.health.ai'), status: 'error', detail: `${displayName} — ${String(err)}` })
+        // }
       }
     }
 

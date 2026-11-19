@@ -6,16 +6,23 @@
 import type { ActiveAppContext } from '@/types/appContext'
 
 /** 简化 AppContext 用于日志输出 */
+// [自訂] S31：這份摘要會寫進 sayit.log（「Recording started」），保留 30 天並進診斷 zip。
+// 只留 bundle ID／程式名稱、角色與布林值；不記視窗標題、執行檔路徑（含使用者名稱）、焦點元件名稱。
 export function summarizeAppContext(context: ActiveAppContext | null) {
   if (!context) return null
   return {
     processName: context.processName,
-    exePath: context.exePath,
-    windowTitle: context.windowTitle,
+    bundleId: context.bundleId,
+    // [自訂] S31 已移除：exePath: context.exePath,
+    // [自訂] S31 已移除：windowTitle: context.windowTitle,
     windowClass: context.windowClass,
     focusClass: context.focusClass,
     controlType: context.controlType,
-    focusedName: context.focusedName,
+    // [自訂] S31 已移除：focusedName: context.focusedName,
+    hasCaret: context.hasCaret,
+    isKeyboardFocusable: context.isKeyboardFocusable,
+    isReadOnly: context.isReadOnly,
+    isPassword: context.isPassword,
   }
 }
 

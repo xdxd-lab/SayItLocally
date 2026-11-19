@@ -16,7 +16,7 @@ import { Switch } from '@/components/ui/switch'
 import { Segmented } from '@/components/ui/segmented'
 import AppSection from './AppSection'
 import BackupSection from './BackupSection'
-import WebDavSection from './WebDavSection'
+// [自訂] S18／S35 WebDAV 設定區塊已註解停用：import WebDavSection from './WebDavSection'
 import MicrophoneSection from './MicrophoneSection'
 import type { MicVolumeLevel } from './MicrophoneSection'
 import { ComboShortcutInput, PTTShortcutInput } from './ShortcutInputs'
@@ -418,7 +418,7 @@ export default function GeneralSettingsPage() {
 
         <BackupSection />
 
-        <WebDavSection />
+        {/* [自訂] S18／S35 WebDAV 設定區塊已註解停用：<WebDavSection /> */}
       </div>
     </div>
   )
