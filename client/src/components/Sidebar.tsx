@@ -12,7 +12,7 @@ import type { TranslationKey } from '@/i18n'
 import { useT } from '@/i18n/useT'
 import { IS_MAC } from '@/lib/platform'
 // mac 侧栏顶部的品牌图标：从 src-tauri/icons/icon.png（256px）按精确尺寸高质量缩出来的 1 倍 / 2 倍图。
-// 让浏览器把大图现场缩到 28px 会发虚，图标里那行 SayIt 就看不清了。
+// 让浏览器把大图现场缩到 28px 会发虚，图标里那行 SayItLocally 就看不清了。
 import macIcon from '@/assets/app-icon-28.png'
 import macIcon2x from '@/assets/app-icon-28@2x.png'
 
@@ -217,7 +217,7 @@ export default function Sidebar() {
         <div className="mb-3 flex items-center gap-2.5 pl-[18px] pr-3">
           <img src={macIcon} srcSet={`${macIcon} 1x, ${macIcon2x} 2x`} width={28} height={28}
             alt="" aria-hidden className="h-7 w-7 shrink-0" draggable={false} />
-          <span className="text-sm text-sidebar-text-active" style={{ fontFamily: "'Nunito', sans-serif", fontWeight: 800, letterSpacing: '0.01em' }}>SayIt</span>
+          <span className="text-sm text-sidebar-text-active" style={{ fontFamily: "'Nunito', sans-serif", fontWeight: 800, letterSpacing: '0.01em' }}>SayItLocally</span>
         </div>
       )}
       <div ref={navGroupRef} className="relative flex-1 space-y-1 px-3">

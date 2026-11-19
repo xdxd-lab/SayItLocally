@@ -10,6 +10,7 @@
 - 基準版本：上游 [crosswk/SayIt](https://github.com/crosswk/SayIt) commit `4fdeae9`（2026-11-09），client `0.2.5`
 - 強化 commit：`de5a362`（2026-11-19 05:44）
 - 文件中的時間皆為 UTC+08:00；最後更新：2026-11-19 06:10
+- 專案名稱：2026-11-19 10:50 由 SayIt 更名為 **SayItLocally**（App：`SayItLocally.app`，bundle ID：`com.sayitlocally.desktop`）；上游名稱與來源資訊保留
 
 ## 原則
 
@@ -60,7 +61,7 @@
 
 | 項目 | 狀態 |
 |---|---|
-| 安裝 LuLu，模型下載完成後封鎖 SayIt 所有對外連線 | 建議（評估中） |
+| 安裝 LuLu，模型下載完成後封鎖 SayItLocally 所有對外連線 | 建議（評估中） |
 | 斷網實測：Local 模式、AI 校對關閉時辨識是否正常 | 建議 |
 | 監看實際連線、抓封包，確認沒有任何對外請求 | 建議 |
 | Claude Opus 5.5（effort max）全面深度複核 | 排程中 |
@@ -70,4 +71,4 @@
 - 列出所有修改處：`git grep -n "\[自訂"`
 - 與上游比較：`git diff 4fdeae9 -- client/`
 - 建置後確認介面沒有外部網址：在 `client/dist` 搜尋 `fonts.googleapis`、`/api/notice`、`desktop-updates`（2026-11-19 05:40 檢查結果皆為 0 處）
-- 確認執行檔內嵌的 CSP：`strings client/src-tauri/target/release/sayit | grep connect-src`
+- 確認執行檔內嵌的 CSP：`strings client/src-tauri/target/release/sayitlocally | grep connect-src`

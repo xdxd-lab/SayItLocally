@@ -1,3 +1,8 @@
+<!-- fork-notice:start -->
+> [!NOTE]
+> 本 fork 已更名為 **SayItLocally**（只用本機辨識、資訊不外流的個人自用版本）。說明見 [README.md](README.md)，安全記錄見 [security/](security/README.md)。以下為上游 SayIt 的原始說明（簡體中文），保留供參考；其中的官方安裝檔下載連結不適用於本 fork。
+<!-- fork-notice:end -->
+
 **简体中文** · [English](README.md)
 
 <div align="center">

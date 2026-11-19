@@ -1,7 +1,7 @@
 {
-  "name": "sayit-tauri",
+  "name": "sayitlocally-tauri",
   "version": "0.2.5",
-  "description": "SayIt - Voice to Text Desktop App (Tauri)",
+  "description": "SayItLocally - Local-only Voice to Text Desktop App (Tauri)",
   "type": "module",
   "scripts": {
     "dev": "vite",
