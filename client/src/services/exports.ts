@@ -139,11 +139,12 @@ async function buildSettingsPayload() {
     SETTINGS_EXPORT_KEYS.map(async (key) => [key, await getSetting(key, null)] as const),
   )
 
-  const [autoLaunch, promptPresets, appPromptRules, userStats] = await Promise.all([
+  // [自訂] S40／S44：匯出不再帶使用統計 userStats（各 App 使用次數與字數）
+  const [autoLaunch, promptPresets, appPromptRules] = await Promise.all([
     bridge.getAutoLaunch() ?? false,
     getPromptPresets(),
     getAppPromptRules(),
-    getUserStats(),
+    // [自訂] 已註解停用：getUserStats(),
   ])
 
   return {
@@ -154,7 +155,7 @@ async function buildSettingsPayload() {
     },
     promptPresets,
     appPromptRules,
-    userStats,
+    // [自訂] S40／S44 已移除：userStats,
   }
 }
 

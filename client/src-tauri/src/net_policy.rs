@@ -83,9 +83,96 @@ pub fn update_url_allowed(download_url: &str, configured_backend: &str) -> bool 
         .any(|base| base.scheme() == "https" && base.origin() == url.origin())
 }
 
+/// [自訂] S34／S38／S42／S22：AI 只允許「本機 Ollama」。
+///
+/// 位址必須是 http(s)，主機必須**正好**是 127.0.0.1、localhost 或 ::1（以解析後的主機判斷，
+/// 不用字串比對，所以 `http://127.0.0.1@evil.example`、`http://127.0.0.1.evil.example` 都不會過）。
+/// 不允許帳號密碼段。這是 Rust 端的強制檢查，前端預設值、托盤、快捷鍵、匯入都改不掉它。
+pub fn is_loopback_ollama_url(api_url: &str) -> bool {
+    let Some(url) = parse(api_url) else {
+        return false;
+    };
+    if !matches!(url.scheme(), "http" | "https") {
+        return false;
+    }
+    if !url.username().is_empty() || url.password().is_some() {
+        return false;
+    }
+    // host_str() 是解析後的主機；IPv6 會帶方括號（"[::1]"），先去掉再當 IP 解析。
+    let Some(host) = url.host_str() else {
+        return false;
+    };
+    if host.eq_ignore_ascii_case("localhost") {
+        return true;
+    }
+    let bare = host.trim_start_matches('[').trim_end_matches(']');
+    match bare.parse::<std::net::IpAddr>() {
+        Ok(std::net::IpAddr::V4(ip)) => ip == std::net::Ipv4Addr::LOCALHOST,
+        Ok(std::net::IpAddr::V6(ip)) => ip == std::net::Ipv6Addr::LOCALHOST,
+        Err(_) => false,
+    }
+}
+
+/// [自訂] S39：WebView 只能導覽到 App 自己的來源。
+///
+/// 允許：`tauri://localhost`（macOS 正式版）、`http(s)://tauri.localhost`（Windows 正式版）、
+/// `about:blank`（WebKit 初始空白頁，不含任何遠端內容），以及 debug 建置時的 devUrl 同源。
+/// 其他一律拒絕（含拖放連結到視窗造成的導覽）。
+pub fn app_navigation_allowed(url: &Url, dev_url: Option<&Url>) -> bool {
+    match url.scheme() {
+        "tauri" => return url.host_str() == Some("localhost"),
+        // 只認預設埠：WebKit 會把 *.localhost 解析到本機，帶埠號的就可能是本機其他服務
+        "http" | "https" if url.host_str() == Some("tauri.localhost") => return url.port().is_none(),
+        "about" => return url.path() == "blank",
+        _ => {}
+    }
+    match dev_url {
+        Some(dev) => cfg!(debug_assertions) && url.origin() == dev.origin(),
+        None => false,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // [自訂] S34／S38：AI 只允許本機 Ollama
+    #[test]
+    fn only_loopback_ollama_urls_are_allowed() {
+        assert!(is_loopback_ollama_url("http://127.0.0.1:11434"));
+        assert!(is_loopback_ollama_url("http://localhost:11434/api/generate"));
+        assert!(is_loopback_ollama_url("http://[::1]:11434"));
+        assert!(!is_loopback_ollama_url(""));
+        assert!(!is_loopback_ollama_url("http://127.0.0.2:11434"));
+        assert!(!is_loopback_ollama_url("http://192.168.1.10:11434"));
+        assert!(!is_loopback_ollama_url("http://127.0.0.1.evil.example:11434"));
+        assert!(!is_loopback_ollama_url("http://127.0.0.1@evil.example:11434"));
+        assert!(!is_loopback_ollama_url("http://user:pw@127.0.0.1:11434"));
+        assert!(!is_loopback_ollama_url("https://api.deepseek.com"));
+        assert!(!is_loopback_ollama_url("ftp://127.0.0.1"));
+        assert!(!is_loopback_ollama_url("localhost:11434"));
+    }
+
+    // [自訂] S39：導覽防護
+    #[test]
+    fn navigation_is_limited_to_the_app_origin() {
+        let u = |s: &str| Url::parse(s).unwrap();
+        assert!(app_navigation_allowed(&u("tauri://localhost/index.html"), None));
+        assert!(app_navigation_allowed(&u("http://tauri.localhost/"), None));
+        assert!(app_navigation_allowed(&u("about:blank"), None));
+        assert!(!app_navigation_allowed(&u("https://sayitapp.site/feedback.html"), None));
+        assert!(!app_navigation_allowed(&u("https://tauri.localhost.evil.example/"), None));
+        assert!(!app_navigation_allowed(&u("http://tauri.localhost:8080/"), None));
+        assert!(!app_navigation_allowed(&u("tauri://evil/"), None));
+        assert!(!app_navigation_allowed(&u("file:///etc/passwd"), None));
+        assert!(!app_navigation_allowed(&u("http://localhost:1420/"), None));
+        let dev = u("http://localhost:1420");
+        assert_eq!(
+            app_navigation_allowed(&u("http://localhost:1420/overlay.html"), Some(&dev)),
+            cfg!(debug_assertions)
+        );
+        assert!(!app_navigation_allowed(&u("http://localhost:1421/"), Some(&dev)));
+    }
 
     #[test]
     fn official_hosts_are_recognized() {

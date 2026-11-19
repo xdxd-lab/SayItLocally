@@ -8,6 +8,21 @@ use std::time::Instant;
 
 const SCOPE: &str = "ai/ollama";
 
+/// [自訂] S38／S22：Ollama 專用 HTTP 客戶端。
+/// - `.no_proxy()`：不走 macOS 系統代理（ClashX、Surge、公司代理等），轉錄文字不會以明文經過代理。
+/// - `redirect::Policy::none()`：不跟隨任何轉址，本機位址無法被轉到外部（例如 DeepSeek）。
+/// 不用 http_client::shared()（那個會走系統代理、會跟隨轉址）。
+/// 建不起來時回傳錯誤，**不**退回會走代理、會轉址的預設客戶端。
+static OLLAMA_CLIENT: once_cell::sync::Lazy<Result<reqwest::Client, String>> =
+    once_cell::sync::Lazy::new(|| {
+        reqwest::Client::builder()
+            .user_agent(super::http_client::USER_AGENT)
+            .no_proxy()
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .map_err(|e| format!("Failed to build the local Ollama HTTP client: {}", e))
+    });
+
 /// 调用 Ollama 进行文本校对
 pub async fn polish(
     text: &str,
@@ -40,7 +55,10 @@ pub async fn polish(
         "prompt": combined
     });
 
-    let client = super::http_client::shared();
+    // [自訂] S38：不走代理、不跟隨轉址
+    let client = OLLAMA_CLIENT
+        .as_ref()
+        .map_err(|e| diag::fail(SCOPE, "client_build", e.clone()))?;
     let start = Instant::now();
 
     diag::log(
@@ -145,7 +163,18 @@ pub async fn test_connection(config: &AiProviderConfig) -> TestResult {
         "prompt": prompt
     });
 
-    let client = super::http_client::shared();
+    // [自訂] S38：不走代理、不跟隨轉址
+    let client = match OLLAMA_CLIENT.as_ref() {
+        Ok(client) => client,
+        Err(e) => {
+            return TestResult {
+                ok: false,
+                message: diag::fail("ai/ollama-test", "client_build", e.clone()),
+                elapsed_ms: 0,
+                detail: String::new(),
+            }
+        }
+    };
     let start = Instant::now();
 
     let result = client

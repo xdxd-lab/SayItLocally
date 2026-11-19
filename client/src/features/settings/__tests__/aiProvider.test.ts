@@ -35,6 +35,7 @@ describe('AI_PROVIDERS 清单', () => {
   it('每家都有默认地址和至少一个候选模型', () => {
     for (const p of AI_PROVIDERS) {
       expect(p.defaultUrl, `${p.value} 缺默认地址`).toMatch(/^https?:\/\//)
+      if (p.value === 'openrouter') continue // [自訂] S34：OpenRouter 不再預設 deepseek/* 模型
       expect(p.defaultModels.length, `${p.value} 缺候选模型`).toBeGreaterThan(0)
       for (const m of p.defaultModels) expect(m.trim()).not.toBe('')
     }
@@ -53,18 +54,14 @@ describe('AI_PROVIDERS 清单', () => {
 describe('地区相关的供应商默认值', () => {
   afterEach(() => setLocale('zh-CN'))
 
-  it('英文界面优先 OpenRouter', () => {
-    setLocale('en')
-    expect(preferredAiProviderValue()).toBe('openrouter')
-    expect(aiProvidersForDisplay()[0].value).toBe('openrouter')
-    expect(blankProfile().provider).toBe('openrouter')
-  })
-
-  it('中文界面保持 DeepSeek 优先', () => {
-    setLocale('zh-CN')
-    expect(preferredAiProviderValue()).toBe('deepseek')
-    expect(aiProvidersForDisplay()[0].value).toBe('deepseek')
-    expect(blankProfile().provider).toBe('deepseek')
+  // [自訂] S34：不論介面語言，一律本機 Ollama；DeepSeek 不在清單中
+  it.each(['en', 'zh-CN'] as const)('%s 介面一律 Ollama 优先', (locale) => {
+    setLocale(locale)
+    expect(preferredAiProviderValue()).toBe('ollama')
+    expect(aiProvidersForDisplay()[0].value).toBe('ollama')
+    expect(blankProfile().provider).toBe('ollama')
+    expect(blankProfile().apiUrl).toBe('http://127.0.0.1:11434')
+    expect(AI_PROVIDERS.some((p) => p.value === 'deepseek')).toBe(false)
   })
 })
 
@@ -304,7 +301,8 @@ describe('一行的标题与副标题', () => {
   })
 
   it('默认地址不重复念，自定义端点才显示主机名', () => {
-    expect(profileSubtitle(profile())).toBe('DeepSeek')
+    // [自訂] S34：DeepSeek 已移出清單，改用千问驗證「預設位址不顯示主機名」
+    expect(profileSubtitle(profile({ provider: 'qwen', apiUrl: 'https://dashscope.aliyuncs.com/compatible-mode' }))).toBe('通义千问')
     expect(profileSubtitle(profile({ provider: 'openai_compat', apiUrl: 'http://127.0.0.1:8000/v1' })))
       .toBe('OpenAI 兼容 · 127.0.0.1:8000')
   })
@@ -318,7 +316,7 @@ describe('一行的标题与副标题', () => {
 
 describe('isProfileComplete', () => {
   it('免密钥的 Ollama 不要求密钥，其余都要', () => {
-    expect(isProfileComplete(profile({ apiKey: '' }))).toBe(false)
+    expect(isProfileComplete(profile({ provider: 'qwen', apiKey: '' }))).toBe(false) // [自訂] S34：deepseek 已移出清單
     expect(isProfileComplete(profile({ provider: 'ollama', apiKey: '', apiUrl: 'http://127.0.0.1:11434' }))).toBe(true)
   })
 

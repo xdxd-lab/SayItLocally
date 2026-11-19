@@ -5,6 +5,7 @@
 //   不替换 sqlite 文件、不涉及文件锁，导入完成后由前端触发重启使内存状态重载。
 // - 语义为「覆盖」：集合表整表替换；app_settings 逐 key 覆盖（不删除未出现的 key）。
 // - 「配置」不含使用统计 stats，避免覆盖本机计数；「全部」包含 stats。
+//   [自訂] S35／S36：本 fork 的「全部」也不含 stats，且兩檔都排除金鑰、密碼、使用統計與隱私開關（見 MACHINE_LOCAL_KEYS）。
 // - 全部导入时，历史记录里的 audioFilePath 是旧机绝对路径，会重写为本机 audio 目录下的同名文件。
 
 use serde::{Deserialize, Serialize};
@@ -41,6 +42,22 @@ const MACHINE_LOCAL_KEYS: &[&str] = &[
     "autoLaunchInitialized",
     "webdav.lastAttemptAt",
     "webdav.lastResult",
+    // [自訂] S35／S44：祕密與使用資料，任何匯出／備份都不寫出（API 金鑰、WebDAV 密碼、使用統計）。
+    // 結尾 `*` 表示前綴比對（見 storage::is_settings_key_excluded）。
+    "cloudAi.*",
+    "cloudAsr.*",
+    "webdav.*",
+    "userStats",
+    "stats",
+    // [自訂] S36：隱私開關與雲端相關設定，任何匯入／還原都不覆寫（v1 匯入、分項匯入、完整備份、WebDAV 還原）。
+    "aiEnabled",
+    "historyEnabled",
+    "audioRetentionEnabled",
+    "audioRetentionDays",
+    "contextAwareWritingEnabled",
+    "workMode",
+    "autoLaunch*",
+    "localAsr.downloadSource",
 ];
 /// 「配置」档不导出/导入的 app_settings key：本机专属的那些，加上使用统计（属于使用数据，不属于配置）。
 /// 与 MACHINE_LOCAL_KEYS 的包含关系有测试钉住。
@@ -55,6 +72,22 @@ const CONFIG_EXCLUDE: &[&str] = &[
     "autoLaunchInitialized",
     "webdav.lastAttemptAt",
     "webdav.lastResult",
+    // [自訂] S35／S44：祕密與使用資料，任何匯出／備份都不寫出（API 金鑰、WebDAV 密碼、使用統計）。
+    // 結尾 `*` 表示前綴比對（見 storage::is_settings_key_excluded）。
+    "cloudAi.*",
+    "cloudAsr.*",
+    "webdav.*",
+    "userStats",
+    "stats",
+    // [自訂] S36：隱私開關與雲端相關設定，任何匯入／還原都不覆寫（v1 匯入、分項匯入、完整備份、WebDAV 還原）。
+    "aiEnabled",
+    "historyEnabled",
+    "audioRetentionEnabled",
+    "audioRetentionDays",
+    "contextAwareWritingEnabled",
+    "workMode",
+    "autoLaunch*",
+    "localAsr.downloadSource",
 ];
 
 #[derive(Clone, Deserialize)]
@@ -1486,6 +1519,62 @@ mod tests {
         let settings = exported.get("appSettings").and_then(Value::as_object).unwrap();
         assert!(!settings.contains_key("deviceId"));
         assert!(settings.contains_key("overlayWidth"));
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// [自訂] S35／S36／S44：匯出不帶金鑰、密碼與使用統計；匯入不覆寫隱私開關與雲端設定。
+    #[test]
+    fn hardening_keys_are_never_exported_or_imported() {
+        let (storage, dir) = temp_storage("hardening");
+        storage.set("cloudAi.apiKey", &json!("sk-secret")).unwrap();
+        storage.set("cloudAi.profiles", &json!([{ "apiKey": "sk-secret" }])).unwrap();
+        storage.set("cloudAsr.doubao.consoleKey", &json!("secret")).unwrap();
+        storage.set("webdav.password", &json!("secret")).unwrap();
+        storage.set("userStats", &json!({ "totalWords": 3 })).unwrap();
+        storage.set("aiEnabled", &json!(false)).unwrap();
+        storage.set("overlayWidth", &json!("long")).unwrap();
+
+        for exported in [
+            build_config_value(&storage),
+            build_full_value(&storage, BackupScope { include_history: false, include_audio: false }),
+        ] {
+            let settings = exported.get("appSettings").and_then(Value::as_object).unwrap();
+            for key in settings.keys() {
+                assert!(
+                    !key.starts_with("cloudAi.") && !key.starts_with("cloudAsr.") && !key.starts_with("webdav."),
+                    "exported secret-bearing key {key}"
+                );
+            }
+            assert!(!settings.contains_key("userStats"));
+            assert!(!settings.contains_key("stats"));
+            assert!(settings.contains_key("overlayWidth"));
+        }
+
+        let data = json!({
+            "appSettings": {
+                "aiEnabled": true,
+                "historyEnabled": true,
+                "workMode": "server",
+                "autoLaunch": true,
+                "cloudAi.provider": "deepseek",
+                "cloudAi.apiUrl": "https://api.deepseek.com",
+                "webdav.enabled": true,
+                "localAsr.downloadSource": "HuggingFace Mirror",
+                "overlayWidth": "short",
+            }
+        });
+        for exclude in [CONFIG_EXCLUDE, MACHINE_LOCAL_KEYS] {
+            apply_config_part(&storage, &data, exclude).unwrap();
+            assert_eq!(storage.get("aiEnabled", None), json!(false));
+            assert!(storage.get("historyEnabled", None).is_null());
+            assert!(storage.get("workMode", None).is_null());
+            assert!(storage.get("cloudAi.provider", None).is_null());
+            assert!(storage.get("cloudAi.apiUrl", None).is_null());
+            assert!(storage.get("webdav.enabled", None).is_null());
+            assert!(storage.get("localAsr.downloadSource", None).is_null());
+            assert_eq!(storage.get("overlayWidth", None), json!("short"));
+        }
 
         let _ = fs::remove_dir_all(&dir);
     }

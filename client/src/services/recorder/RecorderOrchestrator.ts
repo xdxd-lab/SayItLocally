@@ -101,6 +101,8 @@ const INSERTION_TIMEOUT_MS = 15000
 /** 顺延次数上限；用尽就强制把界面从「处理中」放出来。 */
 const MAX_INSERTION_TIMEOUT_EXTENSIONS = 3
 const MODIFIER_PTT_RELEASE_GUARD_MS = 200
+/** [自訂] S40：停用使用統計 userStats 的保存（與 asrCorrection.ts 的 ASR_CORRECTION_DISABLED 同一寫法） */
+const USER_STATS_RECORDING_DISABLED = true as boolean
 
 function classifyHistoryProviderFailure(message: string): HistoryFailReasonCode {
   // 录音中掉线要单列：这段语音从未送达服务端，跟「服务端处理失败」的排查方向完全不同。
@@ -2417,6 +2419,9 @@ export class RecorderOrchestrator {
     appContext: ActiveAppContext | null,
   ) {
     if (!finalText.trim() || !this.isRunCurrent(runId)) return
+    // [自訂] S40：不再保存使用統計 userStats（各 App 的使用次數、字數、首次／最後使用時間）。
+    // this.userStats 維持啟動時讀到的值（新安裝即預設的空統計），介面與提示詞路由都能處理空統計。
+    if (USER_STATS_RECORDING_DISABLED) return
 
     try {
       const wordCount = finalText.length

@@ -1,6 +1,6 @@
 # 掃描記錄
 
-時間皆為 UTC+08:00；最後更新：2026-11-19 06:10
+時間皆為 UTC+08:00；最後更新：2026-11-20 00:12
 
 | 編號 | 開始 | 完成 | 範圍 | 方法 | 主要結果 | 相關登錄 |
 |---|---|---|---|---|---|---|
@@ -15,9 +15,11 @@
 | SC-09 | 2026-11-19 05:46 | 2026-11-19 05:51 | 前端所有外流路徑 | 子代理（Claude Haiku 5.5） | 新發現：撤回校正未守衛、WebDAV 自動備份、診斷頁自動 AI 測試、檢查連線按鈕、`aiPolicy` 預設值、外部連結、`devCsp`、shell 範圍 | L-17、L-19～L-22、L-24、L-25、L-28、L-29 |
 | SC-10 | 2026-11-19 05:46 | 2026-11-19 05:49 | Rust 所有網路 I/O | 子代理（Claude Haiku 5.5） | 啟動流程沒有網路；雲端指令仍註冊且不受 CSP 限制；DeepSeek 封鎖有缺口；沒有遙測套件；`ggml-rpc` 關閉 | L-18、L-23、L-32～L-34 |
 | SC-11 | 2026-11-19 05:58 | — | 模型來源與裝置識別碼 | 子代理（Claude Haiku 5.5） | 模型預設從 `hf-mirror.com` 下載，SHA-256 寫死且會驗證；裝置 ID 為隨機 UUID；Server 模式會送出作業系統使用者名稱、主機名稱、區網 IP 等 | L-06、L-17、L-26、L-35 |
-| SC-12 | 2026-11-19 05:52 | 進行中 | 日誌與本機留存 | 子代理（Claude Haiku 5.5） | 進行中 | L-30 |
-| SC-13 | 排程中 | — | 全面深度複核 | 子代理（Claude Opus 5.5，effort max） | SC-12 完成後執行 | — |
+| SC-12 | 2026-11-19 05:52 | 2026-11-19 06:01 | 日誌與本機留存 | 子代理（Claude Haiku 5.5） | 日誌會記視窗標題、執行檔路徑、麥克風名稱；轉錄文字只記字數；userStats 永久保存；匯出／備份以明文寫出金鑰；診斷 zip 取消時留存；匯出全部含錄音 | L-30、L-37、L-38、L-46、L-47、L-50～L-52、L-55 |
+| SC-13 | 2026-11-19 06:11 | 2026-11-19 11:04 | 全面深度複核（06:24 因用量上限中斷，10:48 在唯讀快照 `dcf0583` 上恢復） | 子代理（Claude Opus 5.5，effort max） | 新發現：自動註冊登入項目、DeepSeek 為預設 AI 供應商、WebDAV 上傳金鑰、匯入可改回強化設定、舊版遷移、Ollama 走系統代理、沒有導覽防護、剪貼簿非只限本機、強化未在 Rust 強制；更正 SC-12 與 L-26、L-27、L-29 的部分結論 | L-36、L-39～L-45、L-48、L-49 |
+| SC-14 | 2026-11-19 23:43 | 2026-11-20 00:12 | 第一次開啟前的安全修正與建置驗證（分支 `security/first-launch-hardening`，基準 `7f79001`） | 修改程式碼；`npm run build`、`npm run -s i18n:check`、`npx vitest run`、`cargo check --tests`、`cargo test`、`npx tauri build --bundles app`；檢查產物字串；查證 `tauri-plugin-shell` 2.3.5 與 wry 0.54.4 原始碼 | 處理 L-16～L-28、L-36～L-46、L-48～L-50；建置通過；vitest 失敗數與修改前相同（17 個，皆為先前強化造成）；`cargo test` 370 通過、0 失敗；產物 CSP 為 `connect-src 'self' ipc: http://ipc.localhost`，`client/dist` 無公告、更新、字型、`api.deepseek.com`、`hf-mirror` 字串；shell open 預設允許 http、https、mailto、tel。**未執行 App** | L-16～L-30、L-36～L-55 |
 
 ## 更正
 
 - SC-10 之後更正：先前以為收緊 CSP 後「漏改的程式路徑也會被擋」。實際上 CSP 只管 WebView，前端透過 `invoke` 呼叫的 Rust 指令不受限制（見 L-18）。
+- SC-14 更正：先前（SC-13）記為「shell open 只允許 https、mailto、tel」，查證後預設正規式為 `^((mailto:\w+)|(tel:\w+)|(https?://\w+)).+`，**http 也允許**；file:// 與自訂協定仍會被拒。

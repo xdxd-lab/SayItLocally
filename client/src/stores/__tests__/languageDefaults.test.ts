@@ -16,17 +16,18 @@ import { initLocaleDefaults } from '../language'
 describe('首次运行的地区默认值', () => {
   beforeEach(() => bridgeState.values.clear())
 
-  it('英文环境使用官方 Hugging Face 与 OpenRouter', async () => {
+  // [自訂] S25／S34：不論語言，官方 Hugging Face 與本機 Ollama
+  it('英文环境使用官方 Hugging Face 与 Ollama', async () => {
     await initLocaleDefaults('en')
     expect(bridgeState.values.get('localAsr.downloadSource')).toBe('HuggingFace')
-    expect(bridgeState.values.get('cloudAi.provider')).toBe('openrouter')
+    expect(bridgeState.values.get('cloudAi.provider')).toBe('ollama')
     expect(bridgeState.values.get('ai.builtinPromptLanguage')).toBe('en')
   })
 
-  it('中文环境保持国内镜像与 DeepSeek', async () => {
+  it('中文环境同样使用官方 Hugging Face 与 Ollama', async () => {
     await initLocaleDefaults('zh-CN')
-    expect(bridgeState.values.get('localAsr.downloadSource')).toBe('HuggingFace Mirror')
-    expect(bridgeState.values.get('cloudAi.provider')).toBe('deepseek')
+    expect(bridgeState.values.get('localAsr.downloadSource')).toBe('HuggingFace')
+    expect(bridgeState.values.get('cloudAi.provider')).toBe('ollama')
     expect(bridgeState.values.get('ai.builtinPromptLanguage')).toBe('zh-CN')
   })
 

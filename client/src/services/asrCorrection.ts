@@ -198,6 +198,7 @@ export async function submitAsrCorrection(
 
 /** 撤回：服务端会删掉音频并清掉文本。失败返回 false，调用方保持"已提交"状态不变。 */
 export async function withdrawAsrCorrection(correctionId: string): Promise<boolean> {
+  if (ASR_CORRECTION_DISABLED) throw new Error('ASR correction withdraw is disabled in this build') // [自訂] S16：不送出裝置 ID
   const clientInfo = await bridge.getClientRuntimeInfo().catch(() => null)
   try {
     const response = await fetch(

@@ -3,7 +3,8 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Mic, Clock, Type, Zap } from 'lucide-react'
 import { getStats, type Stats, getSetting } from '@/services/store'
 import { SHORTCUTS_CHANGED_EVENT, listen } from '@/services/bridge'
-import FeedbackSection from '@/components/FeedbackSection'
+// [自訂] S24／L-25 首頁回饋區塊已註解停用（會開啟 sayitapp.site/feedback.html）：
+// import FeedbackSection from '@/components/FeedbackSection'
 import { displayShortcut } from '@/lib/shortcutKeys'
 import { getLocale } from '@/i18n'
 import { useT } from '@/i18n/useT'
@@ -157,9 +158,7 @@ export default function Home() {
         ))}
       </div>
 
-      <div className="mt-6">
-        <FeedbackSection />
-      </div>
+      {/* [自訂] S24／L-25 已註解停用：<div className="mt-6"><FeedbackSection /></div> */}
     </div>
   )
 }

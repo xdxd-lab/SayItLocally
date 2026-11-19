@@ -8,26 +8,61 @@ use super::{
 };
 use crate::error_protocol;
 
+/// [自訂] S34／S38／S42／S22：AI 只允許本機 Ollama，在 Rust 端強制。
+///
+/// provider 必須是 "ollama"，且 api_url 的主機必須是 127.0.0.1、localhost 或 ::1
+/// （見 net_policy::is_loopback_ollama_url）。其餘一律拒絕，不發出任何連線。
+/// 另外保留 DeepSeek 黑名單作為額外防線。前端預設值、托盤／快捷鍵的 AI 開關、
+/// 匯入設定都繞不過這一關。
+fn ensure_local_ollama_only(provider: &str, api_url: &str) -> Result<(), String> {
+    if provider != "ollama" {
+        return Err(error_protocol::encode(
+            "connect_failed",
+            format!(
+                "AI provider '{}' is disabled in this build: only a local Ollama on 127.0.0.1/localhost/::1 is allowed",
+                provider
+            ),
+        ));
+    }
+    if ai_openai_compat::is_forbidden_ai_host(api_url) {
+        return Err(error_protocol::encode(
+            "connect_failed",
+            "DeepSeek endpoints are forbidden in this build",
+        ));
+    }
+    if !crate::net_policy::is_loopback_ollama_url(api_url) {
+        return Err(error_protocol::encode(
+            "connect_failed",
+            "Ollama URL must be http(s)://127.0.0.1, localhost or [::1] in this build (e.g. http://127.0.0.1:11434)",
+        ));
+    }
+    Ok(())
+}
+
 /// 云端 AI 校对（Tauri command）
 #[tauri::command]
 pub async fn cloud_polish(request: CloudPolishRequest) -> Result<AiResult, String> {
     let config = &request.ai_config;
+    // [自訂] S34／S42：先過本機 Ollama 守衛，不符合就不連線。
+    ensure_local_ollama_only(&config.provider, &config.api_url)?;
     match config.provider.as_str() {
         // Groq 与智谱都是标准的 OpenAI 兼容 chat/completions，直接复用通用实现，
         // 不需要单独的文件（base_url 已带版本段 /v1、/v4，normalize_base_url 会原样保留）。
         //
         // ⚠️ 这个清单是白名单：前端 AI_PROVIDERS 里新增一家却漏了这里，用户会拿到
         // 「Unknown AI provider: xxx」，而那句话看不出问题在路由层。两处必须一起改。
-        "openai_compat" | "deepseek" | "doubao" | "qwen" | "mimo" | "groq" | "zhipu"
-        | "openrouter" => {
-            ai_openai_compat::polish(
-                &request.text,
-                config,
-                request.system_prompt.as_deref(),
-                request.text_context.as_ref(),
-            )
-            .await
-        }
+        //
+        // [自訂] S34／S22 已註解停用雲端 AI 分支（含 provider 名稱 "deepseek"）：
+        // "openai_compat" | "deepseek" | "doubao" | "qwen" | "mimo" | "groq" | "zhipu"
+        // | "openrouter" => {
+        //     ai_openai_compat::polish(
+        //         &request.text,
+        //         config,
+        //         request.system_prompt.as_deref(),
+        //         request.text_context.as_ref(),
+        //     )
+        //     .await
+        // }
         "ollama" => {
             ai_ollama::polish(
                 &request.text,
@@ -47,13 +82,16 @@ pub async fn cloud_polish(request: CloudPolishRequest) -> Result<AiResult, Strin
 /// 测试 AI 连接（Tauri command）
 #[tauri::command]
 pub async fn test_ai_connection(config: AiProviderConfig) -> Result<TestResult, String> {
+    // [自訂] S20／S34：「檢查連線」同樣只允許本機 Ollama，不會把金鑰送到雲端。
+    ensure_local_ollama_only(&config.provider, &config.api_url)?;
     match config.provider.as_str() {
         // 与 cloud_polish 的清单必须一致：只加一处会出现「测试通了但校对报未知供应商」
         // 或者反过来，两种都很难从错误信息看出是路由问题。
-        "openai_compat" | "deepseek" | "doubao" | "qwen" | "mimo" | "groq" | "zhipu"
-        | "openrouter" => {
-            Ok(ai_openai_compat::test_connection(&config).await)
-        }
+        // [自訂] S34／S22 已註解停用雲端 AI 分支：
+        // "openai_compat" | "deepseek" | "doubao" | "qwen" | "mimo" | "groq" | "zhipu"
+        // | "openrouter" => {
+        //     Ok(ai_openai_compat::test_connection(&config).await)
+        // }
         "ollama" => Ok(ai_ollama::test_connection(&config).await),
         other => Err(error_protocol::encode(
             "connect_failed",
