@@ -73,17 +73,17 @@ fn ui_is_chinese(storage: &Storage) -> bool {
 
 fn tray_labels(storage: &Storage) -> TrayLabels {
     let zh = ui_is_chinese(storage);
-    // mac 菜单的惯例是「退出 SayIt」；Windows 托盘菜单惯例只写「退出」，与原来的网页菜单一致。
+    // mac 菜单的惯例是「退出 SayItLocally」；Windows 托盘菜单惯例只写「退出」，与原来的网页菜单一致。
     let quit = match (zh, cfg!(target_os = "macos")) {
-        (true, true) => "退出 SayIt",
+        (true, true) => "退出 SayItLocally",
         (true, false) => "退出",
-        (false, true) => "Quit SayIt",
+        (false, true) => "Quit SayItLocally",
         (false, false) => "Quit",
     };
     if zh {
-        TrayLabels { open: "打开 SayIt", ai_on: "AI 整理（已开启）", ai_off: "AI 整理（已关闭）", quit }
+        TrayLabels { open: "打开 SayItLocally", ai_on: "AI 整理（已开启）", ai_off: "AI 整理（已关闭）", quit }
     } else {
-        TrayLabels { open: "Open SayIt", ai_on: "AI cleanup (on)", ai_off: "AI cleanup (off)", quit }
+        TrayLabels { open: "Open SayItLocally", ai_on: "AI cleanup (on)", ai_off: "AI cleanup (off)", quit }
     }
 }
 
@@ -164,7 +164,7 @@ pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
 
     let builder = TrayIconBuilder::with_id("sayit-tray")
         .icon(tray_icon(app)?)
-        .tooltip("SayIt")
+        .tooltip("SayItLocally")
         .menu(&menu)
         .show_menu_on_left_click(cfg!(target_os = "macos"))
         .on_menu_event(|app, event| match event.id().as_ref() {
@@ -208,7 +208,7 @@ const APP_MENU_ABOUT: &str = "app-about";
 #[cfg(target_os = "macos")]
 const APP_MENU_SETTINGS: &str = "app-settings";
 
-/// macOS 屏幕顶部菜单栏里本程序的菜单（SayIt / 编辑 / 窗口），文字跟随界面语言。
+/// macOS 屏幕顶部菜单栏里本程序的菜单（SayItLocally / 编辑 / 窗口），文字跟随界面语言。
 ///
 /// 不用 Tauri 的默认菜单：那套是英文的，还带着用不上的「File」「View」「Help」。
 /// 「编辑」菜单不能省：WKWebView 里输入框的 ⌘C / ⌘V / ⌘X / ⌘A / ⌘Z 要靠它的快捷键才生效。
@@ -219,22 +219,22 @@ fn build_macos_app_menu(app: &AppHandle) -> tauri::Result<tauri::menu::Menu<taur
     let zh = ui_is_chinese(app.state::<Storage>().inner());
     let l = |zh_text: &'static str, en_text: &'static str| if zh { zh_text } else { en_text };
 
-    let about = MenuItemBuilder::with_id(APP_MENU_ABOUT, l("关于 SayIt", "About SayIt")).build(app)?;
+    let about = MenuItemBuilder::with_id(APP_MENU_ABOUT, l("关于 SayItLocally", "About SayItLocally")).build(app)?;
     let settings = MenuItemBuilder::with_id(APP_MENU_SETTINGS, l("设置…", "Settings…"))
         .accelerator("CmdOrCtrl+,")
         .build(app)?;
-    let app_menu = SubmenuBuilder::new(app, "SayIt")
+    let app_menu = SubmenuBuilder::new(app, "SayItLocally")
         .item(&about)
         .separator()
         .item(&settings)
         .separator()
         .item(&PredefinedMenuItem::services(app, Some(l("服务", "Services")))?)
         .separator()
-        .item(&PredefinedMenuItem::hide(app, Some(l("隐藏 SayIt", "Hide SayIt")))?)
+        .item(&PredefinedMenuItem::hide(app, Some(l("隐藏 SayItLocally", "Hide SayItLocally")))?)
         .item(&PredefinedMenuItem::hide_others(app, Some(l("隐藏其他", "Hide Others")))?)
         .item(&PredefinedMenuItem::show_all(app, Some(l("全部显示", "Show All")))?)
         .separator()
-        .item(&PredefinedMenuItem::quit(app, Some(l("退出 SayIt", "Quit SayIt")))?)
+        .item(&PredefinedMenuItem::quit(app, Some(l("退出 SayItLocally", "Quit SayItLocally")))?)
         .build()?;
     let edit_menu = SubmenuBuilder::new(app, l("编辑", "Edit"))
         .item(&PredefinedMenuItem::undo(app, Some(l("撤销", "Undo")))?)

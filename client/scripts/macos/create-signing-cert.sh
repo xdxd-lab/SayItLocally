@@ -1,5 +1,5 @@
 #!/bin/zsh
-# 在「登录」钥匙串里创建一张自签名的代码签名证书（默认名「SayIt Self-Signed」，有效期 10 年）。
+# 在「登录」钥匙串里创建一张自签名的代码签名证书（默认名「SayItLocally Self-Signed」，有效期 10 年）。
 #
 # 为什么要它：macOS 的「辅助功能」授权绑定在代码签名上。ad-hoc 签名每次构建都是新身份，
 # 用户每次更新后都得重新勾选；用同一张证书签每个版本，授权会一直保留。
@@ -11,7 +11,7 @@
 #    丢了就只能换新证书，所有用户要重新授权一次。
 set -euo pipefail
 
-NAME="${1:-SayIt Self-Signed}"
+NAME="${1:-SayItLocally Self-Signed}"
 KEYCHAIN="$HOME/Library/Keychains/login.keychain-db"
 
 if security find-certificate -c "$NAME" "$KEYCHAIN" >/dev/null 2>&1; then

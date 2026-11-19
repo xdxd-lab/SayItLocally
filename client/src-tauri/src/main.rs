@@ -25,7 +25,7 @@ use tauri::{Manager, Emitter};
 use std::thread;
 
 /// Environment-level WebView2 flags must be identical for every webview that shares
-/// com.sayit.app/EBWebView. Keep them global; never copy them into a single window's
+/// com.sayitlocally.desktop/EBWebView. Keep them global; never copy them into a single window's
 /// `additionalBrowserArgs` in tauri.conf.json (WebView2 rejects the second environment
 /// with ERROR_INVALID_STATE when the option sets differ).
 // 注意：不要再加回 --auto-accept-camera-and-microphone-capture。
@@ -66,7 +66,7 @@ fn cleanup_expired_audio(storage: &Storage) {
     let cutoff_ms = chrono::Utc::now().timestamp_millis() - retention_days * 24 * 60 * 60 * 1000;
     let audio_dir = dirs::data_local_dir()
         .unwrap_or_else(|| std::path::PathBuf::from("."))
-        .join("com.sayit.app")
+        .join("com.sayitlocally.desktop")
         .join("audio");
 
     if !audio_dir.exists() {
@@ -114,7 +114,7 @@ fn cleanup_expired_logs(storage: &Storage) {
 
     let log_dir = dirs::data_local_dir()
         .unwrap_or_else(|| std::path::PathBuf::from("."))
-        .join("com.sayit.app")
+        .join("com.sayitlocally.desktop")
         .join("logs");
 
     if !log_dir.exists() {
@@ -167,14 +167,14 @@ fn notify_storage_recovery(recovery: storage::StorageRecovery) {
     let zh = matches!(locale::system_ui_lang(), locale::Lang::ZhCn);
     let text = match &recovery {
         storage::StorageRecovery::MovedAside { backup, .. } => if zh {
-            format!("SayIt 的本地数据文件损坏，无法读取。\n\n已用全新的数据启动，设置和历史记录暂时为空。\n原文件已保留在：\n{}\n\n如需找回，请把这个文件发给开发者。", backup.display())
+            format!("SayItLocally 的本地数据文件损坏，无法读取。\n\n已用全新的数据启动，设置和历史记录暂时为空。\n原文件已保留在：\n{}\n\n如需找回，请把这个文件发给开发者。", backup.display())
         } else {
-            format!("SayIt could not read its local data file because it is damaged.\n\nIt has started with fresh data, so settings and history are empty for now.\nThe original file was kept at:\n{}\n\nSend this file to the developer if you need it recovered.", backup.display())
+            format!("SayItLocally could not read its local data file because it is damaged.\n\nIt has started with fresh data, so settings and history are empty for now.\nThe original file was kept at:\n{}\n\nSend this file to the developer if you need it recovered.", backup.display())
         },
         storage::StorageRecovery::InMemory { .. } => if zh {
-            "SayIt 无法创建本地数据文件（磁盘已满或没有写入权限）。\n\n本次可以正常使用，但设置和历史记录在退出后不会保存。".to_string()
+            "SayItLocally 无法创建本地数据文件（磁盘已满或没有写入权限）。\n\n本次可以正常使用，但设置和历史记录在退出后不会保存。".to_string()
         } else {
-            "SayIt could not create its local data file (the disk may be full or not writable).\n\nYou can use it now, but settings and history will not be saved after you quit.".to_string()
+            "SayItLocally could not create its local data file (the disk may be full or not writable).\n\nYou can use it now, but settings and history will not be saved after you quit.".to_string()
         },
     };
     #[cfg(target_os = "windows")]
@@ -182,11 +182,11 @@ fn notify_storage_recovery(recovery: storage::StorageRecovery) {
         use windows::core::HSTRING;
         use windows::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONWARNING, MB_OK, MB_SETFOREGROUND};
         unsafe {
-            MessageBoxW(None, &HSTRING::from(text), &HSTRING::from("SayIt"), MB_OK | MB_ICONWARNING | MB_SETFOREGROUND);
+            MessageBoxW(None, &HSTRING::from(text), &HSTRING::from("SayItLocally"), MB_OK | MB_ICONWARNING | MB_SETFOREGROUND);
         }
     });
     #[cfg(target_os = "macos")]
-    crate::platform::macos::appkit::show_alert_async("SayIt", &text);
+    crate::platform::macos::appkit::show_alert_async("SayItLocally", &text);
     #[cfg(not(any(target_os = "windows", target_os = "macos")))]
     let _ = text;
 }
@@ -269,7 +269,7 @@ fn prepare_main_window(app: &tauri::AppHandle, main_window: &tauri::WebviewWindo
                 let controller = webview.controller();
                 let Ok(core) = controller.CoreWebView2() else { return };
                 // 主窗网页进程崩溃后自动重载。录音、连接、插字调度都跑在这个进程里，
-                // 它一退出就是「托盘还在、热键全没反应、没有任何提示」，以前只能重启 SayIt。
+                // 它一退出就是「托盘还在、热键全没反应、没有任何提示」，以前只能重启 SayItLocally。
                 // 只处理「已退出」：「无响应」只记日志，导出大量历史这类长任务也会短暂无响应，
                 // 那时重载会把用户正在做的事打断。5 分钟内超过 3 次就不再重载，免得反复崩溃时死循环。
                 // 和证书处理器挂在同一次 with_webview 里：单独再调一次 with_webview 时
@@ -435,23 +435,23 @@ fn recreate_main_window(app: &tauri::AppHandle, launched_minimized: bool) {
 
 fn notify_main_window_unavailable() {
     let zh = matches!(locale::system_ui_lang(), locale::Lang::ZhCn);
-    // mac 上没有托盘、也不用右键：退出入口是屏幕顶部菜单栏里的 SayIt 图标
+    // mac 上没有托盘、也不用右键：退出入口是屏幕顶部菜单栏里的 SayItLocally 图标
     let text = match (zh, cfg!(target_os = "macos")) {
-        (true, false) => "SayIt 的主界面没能启动，语音输入暂时不可用。\n\n请从托盘图标右键退出 SayIt，再重新打开。如果反复出现，请在设置里提交诊断。",
-        (false, false) => "SayIt's main window failed to start, so voice input is unavailable for now.\n\nPlease quit SayIt from the tray icon and open it again. If this keeps happening, send a diagnostics report from Settings.",
-        (true, true) => "SayIt 的主界面没能启动，语音输入暂时不可用。\n\n请点屏幕顶部菜单栏里的 SayIt 图标，选「退出 SayIt」，再重新打开。如果反复出现，请在设置里提交诊断。",
-        (false, true) => "SayIt's main window failed to start, so voice input is unavailable for now.\n\nPlease quit SayIt from its icon in the menu bar at the top of the screen, then open it again. If this keeps happening, send a diagnostics report from Settings.",
+        (true, false) => "SayItLocally 的主界面没能启动，语音输入暂时不可用。\n\n请从托盘图标右键退出 SayItLocally，再重新打开。如果反复出现，请在设置里提交诊断。",
+        (false, false) => "SayItLocally's main window failed to start, so voice input is unavailable for now.\n\nPlease quit SayItLocally from the tray icon and open it again. If this keeps happening, send a diagnostics report from Settings.",
+        (true, true) => "SayItLocally 的主界面没能启动，语音输入暂时不可用。\n\n请点屏幕顶部菜单栏里的 SayItLocally 图标，选「退出 SayItLocally」，再重新打开。如果反复出现，请在设置里提交诊断。",
+        (false, true) => "SayItLocally's main window failed to start, so voice input is unavailable for now.\n\nPlease quit SayItLocally from its icon in the menu bar at the top of the screen, then open it again. If this keeps happening, send a diagnostics report from Settings.",
     };
     #[cfg(target_os = "windows")]
     thread::spawn(move || {
         use windows::core::HSTRING;
         use windows::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONWARNING, MB_OK, MB_SETFOREGROUND};
         unsafe {
-            MessageBoxW(None, &HSTRING::from(text), &HSTRING::from("SayIt"), MB_OK | MB_ICONWARNING | MB_SETFOREGROUND);
+            MessageBoxW(None, &HSTRING::from(text), &HSTRING::from("SayItLocally"), MB_OK | MB_ICONWARNING | MB_SETFOREGROUND);
         }
     });
     #[cfg(target_os = "macos")]
-    crate::platform::macos::appkit::show_alert_async("SayIt", &text);
+    crate::platform::macos::appkit::show_alert_async("SayItLocally", &text);
     #[cfg(not(any(target_os = "windows", target_os = "macos")))]
     let _ = text;
 }
@@ -506,19 +506,19 @@ fn main() {
     }
 
     log::info!(
-        "SayIt starting version={} profile={} pid={}",
+        "SayItLocally starting version={} profile={} pid={}",
         env!("CARGO_PKG_VERSION"),
         if cfg!(debug_assertions) { "debug" } else { "release" },
         std::process::id(),
     );
     log::info!("Log file: {:?}", dirs::data_local_dir()
         .unwrap_or_else(|| std::path::PathBuf::from("."))
-        .join("com.sayit.app")
+        .join("com.sayitlocally.desktop")
         .join("logs")
         .join("sayit.log"));
 
     // This must be set before any WebView2 instance is created.
-    // Disable Chromium's background tab/window throttling: SayIt keeps a long-lived
+    // Disable Chromium's background tab/window throttling: SayItLocally keeps a long-lived
     // WebSocket connection alive via a 30s JS heartbeat even when the window is minimized
     // or not focused. Without these flags, WebView2 throttles setInterval timers in the
     // background, delaying the heartbeat well past the server's idle timeout and causing
@@ -537,7 +537,7 @@ fn main() {
         "WebView2 environment userDataDir={:?} argsSource={} argsLen={} argsFingerprint={}",
         dirs::data_local_dir()
             .unwrap_or_else(|| std::path::PathBuf::from("."))
-            .join("com.sayit.app")
+            .join("com.sayitlocally.desktop")
             .join("EBWebView"),
         browser_args_source,
         browser_args.len(),
@@ -552,7 +552,7 @@ fn main() {
 
     let db_path = dirs::data_local_dir()
         .unwrap_or_else(|| std::path::PathBuf::from("."))
-        .join("com.sayit.app")
+        .join("com.sayitlocally.desktop")
         .join("sayit.db");
 
     let (storage, storage_recovery) = Storage::open_or_recover(db_path);
@@ -652,7 +652,7 @@ fn main() {
         // 单实例锁：必须作为第一个插件注册。第二次启动时不新开进程，
         // 而是唤起已有窗口，避免两个客户端同时收全局热键、各插一份文本。
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
-            // macOS：登录项带 --minimized 启动时 SayIt 可能已经在跑（用户先手动打开了），
+            // macOS：登录项带 --minimized 启动时 SayItLocally 可能已经在跑（用户先手动打开了），
             // 这时把启动请求交给已有实例就够了，不能把主窗口调出来。
             #[cfg(target_os = "macos")]
             if second_launch_should_stay_hidden(&args) {
@@ -673,10 +673,10 @@ fn main() {
         .manage(commands::update_notification::UpdateNotificationState::default())
         .setup(move |app| {
             // macOS：登录时要不要启动只由「登录时自动启动」决定，不让系统的「重新登录时重新打开窗口」
-            // 把 SayIt 当普通应用不带参数地拉起来（那样主窗口会在登录后弹出来，见 appkit.rs）。
+            // 把 SayItLocally 当普通应用不带参数地拉起来（那样主窗口会在登录后弹出来，见 appkit.rs）。
             #[cfg(target_os = "macos")]
             platform::macos::appkit::disable_relaunch_on_login();
-            // SayIt's main window and lazy overlay share one WebView2 user-data directory.
+            // SayItLocally's main window and lazy overlay share one WebView2 user-data directory.
             // Per-window browser arguments violate WebView2's environment compatibility
             // contract. Fail loudly during startup instead of leaving a half-working app
             // whose main window works but whose overlay can never be created.
@@ -975,7 +975,7 @@ fn main() {
             }
         })
         // 用 build + run 而不是直接 run：需要在 RunEvent::Exit 上挂"退出时兜底安装更新"。
-        // 用户没点更新图标就直接关掉 SayIt 时，在这里把已下载的新版静默装掉，
+        // 用户没点更新图标就直接关掉 SayItLocally 时，在这里把已下载的新版静默装掉，
         // 下次打开即是新版 —— 否则更新完全依赖用户主动点击，不点的人永远留在旧版。
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

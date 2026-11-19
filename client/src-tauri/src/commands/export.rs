@@ -110,7 +110,7 @@ pub async fn save_full_export(
     // 收集音频文件列表
     let audio_dir = dirs::data_local_dir()
         .unwrap_or_else(|| std::path::PathBuf::from("."))
-        .join("com.sayit.app")
+        .join("com.sayitlocally.desktop")
         .join("audio");
 
     let mut audio_files: Vec<std::path::PathBuf> = Vec::new();
