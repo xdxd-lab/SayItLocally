@@ -48,8 +48,8 @@ export default function TitleBar() {
       {/* mac：左边归系统红绿灯，图标和名字放在侧栏最上面（见 Sidebar），标题栏只留 AI 整理开关 */}
       {!IS_MAC && (
         <div className="flex items-center gap-2.5 pl-3">
-          <img src={appIcon} alt="SayIt" className="h-7 w-7" draggable={false} />
-          <span className="text-sm text-foreground" style={{ fontFamily: "'Nunito', sans-serif", fontWeight: 800, letterSpacing: '0.01em' }}>SayIt</span>
+          <img src={appIcon} alt="SayItLocally" className="h-7 w-7" draggable={false} />
+          <span className="text-sm text-foreground" style={{ fontFamily: "'Nunito', sans-serif", fontWeight: 800, letterSpacing: '0.01em' }}>SayItLocally</span>
         </div>
       )}
       <div className="flex items-center" {...dragRegion}>

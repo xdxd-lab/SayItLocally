@@ -1,18 +1,18 @@
 #!/bin/zsh
 # 构建 macOS 发布包：
-#   - SayIt_<版本>_<架构>.dmg  给用户下载安装
-#   - SayIt_<版本>_<架构>.zip  + latest.yml  给自动更新（放到服务器 releases/darwin/<架构>/）
+#   - SayItLocally_<版本>_<架构>.dmg  给用户下载安装
+#   - SayItLocally_<版本>_<架构>.zip  + latest.yml  给自动更新（放到服务器 releases/darwin/<架构>/）
 #
 # 用法：scripts/macos/build-release.sh
 # 环境变量：
-#   SAYIT_SIGN_IDENTITY  签名证书名，默认「SayIt Self-Signed」（先跑 create-signing-cert.sh）；
+#   SAYIT_SIGN_IDENTITY  签名证书名，默认「SayItLocally Self-Signed」（先跑 create-signing-cert.sh）；
 #                        找不到就退回 ad-hoc 签名（能用，但用户每次更新都要重新授权辅助功能）。
 set -euo pipefail
 
 SCRIPT_DIR=${0:A:h}
 CLIENT_DIR=${SCRIPT_DIR:h:h}
 cd "$CLIENT_DIR"
-[ -f "$HOME/.local/sayit-dev-env.sh" ] && source "$HOME/.local/sayit-dev-env.sh"
+[ -f "$HOME/.local/sayitlocally-dev-env.sh" ] && source "$HOME/.local/sayitlocally-dev-env.sh"
 
 VERSION=$(node -p "require('./package.json').version")
 case "$(uname -m)" in
@@ -21,7 +21,7 @@ case "$(uname -m)" in
   *) echo "不支持的架构：$(uname -m)"; exit 1 ;;
 esac
 
-IDENTITY="${SAYIT_SIGN_IDENTITY:-SayIt Self-Signed}"
+IDENTITY="${SAYIT_SIGN_IDENTITY:-SayItLocally Self-Signed}"
 if security find-identity -v -p codesigning | grep -q "\"$IDENTITY\""; then
   export APPLE_SIGNING_IDENTITY="$IDENTITY"
   echo "签名证书：$IDENTITY"
@@ -34,11 +34,11 @@ fi
 npx tauri build --bundles app,dmg
 
 BUNDLE=src-tauri/target/release/bundle
-APP="$BUNDLE/macos/SayIt.app"
+APP="$BUNDLE/macos/SayItLocally.app"
 DMG=$(ls -t "$BUNDLE"/dmg/*.dmg | head -n 1)
 OUT="dist-macos/$VERSION"
-ZIP_NAME="SayIt_${VERSION}_${ARCH}.zip"
-DMG_NAME="SayIt_${VERSION}_${ARCH}.dmg"
+ZIP_NAME="SayItLocally_${VERSION}_${ARCH}.zip"
+DMG_NAME="SayItLocally_${VERSION}_${ARCH}.dmg"
 mkdir -p "$OUT"
 
 # 发布物一律从一份不带扩展属性的干净拷贝生成，不直接用构建目录里那份 .app：
@@ -67,12 +67,12 @@ cleanup() {
 }
 trap cleanup EXIT
 
-/usr/bin/ditto --norsrc --noextattr "$APP" "$WORK/SayIt.app"
-/usr/bin/codesign --verify --deep --strict "$WORK/SayIt.app"
+/usr/bin/ditto --norsrc --noextattr "$APP" "$WORK/SayItLocally.app"
+/usr/bin/codesign --verify --deep --strict "$WORK/SayItLocally.app"
 
 # zip 给自动更新用。ditto 会保留 .app 里的符号链接和签名；zip 命令会弄坏签名。
 # --norsrc --noextattr：不把扩展属性打成 ._ 文件，换别的解压工具也不会在包里多出文件、破坏签名。
-/usr/bin/ditto -c -k --norsrc --noextattr --keepParent "$WORK/SayIt.app" "$OUT/$ZIP_NAME"
+/usr/bin/ditto -c -k --norsrc --noextattr --keepParent "$WORK/SayItLocally.app" "$OUT/$ZIP_NAME"
 
 # dmg 沿用 Tauri 打好的那个（窗口布局、卷图标、「应用程序」快捷方式都在里面），
 # 只就地清掉里面 .app 的扩展属性，再压缩、签名。就地清理不会在卷里留下旧文件的空闲块，dmg 不会变大。
@@ -81,8 +81,8 @@ trap cleanup EXIT
 mkdir "$MNT"
 /usr/bin/hdiutil attach -quiet -nobrowse -noautoopen -noverify -mountpoint "$MNT" "$WORK/rw.dmg"
 MOUNTED=1
-/usr/bin/xattr -cr "$MNT/SayIt.app"
-/usr/bin/codesign --verify --deep --strict "$MNT/SayIt.app"
+/usr/bin/xattr -cr "$MNT/SayItLocally.app"
+/usr/bin/codesign --verify --deep --strict "$MNT/SayItLocally.app"
 # 挂载期间系统写进卷里的事件日志，和 Tauri 打包时一样删掉（可能删不掉，不影响使用）
 rm -rf "$MNT/.fseventsd" 2>/dev/null || true
 detach_dmg
