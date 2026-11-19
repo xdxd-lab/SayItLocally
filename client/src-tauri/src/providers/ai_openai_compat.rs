@@ -78,7 +78,8 @@ fn thinking_overrides(config: &AiProviderConfig) -> Option<serde_json::Value> {
 }
 
 /// [自訂] 嚴禁 DeepSeek：任何主機名稱含 "deepseek" 的端點一律拒絕連線。
-fn is_forbidden_ai_host(api_url: &str) -> bool {
+/// [自訂] S22：改為 pub(crate)，registry 的本機 Ollama 守衛也會再檢查一次（額外防線）。
+pub(crate) fn is_forbidden_ai_host(api_url: &str) -> bool {
     host_of(api_url).map_or(false, |h| h.contains("deepseek"))
         || api_url.to_ascii_lowercase().contains("deepseek")
 }

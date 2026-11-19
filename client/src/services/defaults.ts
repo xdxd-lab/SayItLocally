@@ -63,8 +63,9 @@ export const DEFAULTS: Record<string, unknown> = {
   // 下面这四个是**运行时生效的那一份**，录音链路、历史重跑、诊断页、反馈上报都只认它们。
   // 它们由「AI 服务」页在启用/保存时整份写入，不要在别处单独改其中一个
   // （历史 bug：切了模型但地址和密钥还是上一家的）。
-  'cloudAi.provider': 'deepseek', // 可选: 'deepseek' | 'openai_compat' | 'doubao' | 'qwen' | 'mimo' | 'ollama'
-  'cloudAi.apiUrl': '',
+  // [自訂] S34：預設改為本機 Ollama（原為 'deepseek'、apiUrl ''）。Rust 端只接受 ollama＋loopback。
+  'cloudAi.provider': 'ollama', // [自訂] 本 fork 只允許 'ollama'
+  'cloudAi.apiUrl': 'http://127.0.0.1:11434', // [自訂] 本機 Ollama 預設位址
   'cloudAi.apiKey': '',
   'cloudAi.model': '',
   // 「AI 服务」列表本身：一条 = 供应商 + 地址 + 密钥 + 模型，只有设置页读写。
@@ -106,7 +107,7 @@ export const DEFAULTS: Record<string, unknown> = {
   'localAsr.language': 'auto', // 可选: 'auto' | 'zh' | 'en' | 'ja' | 'ko'
   // GGUF 权重目前只发在 HuggingFace（handy-computer 组织下），国内走镜像更稳。
   // 值要和 catalog 里 DownloadSource.source 的名字完全一致，否则会回落到第一个源。
-  'localAsr.downloadSource': 'HuggingFace Mirror', // 可选: 'HuggingFace Mirror' | 'HuggingFace'
+  'localAsr.downloadSource': 'HuggingFace', // [自訂] S25：預設官方 huggingface.co（原為 'HuggingFace Mirror'）
   'localAsr.model': '',
   // GGUF 引擎的计算后端偏好。'auto' = 有 GPU 用 GPU、没有自动用 CPU。
   // 没装 GPU 加速包的机器永远是 CPU，这个值不影响功能，只影响速度。

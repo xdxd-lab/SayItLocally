@@ -561,9 +561,12 @@ fn main() {
     }
 
     // One-time migration from Electron app's SQLite database
-    if let Err(e) = storage.migrate_from_electron() {
-        eprintln!("Warning: Electron data migration failed: {}", e);
-    }
+    // [自訂] S37：舊 Electron 版資料遷移已註解停用。原本每次啟動都會檢查
+    // ~/Library/Application Support/{SayIt,sayit,SayIt-dev,sayit-dev}/sayit.db，
+    // 若存在（例如日後裝了官方 SayIt）會覆蓋所有設定並匯入歷史。
+    // if let Err(e) = storage.migrate_from_electron() {
+    //     eprintln!("Warning: Electron data migration failed: {}", e);
+    // }
 
     // Clean up expired audio files on startup
     cleanup_expired_audio(&storage);
@@ -773,6 +776,8 @@ fn main() {
             }
 
             // 首次安装时自动启用开机自启（仅执行一次）
+            // [自訂] S30：不在第一次啟動時自動註冊「登入時啟動」（LaunchAgent）。
+            // 只寫入標記，不呼叫 autostart.enable()；使用者仍可在「設定 → 一般」手動開啟。
             {
                 use tauri_plugin_autostart::ManagerExt;
                 let storage: tauri::State<Storage> = app.state();
@@ -780,11 +785,11 @@ fn main() {
                 let already_set = storage.get("autoLaunchInitialized", None);
                 if already_set.is_null() || already_set.as_str() == Some("") {
                     // 首次运行，注册开机自启并标记（新注册已带 --minimized 参数）
-                    let _ = autostart.enable();
+                    // [自訂] S30 已註解停用：let _ = autostart.enable();
                     let flag = serde_json::json!("true");
                     let _ = storage.set("autoLaunchInitialized", &flag);
                     let _ = storage.set("autoLaunchArgsMigrated", &flag);
-                    log::info!("Auto-launch enabled on first run");
+                    log::info!("Auto-launch left off on first run (user opt-in only)"); // [自訂] S30
                 } else {
                     // 老用户迁移：旧自启项不带 --minimized 参数，重新注册一次以写入新参数
                     let migrated = storage.get("autoLaunchArgsMigrated", None);
@@ -810,6 +815,29 @@ fn main() {
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             Some(vec!["--minimized"]),
         ))
+        // [自訂] S39：導覽防護。外掛層的 on_navigation 對所有 WebView 生效（主視窗、重建的主視窗、
+        // overlay、更新通知視窗），只允許 App 自己的來源（tauri://localhost、http(s)://tauri.localhost、
+        // about:blank，debug 建置另加 devUrl）。其他導覽一律取消，包括把連結拖放到視窗
+        // （dragDropEnabled:false 時由 WKWebView 原生處理拖放，預設會導覽到該網址）。
+        // 新視窗（window.open／target=_blank）：未設定 on_new_window 時，wry 的 macOS
+        // WKUIDelegate createWebViewWithConfiguration 直接回傳 None，即預設拒絕。
+        .plugin(
+            tauri::plugin::Builder::<tauri::Wry, ()>::new("nav-guard")
+                .on_navigation(|webview, url| {
+                    let dev_url = webview.app_handle().config().build.dev_url.clone();
+                    let allowed = net_policy::app_navigation_allowed(url, dev_url.as_ref());
+                    if !allowed {
+                        // 只記 scheme 與主機，不記完整網址（可能含查詢字串）
+                        commands::system::write_log_line(&format!(
+                            "[nav-guard] blocked navigation scheme={} host={}",
+                            url.scheme(),
+                            url.host_str().unwrap_or("-")
+                        ));
+                    }
+                    allowed
+                })
+                .build(),
+        )
         .invoke_handler(tauri::generate_handler![
             // Store
             commands::storage::store_get,
@@ -895,10 +923,11 @@ fn main() {
             commands::backup::import_full,
             commands::backup::restart_app,
             // WebDAV 备份（配置必备，历史/音频可选）
-            commands::webdav::webdav_test,
-            commands::webdav::webdav_list,
-            commands::webdav::webdav_backup_now,
-            commands::webdav::webdav_restore,
+            // [自訂] S18／S35／L-19：WebDAV 停用（會經 Rust 上傳到外部伺服器，不受 CSP 限制）
+            // [自訂] 已註解停用：commands::webdav::webdav_test,
+            // [自訂] 已註解停用：commands::webdav::webdav_list,
+            // [自訂] 已註解停用：commands::webdav::webdav_backup_now,
+            // [自訂] 已註解停用：commands::webdav::webdav_restore,
             // Diagnostics
             commands::diagnostics::collect_settings,
             commands::diagnostics::get_diagnostics_preview,
@@ -910,11 +939,12 @@ fn main() {
             commands::diagnostics::read_log_file,
             commands::diagnostics::open_log_folder,
             // Providers (cloud ASR / AI)
+            // [自訂] S17／L-18：cloud_polish、test_ai_connection 保留註冊，但 Rust 端只允許本機 Ollama（registry.rs）。
             providers::registry::cloud_polish,
-            providers::registry::cloud_transcribe,
-            providers::registry::cloud_transcribe_raw,
+            // [自訂] S17 已註解停用：providers::registry::cloud_transcribe,
+            // [自訂] S17 已註解停用：providers::registry::cloud_transcribe_raw,
             providers::registry::test_ai_connection,
-            providers::registry::test_asr_connection,
+            // [自訂] S17 已註解停用：providers::registry::test_asr_connection,
             // 「这家 ASR 拿热词做什么」的唯一权威来源。前端不再自己维护一份清单 ——
             // 那正是 issue #67 的成因（声明和实现分处两侧、无人对账）。
             providers::capabilities::asr_hotword_capability,
@@ -922,30 +952,30 @@ fn main() {
             // 那张表因此是实现的投影，不是第二份手写清单。
             providers::capabilities::asr_hotword_capability_matrix,
             // Doubao realtime streaming ASR
-            providers::asr_doubao_realtime::doubao_stream_open,
-            providers::asr_doubao_realtime::doubao_stream_send,
-            providers::asr_doubao_realtime::doubao_stream_finish,
-            providers::asr_doubao_realtime::doubao_stream_close,
+            // [自訂] S17 已註解停用：providers::asr_doubao_realtime::doubao_stream_open,
+            // [自訂] S17 已註解停用：providers::asr_doubao_realtime::doubao_stream_send,
+            // [自訂] S17 已註解停用：providers::asr_doubao_realtime::doubao_stream_finish,
+            // [自訂] S17 已註解停用：providers::asr_doubao_realtime::doubao_stream_close,
             // Qwen realtime streaming ASR
-            providers::asr_qwen_realtime::qwen_stream_open,
-            providers::asr_qwen_realtime::qwen_stream_send,
-            providers::asr_qwen_realtime::qwen_stream_finish,
-            providers::asr_qwen_realtime::qwen_stream_close,
+            // [自訂] S17 已註解停用：providers::asr_qwen_realtime::qwen_stream_open,
+            // [自訂] S17 已註解停用：providers::asr_qwen_realtime::qwen_stream_send,
+            // [自訂] S17 已註解停用：providers::asr_qwen_realtime::qwen_stream_finish,
+            // [自訂] S17 已註解停用：providers::asr_qwen_realtime::qwen_stream_close,
             // Qwen-Audio-ASR-Flash streaming, 3.0 and 3.1 (DashScope duplex protocol)
-            providers::asr_qwen_audio_stream::qwen_audio_stream_open,
-            providers::asr_qwen_audio_stream::qwen_audio_stream_send,
-            providers::asr_qwen_audio_stream::qwen_audio_stream_finish,
-            providers::asr_qwen_audio_stream::qwen_audio_stream_close,
+            // [自訂] S17 已註解停用：providers::asr_qwen_audio_stream::qwen_audio_stream_open,
+            // [自訂] S17 已註解停用：providers::asr_qwen_audio_stream::qwen_audio_stream_send,
+            // [自訂] S17 已註解停用：providers::asr_qwen_audio_stream::qwen_audio_stream_finish,
+            // [自訂] S17 已註解停用：providers::asr_qwen_audio_stream::qwen_audio_stream_close,
             // OpenAI realtime transcription (gpt-live-transcribe)
-            providers::asr_openai_realtime::openai_live_open,
-            providers::asr_openai_realtime::openai_live_send,
-            providers::asr_openai_realtime::openai_live_finish,
-            providers::asr_openai_realtime::openai_live_close,
+            // [自訂] S17 已註解停用：providers::asr_openai_realtime::openai_live_open,
+            // [自訂] S17 已註解停用：providers::asr_openai_realtime::openai_live_send,
+            // [自訂] S17 已註解停用：providers::asr_openai_realtime::openai_live_finish,
+            // [自訂] S17 已註解停用：providers::asr_openai_realtime::openai_live_close,
             // Gemini Live API transcription (gemini-3.5-transcribe-live)
-            providers::asr_gemini_live::gemini_live_open,
-            providers::asr_gemini_live::gemini_live_send,
-            providers::asr_gemini_live::gemini_live_finish,
-            providers::asr_gemini_live::gemini_live_close,
+            // [自訂] S17 已註解停用：providers::asr_gemini_live::gemini_live_open,
+            // [自訂] S17 已註解停用：providers::asr_gemini_live::gemini_live_send,
+            // [自訂] S17 已註解停用：providers::asr_gemini_live::gemini_live_finish,
+            // [自訂] S17 已註解停用：providers::asr_gemini_live::gemini_live_close,
             // Models (local model management)
             models::registry::list_available_models,
             models::registry::list_downloaded_models,

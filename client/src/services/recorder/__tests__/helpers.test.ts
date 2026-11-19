@@ -105,7 +105,9 @@ describe('summarizeAppContext', () => {
       controlType: 'Edit',
     })
     expect(result?.processName).toBe('code.exe')
-    expect(result?.windowTitle).toBe('secret-doc.md')
+    // [自訂] S31：視窗標題與執行檔路徑不得進日誌摘要
+    expect(result).not.toHaveProperty('windowTitle')
+    expect(result).not.toHaveProperty('exePath')
   })
 })
 

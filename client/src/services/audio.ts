@@ -697,13 +697,15 @@ export async function startCapture(
     // muted / readyState / enabled 必须落盘：它们区分「Chromium 自己知道这路采集被静音了」
     // 与「Chromium 以为一切正常、实际送来的全是 0」。后者是 WebView2 的已知毛病
     // （采集静默降级成静音且不派发 mute 事件），只能靠对照这三个值 + 后面的 peakAmplitude 判定。
+    // [自訂] S32：這條會寫進 sayit.log。不記麥克風裝置名稱（藍牙耳機名稱常含本名）；
+    // trackSettings 內含 deviceId／groupId，也一併不記。
     addRuntimeEvent('info', 'audio', 'Microphone capture started', {
       requestedDeviceId: deviceId || 'default',
-      trackLabel: track?.label || '',
+      // [自訂] S32 已移除：trackLabel: track?.label || '',
       trackMuted: track?.muted ?? null,
       trackEnabled: track?.enabled ?? null,
       trackReadyState: track?.readyState || null,
-      trackSettings: settings || null,
+      // [自訂] S32 已移除：trackSettings: settings || null,
     })
 
     audioCtx = createAudioContext()

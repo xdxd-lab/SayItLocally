@@ -85,6 +85,8 @@ pub async fn download_model(
         .sources
         .iter()
         .find(|s| s.source == source)
+        // [自訂] S25：來源名稱對不上時，先回落到官方 huggingface.co，而不是清單第一個（hf-mirror.com）
+        .or_else(|| model.sources.iter().find(|s| s.source == "HuggingFace"))
         .or_else(|| model.sources.first())
         .ok_or_else(|| error_protocol::encode("download_network", format!("Model {} has no available download source", model_id)))?;
 

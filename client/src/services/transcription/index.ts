@@ -85,8 +85,11 @@ export async function switchProvider(_requested: WorkMode): Promise<Transcriptio
 /** 从 store 读取保存的 workMode 并初始化 */
 export async function initProviderFromStore(): Promise<void> {
   // [自訂 local-only] 不論儲存值為何，一律 local，並寫回設定。
-  const stored = await getSetting('workMode', 'local')
-  if (stored !== 'local') await setSetting('workMode', 'local')
+  // [自訂] S29：無條件寫入（原本只有「讀到的值不是 local」才寫；未設定時 getSetting 回傳預設 'local'，
+  // 於是永遠不會寫入，Rust 端啟動時讀不到 workMode、不會預載本地模型）。
+  // 原：const stored = await getSetting('workMode', 'local')
+  // 原：if (stored !== 'local') await setSetting('workMode', 'local')
+  await setSetting('workMode', 'local')
   currentMode = 'local'
   currentProvider = createProvider(currentMode)
   addRuntimeEvent('info', 'transcription', 'Provider initialized', { mode: currentMode })

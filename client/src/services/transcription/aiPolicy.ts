@@ -262,7 +262,7 @@ export function policyFromSnapshot(
 ): AiPolicy {
   return resolveAiPolicy({
     workMode: snapshot?.workMode ?? fallbackWorkMode,
-    aiEnabled: snapshot?.aiEnabled ?? true,
+    aiEnabled: snapshot?.aiEnabled ?? false, // [自訂] S23：缺設定時預設關閉（原為 ?? true）
     aiMinDurationSec: snapshot?.aiMinDurationSec ?? 0,
     serverAiSource: snapshot?.serverAiSource ?? 'managed',
     selectionAiOverride: snapshot?.selectionAiOverride,

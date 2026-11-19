@@ -243,8 +243,9 @@ pub fn inject_text(text: &str, restore_clipboard: bool) -> InjectResult {
 }
 
 /// 只写剪贴板（结果卡的「复制」、不可输入时的兜底）。复制是用户要的，正常进剪贴板历史。
+/// [自訂] S33／S11：改為 transient（剪貼簿歷史 App 不記錄）＋只限本機（pasteboard_set_text 內處理）。
 pub fn copy_to_clipboard(text: &str) -> Result<(), String> {
-    appkit::pasteboard_set_text(text, false).map(|_| ())
+    appkit::pasteboard_set_text(text, true).map(|_| ()) // [自訂] 原為 false
 }
 
 // ─── 「这里能不能打字」的 mac 判据 ───

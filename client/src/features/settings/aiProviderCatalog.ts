@@ -36,14 +36,24 @@ export interface AiProvider {
   consoleUrl?: string
 }
 
+// [自訂] S34：本 fork 只允許本機 Ollama（Rust 端 registry.rs 強制）。
+// Ollama 移到第一個，findProvider／parseProfiles 的備用值因此是 Ollama；DeepSeek 註解停用。
 export const AI_PROVIDERS: AiProvider[] = [
   {
-    value: 'deepseek',
-    label: 'DeepSeek',
-    defaultUrl: 'https://api.deepseek.com',
-    defaultModels: ['deepseek-v4-flash'],
-    consoleUrl: 'https://platform.deepseek.com/api_keys',
+    value: 'ollama',
+    get label() { return t('aiProvider.ollama') },
+    defaultUrl: 'http://127.0.0.1:11434',
+    defaultModels: ['qwen2.5:7b'],
+    keyless: true,
   },
+  // [自訂] S34 嚴禁 DeepSeek，已註解停用：
+  // {
+  //   value: 'deepseek',
+  //   label: 'DeepSeek',
+  //   defaultUrl: 'https://api.deepseek.com',
+  //   defaultModels: ['deepseek-v4-flash'],
+  //   consoleUrl: 'https://platform.deepseek.com/api_keys',
+  // },
   {
     value: 'qwen',
     get label() { return t('aiProvider.qwen') },
@@ -95,7 +105,8 @@ export const AI_PROVIDERS: AiProvider[] = [
     label: 'OpenRouter',
     defaultUrl: 'https://openrouter.ai/api/v1',
     urlOptional: true,
-    defaultModels: ['deepseek/deepseek-v4.1-flash'],
+    // [自訂] S34：移除預設模型 deepseek/deepseek-v4.1-flash（可經 OpenRouter 繞過網址封鎖）
+    defaultModels: [],
     consoleUrl: 'https://openrouter.ai/settings/keys',
   },
   {
@@ -104,13 +115,7 @@ export const AI_PROVIDERS: AiProvider[] = [
     defaultUrl: 'https://api.openai.com',
     defaultModels: ['gpt-4o-mini'],
   },
-  {
-    value: 'ollama',
-    get label() { return t('aiProvider.ollama') },
-    defaultUrl: 'http://127.0.0.1:11434',
-    defaultModels: ['qwen2.5:7b'],
-    keyless: true,
-  },
+  // [自訂] S34：ollama 已移到清單第一個
 ]
 
 /**
@@ -119,7 +124,8 @@ export const AI_PROVIDERS: AiProvider[] = [
  * 中文不跟：国内付款和访问 OpenRouter 都不方便，直连 DeepSeek 更合适。
  */
 export function preferredAiProviderValue(): string {
-  return getLocale() === 'en' ? 'openrouter' : 'deepseek'
+  // [自訂] S34：一律本機 Ollama（原：getLocale() === 'en' ? 'openrouter' : 'deepseek'）
+  return 'ollama'
 }
 
 /** 把地区默认那家排到最前，原数组顺序保持不变供迁移逻辑使用。 */

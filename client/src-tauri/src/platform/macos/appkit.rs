@@ -6,7 +6,7 @@
 
 use objc2::rc::{autoreleasepool, Retained};
 use objc2::runtime::AnyObject;
-use objc2::{class, msg_send};
+use objc2::{class, msg_send, sel}; // [自訂] S33：sel 用於 respondsToSelector
 use objc2_foundation::{NSArray, NSData, NSRect, NSString};
 use std::ffi::{c_char, c_void, CStr};
 use std::time::{Duration, Instant};
@@ -107,6 +107,22 @@ unsafe fn general_pasteboard() -> *mut AnyObject {
     msg_send![class!(NSPasteboard), generalPasteboard]
 }
 
+/// [自訂] S33：`NSPasteboardContentsCurrentHostOnly`（NSPasteboardContentsOptions 的 1 << 0）。
+/// 寫入的內容只留在這台 Mac，不經「通用剪貼板」（接力）同步到其他裝置。
+const NS_PASTEBOARD_CONTENTS_CURRENT_HOST_ONLY: usize = 1 << 0;
+
+/// [自訂] S33：清空剪貼簿並標記「只限本機」，取代 clearContents／declareTypes。
+/// `prepareForNewContentsWithOptions:` 是 macOS 10.12+；更舊的系統退回 clearContents。
+/// 注意：之後不能再呼叫 declareTypes:owner:（它會重新清空並丟掉這個選項）。
+unsafe fn prepare_current_host_only(pb: *mut AnyObject) {
+    let responds: bool = msg_send![pb, respondsToSelector: sel!(prepareForNewContentsWithOptions:)];
+    if responds {
+        let _: isize = msg_send![pb, prepareForNewContentsWithOptions: NS_PASTEBOARD_CONTENTS_CURRENT_HOST_ONLY];
+    } else {
+        let _: isize = msg_send![pb, clearContents];
+    }
+}
+
 /// 剪贴板的修改计数。每次有人写剪贴板它都会变（对应 GetClipboardSequenceNumber）。
 pub fn pasteboard_change_count() -> isize {
     autoreleasepool(|_| unsafe {
@@ -140,20 +156,33 @@ pub fn pasteboard_set_text(text: &str, transient: bool) -> Result<isize, String>
         }
         let string_type = NSString::from_str(PASTEBOARD_TYPE_STRING);
         let transient_type = NSString::from_str(PASTEBOARD_TYPE_TRANSIENT);
-        let types = if transient {
-            NSArray::from_retained_slice(&[string_type.clone(), transient_type.clone()])
-        } else {
-            NSArray::from_retained_slice(&[string_type.clone()])
+        // [自訂] S33：原本用 declareTypes:owner:（會清空剪貼簿、無法帶「只限本機」選項）。
+        // 改為 prepareForNewContentsWithOptions(CurrentHostOnly) 後，用 NSPasteboardItem + writeObjects 寫入，
+        // 與 pasteboard_restore 相同寫法。
+        // let types = if transient {
+        //     NSArray::from_retained_slice(&[string_type.clone(), transient_type.clone()])
+        // } else {
+        //     NSArray::from_retained_slice(&[string_type.clone()])
+        // };
+        // let _: isize = msg_send![pb, declareTypes: &*types, owner: std::ptr::null_mut::<AnyObject>()];
+        prepare_current_host_only(pb);
+        let item: Option<Retained<AnyObject>> = msg_send![class!(NSPasteboardItem), new];
+        let Some(item) = item else {
+            return Err("step=NSPasteboardItem err=null".to_string());
         };
-        let _: isize = msg_send![pb, declareTypes: &*types, owner: std::ptr::null_mut::<AnyObject>()];
         let value = NSString::from_str(text);
-        let ok: bool = msg_send![pb, setString: &*value, forType: &*string_type];
+        let ok: bool = msg_send![&*item, setString: &*value, forType: &*string_type];
         if !ok {
             return Err("step=setString err=rejected".to_string());
         }
         if transient {
             let empty = NSData::with_bytes(&[]);
-            let _: bool = msg_send![pb, setData: &*empty, forType: &*transient_type];
+            let _: bool = msg_send![&*item, setData: &*empty, forType: &*transient_type];
+        }
+        let array = NSArray::from_retained_slice(&[item]);
+        let written: bool = msg_send![pb, writeObjects: &*array];
+        if !written {
+            return Err("step=writeObjects err=rejected".to_string());
         }
         Ok(msg_send![pb, changeCount])
     })
@@ -259,7 +288,8 @@ pub fn pasteboard_restore(snapshot: &PasteboardSnapshot, transient: bool) -> boo
         if pb.is_null() {
             return false;
         }
-        let _: isize = msg_send![pb, clearContents];
+        // [自訂] S33：還原也標記「只限本機」（原為 clearContents）
+        prepare_current_host_only(pb);
         if snapshot.items.is_empty() {
             return true;
         }

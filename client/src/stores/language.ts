@@ -57,8 +57,12 @@ export async function initLanguage(): Promise<Locale> {
  */
 export async function initLocaleDefaults(locale: Locale): Promise<void> {
   const defaults: Record<string, string> = {
-    'localAsr.downloadSource': locale === 'en' ? 'HuggingFace' : 'HuggingFace Mirror',
-    'cloudAi.provider': locale === 'en' ? 'openrouter' : 'deepseek',
+    // [自訂] S25：模型一律從官方 huggingface.co 下載，不再依介面語言改用 hf-mirror.com。
+    // 原：'localAsr.downloadSource': locale === 'en' ? 'HuggingFace' : 'HuggingFace Mirror',
+    'localAsr.downloadSource': 'HuggingFace',
+    // [自訂] S34：第一次啟動不寫入 deepseek／openrouter；AI 只允許本機 Ollama。
+    // 原：'cloudAi.provider': locale === 'en' ? 'openrouter' : 'deepseek',
+    'cloudAi.provider': 'ollama',
     'ai.builtinPromptLanguage': locale === 'en' ? 'en' : 'zh-CN',
   }
   await Promise.all(Object.entries(defaults).map(async ([key, value]) => {
