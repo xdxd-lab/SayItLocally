@@ -23,7 +23,7 @@ const ROTATED_FILES_KEEP: usize = 3;
 fn log_dir() -> std::path::PathBuf {
     dirs::data_local_dir()
         .unwrap_or_else(|| std::path::PathBuf::from("."))
-        .join("com.sayit.app")
+        .join("com.sayitlocally.desktop")
         .join("logs")
 }
 

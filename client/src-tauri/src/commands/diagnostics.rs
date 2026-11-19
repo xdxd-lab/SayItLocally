@@ -30,7 +30,7 @@ pub fn collect_settings(storage: State<Storage>) -> Result<Value, String> {
 fn log_dir() -> std::path::PathBuf {
     dirs::data_local_dir()
         .unwrap_or_else(|| std::path::PathBuf::from("."))
-        .join("com.sayit.app")
+        .join("com.sayitlocally.desktop")
         .join("logs")
 }
 
@@ -451,7 +451,7 @@ fn build_diagnostics_zip(req: DiagnosticsZipRequest) -> Result<String, String> {
 fn diagnostics_dir() -> std::path::PathBuf {
     dirs::data_local_dir()
         .unwrap_or_else(|| std::path::PathBuf::from("."))
-        .join("com.sayit.app")
+        .join("com.sayitlocally.desktop")
         .join("diagnostics")
 }
 

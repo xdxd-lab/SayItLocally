@@ -420,7 +420,7 @@ fn flip_rect(rect: NSRect, primary_height: f64) -> (f64, f64, f64, f64) {
 /// 系统会记下注销 / 关机时开着窗口的普通应用，登录后**不带参数**地重新打开它们。SayIt 主窗口
 /// 开着时 Dock 里有图标，也会被记进去，于是登录后主窗口弹了出来；十几秒后登录项
 /// （LaunchAgent，带 `--minimized`）又启动一次。实测日志：loginwindow 的
-/// `PersistentAppsSupport persistentAppPreLaunch … bundleID:com.sayit.app`。
+/// `PersistentAppsSupport persistentAppPreLaunch … bundleID:com.sayitlocally.desktop`。
 ///
 /// 登录时要不要启动，只由 SayIt 自己的「登录时自动启动」决定。必须在主线程调用；
 /// 每次启动都要调（系统按进程记，不落盘）。

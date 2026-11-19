@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 fn audio_dir() -> PathBuf {
     let base = dirs::data_local_dir().unwrap_or_else(|| PathBuf::from("."));
-    base.join("com.sayit.app").join("audio")
+    base.join("com.sayitlocally.desktop").join("audio")
 }
 
 /// id 会拼进文件名，带 `..\` 就能写到录音目录外面去。

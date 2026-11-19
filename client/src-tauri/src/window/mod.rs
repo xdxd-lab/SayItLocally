@@ -854,7 +854,7 @@ impl WindowState {
             "overlay",
             WebviewUrl::App("overlay.html".into()),
         )
-        .title("SayIt Overlay")
+        .title("SayItLocally Overlay")
         .inner_size(bounds.2, bounds.3)
         .position(bounds.0, bounds.1)
         .decorations(false)
@@ -1021,7 +1021,7 @@ fn reload_allowed_in_window(history: &mut Vec<i64>, now_ms: i64, window_ms: i64,
 
 /// 主窗藏到托盘时告诉 WebView2「内存可以少用」，再显示时恢复。
 ///
-/// 主窗藏着的时间远多于开着的时间（常驻托盘 + 开机自启），而它的渲染进程是 SayIt 内存的大头。
+/// 主窗藏着的时间远多于开着的时间（常驻托盘 + 开机自启），而它的渲染进程是 SayItLocally 内存的大头。
 /// 只是内存目标，不停 JS：录音、WebSocket 都跑在这个进程里，必须照常工作（所以不用 TrySuspend）。
 /// 运行时太旧（没有 ICoreWebView2_19）就什么也不做。
 pub fn set_main_window_memory_low(window: &tauri::WebviewWindow, low: bool) {

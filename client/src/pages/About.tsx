@@ -62,10 +62,10 @@ export default function About() {
         <CardContent className="p-6">
           {/* 品牌 */}
           <div className="flex items-center gap-4">
-            <img src={appIcon} alt="SayIt" className="h-16 w-16 rounded-2xl" />
+            <img src={appIcon} alt="SayItLocally" className="h-16 w-16 rounded-2xl" />
             <div>
               <h2 className="text-2xl font-bold tracking-tight" style={{ fontFamily: "'Nunito', sans-serif", fontWeight: 800 }}>
-                SayIt
+                SayItLocally
               </h2>
               <p className="text-sm text-muted-foreground">{t('about.tagline')}</p>
               <p className="mt-0.5 text-xs text-muted-foreground/60">by Liu Qianglong & Claude</p>

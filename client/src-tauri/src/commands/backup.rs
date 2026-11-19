@@ -139,7 +139,7 @@ fn app_version() -> String {
 fn audio_dir() -> PathBuf {
     dirs::data_local_dir()
         .unwrap_or_else(|| PathBuf::from("."))
-        .join("com.sayit.app")
+        .join("com.sayitlocally.desktop")
         .join("audio")
 }
 
@@ -149,9 +149,9 @@ fn backup_dir() -> PathBuf {
         .unwrap_or_else(|| {
             dirs::data_local_dir()
                 .unwrap_or_else(|| PathBuf::from("."))
-                .join("com.sayit.app")
+                .join("com.sayitlocally.desktop")
         })
-        .join("SayIt Backups")
+        .join("SayItLocally Backups")
 }
 
 fn timestamped_backup_path(prefix: &str, extension: &str) -> PathBuf {
@@ -348,7 +348,7 @@ fn build_full_value(storage: &Storage, scope: BackupScope) -> Value {
 fn check_kind_and_version(data: &Value, expected_kind: &str, max_version: i64) -> Result<i64, String> {
     let kind = data.get("kind").and_then(Value::as_str).unwrap_or("");
     if kind != expected_kind {
-        return Err(format!("This is not a valid SayIt {} file", if expected_kind == "full" { "full-data backup" } else { "configuration" }));
+        return Err(format!("This is not a valid SayItLocally {} file", if expected_kind == "full" { "full-data backup" } else { "configuration" }));
     }
     let version = data
         .get("formatVersion")
@@ -356,7 +356,7 @@ fn check_kind_and_version(data: &Value, expected_kind: &str, max_version: i64) -
         .unwrap_or(0);
     if version > max_version {
         return Err(format!(
-            "The backup version ({}) is newer than this app supports ({}). Update SayIt before importing it.",
+            "The backup version ({}) is newer than this app supports ({}). Update SayItLocally before importing it.",
             version, max_version
         ));
     }
@@ -1325,7 +1325,7 @@ pub fn apply_full_backup(storage: &Storage, in_path: &str) -> Result<(), String>
     {
         let mut entry = archive
             .by_name("backup.json")
-            .map_err(|_| "The archive is missing backup.json and may not be a SayIt full backup".to_string())?;
+            .map_err(|_| "The archive is missing backup.json and may not be a SayItLocally full backup".to_string())?;
         entry.read_to_string(&mut json_str).map_err(|e| e.to_string())?;
     }
     let data: Value = serde_json::from_str(&json_str).map_err(|e| format!("Failed to parse backup.json: {}", e))?;
