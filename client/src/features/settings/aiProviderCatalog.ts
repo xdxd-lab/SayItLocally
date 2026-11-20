@@ -129,7 +129,12 @@ export function preferredAiProviderValue(): string {
 }
 
 /** 把地区默认那家排到最前，原数组顺序保持不变供迁移逻辑使用。 */
+// [自訂] #18：本 fork 只允許本機 Ollama（Rust 端 registry.rs 也會拒絕其他供應商），
+// AI 服務頁只列出 Ollama。AI_PROVIDERS 清單本身保留（舊設定讀取、測試仍用到）。改回 true 即恢復上游行為。
+const SHOW_CLOUD_AI_PROVIDERS = false
+
 export function aiProvidersForDisplay(): AiProvider[] {
+  if (!SHOW_CLOUD_AI_PROVIDERS) return AI_PROVIDERS.filter((provider) => provider.value === 'ollama')
   const preferred = preferredAiProviderValue()
   if (AI_PROVIDERS[0]?.value === preferred) return AI_PROVIDERS
   return [

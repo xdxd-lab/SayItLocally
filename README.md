@@ -4,7 +4,7 @@
 > [!IMPORTANT]
 > **SayItLocally 是 [crosswk/SayIt](https://github.com/crosswk/SayIt) 的個人自用 fork，目標是「只用本機辨識，語音、文字與使用資訊都不外流」。** 原名 SayIt，2026-11-19 10:50 更名；上游的名稱、網址、授權與著作權聲明皆保留。
 >
-> - 基準版本：上游 commit `4fdeae9`（2026-11-09），client `0.2.5`
+> - 基準版本：上游 commit `4fdeae9`（2026-11-09），client `0.2.5`；本 fork 版本 `0.2.6`
 > - 只保留 **Local 模式**（Server、Cloud API 入口已移除）；**AI 校對預設關閉**；**歷史記錄與錄音預設不保存**
 > - 已停用：啟動公告、自動更新（檢查、下載、結束時安裝）、Google Fonts、意見回饋／診斷／ASR 校正上傳；CSP 已收緊
 > - 嚴禁 DeepSeek；日後 AI 校對只考慮本機 Ollama
@@ -20,6 +20,11 @@
 ---
 
 > 以下為**上游 SayIt 的原始說明**，保留供參考。其中的官方安裝檔下載連結**不適用於本 fork**，請勿使用。
+>
+> ⚠️ **使用前請注意（S54、S53）**：
+> - 下方的「Download」、release 徽章連到**上游官方安裝檔**，不含本 fork 的任何強化（會連上游伺服器、公告、更新等）。
+> - 「Try the web demo」（`sayitapp.site`）是**上游的線上服務**，會把你的語音上傳到對方伺服器辨識，與本 fork「語音不離開本機」的目標相反。
+> - 倉庫中的 `v0.2.5` 標籤是**上游原版**，不是本 fork 的強化版。本 fork 自 2026-11-21 起版本號為 `0.2.6`（與上游日後的同號版本無關），請以 `hardening/local-only` 分支為準。
 
 <div align="center">
 
