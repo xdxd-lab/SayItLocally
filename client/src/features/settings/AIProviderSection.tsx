@@ -257,6 +257,10 @@ const pickAdvice = () => t('ai.pickAdvice')
 const inputClass = 'h-9 w-full rounded-md border border-input-border bg-input-bg px-3 text-sm transition-colors focus:border-input-focus-border'
 const selectClass = 'h-9 w-full rounded-md border border-input-border bg-input-bg px-2 text-sm transition-colors focus:border-input-focus-border'
 const linkClass = 'inline-flex items-center gap-1 text-xs text-primary underline underline-offset-2 decoration-primary/40 transition-colors hover:decoration-primary'
+// [自訂] S58：本 fork 只用本機模式，不顯示雲端供應商控制台／申請文件連結（點擊會開外部瀏覽器）。
+// 改回 true 即恢復上游行為。
+const SHOW_CLOUD_CONSOLE_LINKS = false
+
 const cardIconButtonClass = 'pointer-events-auto rounded p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-40'
 const helpIconClass = 'h-3.5 w-3.5 shrink-0 cursor-help text-muted-foreground/50 transition-colors hover:text-muted-foreground'
 
@@ -1072,7 +1076,7 @@ export default function AIProviderSection() {
                     再挂一篇文档反而暗示这件事很复杂。
                     （语音识别那边保留了，但只对豆包显示 —— 只有它要在新旧两代控制台之间选。）*/}
                 <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1">
-                  {draftProvider.consoleUrl && (
+                  {SHOW_CLOUD_CONSOLE_LINKS && draftProvider.consoleUrl && (
                     <button
                       type="button"
                       onClick={() => void shellOpen(draftProvider.consoleUrl as string)}

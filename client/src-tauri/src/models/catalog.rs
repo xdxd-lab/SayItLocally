@@ -69,9 +69,10 @@ fn hf(repo: &str, file: &str) -> String {
     format!("https://huggingface.co/{}/resolve/main/{}", repo, file)
 }
 
-fn hf_mirror(repo: &str, file: &str) -> String {
-    format!("https://hf-mirror.com/{}/resolve/main/{}", repo, file)
-}
+// [自訂] S56：移除 hf-mirror.com 鏡像來源，只從官方 huggingface.co 下載。原：
+// fn hf_mirror(repo: &str, file: &str) -> String {
+//     format!("https://hf-mirror.com/{}/resolve/main/{}", repo, file)
+// }
 
 /// 一份 GGUF 权重的坐标（仓库 / 文件名 / 字节数 / sha256）。
 ///
@@ -87,11 +88,10 @@ struct GgufWeight {
 }
 
 impl GgufWeight {
-    /// 镜像优先、官方兜底。**顺序有意义**：`localAsr.downloadSource` 的值对不上
-    /// 任何一个 `source` 时，registry::download_model 会静默回落到第一个源。
+    /// [自訂] S56：只提供官方 HuggingFace（原為鏡像優先、官方兜底，含 "HuggingFace Mirror"）。
+    /// 存儲裡的舊值（如 "HuggingFace Mirror"）對不上時，registry 與前端都回落到官方。
     fn sources(&self) -> Vec<DownloadSource> {
         vec![
-            self.at("HuggingFace Mirror", hf_mirror(self.repo, self.file)),
             self.at("HuggingFace", hf(self.repo, self.file)),
         ]
     }
@@ -429,7 +429,15 @@ mod tests {
             assert_eq!(got, expected, "{} 的下载源与第一个模型不一致", m.id);
         }
         // defaults.ts 里 localAsr.downloadSource 的默认值必须能对上其中一个
-        assert!(expected.contains(&"HuggingFace Mirror"));
+        // [自訂] S25/S56：只允許官方 HuggingFace（原斷言 contains "HuggingFace Mirror"）
+        assert_eq!(expected, vec!["HuggingFace"]);
+        for m in &models {
+            for src in &m.sources {
+                for f in &src.files {
+                    assert!(!f.url.contains("hf-mirror"), "{} 仍含鏡像網址", m.id);
+                }
+            }
+        }
     }
 
     /// 排序契约：列表顺序就是 UI 顺序，按 speed 从高到低。写成测试是因为

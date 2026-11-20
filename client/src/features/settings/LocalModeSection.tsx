@@ -187,10 +187,10 @@ function CopyLink({ url, label }: { url: string; label: string }) {
 }
 
 function OfflineGuideDialog({ models, onClose }: { models: ModelInfo[]; onClose: () => void }) {
-  const [selectedSource, setSelectedSource] = useState(0)
-
   // 收集所有源名称
   const sourceNames = models[0]?.sources.map((s) => s.source) || []
+  // [自訂] S56：預設選官方 HuggingFace，不依賴 catalog 順序（原：useState(0)，當時第一個是鏡像）
+  const [selectedSource, setSelectedSource] = useState(() => Math.max(0, sourceNames.indexOf('HuggingFace')))
 
   return (
     <Modal title={t('local.offlineGuideTitle')} onClose={onClose} showCloseButton panelClassName="w-[640px]">
@@ -463,9 +463,11 @@ export default function LocalModeSection() {
     } catch { /* ignore */ }
   }
 
-  async function handleDownload(modelId: string) {
+  // [自訂] S57：可明確指定來源。retryWithOtherSource 呼叫時 setDownloadSource 尚未生效，
+  // 閉包裡的 downloadSource 仍是舊值，原本會用失敗的同一來源重試。
+  async function handleDownload(modelId: string, source: string = downloadSource) {
     try {
-      await invoke('download_model', { modelId, source: downloadSource })
+      await invoke('download_model', { modelId, source })
       // 下载完成后自动选中并预加载
       setSelectedModelId(modelId)
       await setSetting('localAsr.modelId', modelId)
@@ -525,7 +527,7 @@ export default function LocalModeSection() {
       delete rest[modelId]
       return rest
     })
-    await handleDownload(modelId)
+    await handleDownload(modelId, next) // [自訂] S57：原為 handleDownload(modelId)，會讀到舊來源
   }
 
   async function handleSelectModel(modelId: string) {

@@ -36,6 +36,10 @@ const OVERLAY_OPTIONS: Array<{
   ]
 
 /** 自定义配色连续拖动取色器时，写盘与刷新悬浮窗设置合并到停手之后。 */
+// [自訂] S58：本 fork 只用本機模式，不顯示雲端供應商控制台／申請文件連結（點擊會開外部瀏覽器）。
+// 改回 true 即恢復上游行為。
+const SHOW_CLOUD_CONSOLE_LINKS = false
+
 const CUSTOM_WAVE_SAVE_DELAY_MS = 250
 
 // 由长到短排列：从「最完整」往「最克制」读，比反过来更符合挑尺寸的直觉。
@@ -398,6 +402,7 @@ ${t('appearance.streamingSetupNote')}`}
                     </div>
                     <p className="text-xs text-muted-foreground">
                       {t('appearance.streamingDesc')}{t('appearance.streamingShortNote')}
+                      {SHOW_CLOUD_CONSOLE_LINKS && (
                       <button
                         type="button"
                         onClick={() => void shellOpen('https://console.volcengine.com/speech/new/setting/activate?projectName=default')}
@@ -406,6 +411,7 @@ ${t('appearance.streamingSetupNote')}`}
                         {t('appearance.streamingActivate')}
                         <ExternalLink className="h-3 w-3" />
                       </button>
+                      )}
                     </p>
                   </div>
                   <Switch checked={streamingDisplay} onChange={handleToggleStreamingDisplay} noAnimation={!animate} hidden={!ready} />
