@@ -1,6 +1,6 @@
 {
   "productName": "SayItLocally",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "identifier": "com.sayitlocally.desktop",
   "build": {
     "frontendDist": "../dist",

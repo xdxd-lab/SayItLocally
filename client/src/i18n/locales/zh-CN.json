@@ -1226,6 +1226,7 @@
   "diagnostics.aiDisabled": "未开启（极速模式）",
   "diagnostics.incomplete": "未完整配置",
   "diagnostics.providerModel": "{provider}（{model}）",
+  "diagnostics.aiUntested": "{provider}（{model}）— 已设置，未测试。请到 AI 服务页手动测试。",
   "diagnostics.aiDisabledHint": "AI 整理未开启，润色模式等依赖 AI 的功能不会生效。可在主页右上角，或主页侧边栏「AI 整理」页中开启。",
   "diagnostics.faqTitle": "常见问题",
   "diagnostics.faq.insertQuestion": "识别完成后，文字没有插入到输入框？",

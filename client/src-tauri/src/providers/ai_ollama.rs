@@ -86,10 +86,11 @@ pub async fn polish(
             SCOPE,
             "http_status",
             format!(
-                "Ollama returned error {} [{}]: {}",
+                // [自訂] S62：不把回應內容寫進日誌，只記錄長度。原：diag::truncate(&body_text, 200)
+                "Ollama returned error {} [{}]: <response body omitted, {} bytes>",
                 status,
                 http_summary,
-                diag::truncate(&body_text, 200)
+                body_text.len()
             ),
         ));
     }
@@ -106,9 +107,10 @@ pub async fn polish(
             SCOPE,
             "parse_json",
             format!(
-                "Failed to parse Ollama response: {} response excerpt: {}",
+                // [自訂] S62：不記錄回應片段。原：response excerpt: diag::truncate(&body_text, 200)
+                "Failed to parse Ollama response: {} <response body omitted, {} bytes>",
                 e,
-                diag::truncate(&body_text, 200)
+                body_text.len()
             ),
         )
     })?;
@@ -219,9 +221,10 @@ pub async fn test_connection(config: &AiProviderConfig) -> TestResult {
                     "ai/ollama-test",
                     "http_status",
                     format!(
-                        "Ollama returned {}: {}",
+                        // [自訂] S62：不記錄回應片段。原：diag::truncate(&body_text, 100)
+                        "Ollama returned {}: <response body omitted, {} bytes>",
                         status,
-                        diag::truncate(&body_text, 100)
+                        body_text.len()
                     ),
                 ),
                 elapsed_ms,

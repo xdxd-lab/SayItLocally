@@ -226,6 +226,7 @@ impl Storage {
         }
 
         let db = self.conn();
+        let value = &sanitize_setting_value(key, value); // [自訂] #20：不保存金鑰／密碼
         let json_str = serde_json::to_string(value).unwrap_or_else(|_| "null".to_string());
         let now = chrono::Utc::now().timestamp_millis();
 
@@ -894,6 +895,7 @@ impl Storage {
             if is_settings_key_excluded(key, exclude) { // [自訂] S36：支援前綴比對
                 continue;
             }
+            let value = &sanitize_setting_value(key, value); // [自訂] #20：不保存金鑰／密碼
             let json_str = serde_json::to_string(value).unwrap_or_else(|_| "null".to_string());
             tx.execute(
                 "INSERT INTO app_settings (key, value_json, updated_at) VALUES (?1, ?2, ?3)
@@ -910,6 +912,82 @@ impl Storage {
         }
 
         tx.commit()
+    }
+}
+
+
+// ─── [自訂] #20／L-70：不在 sayit.db 保存金鑰與密碼 ───
+// 本 fork 只用本機 Ollama（不需金鑰），雲端 ASR／AI 與 WebDAV 都已停用，
+// 因此金鑰、密碼一律不寫入資料庫（存成空字串），啟動時也清除既有的值。
+// 範圍：`cloudAi.*`、`cloudAsr.*`、`webdav.*` 中欄位名為 apiKey／consoleKey／password 者，
+// 以及 `cloudAi.profiles`、`cloudAsr.profiles` 等設定值裡同名的巢狀欄位。
+
+const SECRET_FIELD_NAMES: &[&str] = &["apiKey", "consoleKey", "password"];
+
+fn is_secret_scope(key: &str) -> bool {
+    key.starts_with("cloudAi.") || key.starts_with("cloudAsr.") || key.starts_with("webdav.")
+}
+
+fn is_secret_setting_key(key: &str) -> bool {
+    is_secret_scope(key)
+        && key.rsplit('.').next().map_or(false, |last| SECRET_FIELD_NAMES.contains(&last))
+}
+
+fn strip_secret_fields(value: &mut Value) {
+    match value {
+        Value::Object(map) => {
+            for (k, v) in map.iter_mut() {
+                if SECRET_FIELD_NAMES.contains(&k.as_str()) && v.is_string() {
+                    *v = Value::String(String::new());
+                } else {
+                    strip_secret_fields(v);
+                }
+            }
+        }
+        Value::Array(items) => items.iter_mut().for_each(strip_secret_fields),
+        _ => {}
+    }
+}
+
+/// 寫入前清掉金鑰／密碼；其他設定原樣返回。
+pub(crate) fn sanitize_setting_value(key: &str, value: &Value) -> Value {
+    if is_secret_setting_key(key) {
+        return Value::String(String::new());
+    }
+    if is_secret_scope(key) {
+        let mut cleaned = value.clone();
+        strip_secret_fields(&mut cleaned);
+        return cleaned;
+    }
+    value.clone()
+}
+
+impl Storage {
+    /// 啟動時呼叫：把資料庫裡既有的金鑰、密碼改成空字串。回傳改動的筆數。
+    pub fn purge_stored_secrets(&self) -> SqlResult<usize> {
+        let db = self.conn();
+        let rows: Vec<(String, String)> = {
+            let mut stmt = db.prepare(
+                "SELECT key, value_json FROM app_settings
+                 WHERE key LIKE 'cloudAi.%' OR key LIKE 'cloudAsr.%' OR key LIKE 'webdav.%'",
+            )?;
+            let mapped = stmt.query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?;
+            mapped.flatten().collect()
+        };
+        let mut changed = 0;
+        for (key, value_json) in rows {
+            let Ok(value) = serde_json::from_str::<Value>(&value_json) else { continue };
+            let cleaned = sanitize_setting_value(&key, &value);
+            if cleaned != value {
+                let json_str = serde_json::to_string(&cleaned).unwrap_or_else(|_| "\"\"".to_string());
+                db.execute(
+                    "UPDATE app_settings SET value_json = ?1 WHERE key = ?2",
+                    params![json_str, key],
+                )?;
+                changed += 1;
+            }
+        }
+        Ok(changed)
     }
 }
 
@@ -1004,5 +1082,55 @@ mod recovery_tests {
         storage.set("k", &serde_json::json!(1)).unwrap();
         assert_eq!(storage.get("k", None), serde_json::json!(1));
         let _ = fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod secret_tests {
+    // [自訂] #20／L-70
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn secrets_are_never_stored_and_existing_ones_are_purged() {
+        let dir = std::env::temp_dir().join(format!("sayit-secrets-{}", uuid::Uuid::new_v4()));
+        let storage = Storage::new(dir.join("t.db")).unwrap();
+
+        storage.set("cloudAi.apiKey", &json!("sk-secret")).unwrap();
+        storage.set("cloudAi.qwen.apiKey", &json!("sk-secret")).unwrap();
+        storage.set("cloudAsr.doubao.consoleKey", &json!("secret")).unwrap();
+        storage.set("webdav.password", &json!("secret")).unwrap();
+        storage
+            .set("cloudAi.profiles", &json!([{ "id": "p1", "provider": "ollama", "apiKey": "sk-secret", "model": "m" }]))
+            .unwrap();
+        storage.set("cloudAi.apiUrl", &json!("http://127.0.0.1:11434")).unwrap();
+        storage.set("webdav.username", &json!("me")).unwrap();
+
+        assert_eq!(storage.get("cloudAi.apiKey", None), json!(""));
+        assert_eq!(storage.get("cloudAi.qwen.apiKey", None), json!(""));
+        assert_eq!(storage.get("cloudAsr.doubao.consoleKey", None), json!(""));
+        assert_eq!(storage.get("webdav.password", None), json!(""));
+        let profiles = storage.get("cloudAi.profiles", None);
+        assert_eq!(profiles[0]["apiKey"], json!(""));
+        assert_eq!(profiles[0]["model"], json!("m"));
+        // 非機密設定照常保存
+        assert_eq!(storage.get("cloudAi.apiUrl", None), json!("http://127.0.0.1:11434"));
+        assert_eq!(storage.get("webdav.username", None), json!("me"));
+
+        // 模擬舊資料庫裡已有明文金鑰：直接寫入後再清除
+        storage
+            .conn()
+            .execute(
+                "INSERT INTO app_settings (key, value_json, updated_at) VALUES ('cloudAsr.apiKey', '\"old\"', 0)
+                 ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json",
+                [],
+            )
+            .unwrap();
+        assert_eq!(storage.purge_stored_secrets().unwrap(), 1);
+        assert_eq!(storage.get("cloudAsr.apiKey", None), json!(""));
+        assert_eq!(storage.purge_stored_secrets().unwrap(), 0);
+
+        drop(storage);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

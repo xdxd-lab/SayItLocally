@@ -160,7 +160,7 @@ export const DEFAULTS: Record<string, unknown> = {
   pendingUpdate: null,
   historyEnabled: false, // [自訂：預設關閉] 保存历史记录（文本+录音）。关闭后不再保存新记录，适合共享电脑。可选: true | false
   audioRetentionEnabled: false, // [自訂：預設關閉] 保留录音文件。可选: true | false
-  audioRetentionDays: -1, // 录音保留天数。可选: 7 | 30 | 90 | -1（永久）
+  audioRetentionDays: 7, // [自訂] S61：預設由 -1（永久）改為 7 天。录音保留天数。可选: 7 | 30 | 90 | -1（永久）
   logRetentionDays: 30, // 日志保留天数。可选: 7 | 15 | 30 | 90
 
   // ── WebDAV 备份 ──

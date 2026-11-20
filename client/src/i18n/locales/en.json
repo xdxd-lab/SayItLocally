@@ -1226,6 +1226,7 @@
   "diagnostics.aiDisabled": "Off (Fast mode)",
   "diagnostics.incomplete": "Setup incomplete",
   "diagnostics.providerModel": "{provider} ({model})",
+  "diagnostics.aiUntested": "{provider} ({model}) — configured, not tested. Test it manually on the AI page.",
   "diagnostics.aiDisabledHint": "AI cleanup is off, so cleanup presets and other AI-dependent features won't run. Turn it on from the top right of Home or the AI cleanup page in the sidebar.",
   "diagnostics.faqTitle": "Common problems",
   "diagnostics.faq.insertQuestion": "The transcript wasn't inserted after recognition finished",

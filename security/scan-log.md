@@ -1,6 +1,6 @@
 # 掃描記錄
 
-時間皆為 UTC+08:00；最後更新：2026-11-20 22:35
+時間皆為 UTC+08:00；最後更新：2026-11-21 03:36
 
 | 編號 | 開始 | 完成 | 範圍 | 方法 | 主要結果 | 相關登錄 |
 |---|---|---|---|---|---|---|
@@ -21,6 +21,7 @@
 | SC-15 | 2026-11-20 01:33 | 2026-11-20 01:33 | 外部稽核比對（對象 `99f57e9`） | 使用者提供外部稽核報告（ChatGPT GPT-6.2 Astra Max，靜態分析，未執行 App）；逐項比對既有登錄，並在本機程式碼核對新項目、檢查本機 npm 快取 | 與既有結論一致：沒有通往 DeepSeek、阿里雲、SayIt 伺服器的路徑，缺模型時不改走雲端。新增 12 項：版本同名、README 上游連結、鎖定檔指向 npmmirror（本 fork 建置已實際連線）、離線指引與重試仍用 hf-mirror、雲端控制台連結、Ollama 雲端模型、上下文感知、錄音保留期限、Ollama 錯誤片段進日誌、啟動時蒐集裝置資訊、`TRANSCRIBE_DUMP_DIR`。**未改程式** | L-56～L-67 |
 | SC-16 | 2026-11-20 22:12 | 2026-11-20 22:12 | 修正 L-59～L-61（分支 `fix/s56-s58-download-source`，基準 `67764ee`） | 修改 `catalog.rs`（移除鏡像來源）、`LocalModeSection.tsx`、`AIProviderSection.tsx`、`CloudAPISection.tsx`、`AppearancePage.tsx`；`tsc --noEmit`、`npx vitest run`（與基準比對）、`cargo test --offline catalog`；另以程式碼搜尋清查所有 `shellOpen` 外部連結 | `tsc` 0 錯誤；vitest 17 失敗／618 通過，與基準完全相同；`cargo test` catalog 相關 5 通過。清查結果：雲端控制台連結共三處元件（AI 供應商、語音辨識雲端平台、外觀頁串流），已全部隱藏；其餘外部連結為關於頁的上游 GitHub、公告橫幅、意見回饋，不在本項範圍。**未執行 App、未建置安裝包** | L-59～L-61 |
 | SC-17 | 2026-11-20 22:35 | 2026-11-20 22:35 | 修正 L-51、L-58、L-66（分支 `fix/s55-s63-s45`，基準 `aad386b`＝PR #4 合併後） | 改寫 `client/package-lock.json` 的 `resolved` 網址並新增 `client/.npmrc`；以腳本向 `registry.npmjs.org` 查詢每個套件版本，比對 tarball 網址與 integrity；修改 `commands/system.rs`、`commands/diagnostics.rs`、`main.rs`、`bridge.ts`、`diagnostics.ts`、`DiagnosticsReportPanel.tsx`；`tsc --noEmit`、`npx vitest run`、`cargo test --offline` | 鎖定檔 316 筆全部指向 `registry.npmjs.org`，316 筆 tarball 與 integrity 與官方完全一致、0 筆不符；`tsc` 0 錯誤；vitest 17 失敗／618 通過，與基準相同；`cargo test` 370 通過、0 失敗、6 略過。另查 LuLu 4.5.7（2026-11-02）安裝方式，整理於 [`lulu-guide.md`](lulu-guide.md)。**未執行 npm 安裝、未建置、未執行 App** | L-51、L-58、L-66、L-26、L-54 |
+| SC-18 | 2026-11-21 02:50 | 2026-11-21 03:36 | 處理 L-53、L-56（部分）、L-57、L-64、L-65、L-68、L-69；評估 L-70（分支 `fix/privacy-batch-2`，基準 `fb28014`＝PR #5 合併後） | 先以程式碼搜尋確認各項範圍；修改 `defaults.ts`、`main.rs`、`ai_ollama.rs`、`aiProviderCatalog.ts`、`DiagnosticsPage.tsx`、語系檔、`README.md`、`README.zh-CN.md`，`git rm` 上游設定匯出檔；`tsc --noEmit`、`npx vitest run`、`cargo test --offline` | `tsc` 0 錯誤；vitest 17 失敗／618 通過，與基準相同；`cargo test` 370 通過、0 失敗、6 略過。確認公告橫幅（`notice.ts` 不發請求、`Home.tsx` 未渲染）與意見回饋入口（`Home.tsx` 未渲染）皆已停用。使用者決定後追加：L-70 停止寫入並清除金鑰（新增 Rust 測試，`cargo test` 371 通過）；L-56 版本改為 `0.2.6`。遠端分支 `docs/sc-15-external-audit`（PR #3 已合併）已刪除。**未建置、未執行 App** | L-53、L-56、L-57、L-64、L-65、L-68～L-70 |
 
 ## 更正
 

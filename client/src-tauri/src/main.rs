@@ -57,8 +57,9 @@ fn cleanup_expired_audio(storage: &Storage) {
     // 默认必须和前端 defaults.ts 的 audioRetentionDays 一致（-1 = 永久保留）。
     // 曾经这里写死 30：用户从没动过这个设置时，界面显示"永久"，实际 30 天就被删掉了 ——
     // 不报错、没有提示，只是录音悄悄消失（"纠正识别"入口大面积置灰就是这么来的）。
-    let retention_val = storage.get("audioRetentionDays", Some(&serde_json::json!(-1)));
-    let retention_days = retention_val.as_i64().unwrap_or(-1);
+    // [自訂] S61：預設改為 7 天（與 defaults.ts 同步）。原：json!(-1)、unwrap_or(-1)
+    let retention_val = storage.get("audioRetentionDays", Some(&serde_json::json!(7)));
+    let retention_days = retention_val.as_i64().unwrap_or(7);
     if retention_days < 0 {
         return; // -1 = keep forever
     }
@@ -559,6 +560,8 @@ fn main() {
     if let Some(recovery) = storage_recovery {
         notify_storage_recovery(recovery);
     }
+    // [自訂] #20／L-70：清除資料庫裡既有的金鑰與密碼（本 fork 不保存）。
+    let _ = storage.purge_stored_secrets();
 
     // One-time migration from Electron app's SQLite database
     // [自訂] S37：舊 Electron 版資料遷移已註解停用。原本每次啟動都會檢查
