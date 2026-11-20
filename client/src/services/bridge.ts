@@ -532,6 +532,11 @@ export function copyDiagnosticsZip(source: string, destination: string) {
   return invoke<void>('copy_diagnostics_zip', { source, destination })
 }
 
+/** [自訂] S45：刪掉診斷目錄裡的暫存 zip（取消另存或出錯時）。 */
+export function discardDiagnosticsZip(path: string) {
+  return invoke<void>('discard_diagnostics_zip', { path })
+}
+
 export function readLogFile(logType: string) {
   return invoke<string | null>('read_log_file', { logType })
 }

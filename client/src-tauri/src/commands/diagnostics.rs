@@ -374,6 +374,8 @@ fn build_diagnostics_zip(req: DiagnosticsZipRequest) -> Result<String, String> {
 
     let diag_dir = diagnostics_dir();
     std::fs::create_dir_all(&diag_dir).map_err(|e| e.to_string())?;
+    // [自訂] S45：產生新包前先清掉舊包（含日誌、詞彙、截圖），診斷目錄最多只留一份。
+    purge_diagnostics_zips();
 
     let ts = chrono::Local::now().format("%Y%m%d-%H%M%S");
     let zip_path = diag_dir.join(format!("diagnostics-{}.zip", ts));
@@ -484,6 +486,33 @@ pub fn read_diagnostics_zip_bytes(path: String) -> Result<tauri::ipc::Response, 
         None => Vec::new(),
     };
     Ok(tauri::ipc::Response::new(bytes))
+}
+
+/// [自訂] S45：刪除診斷目錄裡所有 .zip（取消另存、產生失敗、上傳停用、上次異常結束都會留下）。
+fn purge_diagnostics_zips() {
+    let Ok(entries) = std::fs::read_dir(diagnostics_dir()) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_file() && crate::path_guard::has_extension(&path, &["zip"]) {
+            let _ = std::fs::remove_file(&path);
+        }
+    }
+}
+
+/// [自訂] S45：啟動時清掉上次殘留的診斷包。
+pub fn purge_stale_diagnostics_zips() {
+    purge_diagnostics_zips();
+}
+
+/// [自訂] S45：前端取消另存或出錯時呼叫，只刪診斷目錄內的 .zip。
+#[tauri::command]
+pub fn discard_diagnostics_zip(path: String) -> Result<(), String> {
+    if let Some(path) = diagnostics_zip_in_dir(&path) {
+        let _ = std::fs::remove_file(&path);
+    }
+    Ok(())
 }
 
 #[tauri::command]
