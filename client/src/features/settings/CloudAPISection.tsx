@@ -55,6 +55,10 @@ import { formatCheckedAt, formatLatency, isCheckFresh } from './aiProviderCatalo
 import { getLocale, t, type TranslationKey } from '@/i18n'
 import { useT } from '@/i18n/useT'
 
+// [自訂] S58：本 fork 只用本機模式，不顯示雲端供應商控制台／申請文件連結（點擊會開外部瀏覽器）。
+// 改回 true 即恢復上游行為。
+const SHOW_CLOUD_CONSOLE_LINKS = false
+
 const DOC_URL = 'https://my.feishu.cn/wiki/V4vLw2UfDiWcATkK2dyckhvynzc'
 
 const DOUBAO_CONSOLE_OPTIONS = [
@@ -925,16 +929,18 @@ export default function CloudAPISection() {
               </p>
             )}
             <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1">
+              {SHOW_CLOUD_CONSOLE_LINKS && (
               <button type="button" onClick={() => void shellOpen(platformInfo.consoleUrl)} className={linkClass}>
                 {t('asr.openConsole', { platform: platformInfo.label })}
                 <ExternalLink className="h-3 w-3" aria-hidden />
               </button>
+              )}
               {/* 配置文档只对豆包显示。别的平台都是「去控制台复制一把 API Key」，
                   上面那个控制台链接已经足够；只有豆包要在新旧两代控制台之间做选择
                   （新版只给 API Key，旧版还要 Access Token + App ID），光看界面讲不清，
                   确实需要一篇文档。给所有平台都挂上等于让用户为一件不复杂的事去读文档。
                   英文文档发布前，这个链接只对中文界面显示。 */}
-              {draftPlatform === 'doubao' && getLocale() === 'zh-CN' && (
+              {SHOW_CLOUD_CONSOLE_LINKS && draftPlatform === 'doubao' && getLocale() === 'zh-CN' && (
                 <button type="button" onClick={() => void shellOpen(DOC_URL)} className={linkClass}>
                   {t('asr.howToGetKey')}
                   <ExternalLink className="h-3 w-3" aria-hidden />
