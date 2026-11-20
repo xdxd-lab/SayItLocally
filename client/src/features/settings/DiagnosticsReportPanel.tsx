@@ -169,8 +169,9 @@ export default function DiagnosticsReportPanel({ embedded = false }: Diagnostics
     setDownloading(true)
     setStatus('idle')
     setErrorMessage('')
+    let zipPath = '' // [自訂] S45：取消或出錯時要刪掉暫存 zip
     try {
-      const zipPath = await downloadDiagnostics({
+      zipPath = await downloadDiagnostics({
         description: description.trim(),
         issueType: issueType as DiagnosticIssueType,
         issueOccurrence,
@@ -184,16 +185,19 @@ export default function DiagnosticsReportPanel({ embedded = false }: Diagnostics
 
       if (!dest) {
         // 用户取消了保存对话框
+        await bridge.discardDiagnosticsZip(zipPath).catch(() => {}) // [自訂] S45
         setDownloading(false)
         return
       }
 
       await bridge.copyDiagnosticsZip(zipPath, dest)
+      zipPath = '' // 複製成功後 Rust 已刪除來源
       setStatus('download_success')
       setDescription('')
       setIssueType(null)
       setImages([])
     } catch (error) {
+      if (zipPath) await bridge.discardDiagnosticsZip(zipPath).catch(() => {}) // [自訂] S45
       setStatus('error')
       setErrorMessage(String(error))
     } finally {

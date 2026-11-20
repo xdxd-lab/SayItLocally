@@ -109,6 +109,7 @@ fn get_os_version() -> String {
     }
 }
 
+#[allow(dead_code)] // [自訂] S63：已不呼叫
 fn get_local_ip() -> String {
     std::net::UdpSocket::bind("0.0.0.0:0")
         .and_then(|s| {
@@ -198,28 +199,16 @@ pub struct ClientRuntimeInfo {
     pub memory_mb: u64,
 }
 
-#[tauri::command]
-pub fn get_client_runtime_info(storage: State<Storage>) -> Result<ClientRuntimeInfo, String> {
-    let hostname = hostname::get()
-        .map(|h| h.to_string_lossy().to_string())
-        .unwrap_or_else(|_| "unknown".to_string());
-    let user_name = whoami::username();
+// [自訂] S63：本 fork 只用本機模式，這些欄位只會送往已停用的雲端服務。
+// 不再讀取系統帳號、主機名、區網 IP（原本會對 8.8.8.8 做 UDP connect 選路由），
+// 也不再產生並保存固定裝置 ID；一律回傳固定值。原實作保留在 get_local_ip 等函式與 git 歷史。
+const REDACTED_CLIENT_FIELD: &str = "local";
 
-    // Persist device_id so it stays stable across restarts
-    let existing = storage.get("deviceId", None);
-    let device_id = if let Some(id) = existing.as_str() {
-        if !id.is_empty() {
-            id.to_string()
-        } else {
-            let new_id = format!("sayit-{}", uuid::Uuid::new_v4());
-            let _ = storage.set("deviceId", &serde_json::json!(new_id));
-            new_id
-        }
-    } else {
-        let new_id = format!("sayit-{}", uuid::Uuid::new_v4());
-        let _ = storage.set("deviceId", &serde_json::json!(new_id));
-        new_id
-    };
+#[tauri::command]
+pub fn get_client_runtime_info(_storage: State<Storage>) -> Result<ClientRuntimeInfo, String> {
+    let hostname = REDACTED_CLIENT_FIELD.to_string();
+    let user_name = REDACTED_CLIENT_FIELD.to_string();
+    let device_id = REDACTED_CLIENT_FIELD.to_string();
 
     Ok(ClientRuntimeInfo {
         user_id: user_name.clone(),
@@ -230,7 +219,7 @@ pub fn get_client_runtime_info(storage: State<Storage>) -> Result<ClientRuntimeI
         platform: std::env::consts::OS.to_string(),
         arch: std::env::consts::ARCH.to_string(),
         os_version: get_os_version(),
-        local_ip: get_local_ip(),
+        local_ip: REDACTED_CLIENT_FIELD.to_string(), // [自訂] S63：原 get_local_ip()
         system_locale: get_system_locale(),
         cpu_cores: std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1),
         memory_mb: get_total_memory_mb(),

@@ -675,6 +675,8 @@ fn main() {
         .manage(context_detector)
         .manage(commands::update_notification::UpdateNotificationState::default())
         .setup(move |app| {
+            // [自訂] S45：清掉上次殘留的診斷包。
+            commands::diagnostics::purge_stale_diagnostics_zips();
             // macOS：登录时要不要启动只由「登录时自动启动」决定，不让系统的「重新登录时重新打开窗口」
             // 把 SayItLocally 当普通应用不带参数地拉起来（那样主窗口会在登录后弹出来，见 appkit.rs）。
             #[cfg(target_os = "macos")]
@@ -936,6 +938,7 @@ fn main() {
             commands::diagnostics::read_diagnostics_zip_bytes,
             commands::diagnostics::read_diagnostics_zip,
             commands::diagnostics::copy_diagnostics_zip,
+            commands::diagnostics::discard_diagnostics_zip, // [自訂] S45
             commands::diagnostics::read_log_file,
             commands::diagnostics::open_log_folder,
             // Providers (cloud ASR / AI)

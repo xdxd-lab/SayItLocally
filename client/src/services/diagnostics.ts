@@ -93,7 +93,12 @@ export async function submitDiagnostics(data: DiagnosticsSubmission): Promise<st
     throw new Error('Failed to create diagnostics zip')
   }
 
-  return uploadDiagnosticsZip(zipPath)
+  // [自訂] S45：上傳已停用，不論結果都刪掉暫存 zip，避免殘留在 App 資料夾。
+  try {
+    return await uploadDiagnosticsZip(zipPath)
+  } finally {
+    await bridge.discardDiagnosticsZip(zipPath).catch(() => {})
+  }
 }
 
 export async function downloadDiagnostics(data: DiagnosticsSubmission): Promise<string> {
