@@ -10,7 +10,7 @@
 
 - 基準版本：上游 [crosswk/SayIt](https://github.com/crosswk/SayIt) commit `4fdeae9`（2026-11-09），client `0.2.5`
 - 強化 commit：`ea20f44`（2026-11-19 05:44）；第十次修正（第一次開啟前）：分支 `security/first-launch-hardening`，基準 `3428af4`，2026-11-20 00:12 建置驗證完成（PR #2，merge `99f57e9`）；外部稽核比對：SC-15（2026-11-20 01:33）
-- 文件中的時間皆為 UTC+08:00；最後更新：2026-11-24 01:33
+- 文件中的時間皆為 UTC+08:00；最後更新：2026-11-24 01:37
 - 專案名稱：2026-11-19 10:50 由 SayIt 更名為 **SayItLocally**（App：`SayItLocally.app`，bundle ID：`com.sayitlocally.desktop`）；上游名稱與來源資訊保留
 
 ## 原則

@@ -11,9 +11,9 @@
 | L-84 | npm 缺套件時，會從 `registry.npmjs.org` 下載 | `npm_config_offline=true`；`--install` 時執行 `npm ci --offline --include=dev --include=optional` | 快取不完整時會直接失敗，不會改去下載。npm 的離線設定只管 npm 本身，管不到安裝腳本自己發出的連線 |
 | L-85 | `npm ci` 預設做 audit，會送出依賴清單 | `.npmrc` 設定 `audit=false`，腳本另加 `--no-audit` | — |
 | L-86 | npm 會檢查自身新版本 | `.npmrc` 設定 `update-notifier=false` | — |
-| L-87 | esbuild 的 postinstall 找不到 binary 時，會自行下載 | 安裝時加 `--ignore-scripts`，先不跑任何安裝腳本；依 Node 的架構確認 `@esbuild/darwin-*` 的 binary 已經在本機後，才以 `ESBUILD_BINARY_PATH` 執行 `npm rebuild esbuild` | 以後如果有其他套件新增安裝腳本，需要重新檢查 |
+| L-87 | esbuild 的 postinstall 找不到 binary 時，會自行下載 | 安裝時加 `--ignore-scripts`，不執行任何安裝腳本；再依 Node 的架構確認 `@esbuild/darwin-*` 的 binary 已在本機。esbuild 的 postinstall 只是加速步驟，不執行也能正常使用 | 日後若有其他套件新增安裝腳本，要重新檢查 |
 | L-88、L-89 | Cargo 會更新索引、下載 crate | `CARGO_NET_OFFLINE=true`，並把 `--locked` 傳給 cargo | 快取不完整時直接失敗 |
-| L-90 | rustup 會補裝工具鏈 | 要求 rustup 1.28.1 以上，並設定 `RUSTUP_AUTO_INSTALL=0`；事先確認 `rustc`、`cargo` 可以使用 | — |
+| L-90 | rustup 會補裝工具鏈 | 在呼叫任何 rustup／rustc 之前，先直接讀檔確認預設工具鏈與它的標準庫都已安裝，並拒絕 `RUSTUP_TOOLCHAIN`、`rust-toolchain` 檔與目錄 override；接著要求 rustup 1.28.1 以上，並設定 `RUSTUP_AUTO_INSTALL=0` | 只支援預設工具鏈 |
 | L-91 | 缺 Xcode、CLT 或 SDK 時，系統會補裝 | 檢查 `xcode-select -p`、`xcrun --show-sdk-path`、`cmake`，缺少就停下 | macOS 的背景更新不在腳本控制範圍內 |
 | L-92 | 有 `APPLE_*` 變數時，會進入公證流程，把 App 上傳到 Apple | 腳本開頭清除所有 `APPLE_*` 變數；簽章維持 ad hoc（`-`） | — |
 
@@ -33,4 +33,4 @@
 
 - 只接受 `--install`、`--bundles app|dmg`、`--debug`、`--verbose` 這幾個參數。自訂的 Tauri config 或 runner 可能繞過離線設定，所以一律拒絕。
 - 直接呼叫專案內的 `node_modules/.bin/tauri`，不經過 `npx`，避免改用全域或快取裡的 CLI。
-- 讀取本機環境檔（`~/.local/sayitlocally-dev-env.sh`）的前後，都會重新套用離線設定。
+- 不執行外部的環境檔（它也可能連網），改為直接把本機的 Node、CMake、Rust 加進 PATH（SC-25）。
