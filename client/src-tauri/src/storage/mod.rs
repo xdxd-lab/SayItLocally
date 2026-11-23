@@ -919,10 +919,11 @@ impl Storage {
 // ─── [自訂] #20／L-70：不在 sayit.db 保存金鑰與密碼 ───
 // 本 fork 只用本機 Ollama（不需金鑰），雲端 ASR／AI 與 WebDAV 都已停用，
 // 因此金鑰、密碼一律不寫入資料庫（存成空字串），啟動時也清除既有的值。
-// 範圍：`cloudAi.*`、`cloudAsr.*`、`webdav.*` 中欄位名為 apiKey／consoleKey／password 者，
+// 範圍：`cloudAi.*`、`cloudAsr.*`、`webdav.*` 中欄位名為 apiKey／consoleKey／otherKey／accessToken／password 者，
 // 以及 `cloudAi.profiles`、`cloudAsr.profiles` 等設定值裡同名的巢狀欄位。
 
-const SECRET_FIELD_NAMES: &[&str] = &["apiKey", "consoleKey", "password"];
+// [自訂] SCAN1-1（L-71）：補上 `otherKey`（豆包另一代的金鑰，存在 cloudAsr.profiles[] 裡）與 `accessToken`。
+const SECRET_FIELD_NAMES: &[&str] = &["apiKey", "consoleKey", "otherKey", "accessToken", "password"];
 
 fn is_secret_scope(key: &str) -> bool {
     key.starts_with("cloudAi.") || key.starts_with("cloudAsr.") || key.starts_with("webdav.")
@@ -976,7 +977,19 @@ impl Storage {
         };
         let mut changed = 0;
         for (key, value_json) in rows {
-            let Ok(value) = serde_json::from_str::<Value>(&value_json) else { continue };
+            // REV1：值不是合法 JSON 時，金鑰欄位直接改成空字串；其他無法解析的值只計數、記錄 key 名，不記內容。
+            let Ok(value) = serde_json::from_str::<Value>(&value_json) else {
+                if is_secret_setting_key(&key) {
+                    db.execute(
+                        "UPDATE app_settings SET value_json = '\"\"' WHERE key = ?1",
+                        params![key],
+                    )?;
+                    changed += 1;
+                } else {
+                    log::warn!("[storage] could not parse setting {} while clearing secrets; left unchanged", key);
+                }
+                continue;
+            };
             let cleaned = sanitize_setting_value(&key, &value);
             if cleaned != value {
                 let json_str = serde_json::to_string(&cleaned).unwrap_or_else(|_| "\"\"".to_string());
@@ -1129,6 +1142,38 @@ mod secret_tests {
         assert_eq!(storage.purge_stored_secrets().unwrap(), 1);
         assert_eq!(storage.get("cloudAsr.apiKey", None), json!(""));
         assert_eq!(storage.purge_stored_secrets().unwrap(), 0);
+
+        // SCAN1-1（L-71）：cloudAsr.profiles[] 裡的 otherKey 也要清掉（寫入與舊資料兩種情況）
+        storage
+            .set(
+                "cloudAsr.profiles",
+                &json!([{ "id": "a1", "provider": "doubao_v2", "apiKey": "k1", "otherKey": "k2", "model": "m" }]),
+            )
+            .unwrap();
+        let asr = storage.get("cloudAsr.profiles", None);
+        assert_eq!(asr[0]["apiKey"], json!(""));
+        assert_eq!(asr[0]["otherKey"], json!(""));
+        assert_eq!(asr[0]["model"], json!("m"));
+        storage
+            .conn()
+            .execute(
+                "UPDATE app_settings SET value_json = '[{\"id\":\"a1\",\"otherKey\":\"old\",\"accessToken\":\"old\"}]' WHERE key = 'cloudAsr.profiles'",
+                [],
+            )
+            .unwrap();
+        assert_eq!(storage.purge_stored_secrets().unwrap(), 1);
+        let asr = storage.get("cloudAsr.profiles", None);
+        assert_eq!(asr[0]["otherKey"], json!(""));
+        assert_eq!(asr[0]["accessToken"], json!(""));
+        assert_eq!(asr[0]["id"], json!("a1"));
+
+        // REV1：金鑰欄位的值不是合法 JSON 時，也要清掉
+        storage
+            .conn()
+            .execute("UPDATE app_settings SET value_json = 'not-json' WHERE key = 'cloudAi.apiKey'", [])
+            .unwrap();
+        assert_eq!(storage.purge_stored_secrets().unwrap(), 1);
+        assert_eq!(storage.get("cloudAi.apiKey", None), json!(""));
 
         drop(storage);
         let _ = std::fs::remove_dir_all(&dir);

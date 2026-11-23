@@ -31,7 +31,7 @@ const SETTINGS_EXPORT_KEYS = [
   'overlayShowDuration',
   'overlayWaveTheme',
   'overlayWaveCustom',
-  'selectedMic',
+  // [自訂] SCAN1-4（L-74）：'selectedMic'（麥克風裝置 ID）只留在本機，不匯出。
   'shortcutHandsFree',
   'shortcutToggleAi',
   'shortcutKey',

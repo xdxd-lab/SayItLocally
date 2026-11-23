@@ -503,7 +503,8 @@ export default function History() {
   }
 
   const handleExport = async () => {
-    const result = await exportHistory({ keyword: debouncedKeyword })
+    // [自訂] SCAN1-12（L-82）：匯出時套用目前的「僅收藏」篩選，原本只帶搜尋字，會連非收藏一起匯出。
+    const result = await exportHistory({ keyword: debouncedKeyword, favoriteOnly })
     setExportResult(result)
     if (!result.canceled) setTimeout(() => setExportResult(null), 8000)
   }

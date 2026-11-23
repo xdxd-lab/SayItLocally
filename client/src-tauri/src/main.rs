@@ -165,12 +165,13 @@ fn notify_storage_recovery(recovery: storage::StorageRecovery) {
             commands::system::write_log_line(&format!("[storage] recovered: running on an in-memory database error={}", error));
         }
     }
+    // [自訂] SCAN1-2（L-72）：提示改成「副本只在本機、可能含舊資料與密鑰、請自行刪除」，不再請使用者把檔案交給開發者。
     let zh = matches!(locale::system_ui_lang(), locale::Lang::ZhCn);
     let text = match &recovery {
         storage::StorageRecovery::MovedAside { backup, .. } => if zh {
-            format!("SayItLocally 的本地数据文件损坏，无法读取。\n\n已用全新的数据启动，设置和历史记录暂时为空。\n原文件已保留在：\n{}\n\n如需找回，请把这个文件发给开发者。", backup.display())
+            format!("SayItLocally 的本地数据文件损坏，无法读取。\n\n已用全新的数据启动，设置和历史记录暂时为空。\n原文件已保留在：\n{}\n\n这个副本只在本机，可能含有旧的设置、历史记录或密钥。不需要时请自行删除，请勿发给他人。", backup.display())
         } else {
-            format!("SayItLocally could not read its local data file because it is damaged.\n\nIt has started with fresh data, so settings and history are empty for now.\nThe original file was kept at:\n{}\n\nSend this file to the developer if you need it recovered.", backup.display())
+            format!("SayItLocally could not read its local data file because it is damaged.\n\nIt has started with fresh data, so settings and history are empty for now.\nThe original file was kept at:\n{}\n\nThis copy stays on this computer and may contain old settings, history or keys. Delete it yourself when you no longer need it, and do not send it to anyone.", backup.display())
         },
         storage::StorageRecovery::InMemory { .. } => if zh {
             "SayItLocally 无法创建本地数据文件（磁盘已满或没有写入权限）。\n\n本次可以正常使用，但设置和历史记录在退出后不会保存。".to_string()
@@ -561,7 +562,15 @@ fn main() {
         notify_storage_recovery(recovery);
     }
     // [自訂] #20／L-70：清除資料庫裡既有的金鑰與密碼（本 fork 不保存）。
-    let _ = storage.purge_stored_secrets();
+    // SCAN1-1：清除失敗時留下紀錄（只記錯誤，不記任何值），不再默默忽略。
+    match storage.purge_stored_secrets() {
+        Ok(0) => {}
+        Ok(n) => log::info!("[storage] cleared stored secrets in {} setting(s)", n),
+        Err(e) => {
+            log::error!("[storage] failed to clear stored secrets: {}", e);
+            commands::system::write_log_line(&format!("[storage] failed to clear stored secrets: {}", e));
+        }
+    }
 
     // One-time migration from Electron app's SQLite database
     // [自訂] S37：舊 Electron 版資料遷移已註解停用。原本每次啟動都會檢查
