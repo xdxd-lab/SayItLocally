@@ -171,7 +171,7 @@ fn notify_storage_recovery(recovery: storage::StorageRecovery) {
         storage::StorageRecovery::MovedAside { backup, .. } => if zh {
             format!("SayItLocally 的本地数据文件损坏，无法读取。\n\n已用全新的数据启动，设置和历史记录暂时为空。\n原文件已保留在：\n{}\n\n这个副本只在本机，可能含有旧的设置、历史记录或密钥。不需要时请自行删除，请勿发给他人。", backup.display())
         } else {
-            format!("SayItLocally could not read its local data file because it is damaged.\n\nIt has started with fresh data, so settings and history are empty for now.\nThe original file was kept at:\n{}\n\nThis copy stays on this Mac and may contain old settings, history or keys. Delete it yourself when you no longer need it, and do not send it to anyone.", backup.display())
+            format!("SayItLocally could not read its local data file because it is damaged.\n\nIt has started with fresh data, so settings and history are empty for now.\nThe original file was kept at:\n{}\n\nThis copy stays on this computer and may contain old settings, history or keys. Delete it yourself when you no longer need it, and do not send it to anyone.", backup.display())
         },
         storage::StorageRecovery::InMemory { .. } => if zh {
             "SayItLocally 无法创建本地数据文件（磁盘已满或没有写入权限）。\n\n本次可以正常使用，但设置和历史记录在退出后不会保存。".to_string()

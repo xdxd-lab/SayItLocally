@@ -977,7 +977,19 @@ impl Storage {
         };
         let mut changed = 0;
         for (key, value_json) in rows {
-            let Ok(value) = serde_json::from_str::<Value>(&value_json) else { continue };
+            // REV1：值不是合法 JSON 時，金鑰欄位直接改成空字串；其他無法解析的值只計數、記錄 key 名，不記內容。
+            let Ok(value) = serde_json::from_str::<Value>(&value_json) else {
+                if is_secret_setting_key(&key) {
+                    db.execute(
+                        "UPDATE app_settings SET value_json = '\"\"' WHERE key = ?1",
+                        params![key],
+                    )?;
+                    changed += 1;
+                } else {
+                    log::warn!("[storage] could not parse setting {} while clearing secrets; left unchanged", key);
+                }
+                continue;
+            };
             let cleaned = sanitize_setting_value(&key, &value);
             if cleaned != value {
                 let json_str = serde_json::to_string(&cleaned).unwrap_or_else(|_| "\"\"".to_string());
@@ -1154,6 +1166,14 @@ mod secret_tests {
         assert_eq!(asr[0]["otherKey"], json!(""));
         assert_eq!(asr[0]["accessToken"], json!(""));
         assert_eq!(asr[0]["id"], json!("a1"));
+
+        // REV1：金鑰欄位的值不是合法 JSON 時，也要清掉
+        storage
+            .conn()
+            .execute("UPDATE app_settings SET value_json = 'not-json' WHERE key = 'cloudAi.apiKey'", [])
+            .unwrap();
+        assert_eq!(storage.purge_stored_secrets().unwrap(), 1);
+        assert_eq!(storage.get("cloudAi.apiKey", None), json!(""));
 
         drop(storage);
         let _ = std::fs::remove_dir_all(&dir);

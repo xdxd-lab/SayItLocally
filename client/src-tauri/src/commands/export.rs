@@ -44,12 +44,18 @@ fn check_export_extension(path: &std::path::Path, allowed: &[&str]) -> Result<()
 
 /// [自訂] SCAN1-12（L-82）：前端只給檔名（相對路徑）時，原本會寫進程序的工作目錄（位置不明）。
 /// 改成固定寫到「下載／SayItLocally Exports」，和備份同一層，使用者找得到、也知道要自行管理。
-fn resolve_export_path(default_path: &str) -> std::path::PathBuf {
+fn resolve_export_path(default_path: &str) -> Result<std::path::PathBuf, String> {
     let path = std::path::PathBuf::from(default_path);
     if path.is_absolute() {
-        return path;
+        return Ok(path);
     }
-    dirs::download_dir()
+    // REV1：相對路徑只接受單一檔名，不允許 `..` 或子目錄跳出匯出資料夾。
+    let mut parts = path.components();
+    let name = match (parts.next(), parts.next()) {
+        (Some(std::path::Component::Normal(name)), None) => name.to_owned(),
+        _ => return Err("Export file name must not contain a directory".to_string()),
+    };
+    Ok(dirs::download_dir()
         .or_else(dirs::document_dir)
         .unwrap_or_else(|| {
             dirs::data_local_dir()
@@ -57,12 +63,12 @@ fn resolve_export_path(default_path: &str) -> std::path::PathBuf {
                 .join("com.sayitlocally.desktop")
         })
         .join("SayItLocally Exports")
-        .join(path)
+        .join(name))
 }
 
 #[tauri::command]
 pub fn save_text_export(payload: TextExportPayload) -> Result<Option<String>, String> {
-    let path = resolve_export_path(&payload.default_path);
+    let path = resolve_export_path(&payload.default_path)?;
     check_export_extension(&path, &["json", "csv", "txt", "md"])?;
     if let Some(parent) = path.parent() {
         let _ = fs::create_dir_all(parent);
@@ -76,7 +82,7 @@ pub fn save_text_export(payload: TextExportPayload) -> Result<Option<String>, St
 
 #[tauri::command]
 pub fn save_export_bundle(payload: ExportBundlePayload) -> Result<Option<String>, String> {
-    let path = resolve_export_path(&payload.default_path);
+    let path = resolve_export_path(&payload.default_path)?;
     check_export_extension(&path, &["zip"])?;
     if let Some(parent) = path.parent() {
         let _ = fs::create_dir_all(parent);

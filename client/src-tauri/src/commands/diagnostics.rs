@@ -438,7 +438,9 @@ fn write_diagnostics_zip(zip_path: &std::path::Path, req: &DiagnosticsZipRequest
     for filename in &["sayit.log", "sayit.1.log", "sayit.2.log", "sayit.3.log"] {
         let path = log_d.join(filename);
         if path.exists() {
-            if let Ok(content) = std::fs::read_to_string(&path) {
+            // REV1：用 lossy 讀取，非 UTF-8 的日誌也照樣依時段過濾，不會整份略過。
+            if let Ok(bytes) = std::fs::read(&path) {
+                let content = String::from_utf8_lossy(&bytes);
                 let kept = filter_raw_log_since(&content, cutoff.as_deref());
                 if kept.is_empty() {
                     continue;
@@ -481,6 +483,20 @@ fn write_diagnostics_zip(zip_path: &std::path::Path, req: &DiagnosticsZipRequest
     Ok(())
 }
 
+/// REV1：取出行首 `[時間戳]`（允許多個前導 `[`）；不是數字開頭就視為沒有時間戳。
+fn leading_timestamp(line: &str) -> Option<&str> {
+    let line = line.trim();
+    if !line.starts_with('[') {
+        return None;
+    }
+    let end = line.find(']')?;
+    let ts = line[1..end].trim_start_matches('[').trim();
+    if ts.is_empty() || !ts.as_bytes()[0].is_ascii_digit() {
+        return None;
+    }
+    Some(ts)
+}
+
 /// [自訂] SCAN1-5：只保留時間戳 >= cutoff 的日誌行。沒有時間戳的續行（例如多行錯誤）
 /// 跟隨上一個有時間戳的行；檔案開頭沒有時間戳的行一律不收。cutoff 為 None（不限時段）時全收。
 fn filter_raw_log_since(content: &str, cutoff: Option<&str>) -> String {
@@ -490,8 +506,9 @@ fn filter_raw_log_since(content: &str, cutoff: Option<&str>) -> String {
     let mut out = String::new();
     let mut keep = false;
     for line in content.lines() {
-        if let Some(entry) = parse_log_line(line) {
-            keep = entry.ts.as_str() >= cutoff;
+        // REV1：只要行首有時間戳就依它判斷（不要求後面有 [LEVEL]），避免格式不同的舊行沿用前一行的結果。
+        if let Some(ts) = leading_timestamp(line) {
+            keep = ts >= cutoff;
         }
         if keep {
             out.push_str(line);
@@ -666,6 +683,7 @@ mod scan1_log_filter_tests {
   continuation of old event\n\
 [2026-11-24 09:00:00.000] [ERROR] [app] recent event\n\
   continuation of recent event\n\
+[2026-11-20 08:00:00] odd old line without level\n\
 [2026-11-24 09:05:00.000] [INFO] [app] later event\n";
         let kept = filter_raw_log_since(log, Some("2026-11-24 00:00:00"));
         assert!(!kept.contains("old event"));
@@ -674,6 +692,7 @@ mod scan1_log_filter_tests {
         assert!(kept.contains("recent event"));
         assert!(kept.contains("continuation of recent event"));
         assert!(kept.contains("later event"));
+        assert!(!kept.contains("odd old line"));
 
         assert_eq!(filter_raw_log_since(log, None), log);
         assert!(filter_raw_log_since(log, Some("2026-12-01 00:00:00")).is_empty());
