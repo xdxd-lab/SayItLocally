@@ -919,10 +919,11 @@ impl Storage {
 // ─── [自訂] #20／L-70：不在 sayit.db 保存金鑰與密碼 ───
 // 本 fork 只用本機 Ollama（不需金鑰），雲端 ASR／AI 與 WebDAV 都已停用，
 // 因此金鑰、密碼一律不寫入資料庫（存成空字串），啟動時也清除既有的值。
-// 範圍：`cloudAi.*`、`cloudAsr.*`、`webdav.*` 中欄位名為 apiKey／consoleKey／password 者，
+// 範圍：`cloudAi.*`、`cloudAsr.*`、`webdav.*` 中欄位名為 apiKey／consoleKey／otherKey／accessToken／password 者，
 // 以及 `cloudAi.profiles`、`cloudAsr.profiles` 等設定值裡同名的巢狀欄位。
 
-const SECRET_FIELD_NAMES: &[&str] = &["apiKey", "consoleKey", "password"];
+// [自訂] SCAN1-1（L-71）：補上 `otherKey`（豆包另一代的金鑰，存在 cloudAsr.profiles[] 裡）與 `accessToken`。
+const SECRET_FIELD_NAMES: &[&str] = &["apiKey", "consoleKey", "otherKey", "accessToken", "password"];
 
 fn is_secret_scope(key: &str) -> bool {
     key.starts_with("cloudAi.") || key.starts_with("cloudAsr.") || key.starts_with("webdav.")
@@ -1129,6 +1130,30 @@ mod secret_tests {
         assert_eq!(storage.purge_stored_secrets().unwrap(), 1);
         assert_eq!(storage.get("cloudAsr.apiKey", None), json!(""));
         assert_eq!(storage.purge_stored_secrets().unwrap(), 0);
+
+        // SCAN1-1（L-71）：cloudAsr.profiles[] 裡的 otherKey 也要清掉（寫入與舊資料兩種情況）
+        storage
+            .set(
+                "cloudAsr.profiles",
+                &json!([{ "id": "a1", "provider": "doubao_v2", "apiKey": "k1", "otherKey": "k2", "model": "m" }]),
+            )
+            .unwrap();
+        let asr = storage.get("cloudAsr.profiles", None);
+        assert_eq!(asr[0]["apiKey"], json!(""));
+        assert_eq!(asr[0]["otherKey"], json!(""));
+        assert_eq!(asr[0]["model"], json!("m"));
+        storage
+            .conn()
+            .execute(
+                "UPDATE app_settings SET value_json = '[{\"id\":\"a1\",\"otherKey\":\"old\",\"accessToken\":\"old\"}]' WHERE key = 'cloudAsr.profiles'",
+                [],
+            )
+            .unwrap();
+        assert_eq!(storage.purge_stored_secrets().unwrap(), 1);
+        let asr = storage.get("cloudAsr.profiles", None);
+        assert_eq!(asr[0]["otherKey"], json!(""));
+        assert_eq!(asr[0]["accessToken"], json!(""));
+        assert_eq!(asr[0]["id"], json!("a1"));
 
         drop(storage);
         let _ = std::fs::remove_dir_all(&dir);

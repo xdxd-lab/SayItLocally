@@ -1,6 +1,6 @@
 # 掃描記錄
 
-時間皆為 UTC+08:00；最後更新：2026-11-21 03:36
+時間皆為 UTC+08:00；最後更新：2026-11-24 01:10
 
 | 編號 | 開始 | 完成 | 範圍 | 方法 | 主要結果 | 相關登錄 |
 |---|---|---|---|---|---|---|
@@ -22,6 +22,9 @@
 | SC-16 | 2026-11-20 22:12 | 2026-11-20 22:12 | 修正 L-59～L-61（分支 `fix/s56-s58-download-source`，基準 `67764ee`） | 修改 `catalog.rs`（移除鏡像來源）、`LocalModeSection.tsx`、`AIProviderSection.tsx`、`CloudAPISection.tsx`、`AppearancePage.tsx`；`tsc --noEmit`、`npx vitest run`（與基準比對）、`cargo test --offline catalog`；另以程式碼搜尋清查所有 `shellOpen` 外部連結 | `tsc` 0 錯誤；vitest 17 失敗／618 通過，與基準完全相同；`cargo test` catalog 相關 5 通過。清查結果：雲端控制台連結共三處元件（AI 供應商、語音辨識雲端平台、外觀頁串流），已全部隱藏；其餘外部連結為關於頁的上游 GitHub、公告橫幅、意見回饋，不在本項範圍。**未執行 App、未建置安裝包** | L-59～L-61 |
 | SC-17 | 2026-11-20 22:35 | 2026-11-20 22:35 | 修正 L-51、L-58、L-66（分支 `fix/s55-s63-s45`，基準 `aad386b`＝PR #4 合併後） | 改寫 `client/package-lock.json` 的 `resolved` 網址並新增 `client/.npmrc`；以腳本向 `registry.npmjs.org` 查詢每個套件版本，比對 tarball 網址與 integrity；修改 `commands/system.rs`、`commands/diagnostics.rs`、`main.rs`、`bridge.ts`、`diagnostics.ts`、`DiagnosticsReportPanel.tsx`；`tsc --noEmit`、`npx vitest run`、`cargo test --offline` | 鎖定檔 316 筆全部指向 `registry.npmjs.org`，316 筆 tarball 與 integrity 與官方完全一致、0 筆不符；`tsc` 0 錯誤；vitest 17 失敗／618 通過，與基準相同；`cargo test` 370 通過、0 失敗、6 略過。另查 LuLu 4.5.7（2026-11-02）安裝方式，整理於 [`lulu-guide.md`](lulu-guide.md)。**未執行 npm 安裝、未建置、未執行 App** | L-51、L-58、L-66、L-26、L-54 |
 | SC-18 | 2026-11-21 02:50 | 2026-11-21 03:36 | 處理 L-53、L-56（部分）、L-57、L-64、L-65、L-68、L-69；評估 L-70（分支 `fix/privacy-batch-2`，基準 `fb28014`＝PR #5 合併後） | 先以程式碼搜尋確認各項範圍；修改 `defaults.ts`、`main.rs`、`ai_ollama.rs`、`aiProviderCatalog.ts`、`DiagnosticsPage.tsx`、語系檔、`README.md`、`README.zh-CN.md`，`git rm` 上游設定匯出檔；`tsc --noEmit`、`npx vitest run`、`cargo test --offline` | `tsc` 0 錯誤；vitest 17 失敗／618 通過，與基準相同；`cargo test` 370 通過、0 失敗、6 略過。確認公告橫幅（`notice.ts` 不發請求、`Home.tsx` 未渲染）與意見回饋入口（`Home.tsx` 未渲染）皆已停用。使用者決定後追加：L-70 停止寫入並清除金鑰（新增 Rust 測試，`cargo test` 371 通過）；L-56 版本改為 `0.2.6`。遠端分支 `docs/sc-15-external-audit`（PR #3 已合併）已刪除。**未建置、未執行 App** | L-53、L-56、L-57、L-64、L-65、L-68～L-70 |
+| SC-19 | 2026-11-24 00:17 | 2026-11-24 00:25 | 外部靜態稽核（對象 `379f24e`，0.2.6）：GitHub 資訊安全、聲音外流、IP 與連線、語音與日誌存檔，並核對 PR #4～#6 | Codex（GPT-6.2-Astra）帶兩個子代理做靜態分析；唯讀查詢 GitHub API；未執行 App、未建置、未抓封包，也未讀取使用者資料 | 預設的桌面聽寫沒有任何自動送出錄音或轉錄的路徑。新增 12 項（高 0、中 7、低 5），另有 1 項 repo 設定。PR #4～#6 大多有效，L-70 部分有效。GitHub：PR #1、#2 的舊 commit 仍公開可見（已知，S65）；歷史中的上游設定匯出檔仍可取得（已知，L-53）；未發現有效的金鑰或 token | L-70～L-83 |
+| SC-20 | 2026-11-24 00:45 | 2026-11-24 00:52 | 外部靜態稽核：建置期供應鏈連線（npm、Cargo、原生 C/C++、Tauri 打包） | Codex（GPT-6.2-Sol）靜態分析；只讀鎖定檔與本機快取，Cargo 只用 `--offline --locked` 讀取 metadata；未安裝、未建置，也未執行 audit | 可能連網的機制共 9 項；事先備妥快取與工具，並關閉 audit、更新提示與公證後，本機 app／DMG 不需要連網。原生 ASR（transcribe-cpp／ggml，Metal 預設）沒有發現網路呼叫或遙測；本版沒有 onnxruntime 這類預編譯檔下載器。附有 LuLu 對照用的主機清單 | L-84～L-92 |
+| SC-21 | 2026-11-24 00:58 | 2026-11-24 01:10 | 處理 L-71、L-72（部分）、L-74、L-75、L-77、L-79、L-81、L-82（分支 `fix/scan1-batch`，基準 `379f24e`） | 修改 `storage/mod.rs`、`main.rs`、`ai_ollama.rs`、`backup.rs`、`diagnostics.rs`、`export.rs`、`History.tsx`；`tsc --noEmit`、`npx vitest run`、`cargo test --offline`。本機目錄改名後，清除過期的 `target/` 快取，以 offline 重新編譯 | `tsc` 0 錯誤；vitest 17 失敗／618 通過，失敗項目與基準相同；`cargo test` 372 通過、0 失敗、6 略過（新增 2 組測試）。L-73、L-76、L-80 牽涉錄音主流程或需要實機驗證，暫不修改；L-83 為 repo 設定，由使用者決定。**未建置 App、未執行 App** | L-71～L-82 |
 
 ## 更正
 

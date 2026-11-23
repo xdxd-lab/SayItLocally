@@ -128,9 +128,10 @@ pub async fn polish(
             SCOPE,
             "empty_response_fallback_to_input",
             &format!(
-                "Ollama returned no content; returned the original text model={} {}",
+                // [自訂] SCAN1-9（L-79）：只記位元組數，不記回應的鍵名或字串（原：diag::describe_json(&body_text)）。
+                "Ollama returned no content; returned the original text model={} <response body omitted, {} bytes>",
                 model,
-                diag::describe_json(&body_text)
+                body_text.len()
             ),
         );
     } else {

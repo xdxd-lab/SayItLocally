@@ -58,6 +58,11 @@ const MACHINE_LOCAL_KEYS: &[&str] = &[
     "workMode",
     "autoLaunch*",
     "localAsr.downloadSource",
+    // [自訂] SCAN1-4（L-74）：麥克風裝置名稱與裝置 ID 只留在本機（名稱可能含姓名），不匯出也不匯入。
+    "micLastGoodDevice",
+    "selectedMic",
+    // [自訂] SCAN1-11（L-81）：「貼上後還原剪貼簿」屬隱私開關，匯入／還原不可把它關掉。
+    "protectClipboard",
 ];
 /// 「配置」档不导出/导入的 app_settings key：本机专属的那些，加上使用统计（属于使用数据，不属于配置）。
 /// 与 MACHINE_LOCAL_KEYS 的包含关系有测试钉住。
@@ -88,6 +93,11 @@ const CONFIG_EXCLUDE: &[&str] = &[
     "workMode",
     "autoLaunch*",
     "localAsr.downloadSource",
+    // [自訂] SCAN1-4（L-74）：麥克風裝置名稱與裝置 ID 只留在本機（名稱可能含姓名），不匯出也不匯入。
+    "micLastGoodDevice",
+    "selectedMic",
+    // [自訂] SCAN1-11（L-81）：「貼上後還原剪貼簿」屬隱私開關，匯入／還原不可把它關掉。
+    "protectClipboard",
 ];
 
 #[derive(Clone, Deserialize)]

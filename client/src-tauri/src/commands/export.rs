@@ -42,9 +42,27 @@ fn check_export_extension(path: &std::path::Path, allowed: &[&str]) -> Result<()
     }
 }
 
+/// [自訂] SCAN1-12（L-82）：前端只給檔名（相對路徑）時，原本會寫進程序的工作目錄（位置不明）。
+/// 改成固定寫到「下載／SayItLocally Exports」，和備份同一層，使用者找得到、也知道要自行管理。
+fn resolve_export_path(default_path: &str) -> std::path::PathBuf {
+    let path = std::path::PathBuf::from(default_path);
+    if path.is_absolute() {
+        return path;
+    }
+    dirs::download_dir()
+        .or_else(dirs::document_dir)
+        .unwrap_or_else(|| {
+            dirs::data_local_dir()
+                .unwrap_or_else(|| std::path::PathBuf::from("."))
+                .join("com.sayitlocally.desktop")
+        })
+        .join("SayItLocally Exports")
+        .join(path)
+}
+
 #[tauri::command]
 pub fn save_text_export(payload: TextExportPayload) -> Result<Option<String>, String> {
-    let path = std::path::PathBuf::from(&payload.default_path);
+    let path = resolve_export_path(&payload.default_path);
     check_export_extension(&path, &["json", "csv", "txt", "md"])?;
     if let Some(parent) = path.parent() {
         let _ = fs::create_dir_all(parent);
@@ -58,7 +76,7 @@ pub fn save_text_export(payload: TextExportPayload) -> Result<Option<String>, St
 
 #[tauri::command]
 pub fn save_export_bundle(payload: ExportBundlePayload) -> Result<Option<String>, String> {
-    let path = std::path::PathBuf::from(&payload.default_path);
+    let path = resolve_export_path(&payload.default_path);
     check_export_extension(&path, &["zip"])?;
     if let Some(parent) = path.parent() {
         let _ = fs::create_dir_all(parent);
