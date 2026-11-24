@@ -156,7 +156,15 @@ async fn transcribe_samples(
             );
         }
         let text = transcribe_chunks(&model_id, lang, &accel, &gpu, &samples, &chunks)
-            .map_err(|e| diag::fail("local/asr", "transcribe", e))?;
+            .map_err(|e| {
+                // [自訂] SC-35：保留載入端的錯誤碼，不再包一層通用錯誤。
+                if e.starts_with("sayit_error:local_model_") {
+                    diag::log("local/asr", "transcribe FAILED", &e);
+                    e
+                } else {
+                    diag::fail("local/asr", "transcribe", e)
+                }
+            })?;
         let elapsed_ms = start.elapsed().as_millis() as u64;
         if text.trim().is_empty() {
             // VAD 认定有人声、模型却什么都没输出 —— 模型/量化档/加速器组合有问题的信号

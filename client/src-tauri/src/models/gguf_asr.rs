@@ -376,7 +376,8 @@ pub fn describe_devices() -> Vec<GgufDevice> {
         .collect()
 }
 
-/// [自訂] S88：僅供尚未進 catalog 的忽略測試使用。
+/// [自訂] S88 / SC-35：僅供忽略的候選架構探針使用，從未登錄的目錄取最大 GGUF。
+/// 正式載入由 `registry::verified_model_path` 驗證 catalog 指定的權重。
 #[cfg(test)]
 fn find_probe_gguf(dir: &Path) -> Result<PathBuf, String> {
     if !dir.exists() {
@@ -396,7 +397,6 @@ fn find_probe_gguf(dir: &Path) -> Result<PathBuf, String> {
         0 => Err("The model directory contains no .gguf file".into()),
         1 => Ok(hits.remove(0)),
         _ => {
-            // 多个量化档共存时取最大的（通常是精度最高的那个），并留日志。
             hits.sort_by_key(|p| std::fs::metadata(p).map(|m| m.len()).unwrap_or(0));
             let pick = hits.pop().unwrap();
             log::warn!(

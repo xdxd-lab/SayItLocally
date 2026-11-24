@@ -94,7 +94,7 @@ pub fn acquire_model_storage() -> Result<ModelStorageLease, String> {
 }
 
 /// 精确判断错误是否为 checksum 不匹配（Fail-Closed 设计）
-fn is_checksum_error(err_msg: &str) -> bool {
+pub(super) fn is_checksum_error(err_msg: &str) -> bool {
     err_msg.starts_with("sayit_error:download_checksum:")
 }
 
@@ -160,6 +160,129 @@ fn verify_temp_file_sha256(file_path: &Path, expected_sha256: &str) -> Result<()
         }
         Err(e) => Err(e),
     }
+}
+
+// [自訂] SC-36：不分大小寫的 APFS 替換檔案時可能保留舊的目錄項名稱。
+fn restore_catalog_filename(dest_path: &Path) -> Result<(), String> {
+    let invalid_path = || download_error("download_failed", "Missing catalog filename");
+    let expected = dest_path.file_name().ok_or_else(invalid_path)?;
+    let parent = dest_path.parent().ok_or_else(invalid_path)?;
+    let entries = std::fs::read_dir(parent)
+        .map_err(|e| download_io_error("Failed to read model directory", e))?;
+    let mut existing = None;
+    for entry in entries {
+        let entry = entry.map_err(|e| download_io_error("Failed to read model directory entry", e))?;
+        let name = entry.file_name();
+        if name == expected {
+            return Ok(());
+        }
+        if name.eq_ignore_ascii_case(expected) {
+            existing = Some(entry.path());
+        }
+    }
+    let existing = existing.ok_or_else(|| {
+        download_error("download_failed", "Could not find the verified model in its directory")
+    })?;
+
+    // 以獨立的同目錄暫存名稱中轉，避免覆寫續傳檔，也保留相對符號連結。
+    let scratch_name = format!(".sayit-model-{}.tmp", uuid::Uuid::new_v4());
+    let scratch = parent.join(&scratch_name);
+    std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&scratch)
+        .map_err(|e| download_io_error("Failed to reserve a model filename for renaming", e))?;
+    if let Err(e) = std::fs::rename(&existing, &scratch) {
+        let _ = std::fs::remove_file(&scratch);
+        return Err(download_io_error("Failed to stage verified model for renaming", e));
+    }
+    if let Err(e) = std::fs::rename(&scratch, dest_path) {
+        let error = download_io_error("Failed to apply the catalog filename", e);
+        if std::fs::rename(&scratch, &existing).is_err() {
+            return Err(format!("{error}. The verified file is still saved as {scratch_name}."));
+        }
+        return Err(error);
+    }
+    Ok(())
+}
+
+// [自訂] SC-35：所有完成路徑都核對暫存檔本身，通過後才以同目錄 rename 替換。
+fn finalize_download(
+    temp_path: &Path,
+    dest_path: &Path,
+    expected_size: u64,
+    expected_sha256: &str,
+    size_error_code: &str,
+) -> Result<(), String> {
+    let metadata = std::fs::symlink_metadata(temp_path)
+        .map_err(|e| download_io_error("Failed to inspect temporary download", e))?;
+    if !metadata.is_file() || metadata.len() != expected_size {
+        return Err(download_error(
+            size_error_code,
+            format!(
+                "Expected a temporary file of {} bytes, found {} bytes",
+                expected_size, metadata.len()
+            ),
+        ));
+    }
+    verify_temp_file_sha256(temp_path, expected_sha256)?;
+    std::fs::rename(temp_path, dest_path)
+        .map_err(|e| download_io_error("Failed to finalize downloaded file", e))?;
+    restore_catalog_filename(dest_path)
+}
+
+// [自訂] SC-36：大小與雜湊都相符時，直接校正檔名並沿用現有權重。
+fn reuse_verified_download(
+    dest_path: &Path,
+    expected_size: u64,
+    expected_sha256: &str,
+) -> Result<bool, String> {
+    let metadata = match std::fs::metadata(dest_path) {
+        Ok(metadata) => metadata,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(e) => return Err(download_io_error("Failed to read existing model metadata", e)),
+    };
+    if metadata.is_file() && metadata.len() == expected_size {
+        match verify_file_sha256(dest_path, expected_sha256) {
+            Ok(()) => {
+                restore_catalog_filename(dest_path)?;
+                return Ok(true);
+            }
+            Err(e) if is_checksum_error(&e) => {}
+            Err(e) => return Err(e),
+        }
+    }
+    log::warn!(
+        "Existing model file {:?} failed size or SHA-256 validation; redownloading",
+        dest_path.file_name().unwrap_or_default()
+    );
+    Ok(false)
+}
+
+// [自訂] SC-35：避免舊暫存檔透過連結指向既有權重，導致寫入暫存時改到原檔。
+fn check_download_artifact(path: &Path, existing_target: Option<&Path>) -> Result<(), String> {
+    let metadata = match std::fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(e) => return Err(download_io_error("Failed to inspect download artifact", e)),
+    };
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        if metadata.nlink() > 1 {
+            return Err(download_error(
+                "download_failed",
+                "Download artifact has multiple links",
+            ));
+        }
+    }
+    if !metadata.is_file() || existing_target.is_some_and(|target| target == path) {
+        return Err(download_error(
+            "download_failed",
+            "Download artifact is not a separate regular file",
+        ));
+    }
+    Ok(())
 }
 
 
@@ -862,7 +985,7 @@ async fn download_file_parallel(
     file_name: &str,
     url: &str,
     total_size: u64,
-    expected_sha256: Option<&str>,
+    expected_sha256: &str,
     strong_etag: Option<&str>,
     temp_path: &Path,
     dest_path: &Path,
@@ -874,7 +997,7 @@ async fn download_file_parallel(
     let mut state = load_or_create_parallel_state(
         temp_path,
         total_size,
-        expected_sha256,
+        Some(expected_sha256),
         url,
         strong_etag,
         &chunks,
@@ -1027,36 +1150,29 @@ async fn download_file_parallel(
     }
     drop(assembled);
 
-    let assembled_size = std::fs::metadata(temp_path)
-        .map_err(|error| download_io_error("Failed to inspect assembled file", error))?
-        .len();
-    if assembled_size != total_size {
-        cleanup_parallel_artifacts(temp_path, &state_path, &chunks)?;
-        return Err(download_error(
-            "download_parallel_verify_failed",
-            format!("Assembled file has size {}/{}", assembled_size, total_size),
-        ));
-    }
-    if let Some(expected_hash) = expected_sha256 {
-        if let Err(error) = verify_temp_file_sha256(temp_path, expected_hash) {
+    if let Err(error) = finalize_download(
+        temp_path,
+        dest_path,
+        total_size,
+        expected_sha256,
+        "download_parallel_verify_failed",
+    ) {
+        if should_fallback_to_single_stream(&error) {
             cleanup_parallel_artifacts_best_effort(temp_path, &state_path, &chunks);
-            emit_progress(
-                app,
-                model_id,
-                file_name,
-                assembled_size,
-                total_size,
-                "failed",
-                Some(&error),
-                file_index,
-                file_count,
-            );
-            return Err(error);
         }
+        emit_progress(
+            app,
+            model_id,
+            file_name,
+            total_size,
+            total_size,
+            "failed",
+            Some(&error),
+            file_index,
+            file_count,
+        );
+        return Err(error);
     }
-
-    std::fs::rename(temp_path, dest_path)
-        .map_err(|error| download_io_error("Failed to finalize downloaded file", error))?;
     cleanup_parallel_artifacts_best_effort(temp_path, &state_path, &chunks);
     emit_progress(
         app,
@@ -1120,36 +1236,6 @@ fn parse_unsatisfied_range_total(content_range: Option<&str>) -> Option<u64> {
         .ok()
 }
 
-#[derive(Debug, PartialEq, Eq)]
-enum ResumeDecision {
-    /// 完整文件已存在且校验通过，直接 finalize 入库
-    Finalize,
-    /// 文件损坏或超出预期大小，删除并从头开始
-    Restart,
-    /// 正常续传，携带起始偏移
-    Resume(u64),
-}
-
-/// 纯函数预检断点续传状态（覆盖 416 防范、EOF 完整性与异常处理）
-fn inspect_resume_state(
-    current_bytes: u64,
-    total_size: u64,
-    sha_verify_result: Option<Result<(), String>>,
-) -> Result<ResumeDecision, String> {
-    if total_size == 0 || current_bytes < total_size {
-        return Ok(ResumeDecision::Resume(current_bytes));
-    }
-    if current_bytes > total_size {
-        return Ok(ResumeDecision::Restart);
-    }
-
-    match sha_verify_result {
-        Some(Err(e)) if is_checksum_error(&e) => Ok(ResumeDecision::Restart),
-        Some(Err(e)) => Err(e),
-        Some(Ok(())) | None => Ok(ResumeDecision::Finalize),
-    }
-}
-
 async fn send_full_response(
     client: &reqwest::Client,
     url: &str,
@@ -1167,20 +1253,13 @@ async fn send_full_response(
     Ok(response)
 }
 
-/// 单流下载（用于小文件、不支持 Range 的服务端或并发协议失败时的 Fallback）
-async fn download_file_single_stream(
-    app: &AppHandle,
-    model_id: &str,
-    file_name: &str,
-    url: &str,
-    total_size: u64,
-    expected_sha256: Option<&str>,
-    strong_etag: Option<&str>,
+// [自訂] SC-35：完整斷點經驗證後直接替換；只有不完整的檔案需要續傳。
+fn prepare_stream_partial(
     temp_path: &Path,
     dest_path: &Path,
-    file_index: u32,
-    file_count: u32,
-) -> Result<(), String> {
+    total_size: u64,
+    expected_sha256: &str,
+) -> Result<Option<u64>, String> {
     let raw_initial = match std::fs::metadata(temp_path) {
         Ok(metadata) => metadata.len(),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => 0,
@@ -1192,33 +1271,55 @@ async fn download_file_single_stream(
         }
     };
 
-    let sha_result = if total_size > 0 && raw_initial == total_size {
-        expected_sha256.map(|hash| verify_file_sha256(temp_path, hash))
-    } else {
-        None
-    };
-    let downloaded_initial = match inspect_resume_state(raw_initial, total_size, sha_result)? {
-        ResumeDecision::Finalize => {
-            std::fs::rename(temp_path, dest_path)
-                .map_err(|error| download_io_error("Failed to finalize completed partial download", error))?;
-            emit_progress(
-                app,
-                model_id,
-                file_name,
+    match raw_initial.cmp(&total_size) {
+        std::cmp::Ordering::Less => return Ok(Some(raw_initial)),
+        std::cmp::Ordering::Greater => remove_file_if_exists(temp_path)?,
+        std::cmp::Ordering::Equal => {
+            match finalize_download(
+                temp_path,
+                dest_path,
                 total_size,
-                total_size,
-                "completed",
-                None,
-                file_index,
-                file_count,
-            );
-            return Ok(());
+                expected_sha256,
+                "download_source_mismatch",
+            ) {
+                Ok(()) => return Ok(None),
+                Err(error) if is_checksum_error(&error) => {}
+                Err(error) => return Err(error),
+            }
         }
-        ResumeDecision::Restart => {
-            remove_file_if_exists(temp_path)?;
-            0
-        }
-        ResumeDecision::Resume(offset) => offset,
+    }
+    Ok(Some(0))
+}
+
+/// 单流下载（用于小文件、不支持 Range 的服务端或并发协议失败时的 Fallback）
+async fn download_file_single_stream(
+    app: &AppHandle,
+    model_id: &str,
+    file_name: &str,
+    url: &str,
+    total_size: u64,
+    expected_sha256: &str,
+    strong_etag: Option<&str>,
+    temp_path: &Path,
+    dest_path: &Path,
+    file_index: u32,
+    file_count: u32,
+) -> Result<(), String> {
+    let Some(downloaded_initial) =
+        prepare_stream_partial(temp_path, dest_path, total_size, expected_sha256)?
+    else {
+        emit_progress(
+            app,
+            model_id,
+            file_name,
+            total_size,
+            total_size,
+            "completed",
+            None,
+            file_index,
+            file_count,
+        );
+        return Ok(());
     };
 
     let client = build_http_client()?;
@@ -1270,50 +1371,18 @@ async fn download_file_single_stream(
                         .and_then(|value| value.to_str().ok()),
                 );
                 drop(response);
-                if let Some(remote_total) = remote_total {
-                    if total_size > 0 && remote_total != total_size {
-                        return Err(download_error(
-                            "download_source_mismatch",
-                            format!(
-                                "Catalog size is {}, but the server reports {} bytes",
-                                total_size, remote_total
-                            ),
-                        ));
-                    }
-                    if remote_total == downloaded_initial {
-                        let verified = match expected_sha256 {
-                            Some(hash) => verify_file_sha256(temp_path, hash),
-                            None => Ok(()),
-                        };
-                        match verified {
-                            Ok(()) => {
-                                std::fs::rename(temp_path, dest_path).map_err(|error| {
-                                    download_io_error("Failed to finalize complete partial download", error)
-                                })?;
-                                emit_progress(
-                                    app,
-                                    model_id,
-                                    file_name,
-                                    remote_total,
-                                    remote_total,
-                                    "completed",
-                                    None,
-                                    file_index,
-                                    file_count,
-                                );
-                                return Ok(());
-                            }
-                            Err(error) if is_checksum_error(&error) => {
-                                remove_file_if_exists(temp_path)?;
-                            }
-                            Err(error) => return Err(error),
-                        }
-                    } else {
-                        remove_file_if_exists(temp_path)?;
-                    }
-                } else {
-                    remove_file_if_exists(temp_path)?;
+                if let Some(remote_total) = remote_total.filter(|&size| size != total_size) {
+                    return Err(download_error(
+                        "download_source_mismatch",
+                        format!(
+                            "Catalog size is {}, but the server reports {} bytes",
+                            total_size, remote_total
+                        ),
+                    ));
                 }
+                // [自訂] SC-35：發出 Range 時 offset 必定小於 catalog 大小。
+                // 416 無法證明暫存檔已完整，改以全量請求重試。
+                remove_file_if_exists(temp_path)?;
                 (send_full_response(&client, url).await?, 0, false)
             }
             status => {
@@ -1339,7 +1408,7 @@ async fn download_file_single_stream(
     };
 
     let content_len = response.content_length().unwrap_or(0);
-    if !is_resume && total_size > 0 && content_len > 0 && content_len != total_size {
+    if !is_resume && content_len > 0 && content_len != total_size {
         return Err(download_error(
             "download_source_mismatch",
             format!(
@@ -1348,11 +1417,6 @@ async fn download_file_single_stream(
             ),
         ));
     }
-    let final_total = if total_size > 0 {
-        total_size
-    } else {
-        downloaded + content_len
-    };
     let mut file = if is_resume {
         std::fs::OpenOptions::new()
             .create(true)
@@ -1374,10 +1438,10 @@ async fn download_file_single_stream(
         let bytes = item.map_err(|error| {
             download_error("download_network", format!("Download interrupted: {}", error))
         })?;
-        if final_total > 0 && downloaded + bytes.len() as u64 > final_total {
+        if downloaded + bytes.len() as u64 > total_size {
             return Err(download_error(
                 "download_source_mismatch",
-                format!("Server sent more than the expected {} bytes", final_total),
+                format!("Server sent more than the expected {} bytes", total_size),
             ));
         }
         file.write_all(&bytes)
@@ -1389,7 +1453,7 @@ async fn download_file_single_stream(
                 model_id,
                 file_name,
                 downloaded,
-                final_total,
+                total_size,
                 "downloading",
                 None,
                 file_index,
@@ -1402,12 +1466,12 @@ async fn download_file_single_stream(
         .map_err(|error| download_io_error("Failed to flush partial download", error))?;
     drop(file);
 
-    if final_total > 0 && downloaded != final_total {
+    if downloaded != total_size {
         let error = download_error(
             "download_failed",
             format!(
                 "Single-stream download incomplete for {}: received {}/{} bytes",
-                file_name, downloaded, final_total
+                file_name, downloaded, total_size
             ),
         );
         emit_progress(
@@ -1415,7 +1479,7 @@ async fn download_file_single_stream(
             model_id,
             file_name,
             downloaded,
-            final_total,
+            total_size,
             "failed",
             Some(&error),
             file_index,
@@ -1423,30 +1487,32 @@ async fn download_file_single_stream(
         );
         return Err(error);
     }
-    if let Some(expected_hash) = expected_sha256 {
-        if let Err(error) = verify_temp_file_sha256(temp_path, expected_hash) {
-            emit_progress(
-                app,
-                model_id,
-                file_name,
-                downloaded,
-                final_total,
-                "failed",
-                Some(&error),
-                file_index,
-                file_count,
-            );
-            return Err(error);
-        }
+    if let Err(error) = finalize_download(
+        temp_path,
+        dest_path,
+        total_size,
+        expected_sha256,
+        "download_source_mismatch",
+    ) {
+        emit_progress(
+            app,
+            model_id,
+            file_name,
+            downloaded,
+            total_size,
+            "failed",
+            Some(&error),
+            file_index,
+            file_count,
+        );
+        return Err(error);
     }
-    std::fs::rename(temp_path, dest_path)
-        .map_err(|error| download_io_error("Failed to finalize downloaded file", error))?;
     emit_progress(
         app,
         model_id,
         file_name,
         downloaded,
-        final_total,
+        total_size,
         "completed",
         None,
         file_index,
@@ -1467,6 +1533,10 @@ pub async fn download_file(
     file_index: u32,
     file_count: u32,
 ) -> Result<(), String> {
+    // [自訂] SC-35：下載與續傳只接受 catalog 提供的大小與 SHA-256。
+    let expected_sha256 = expected_sha256
+        .filter(|_| expected_size > 0)
+        .ok_or_else(|| download_error("download_failed", "Missing catalog size or SHA-256"))?;
     let dest_path = dest_dir.join(file_name);
     let stream_temp = dest_dir.join(format!("{}.part", file_name));
     let parallel_temp = dest_dir.join(format!("{}.par.part", file_name));
@@ -1478,62 +1548,45 @@ pub async fn download_file(
             .map_err(|error| download_io_error("Failed to create model subdirectory", error))?;
     }
 
-    match std::fs::metadata(&dest_path) {
-        Ok(metadata) => {
-            let size = metadata.len();
-            let size_ok = size > 0 && (expected_size == 0 || size == expected_size);
-            let hash_ok = if size_ok {
-                match expected_sha256 {
-                    Some(hash) => match verify_file_sha256(&dest_path, hash) {
-                        Ok(()) => true,
-                        Err(error) if is_checksum_error(&error) => false,
-                        Err(error) => return Err(error),
-                    },
-                    None => true,
-                }
-            } else {
-                false
-            };
-            if size_ok && hash_ok {
-                if let Err(error) = remove_file_if_exists(&stream_temp) {
-                    log::warn!("Failed to remove stale single-stream partial: {}", error);
-                }
-                if expected_size > 0 {
-                    let chunks = calculate_chunks(expected_size);
-                    cleanup_parallel_artifacts_best_effort(
-                        &parallel_temp,
-                        &parallel_state_path(&parallel_temp),
-                        &chunks,
-                    );
-                }
-                emit_progress(
-                    &app,
-                    model_id,
-                    file_name,
-                    size,
-                    size,
-                    "completed",
-                    None,
-                    file_index,
-                    file_count,
-                );
-                return Ok(());
-            }
-            log::warn!(
-                "Existing model file {} failed size or SHA-256 validation; redownloading",
-                file_name
-            );
-            remove_file_if_exists(&dest_path)?;
-        }
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-        Err(error) => {
-            return Err(download_io_error(
-                "Failed to read existing model metadata",
-                error,
-            ));
-        }
+    // [自訂] SC-35：手動放入的模型可能是符號連結，也要保留它指向的檔案。
+    let existing_target = std::fs::canonicalize(&dest_path).ok();
+    let artifact_dir = std::fs::canonicalize(dest_path.parent().unwrap_or(dest_dir))
+        .map_err(|e| download_io_error("Failed to resolve model directory", e))?;
+    let check_artifact = |path: &Path| {
+        let canonical_path = artifact_dir.join(path.file_name().unwrap_or_default());
+        check_download_artifact(&canonical_path, existing_target.as_deref())
+    };
+    check_artifact(&stream_temp)?;
+    check_artifact(&parallel_temp)?;
+    check_artifact(&parallel_state_path(&parallel_temp))?;
+    for chunk in calculate_chunks(expected_size) {
+        check_artifact(&parallel_chunk_path(&parallel_temp, chunk.index))?;
     }
 
+    if reuse_verified_download(&dest_path, expected_size, expected_sha256)? {
+        if let Err(error) = remove_file_if_exists(&stream_temp) {
+            log::warn!("Failed to remove stale single-stream partial: {}", error);
+        }
+        cleanup_parallel_artifacts_best_effort(
+            &parallel_temp,
+            &parallel_state_path(&parallel_temp),
+            &calculate_chunks(expected_size),
+        );
+        emit_progress(
+            &app,
+            model_id,
+            file_name,
+            expected_size,
+            expected_size,
+            "completed",
+            None,
+            file_index,
+            file_count,
+        );
+        return Ok(());
+    }
+
+    // [自訂] SC-35：舊檔保留至新檔通過驗證。
     let client = build_http_client()?;
     let probe = probe_url(&client, url).await;
     let total_size = match resolve_download_size(expected_size, probe.size) {
@@ -1559,9 +1612,7 @@ pub async fn download_file(
         .map(|metadata| metadata.len() > 0)
         .unwrap_or(false);
     let parallel_state_exists = std::fs::metadata(parallel_state_path(&parallel_temp)).is_ok();
-    let can_parallel = probe.supports_range
-        && total_size >= 16 * 1024 * 1024
-        && (expected_sha256.is_some() || probe.strong_etag.is_some());
+    let can_parallel = probe.supports_range && total_size >= 16 * 1024 * 1024;
 
     if can_parallel && (!stream_partial_exists || parallel_state_exists) {
         let result = download_file_parallel(
@@ -2146,29 +2197,142 @@ mod tests {
         std::fs::remove_dir(test_dir).unwrap();
     }
 
+    // [自訂] SC-35：用與下載、續傳相同的落盤路徑驗證替換與失敗保留。
     #[test]
-    fn test_inspect_resume_state() {
-        let ok_res = Ok(());
-        let hash_err = Err("sayit_error:download_checksum: bad hash".to_string());
-        let io_err = Err("sayit_error:download_permission: Access denied".to_string());
+    fn prepares_stream_partial_without_touching_existing_weight_until_verified() {
+        use std::fs;
+        let dir = std::env::temp_dir().join(format!("sayit-download-test-{}", uuid::Uuid::new_v4()));
+        fs::create_dir(&dir).unwrap();
+        let dest = dir.join("weight.gguf");
+        let partial = dir.join("weight.gguf.part");
+        let sha = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+        let prepare = || prepare_stream_partial(&partial, &dest, 3, sha);
+        fs::write(&dest, b"original").unwrap();
 
-        // 1. 完整文件且 SHA-256 匹配（或无预期 hash） -> Finalize
-        assert_eq!(inspect_resume_state(1000, 1000, Some(ok_res)).unwrap(), ResumeDecision::Finalize);
-        assert_eq!(inspect_resume_state(1000, 1000, None).unwrap(), ResumeDecision::Finalize);
+        assert_eq!(prepare().unwrap(), Some(0));
+        fs::write(&partial, b"ab").unwrap();
+        assert_eq!(prepare().unwrap(), Some(2));
+        fs::write(&partial, b"abcd").unwrap();
+        assert_eq!(prepare().unwrap(), Some(0));
+        assert!(!partial.exists());
+        fs::write(&partial, b"xyz").unwrap();
+        assert_eq!(prepare().unwrap(), Some(0));
+        assert!(!partial.exists());
+        assert_eq!(fs::read(&dest).unwrap(), b"original");
 
-        // 2. 完整文件但明确 SHA-256 不匹配 -> Restart
-        assert_eq!(inspect_resume_state(1000, 1000, Some(hash_err)).unwrap(), ResumeDecision::Restart);
+        fs::write(&partial, b"abc").unwrap();
+        assert_eq!(prepare().unwrap(), None);
+        assert_eq!(fs::read(&dest).unwrap(), b"abc");
+        fs::remove_dir_all(dir).unwrap();
+    }
 
-        // 3. 完整文件但由于 I/O 错误无法校验 -> 原样返回，生产保留文件现场
-        assert_eq!(inspect_resume_state(1000, 1000, Some(io_err)).unwrap_err(), "sayit_error:download_permission: Access denied");
+    #[test]
+    fn verified_download_replaces_existing_file_only_after_validation() {
+        use std::fs;
+        let dir = std::env::temp_dir().join(format!("sayit-download-test-{}", uuid::Uuid::new_v4()));
+        fs::create_dir(&dir).unwrap();
+        let dest = dir.join("weight.gguf");
+        let partial = dir.join("weight.gguf.part");
+        let sha = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+        let finalize = || finalize_download(&partial, &dest, 3, sha, "download_source_mismatch");
+        fs::write(&dest, b"original").unwrap();
 
-        // 4. 文件尺寸超出 total_size -> Restart
-        assert_eq!(inspect_resume_state(1200, 1000, None).unwrap(), ResumeDecision::Restart);
+        assert!(finalize().is_err()); // 沒有檔案可完成。
+        assert_eq!(fs::read(&dest).unwrap(), b"original");
 
-        // 5. 正常断点续传（部分文件） -> Resume(downloaded)
-        assert_eq!(inspect_resume_state(500, 1000, None).unwrap(), ResumeDecision::Resume(500));
+        fs::write(&partial, b"ab").unwrap();
+        assert!(finalize().unwrap_err().starts_with("sayit_error:download_source_mismatch:"));
+        assert_eq!(fs::read(&dest).unwrap(), b"original");
 
-        // 6. 首次下载（无已有文件） -> Resume(0)
-        assert_eq!(inspect_resume_state(0, 1000, None).unwrap(), ResumeDecision::Resume(0));
+        fs::write(&partial, b"xyz").unwrap();
+        assert!(is_checksum_error(&finalize().unwrap_err()));
+        assert!(!partial.exists());
+        assert_eq!(fs::read(&dest).unwrap(), b"original");
+
+        fs::write(&partial, b"abc").unwrap();
+        finalize().unwrap();
+        assert!(!partial.exists());
+        assert_eq!(fs::read(&dest).unwrap(), b"abc");
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    // [自訂] SC-36：目錄項必須逐字符合 catalog；原路徑能開啟檔案仍不足。
+    #[test]
+    fn finalized_download_repairs_existing_filename_case() {
+        use std::fs;
+        let dir = std::env::temp_dir().join(format!("sayit-download-test-{}", uuid::Uuid::new_v4()));
+        fs::create_dir(&dir).unwrap();
+        let dest = dir.join("weight.gguf");
+        fs::write(dir.join("weight.GGUF"), b"old").unwrap();
+        if !dest.exists() {
+            fs::remove_dir_all(dir).unwrap();
+            return;
+        }
+        let partial = dir.join("weight.gguf.part");
+        fs::write(&partial, b"abc").unwrap();
+        finalize_download(
+            &partial,
+            &dest,
+            3,
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+            "download_source_mismatch",
+        ).unwrap();
+
+        let names: Vec<_> = fs::read_dir(&dir).unwrap()
+            .map(|entry| entry.unwrap().file_name()).collect();
+        assert_eq!(names, [std::ffi::OsString::from("weight.gguf")]);
+        assert_eq!(fs::read(&dest).unwrap(), b"abc");
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn reusing_verified_weight_repairs_filename_case_without_downloading() {
+        use std::fs;
+        let dir = std::env::temp_dir().join(format!("sayit-download-test-{}", uuid::Uuid::new_v4()));
+        fs::create_dir(&dir).unwrap();
+        let dest = dir.join("weight.gguf");
+        fs::write(dir.join("weight.GGUF"), b"abc").unwrap();
+        if !dest.exists() {
+            fs::remove_dir_all(dir).unwrap();
+            return;
+        }
+        assert!(reuse_verified_download(
+            &dest,
+            3,
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+        ).unwrap());
+
+        let names: Vec<_> = fs::read_dir(&dir).unwrap()
+            .map(|entry| entry.unwrap().file_name()).collect();
+        assert_eq!(names, [std::ffi::OsString::from("weight.gguf")]);
+        assert_eq!(fs::read(&dest).unwrap(), b"abc");
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_download_artifacts_linked_to_existing_weight() {
+        use std::fs;
+        use std::os::unix::fs::symlink;
+
+        let dir = std::env::temp_dir().join(format!("sayit-download-test-{}", uuid::Uuid::new_v4()));
+        fs::create_dir(&dir).unwrap();
+        let dest = dir.join("weight.gguf");
+        let partial = dir.join("weight.gguf.part");
+        fs::write(&dest, b"original").unwrap();
+
+        symlink(&dest, &partial).unwrap();
+        assert!(check_download_artifact(&partial, Some(&dest)).is_err());
+        fs::remove_file(&partial).unwrap();
+
+        fs::hard_link(&dest, &partial).unwrap();
+        assert!(check_download_artifact(&partial, Some(&dest)).is_err());
+        fs::remove_file(&partial).unwrap();
+
+        fs::rename(&dest, &partial).unwrap();
+        symlink(&partial, &dest).unwrap();
+        assert!(check_download_artifact(&partial, Some(&partial)).is_err());
+        assert_eq!(fs::read(&dest).unwrap(), b"original");
+        fs::remove_dir_all(dir).unwrap();
     }
 }

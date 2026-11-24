@@ -10,7 +10,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { getLocale, t } from '@/i18n'
 import { useT } from '@/i18n/useT'
 import { historyFailureReasonDisplay } from '@/i18n/displayNames'
-import { errorDetailText } from '@/lib/errorMessages'
+import { describeLocalModelError, errorDetailText } from '@/lib/errorMessages'
 import { addRuntimeEvent } from '@/services/debugLog'
 import { useRecordingPlayback } from './useRecordingPlayback'
 import { AudioProgressBar } from './AudioProgressBar'
@@ -154,7 +154,9 @@ function HistoryItem({
       // 原来没有 catch：失败只在日志里留一行 Unhandled promise rejection，按钮转完就没下文，
       // 用户以为点了没反应（2026-10-19 本地模型把显卡跑挂那次，连着点了十来次）。
       const reason = errorDetailText(error)
-      setReprocessError(reason)
+      // [自訂] SC-35：本機模型錯誤使用與聽寫及語音引擎測試相同的提示。
+      const modelError = describeLocalModelError(error)
+      setReprocessError(modelError ? `${modelError.message} ${reason}` : reason)
       addRuntimeEvent('warn', 'history', 'Transcribe again failed', { recordId: record.id, error: reason })
     } finally {
       setReprocessing(false)
