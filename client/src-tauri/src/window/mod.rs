@@ -870,6 +870,10 @@ impl WindowState {
             state.record_page_load(payload.event(), payload.url().as_str());
         });
 
+        // [自訂] L-80：錄音或辨識中的懸浮窗不可取得鍵盤焦點。
+        #[cfg(target_os = "macos")]
+        let builder = builder.focusable(layout.is_interactive());
+
         match builder.build() {
             Ok(overlay) => {
                 let position_error = self.apply_native_layout(app, &overlay, &layout);
@@ -1315,6 +1319,8 @@ fn overlay_window_snapshot(app: &AppHandle) -> Value {
 }
 
 fn set_overlay_interactivity(overlay: &tauri::WebviewWindow, interactive: bool) {
+    #[cfg(target_os = "macos")]
+    let _ = overlay.set_focusable(interactive);
     let _ = overlay.set_ignore_cursor_events(!interactive);
 }
 

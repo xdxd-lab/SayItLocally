@@ -83,6 +83,22 @@ pub fn frontmost_app() -> Option<RunningApp> {
     })
 }
 
+// [自訂] L-80：貼上前只拿鍵盤前景 PID，不讀 App 名稱、路徑或視窗內容。
+pub fn frontmost_pid() -> Option<i32> {
+    autoreleasepool(|_| unsafe {
+        let workspace: *mut AnyObject = msg_send![class!(NSWorkspace), sharedWorkspace];
+        if workspace.is_null() {
+            return None;
+        }
+        let app: *mut AnyObject = msg_send![workspace, frontmostApplication];
+        if app.is_null() {
+            return None;
+        }
+        let pid: i32 = msg_send![app, processIdentifier];
+        (pid > 0).then_some(pid)
+    })
+}
+
 /// 按 pid 取应用信息。
 pub fn running_app_for_pid(pid: i32) -> Option<RunningApp> {
     if pid <= 0 {
@@ -114,12 +130,12 @@ const NS_PASTEBOARD_CONTENTS_CURRENT_HOST_ONLY: usize = 1 << 0;
 /// [自訂] S33：清空剪貼簿並標記「只限本機」，取代 clearContents／declareTypes。
 /// `prepareForNewContentsWithOptions:` 是 macOS 10.12+；更舊的系統退回 clearContents。
 /// 注意：之後不能再呼叫 declareTypes:owner:（它會重新清空並丟掉這個選項）。
-unsafe fn prepare_current_host_only(pb: *mut AnyObject) {
+unsafe fn prepare_current_host_only(pb: *mut AnyObject) -> isize {
     let responds: bool = msg_send![pb, respondsToSelector: sel!(prepareForNewContentsWithOptions:)];
     if responds {
-        let _: isize = msg_send![pb, prepareForNewContentsWithOptions: NS_PASTEBOARD_CONTENTS_CURRENT_HOST_ONLY];
+        msg_send![pb, prepareForNewContentsWithOptions: NS_PASTEBOARD_CONTENTS_CURRENT_HOST_ONLY]
     } else {
-        let _: isize = msg_send![pb, clearContents];
+        msg_send![pb, clearContents]
     }
 }
 
@@ -146,45 +162,53 @@ pub fn pasteboard_get_text() -> Option<String> {
     })
 }
 
-/// 写入纯文本。`transient` 为真时附带 TransientType 标记，不进剪贴板管理器历史。
-/// 返回写入后的 changeCount。
-pub fn pasteboard_set_text(text: &str, transient: bool) -> Result<isize, String> {
+// [自訂] L-80：寫入失敗時保留取得所有權時的計數，只還原本程式仍持有的剪貼簿。
+pub enum PasteboardWriteError {
+    Changed,
+    Failed { detail: &'static str, written_count: Option<isize> },
+}
+
+pub fn pasteboard_set_text(
+    text: &str,
+    transient: bool,
+    expected_count: Option<isize>,
+) -> Result<isize, PasteboardWriteError> {
+    use PasteboardWriteError::{Changed, Failed};
     autoreleasepool(|_| unsafe {
         let pb = general_pasteboard();
         if pb.is_null() {
-            return Err("step=generalPasteboard err=null".to_string());
+            return Err(Failed { detail: "step=generalPasteboard err=null", written_count: None });
         }
         let string_type = NSString::from_str(PASTEBOARD_TYPE_STRING);
-        let transient_type = NSString::from_str(PASTEBOARD_TYPE_TRANSIENT);
-        // [自訂] S33：原本用 declareTypes:owner:（會清空剪貼簿、無法帶「只限本機」選項）。
-        // 改為 prepareForNewContentsWithOptions(CurrentHostOnly) 後，用 NSPasteboardItem + writeObjects 寫入，
-        // 與 pasteboard_restore 相同寫法。
-        // let types = if transient {
-        //     NSArray::from_retained_slice(&[string_type.clone(), transient_type.clone()])
-        // } else {
-        //     NSArray::from_retained_slice(&[string_type.clone()])
-        // };
-        // let _: isize = msg_send![pb, declareTypes: &*types, owner: std::ptr::null_mut::<AnyObject>()];
-        prepare_current_host_only(pb);
         let item: Option<Retained<AnyObject>> = msg_send![class!(NSPasteboardItem), new];
         let Some(item) = item else {
-            return Err("step=NSPasteboardItem err=null".to_string());
+            return Err(Failed { detail: "step=NSPasteboardItem err=null", written_count: None });
         };
         let value = NSString::from_str(text);
         let ok: bool = msg_send![&*item, setString: &*value, forType: &*string_type];
         if !ok {
-            return Err("step=setString err=rejected".to_string());
+            return Err(Failed { detail: "step=setString err=rejected", written_count: None });
         }
         if transient {
+            let transient_type = NSString::from_str(PASTEBOARD_TYPE_TRANSIENT);
             let empty = NSData::with_bytes(&[]);
-            let _: bool = msg_send![&*item, setData: &*empty, forType: &*transient_type];
+            let ok: bool = msg_send![&*item, setData: &*empty, forType: &*transient_type];
+            if !ok {
+                return Err(Failed { detail: "step=setTransient err=rejected", written_count: None });
+            }
         }
         let array = NSArray::from_retained_slice(&[item]);
+        let count: isize = msg_send![pb, changeCount];
+        if expected_count.is_some_and(|expected| expected != count) {
+            return Err(Changed);
+        }
+
+        let written_count = prepare_current_host_only(pb);
         let written: bool = msg_send![pb, writeObjects: &*array];
         if !written {
-            return Err("step=writeObjects err=rejected".to_string());
+            return Err(Failed { detail: "step=writeObjects err=rejected", written_count: Some(written_count) });
         }
-        Ok(msg_send![pb, changeCount])
+        Ok(written_count)
     })
 }
 
@@ -223,7 +247,7 @@ unsafe fn nsarray_get(array: *mut AnyObject, index: usize) -> *mut AnyObject {
     msg_send![array, objectAtIndex: index]
 }
 
-/// 给剪贴板拍快照。超时间预算或超字节上限返回 None（调用方退回只还原文字）；
+/// 给剪贴板拍快照。超时、超出字节上限或有格式无法读取时返回 None。
 /// 剪贴板为空时返回空快照。
 ///
 /// 预算的理由与 Windows 侧相同：有些程序是「延迟提供」数据，读的那一刻才现场生成，
@@ -247,14 +271,14 @@ pub fn pasteboard_snapshot(budget: Duration, max_bytes: usize) -> Option<Pastebo
                     return None;
                 }
                 let ty = nsarray_get(types, j);
-                let Some(type_name) = nsstring_to_string(ty) else { continue };
+                let type_name = nsstring_to_string(ty)?;
                 // 我们自己的标记不必还原
                 if type_name == PASTEBOARD_TYPE_TRANSIENT {
                     continue;
                 }
                 let data: *mut AnyObject = msg_send![item, dataForType: ty];
                 if data.is_null() {
-                    continue;
+                    return None;
                 }
                 let len: usize = msg_send![data, length];
                 total = total.saturating_add(len);
@@ -262,7 +286,10 @@ pub fn pasteboard_snapshot(budget: Duration, max_bytes: usize) -> Option<Pastebo
                     return None;
                 }
                 let bytes: *const c_void = msg_send![data, bytes];
-                let copy = if len == 0 || bytes.is_null() {
+                if len > 0 && bytes.is_null() {
+                    return None;
+                }
+                let copy = if len == 0 {
                     Vec::new()
                 } else {
                     std::slice::from_raw_parts(bytes as *const u8, len).to_vec()
@@ -282,38 +309,42 @@ pub fn pasteboard_snapshot(budget: Duration, max_bytes: usize) -> Option<Pastebo
 
 /// 把快照写回剪贴板。`transient` 为真时给第一个 item 加 TransientType 标记，
 /// 免得剪贴板管理器把「还原」再记成一条新历史。
-pub fn pasteboard_restore(snapshot: &PasteboardSnapshot, transient: bool) -> bool {
+pub fn pasteboard_restore(snapshot: &PasteboardSnapshot, transient: bool, expected_count: isize) -> bool {
     autoreleasepool(|_| unsafe {
         let pb = general_pasteboard();
         if pb.is_null() {
             return false;
         }
-        // [自訂] S33：還原也標記「只限本機」（原為 clearContents）
-        prepare_current_host_only(pb);
-        if snapshot.items.is_empty() {
-            return true;
-        }
         let transient_type = NSString::from_str(PASTEBOARD_TYPE_TRANSIENT);
         let mut new_items: Vec<Retained<AnyObject>> = Vec::with_capacity(snapshot.items.len());
         for (index, entry) in snapshot.items.iter().enumerate() {
             let item: Option<Retained<AnyObject>> = msg_send![class!(NSPasteboardItem), new];
-            let Some(item) = item else { continue };
+            let Some(item) = item else { return false };
             for (type_name, bytes) in entry {
                 let ty = NSString::from_str(type_name);
                 let data = NSData::with_bytes(bytes);
-                let _: bool = msg_send![&*item, setData: &*data, forType: &*ty];
+                let ok: bool = msg_send![&*item, setData: &*data, forType: &*ty];
+                if !ok {
+                    return false;
+                }
             }
             if transient && index == 0 {
                 let empty = NSData::with_bytes(&[]);
-                let _: bool = msg_send![&*item, setData: &*empty, forType: &*transient_type];
+                let ok: bool = msg_send![&*item, setData: &*empty, forType: &*transient_type];
+                if !ok {
+                    return false;
+                }
             }
             new_items.push(item);
         }
-        if new_items.is_empty() {
+        let array = NSArray::from_retained_slice(&new_items);
+        let count: isize = msg_send![pb, changeCount];
+        if count != expected_count {
             return false;
         }
-        let array = NSArray::from_retained_slice(&new_items);
-        msg_send![pb, writeObjects: &*array]
+        // [自訂] S33：還原也標記「只限本機」。先備妥所有格式，最後才清除與寫入。
+        prepare_current_host_only(pb);
+        new_items.is_empty() || msg_send![pb, writeObjects: &*array]
     })
 }
 

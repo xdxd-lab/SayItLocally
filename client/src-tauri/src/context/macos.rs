@@ -8,7 +8,7 @@
 //! - `hasCaret`：焦点元素有没有 AXSelectedTextRange
 
 use super::{sanitize_uia_text, tail_chars, text_diag, AppContext, MonitorBounds, TextContext};
-use crate::platform::macos::appkit;
+use crate::platform::macos::{appkit, focus};
 use crate::platform::macos::ax::{self, AxElement};
 use crate::platform::macos::ffi::CFRange;
 
@@ -19,6 +19,20 @@ const SELECTED_TEXT_LIMIT: usize = 6000;
 const VALUE_FALLBACK_LIMIT: usize = 200_000;
 
 pub fn capture_context_with_text(reason: &str, include_text_context: bool) -> AppContext {
+    capture_context(reason, include_text_context, None)
+}
+
+pub(super) fn capture_recording_with_focus(include_text_context: bool) -> (AppContext, focus::Snapshot<AxElement>) {
+    let mut snapshot = focus::Snapshot::default();
+    let context = capture_context("recording_start", include_text_context, Some(&mut snapshot));
+    (context, snapshot)
+}
+
+fn capture_context(
+    reason: &str,
+    include_text_context: bool,
+    mut snapshot: Option<&mut focus::Snapshot<AxElement>>,
+) -> AppContext {
     let mut ctx = AppContext {
         reason: reason.to_string(),
         timestamp: chrono::Utc::now().timestamp_millis(),
@@ -37,6 +51,9 @@ pub fn capture_context_with_text(reason: &str, include_text_context: bool) -> Ap
         give_up(&mut ctx, "no_foreground");
         return ctx;
     };
+    if let Some(target) = &mut snapshot {
+        target.pid = (app.pid > 0).then_some(app.pid);
+    }
     ctx.hwnd = app.pid.to_string();
     ctx.pid = app.pid.max(0) as u32;
     ctx.process_name = app.executable_name();
@@ -63,12 +80,22 @@ pub fn capture_context_with_text(reason: &str, include_text_context: bool) -> Ap
         let _ = app_element.set_bool("AXManualAccessibility", true);
     }
 
-    if let Some(window) = app_element.attr_element("AXFocusedWindow") {
+    let (window, focused) = if snapshot.is_some() {
+        // [自訂] L-80：在讀視窗標題及其他屬性前，先取這次錄音的目標參照。
+        let target = focus::keyboard_target(app.pid, &app_element);
+        (target.window, target.element)
+    } else {
+        (app_element.attr_element("AXFocusedWindow"), app_element.attr_element("AXFocusedUIElement"))
+    };
+    if let Some(window) = &window {
         window.set_timeout(ax::DEFAULT_TIMEOUT_SECS);
         ctx.window_title = window.attr_string("AXTitle").unwrap_or_default();
     }
+    if let Some(target) = &mut snapshot {
+        target.window = window;
+    }
 
-    let Some(focused) = app_element.attr_element("AXFocusedUIElement") else {
+    let Some(focused) = focused else {
         give_up(&mut ctx, "no_focused_element");
         return ctx;
     };
@@ -107,6 +134,9 @@ pub fn capture_context_with_text(reason: &str, include_text_context: bool) -> Ap
             ctx.text_context = text;
             ctx.text_context_diag = Some(text_diag(result, depth, text_started));
         }
+    }
+    if let Some(target) = snapshot {
+        target.element = Some(focused);
     }
     ctx
 }

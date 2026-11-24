@@ -31,6 +31,11 @@ impl AxElement {
         self.0.as_ptr()
     }
 
+    // [自訂] L-80：同一個 AX 元件可有不同的 CF 參照。
+    pub fn equals(&self, other: &Self) -> bool {
+        unsafe { CFEqual(self.as_ptr(), other.as_ptr()) != 0 }
+    }
+
     pub fn set_timeout(&self, secs: f32) {
         unsafe {
             let _ = AXUIElementSetMessagingTimeout(self.as_ptr(), secs);

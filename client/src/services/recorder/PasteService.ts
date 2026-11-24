@@ -9,6 +9,7 @@ export interface ProbeResult {
   pid?: number
   tid?: number
   focusHwnd?: string
+  focusToken?: string // [自訂] L-80
   caretHwnd?: string
   caret?: number
   hasCaret?: boolean
@@ -61,6 +62,7 @@ export class PasteService {
         probe?.hwnd,
         probe?.focusHwnd,
         restoreClipboard,
+        probe?.focusToken,
       )
       if (!result) return { ok: false, reason: 'no_result' }
       return result as PasteResult

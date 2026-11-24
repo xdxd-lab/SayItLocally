@@ -144,14 +144,14 @@ export function setCardHotkeys(actions: CardHotkeyAction[], token = 0) {
 
 // ─── Paste / Context ───
 
-export function pasteText(text: string, hwnd?: string, focusHwnd?: string, restoreClipboard?: boolean) {
+export function pasteText(text: string, hwnd?: string, focusHwnd?: string, restoreClipboard?: boolean, focusToken?: string) {
   return invoke<{
     ok: boolean
     strategy?: string
     reason?: string
     detail?: string
     attempts?: Array<{ strategy: string; ok: boolean; reason?: string; detail?: string }>
-  }>('paste_text', { text, hwnd: hwnd || null, focusHwnd: focusHwnd || null, restoreClipboard: restoreClipboard ?? false })
+  }>('paste_text', { text, hwnd: hwnd || null, focusHwnd: focusHwnd || null, restoreClipboard: restoreClipboard ?? false, focusToken: focusToken ?? null })
 }
 
 export function getProbeResult() {
@@ -164,6 +164,11 @@ export function getRecordingContext(includeTextContext = false) {
     appContext: Record<string, unknown>
     probe: Record<string, unknown>
   }>('get_recording_context', { includeTextContext })
+}
+
+// [自訂] L-80：釋放錄音時保留的 macOS AX 參照。
+export function releaseRecordingFocus(focusToken: string) {
+  return invoke<void>('release_recording_focus', { focusToken })
 }
 
 export function getActiveAppContext() {
