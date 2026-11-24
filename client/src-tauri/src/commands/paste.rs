@@ -4,6 +4,8 @@ use crate::window::WindowState;
 use serde::Serialize;
 use serde_json::Value;
 use tauri::{AppHandle, State};
+#[cfg(target_os = "macos")]
+use tauri::Manager;
 
 #[derive(Serialize)]
 pub struct PasteResult {
@@ -16,9 +18,8 @@ pub struct PasteResult {
     pub uncertain: bool,
 }
 
-/// paste_text accepts optional pre-probed hwnd/focusHwnd from the frontend.
-/// When provided, it uses inject_text_to_hwnd which skips re-capturing context
-/// (avoids the stale-foreground-window problem after PTT release).
+/// Windows keeps using the pre-probed window and control handles.
+#[cfg(not(target_os = "macos"))]
 #[tauri::command]
 pub fn paste_text(
     text: String,
@@ -50,12 +51,45 @@ pub fn paste_text(
         }
     };
 
+    complete_paste(result, &text, &app, &window_state)
+}
+
+// [自訂] L-80：AX 和剪貼簿 IPC 在工作執行緒上執行。
+#[cfg(target_os = "macos")]
+#[tauri::command]
+pub async fn paste_text(
+    text: String,
+    hwnd: Option<String>,
+    restore_clipboard: Option<bool>,
+    focus_token: Option<String>,
+    app: AppHandle,
+) -> Result<PasteResult, String> {
+    // Text Input Sources requires the main thread. The AX work below never runs on it.
+    let (send, keycode) = tokio::sync::oneshot::channel();
+    let scheduled = app.run_on_main_thread(move || { let _ = send.send(inject::keycode_for_v()); });
+    let keycode = if scheduled.is_ok() {
+        tokio::time::timeout(std::time::Duration::from_secs(2), keycode)
+            .await.ok().and_then(Result::ok)
+    } else {
+        None
+    }.unwrap_or_else(inject::cached_keycode_for_v);
+
+    tokio::task::spawn_blocking(move || {
+        let pid = hwnd.and_then(|value| value.parse().ok()).unwrap_or(0);
+        let result = inject::inject_recording_text(
+            &text, pid, restore_clipboard.unwrap_or(false), focus_token.as_deref(), keycode,
+        );
+        complete_paste(result, &text, &app, &app.state::<WindowState>())
+    }).await.map_err(|error| error.to_string())?
+}
+
+fn complete_paste(result: inject::InjectResult, text: &str, app: &AppHandle, window_state: &WindowState) -> Result<PasteResult, String> {
     // If injection failed because target is not editable, trigger overlay fallback
     if !result.ok {
         if result.reason.as_deref() == Some("not_editable") {
             // [自訂] S11／L-27：兜底寫入剪貼簿後，60 秒內若沒有人再改過剪貼簿，就清掉，
             // 辨識結果不會一直留在剪貼簿裡。寫入本身已是 transient＋只限本機（見 copy_to_clipboard）。
-            if inject_to_clipboard(&text).is_ok() {
+            if inject_to_clipboard(text).is_ok() {
                 #[cfg(target_os = "macos")]
                 schedule_clipboard_clear_if_unchanged(
                     crate::platform::macos::appkit::pasteboard_change_count(),
@@ -67,7 +101,7 @@ pub fn paste_text(
                 "text": text,
                 "reason": "not_editable",
             });
-            window_state.update_overlay_state(&app, &fallback_data);
+            window_state.update_overlay_state(app, &fallback_data);
         }
     }
 
@@ -80,18 +114,30 @@ pub fn paste_text(
     })
 }
 
+#[cfg(not(target_os = "macos"))]
 #[tauri::command]
 pub fn get_probe_result(detector: State<ContextDetector>) -> Result<Value, String> {
+    Ok(capture_probe(&detector))
+}
+
+#[cfg(target_os = "macos")]
+#[tauri::command]
+pub async fn get_probe_result(app: AppHandle) -> Result<Value, String> {
+    tokio::task::spawn_blocking(move || capture_probe(&app.state::<ContextDetector>()))
+        .await.map_err(|error| error.to_string())
+}
+
+fn capture_probe(detector: &ContextDetector) -> Value {
     let started_at = chrono::Utc::now().timestamp_millis();
     let ctx = detector.capture("probe");
     let completed_at = chrono::Utc::now().timestamp_millis();
-
-    Ok(probe_result_for_context(&ctx, started_at, completed_at))
+    probe_result_for_context(&ctx, started_at, completed_at)
 }
 
 /// 录音启动只捕获一次前台窗口，同时返回提示词路由所需的完整上下文与插字探测结果。
 /// 过去前端连续调用 get_active_app_context + get_probe_result，底层 UI Automation 会
 /// 对同一个窗口完整扫描两遍，既增加热键延迟，也给两次捕获之间的焦点变化留下竞态。
+#[cfg(not(target_os = "macos"))]
 #[tauri::command]
 pub fn get_recording_context(
     include_text_context: Option<bool>,
@@ -100,13 +146,50 @@ pub fn get_recording_context(
     let started_at = chrono::Utc::now().timestamp_millis();
     let ctx = detector.capture_recording("recording_start", include_text_context.unwrap_or(false));
     let completed_at = chrono::Utc::now().timestamp_millis();
-    let app_context = serde_json::to_value(&ctx).map_err(|e| e.to_string())?;
-    let probe = probe_result_for_context(&ctx, started_at, completed_at);
+    recording_context_response(&ctx, started_at, completed_at, None)
+}
 
-    Ok(serde_json::json!({
-        "appContext": app_context,
-        "probe": probe,
-    }))
+#[cfg(target_os = "macos")]
+#[tauri::command]
+pub async fn get_recording_context(include_text_context: Option<bool>) -> Result<Value, String> {
+    tokio::task::spawn_blocking(move || {
+        use crate::platform::macos::focus;
+        let token = focus::TARGET.begin();
+        let started_at = chrono::Utc::now().timestamp_millis();
+        let (ctx, target) = crate::context::capture_recording_with_focus(include_text_context.unwrap_or(false));
+        let completed_at = chrono::Utc::now().timestamp_millis();
+        let response = recording_context_response(&ctx, started_at, completed_at, Some(&token));
+        if response.is_ok() {
+            focus::TARGET.save(&token, target);
+        } else {
+            focus::TARGET.release(&token);
+        }
+        response
+    }).await.map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+pub async fn release_recording_focus(focus_token: String) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    tokio::task::spawn_blocking(move || crate::platform::macos::focus::TARGET.release(&focus_token))
+        .await.map_err(|error| error.to_string())?;
+    #[cfg(not(target_os = "macos"))]
+    let _ = focus_token;
+    Ok(())
+}
+
+fn recording_context_response(
+    ctx: &AppContext,
+    started_at: i64,
+    completed_at: i64,
+    focus_token: Option<&str>,
+) -> Result<Value, String> {
+    let app_context = serde_json::to_value(ctx).map_err(|e| e.to_string())?;
+    let mut probe = probe_result_for_context(ctx, started_at, completed_at);
+    if let Some(token) = focus_token {
+        probe["focusToken"] = Value::String(token.to_owned());
+    }
+    Ok(serde_json::json!({ "appContext": app_context, "probe": probe }))
 }
 
 fn probe_result_for_context(ctx: &AppContext, started_at: i64, completed_at: i64) -> Value {

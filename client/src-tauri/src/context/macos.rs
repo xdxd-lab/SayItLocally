@@ -8,7 +8,7 @@
 //! - `hasCaret`：焦点元素有没有 AXSelectedTextRange
 
 use super::{sanitize_uia_text, tail_chars, text_diag, AppContext, MonitorBounds, TextContext};
-use crate::platform::macos::appkit;
+use crate::platform::macos::{appkit, focus};
 use crate::platform::macos::ax::{self, AxElement};
 use crate::platform::macos::ffi::CFRange;
 
@@ -19,6 +19,20 @@ const SELECTED_TEXT_LIMIT: usize = 6000;
 const VALUE_FALLBACK_LIMIT: usize = 200_000;
 
 pub fn capture_context_with_text(reason: &str, include_text_context: bool) -> AppContext {
+    capture_context(reason, include_text_context, None)
+}
+
+pub(super) fn capture_recording_with_focus(include_text_context: bool) -> (AppContext, focus::Snapshot<AxElement>) {
+    let mut snapshot = focus::Snapshot::default();
+    let context = capture_context("recording_start", include_text_context, Some(&mut snapshot));
+    (context, snapshot)
+}
+
+fn capture_context(
+    reason: &str,
+    include_text_context: bool,
+    mut snapshot: Option<&mut focus::Snapshot<AxElement>>,
+) -> AppContext {
     let mut ctx = AppContext {
         reason: reason.to_string(),
         timestamp: chrono::Utc::now().timestamp_millis(),
@@ -37,6 +51,9 @@ pub fn capture_context_with_text(reason: &str, include_text_context: bool) -> Ap
         give_up(&mut ctx, "no_foreground");
         return ctx;
     };
+    if let Some(target) = &mut snapshot {
+        target.pid = (app.pid > 0).then_some(app.pid);
+    }
     ctx.hwnd = app.pid.to_string();
     ctx.pid = app.pid.max(0) as u32;
     ctx.process_name = app.executable_name();
@@ -45,6 +62,12 @@ pub fn capture_context_with_text(reason: &str, include_text_context: bool) -> Ap
     ctx.bundle_id = app.bundle_id.clone();
     if ctx.process_name.is_empty() {
         ctx.process_name = app.name.clone();
+    }
+
+    // [自訂] L-80：自身輸入框走 PID 判斷，避免跨執行緒向自己的 AX 伺服器送查詢。
+    if app.pid == std::process::id() as i32 {
+        give_up(&mut ctx, "own_process");
+        return ctx;
     }
 
     // 没有辅助功能授权时只能拿到应用级信息；可编辑判据会退回 bundle 白名单。
@@ -63,9 +86,14 @@ pub fn capture_context_with_text(reason: &str, include_text_context: bool) -> Ap
         let _ = app_element.set_bool("AXManualAccessibility", true);
     }
 
-    if let Some(window) = app_element.attr_element("AXFocusedWindow") {
+    // [自訂] L-80：錄音開始沿用原有的查詢順序與 DEFAULT_TIMEOUT_SECS。
+    let window = app_element.attr_element("AXFocusedWindow");
+    if let Some(window) = &window {
         window.set_timeout(ax::DEFAULT_TIMEOUT_SECS);
         ctx.window_title = window.attr_string("AXTitle").unwrap_or_default();
+    }
+    if let Some(target) = &mut snapshot {
+        target.window = window;
     }
 
     let Some(focused) = app_element.attr_element("AXFocusedUIElement") else {
@@ -106,6 +134,12 @@ pub fn capture_context_with_text(reason: &str, include_text_context: bool) -> Ap
             };
             ctx.text_context = text;
             ctx.text_context_diag = Some(text_diag(result, depth, text_started));
+        }
+    }
+    // Chrome／Electron 的首個焦點回應可能只是容器。只有初始文字元件可用於比較。
+    if let Some(target) = snapshot {
+        if ax::is_text_role(&ctx.control_type) || ctx.is_password || selection.is_some() {
+            target.element = Some(focused);
         }
     }
     ctx

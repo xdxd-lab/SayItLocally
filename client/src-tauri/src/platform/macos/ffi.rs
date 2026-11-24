@@ -61,6 +61,7 @@ extern "C" {
     pub static kCFTypeDictionaryValueCallBacks: CFDictionaryValueCallBacks;
 
     pub fn CFRelease(cf: CFTypeRef);
+    pub fn CFEqual(first: CFTypeRef, second: CFTypeRef) -> Boolean;
     pub fn CFRetain(cf: CFTypeRef) -> CFTypeRef;
     pub fn CFGetTypeID(cf: CFTypeRef) -> CFTypeID;
     pub fn CFStringGetTypeID() -> CFTypeID;

@@ -804,6 +804,7 @@ fn main() {
             commands::paste::paste_text,
             commands::paste::get_probe_result,
             commands::paste::get_recording_context,
+            commands::paste::release_recording_focus, // [自訂] L-80
             commands::paste::get_active_app_context,
             commands::paste::copy_text,
             // System

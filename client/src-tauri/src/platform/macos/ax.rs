@@ -11,6 +11,10 @@ use std::ffi::c_void;
 /// 超过这个时间就当拿不到，宁可少一条信号也不拖慢热键。
 pub const DEFAULT_TIMEOUT_SECS: f32 = 0.25;
 
+pub fn is_text_role(role: &str) -> bool {
+    matches!(role, "AXTextField" | "AXTextArea" | "AXComboBox" | "AXSearchField")
+}
+
 pub struct AxElement(CfOwned);
 
 impl AxElement {
@@ -29,6 +33,11 @@ impl AxElement {
 
     pub fn as_ptr(&self) -> AXUIElementRef {
         self.0.as_ptr()
+    }
+
+    // [自訂] L-80：同一個 AX 元件可有不同的 CF 參照。
+    pub fn equals(&self, other: &Self) -> bool {
+        unsafe { CFEqual(self.as_ptr(), other.as_ptr()) != 0 }
     }
 
     pub fn set_timeout(&self, secs: f32) {

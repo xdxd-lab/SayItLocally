@@ -158,6 +158,7 @@ impl ContextDetector {
     /// Capture the recording target, optionally including a bounded slice of editor text.
     /// This separate entry point is intentional: WinEvent hooks must never start reading text
     /// merely because the feature exists.
+    #[cfg(not(target_os = "macos"))]
     pub fn capture_recording(&self, reason: &str, include_text_context: bool) -> AppContext {
         capture_context_with_text(reason, include_text_context)
     }
@@ -746,6 +747,13 @@ pub fn capture_context(reason: &str) -> AppContext {
 #[cfg(target_os = "macos")]
 fn capture_context_with_text(reason: &str, include_text_context: bool) -> AppContext {
     macos::capture_context_with_text(reason, include_text_context)
+}
+
+#[cfg(target_os = "macos")]
+pub(crate) fn capture_recording_with_focus(include_text_context: bool) -> (
+    AppContext, crate::platform::macos::focus::Snapshot<crate::platform::macos::ax::AxElement>,
+) {
+    macos::capture_recording_with_focus(include_text_context)
 }
 
 /// macOS 返回的是前台窗口矩形（逻辑点），不是显示器工作区，见 context/macos.rs。

@@ -17,6 +17,7 @@ pub mod audio;
 pub mod ax;
 pub mod cf;
 pub mod ffi;
+pub mod focus;
 pub mod keycodes;
 pub mod permissions;
 pub mod sysinfo;

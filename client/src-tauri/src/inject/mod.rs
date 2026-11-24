@@ -172,7 +172,7 @@ use crate::context;
 #[cfg(target_os = "macos")]
 mod macos;
 #[cfg(target_os = "macos")]
-pub use macos::{copy_to_clipboard, inject_text, inject_text_to_hwnd};
+pub use macos::{cached_keycode_for_v, copy_to_clipboard, inject_recording_text, keycode_for_v};
 
 #[derive(Debug, Clone, Serialize, Default)]
 pub struct InjectResult {

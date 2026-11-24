@@ -156,6 +156,7 @@ export class RecorderOrchestrator {
   private initialized = false
   private runSequence = 0
   private activeRunId = 0
+  private recordingFocus: { runId: number; token: string } | null = null // [自訂] L-80
 
   private textInsertionInFlight = false
   /**
@@ -362,9 +363,17 @@ export class RecorderOrchestrator {
     this.resetToIdle({ keepOverlay: true })
   }
 
+  private releaseRecordingFocus(runId: number) {
+    if (this.recordingFocus?.runId !== runId) return
+    const { token } = this.recordingFocus
+    this.recordingFocus = null
+    void bridge.releaseRecordingFocus(token).catch(() => {})
+  }
+
   /** 幂等结束指定代次；所有清理都带 runId 条件，绝不清除随后创建的新代次。 */
   private finishRun(runId: number) {
     if (runId === 0) return
+    this.releaseRecordingFocus(runId)
     this.history.clearPendingFor(runId)
     if (this.timedOutProcessingContext?.runId === runId) {
       this.timedOutProcessingContext = null
@@ -504,6 +513,7 @@ export class RecorderOrchestrator {
         // 关掉失败卡也算"我不等了"：之后迟到的结果只许落历史，不许再插字。
         if (token === this.lateResultRunId) {
           this.lateResultAbandoned = true
+          this.releaseRecordingFocus(token)
         }
         this.overlayService.hide()
         return
@@ -526,6 +536,7 @@ export class RecorderOrchestrator {
         }
         addRuntimeEvent('info', 'recorder', 'User abandoned waiting for the late result', { token })
         this.lateResultAbandoned = true
+        this.releaseRecordingFocus(token)
         this.overlayService.hide()
       }
     })
@@ -541,6 +552,7 @@ export class RecorderOrchestrator {
       // 关掉提示也算"我不等了"：随后到达的迟到结果只许落历史，不许再插字。
       if (token !== 0 && token === this.lateResultRunId) {
         this.lateResultAbandoned = true
+        this.releaseRecordingFocus(token)
       }
     })
 
@@ -628,6 +640,7 @@ export class RecorderOrchestrator {
   }
 
   cleanup() {
+    if (this.recordingFocus) this.releaseRecordingFocus(this.recordingFocus.runId)
     this.clearProcessingTimeout()
     this.micLevel.clearAutoCancelTimer()
     this.micLevel.invalidateProbes()
@@ -927,6 +940,7 @@ export class RecorderOrchestrator {
     clearCapturedInsertionTarget()
     this.run.recordStartPerf = 0
     if (!options?.preserveLateFinalContext) {
+      this.releaseRecordingFocus(this.activeRunId)
       this.timedOutProcessingContext = null
     }
     this.transition('idle')
@@ -1470,6 +1484,7 @@ export class RecorderOrchestrator {
       this.finishRun(timedOutContext.runId)
     }
 
+    if (this.recordingFocus) this.releaseRecordingFocus(this.recordingFocus.runId)
     const runId = ++this.runSequence
     this.activeRunId = runId
     this.activeFallbackToken = 0
@@ -1495,8 +1510,14 @@ export class RecorderOrchestrator {
       // the preference remains enabled, so the privacy boundary matches actual behavior.
       const includeTextContext = this.settings.contextAwareWriting && this.settings.aiEnabled
       const recordingContext = await bridge.getRecordingContext(includeTextContext)
+      const probe = recordingContext.probe as unknown as ProbeResult
+      if (probe.focusToken && !this.isRunCurrent(runId)) {
+        void bridge.releaseRecordingFocus(probe.focusToken).catch(() => {})
+        return
+      }
       activeAppContext = recordingContext.appContext as unknown as ActiveAppContext
-      this.run.cachedProbeResult = recordingContext.probe as unknown as ProbeResult
+      this.run.cachedProbeResult = probe
+      if (probe.focusToken) this.recordingFocus = { runId, token: probe.focusToken }
       addRuntimeEvent('info', 'recorder', 'Insertion probe cached at recording start', {
         probeId: this.run.cachedProbeResult.probeId,
         hwnd: this.run.cachedProbeResult.hwnd,
@@ -2045,6 +2066,7 @@ export class RecorderOrchestrator {
         // 绝不再判 isRunCurrent —— 用户又按了一次热键不等于放弃上一段（见 settled 注释）。
         if (timedOutCtx.settled) return
         timedOutCtx.settled = true
+        this.releaseRecordingFocus(timedOutCtx.runId)
         // 仍是当前代时才动 Provider：新录音已在 startRecording 里换过会话，这里再 cancel
         // 会把用户正在录的这一段打断。
         if (this.timedOutProcessingContext === timedOutCtx) {
