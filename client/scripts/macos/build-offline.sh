@@ -26,7 +26,7 @@ cd "$CLIENT_DIR"
 apply_offline_env() {
   unset NPM_CONFIG_OFFLINE NPM_CONFIG_AUDIT NPM_CONFIG_FUND NPM_CONFIG_UPDATE_NOTIFIER
   unset NODE_OPTIONS npm_config_node_options NPM_CONFIG_NODE_OPTIONS NPM_CONFIG_SCRIPT_SHELL
-  unset CARGO_BUILD_TARGET CMAKE_ARGS TRANSCRIBE_CMAKE_ARGS
+  unset CARGO_BUILD_TARGET CMAKE_ARGS TRANSCRIBE_CMAKE_ARGS TAURI_CONFIG
   export npm_config_offline=true
   export npm_config_audit=false
   export npm_config_fund=false

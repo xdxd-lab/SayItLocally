@@ -2,6 +2,7 @@
 
 - 建立：2026-11-24（SC-23，處理 L-84～L-92）；依據外部稽核 SC-20（對象 `379f24e`）。
 - 腳本：[`client/scripts/macos/build-offline.sh`](../client/scripts/macos/build-offline.sh)。截至 SC-27，只做靜態檢查；第一次執行前要先取得使用者同意。
+- **這個腳本只能降低連網的機會，不保證零外連。**
 - 第一次執行時，請同時用 LuLu 封鎖外連，並對照下方的主機清單。LuLu 尚未安裝，尚無封鎖或實際連線紀錄。
 
 ## 腳本做了什麼
@@ -32,6 +33,7 @@
 ## 建置入口與外連限制
 
 - 只接受 `--install`、`--bundles app|dmg`、`--debug`、`--verbose` 這幾個參數。自訂的 Tauri config 或 runner 可能繞過離線設定，所以一律拒絕。
+- 清除繼承的 `TAURI_CONFIG`，避免透過環境變數傳入額外的 Tauri 建置設定。
 - 直接呼叫專案內的 `node_modules/.bin/tauri`，不經過 `npx`，避免改用全域或快取裡的 CLI。
 - PATH 直接加入本機 Node、CMake 及已核對的工具鏈，並移除預設與自訂 Cargo home 的 `bin`，以略過常見的 rustup proxy。Tauri CLI 2.10.1 的桌面建置只有在顯式指定 target 時會執行 `rustup target list`。腳本的白名單排除了這個入口。專案的 `build.rs` 和快取中的 `tauri-build` 2.5.6 原始碼未發現 rustup 呼叫，其他傳遞依賴的執行行為未查證。
 - 固定 npm 的離線設定與腳本 shell，移除 Node 預載選項，停用 Cargo 的 rustc 包裝程式，並清除繼承的 `CARGO_BUILD_TARGET`、`CMAKE_ARGS`、`TRANSCRIBE_CMAKE_ARGS`。
@@ -41,3 +43,4 @@
 - macOS 背景更新及 `trustd` 信任查詢。
 - 前端腳本、Cargo 的 `build.rs` 與 CMake 子程序自行發出的 HTTPS 或其他外連。例如依外部設定啟用需要下載元件的原生後端。
 - 使用者的工具設定，例如 Cargo 設定檔中的 linker、編譯器環境變數及 npm 設定。npm／Cargo 的離線旗標只約束各自的套件取得流程，子程序的外連仍要由防火牆封鎖。
+- 可接受的殘餘風險：混合大小寫的 npm 環境變數可能覆蓋巢狀 npm 的離線設定。腳本直接執行的 `npm ci` 另有 `--offline` 命令列旗標。
