@@ -1026,7 +1026,10 @@ fn chunk_file_len(path: &Path, maximum: u64) -> Result<u64, String> {
             Ok(0)
         }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(0),
-        Err(error) => Err(download_io_error("Failed to inspect chunk file", error)),
+        Err(error) => Err(download_error(
+            "download_parallel_verify_failed",
+            format!("Failed to inspect source chunk: {error}"),
+        )),
     }
 }
 
@@ -1099,6 +1102,7 @@ fn assemble_parallel_chunks(
         .append(true)
         .open(temp_path)
         .map_err(|error| download_io_error("Failed to open assembly file for append", error))?;
+    let mut buffer = vec![0; 64 * 1024];
     for chunk in chunks.iter().skip(state.assembled_chunks) {
         let chunk_path = parallel_chunk_path(temp_path, chunk.index);
         let actual = chunk_file_len(&chunk_path, chunk.len())?;
@@ -1109,14 +1113,9 @@ fn assemble_parallel_chunks(
             ));
         }
         let mut source = std::fs::File::open(&chunk_path).map_err(|error| {
-            if error.kind() == std::io::ErrorKind::NotFound {
-                download_error("download_parallel_verify_failed", format!("Chunk {} disappeared before read", chunk.index))
-            } else {
-                download_io_error("Failed to open completed chunk", error)
-            }
+            download_error("download_parallel_verify_failed", format!("Failed to open completed chunk {}: {error}", chunk.index))
         })?;
-        let copied = std::io::copy(&mut source, &mut assembled)
-            .map_err(|error| download_io_error("Failed to assemble chunk", error))?;
+        let copied = copy_completed_chunk(&mut source, &mut assembled, chunk.index, &mut buffer)?;
         if copied != chunk.len() {
             return Err(download_error(
                 "download_parallel_verify_failed",
@@ -1143,6 +1142,30 @@ fn assemble_parallel_chunks(
         remove_file_if_exists(&chunk_path)?;
     }
     Ok(())
+}
+
+// [自訂] REV10：讀不到來源分片就重置下載；寫入組裝檔失敗則保留續傳資料。
+fn copy_completed_chunk(
+    source: &mut impl std::io::Read,
+    assembled: &mut impl Write,
+    index: usize,
+    buffer: &mut [u8],
+) -> Result<u64, String> {
+    let mut copied = 0;
+    loop {
+        let read = match source.read(buffer) {
+            Ok(0) => return Ok(copied),
+            Ok(read) => read,
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(error) => return Err(download_error(
+                "download_parallel_verify_failed",
+                format!("Failed to read completed chunk {index}: {error}"),
+            )),
+        };
+        assembled.write_all(&buffer[..read])
+            .map_err(|error| download_io_error("Failed to write assembly file", error))?;
+        copied += read as u64;
+    }
 }
 
 /// 并发下载到独立分片文件；每个分片可跨调用续传，完成后按顺序组装并逐段释放空间。
@@ -2103,6 +2126,32 @@ mod tests {
     }
 
     #[test]
+    fn assembly_distinguishes_source_read_failure_from_output_write_failure() {
+        struct FailingSource;
+        impl Read for FailingSource {
+            fn read(&mut self, _buffer: &mut [u8]) -> std::io::Result<usize> {
+                Err(std::io::Error::other("simulated source read failure"))
+            }
+        }
+
+        struct FullOutput;
+        impl Write for FullOutput {
+            fn write(&mut self, _data: &[u8]) -> std::io::Result<usize> {
+                Err(std::io::Error::new(std::io::ErrorKind::StorageFull, "simulated full disk"))
+            }
+            fn flush(&mut self) -> std::io::Result<()> { Ok(()) }
+        }
+
+        let mut buffer = [0; 16];
+        let read_error = copy_completed_chunk(&mut FailingSource, &mut Vec::new(), 0, &mut buffer).unwrap_err();
+        assert!(read_error.contains("Failed to read completed chunk"));
+        assert!(is_parallel_integrity_error(&read_error));
+        let write_error = copy_completed_chunk(&mut &b"completed"[..], &mut FullOutput, 0, &mut buffer).unwrap_err();
+        assert!(write_error.contains("Failed to write assembly file"));
+        assert!(!should_fallback_to_single_stream(&write_error));
+    }
+
+    #[test]
     fn failed_progress_publish_preserves_completed_chunk_for_retry() {
         use std::fs;
         let dir = std::env::temp_dir().join(format!("sayit-download-test-{}", uuid::Uuid::new_v4()));
@@ -2182,9 +2231,10 @@ mod tests {
                 let error = assemble_or_reset_parallel_download(&partial, &state_path, &chunks, &mut state)
                     .unwrap_err();
                 assert!(error.contains("Failed to open completed chunk"));
-                assert!(state_path.is_file());
-                assert!(blocked.is_file());
-                assert!(!should_fallback_to_single_stream(&error));
+                assert!(!state_path.exists());
+                assert!(!partial.exists());
+                assert!(!blocked.exists());
+                assert!(should_fallback_to_single_stream(&error));
                 assert_eq!(fs::read(&dest).unwrap(), b"original");
             }
         }

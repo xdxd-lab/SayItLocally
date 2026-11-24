@@ -17,10 +17,23 @@ fn settings_queue() -> std::sync::mpsc::Sender<SettingJob> {
     let (sender, receiver) = std::sync::mpsc::channel::<SettingJob>();
     std::thread::spawn(move || {
         for job in receiver {
-            job();
+            // An unexpected panic in the response callback must not stop the queue.
+            let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(job));
         }
     });
     sender
+}
+
+// [自訂] REV10：工作出錯時也要送回拒絕，讓同一 key 的下一個請求繼續。
+fn setting_job(
+    run: impl FnOnce() -> Result<Value, String> + Send + 'static,
+    respond: impl FnOnce(Result<Value, String>) + Send + 'static,
+) -> SettingJob {
+    Box::new(move || {
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(run))
+            .unwrap_or_else(|_| Err("Settings operation failed unexpectedly".into()));
+        respond(result);
+    })
 }
 
 pub fn with_ordered_settings(
@@ -54,9 +67,10 @@ pub fn with_ordered_settings(
         };
         let app = invoke.message.webview_ref().app_handle().clone();
         let resolver = invoke.resolver.clone();
-        let submitted = settings.send(Box::new(move || {
-            resolver.respond(operation.run(app.state::<Storage>().inner(), &key).map_err(tauri::ipc::InvokeError::from));
-        }));
+        let submitted = settings.send(setting_job(
+            move || operation.run(app.state::<Storage>().inner(), &key),
+            move |result| resolver.respond(result.map_err(tauri::ipc::InvokeError::from)),
+        ));
         if submitted.is_err() {
             invoke.resolver.reject("Settings worker is unavailable");
         }
@@ -218,6 +232,24 @@ mod retention_tests {
         let outputs: Vec<Value> = (0..5).map(|_| results.recv_timeout(std::time::Duration::from_secs(2))
             .unwrap().unwrap()).collect();
         assert_eq!(outputs, serde_json::json!([null, null, 2, null, null]).as_array().unwrap().clone());
+    }
+
+    #[test]
+    fn panicking_setting_job_replies_with_error_and_worker_processes_next_request() {
+        let queue = settings_queue();
+        let (done, results) = std::sync::mpsc::channel();
+        let failed = done.clone();
+        queue.send(setting_job(
+            || panic!("simulated settings panic"),
+            move |result| failed.send(result).unwrap(),
+        )).unwrap();
+        queue.send(setting_job(
+            || Ok(serde_json::json!(42)),
+            move |result| done.send(result).unwrap(),
+        )).unwrap();
+        let timeout = std::time::Duration::from_secs(2);
+        assert_eq!(results.recv_timeout(timeout).unwrap().unwrap_err(), "Settings operation failed unexpectedly");
+        assert_eq!(results.recv_timeout(timeout).unwrap().unwrap(), 42);
     }
 
     #[test]

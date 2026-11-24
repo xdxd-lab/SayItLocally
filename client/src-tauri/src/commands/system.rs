@@ -337,6 +337,26 @@ mod log_retention_tests {
         fs::remove_dir_all(dir).unwrap();
     }
     #[test]
+    fn retention_trims_cutoff_date_and_keeps_entries_at_exact_cutoff() {
+        use chrono::TimeZone;
+        let dir = std::env::temp_dir().join(format!("sayit-log-test-{}", uuid::Uuid::new_v4()));
+        fs::create_dir(&dir).unwrap();
+        let cutoff = chrono::Local.with_ymd_and_hms(2026, 6, 15, 12, 0, 0).single().unwrap();
+        let boundary = dir.join("sayit.2026-06-15.0000000001.log");
+        let old = dir.join("sayit.2026-06-14.0000000001.log");
+        let recent = dir.join("sayit.2026-06-16.0000000001.log");
+        let at_cutoff = "[2026-06-15 12:00:00.000] [INFO] exact cutoff\n";
+        fs::write(&boundary, format!("[2026-06-15 11:59:59.999] [INFO] expired\n{at_cutoff}")).unwrap();
+        fs::write(&old, b"expired file").unwrap();
+        fs::write(&recent, b"recent archive stays byte-for-byte").unwrap();
+        trim_logs(&dir, &mut None, cutoff);
+        assert_eq!(fs::read_to_string(boundary).unwrap(), at_cutoff);
+        assert!(!old.exists());
+        assert_eq!(fs::read(recent).unwrap(), b"recent archive stays byte-for-byte");
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
     fn keeps_more_than_four_dated_logs_and_caps_oldest_first_without_day_limit() {
         let dir = std::env::temp_dir().join(format!("sayit-log-test-{}", uuid::Uuid::new_v4()));
         fs::create_dir(&dir).unwrap();
