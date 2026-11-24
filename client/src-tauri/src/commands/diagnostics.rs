@@ -1,7 +1,8 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::collections::{BTreeMap, HashMap};
 use std::io::Write;
-use tauri::State;
+use tauri::{AppHandle, Manager, State};
 use crate::storage::Storage;
 
 // ─── collect_settings ───
@@ -27,12 +28,7 @@ pub fn collect_settings(storage: State<Storage>) -> Result<Value, String> {
 
 // ─── Diagnostics Preview ───
 
-fn log_dir() -> std::path::PathBuf {
-    dirs::data_local_dir()
-        .unwrap_or_else(|| std::path::PathBuf::from("."))
-        .join("com.sayitlocally.desktop")
-        .join("logs")
-}
+use super::system::{log_dir, log_paths, rotated_logs};
 
 #[derive(Deserialize)]
 struct PreviewRequest {
@@ -47,7 +43,7 @@ struct DiagnosticsPreview {
     #[serde(rename = "generatedAt")]
     generated_at: String,
     #[serde(rename = "retentionDays")]
-    retention_days: i32,
+    retention_days: Option<i64>,
     #[serde(rename = "filesScanned")]
     files_scanned: usize,
     #[serde(rename = "totalRawEvents")]
@@ -184,84 +180,89 @@ fn occurrence_cutoff(occurrence: &str) -> Option<String> {
     Some(cutoff.format("%Y-%m-%d %H:%M:%S").to_string())
 }
 
-/// 根据 issue_occurrence 过滤日志条目
-fn filter_entries_by_occurrence(entries: &[TimelineEntry], occurrence: &str) -> Vec<TimelineEntry> {
-    match occurrence_cutoff(occurrence) {
-        Some(cutoff) => entries.iter()
-            .filter(|e| e.ts.as_str() >= cutoff.as_str())
-            .cloned()
-            .collect(),
-        None => entries.to_vec(),
-    }
-}
-
-/// 读取日志文件并解析为 timeline entries
-fn read_and_parse_logs() -> (Vec<TimelineEntry>, usize) {
-    let dir = log_dir();
-    let mut all_entries = Vec::new();
-    let mut files_scanned = 0usize;
-
-    // 读取 sayit.log 和 rotated logs
-    let filenames = ["sayit.log", "sayit.1.log", "sayit.2.log", "sayit.3.log"];
-    for filename in &filenames {
-        let path = dir.join(filename);
-        if !path.exists() {
-            continue;
-        }
+// [自訂] REV9：輪替檔增加後逐檔統計，記憶體只保留需要顯示的最新事件。
+fn scan_log_entries(dir: &std::path::Path, cutoff: Option<&str>, mut visit: impl FnMut(TimelineEntry)) -> (usize, usize) {
+    let mut total = 0;
+    let mut files_scanned = 0;
+    for path in log_paths(dir) {
         files_scanned += 1;
         if let Ok(content) = std::fs::read_to_string(&path) {
-            for line in content.lines() {
-                if let Some(entry) = parse_log_line(line) {
-                    all_entries.push(entry);
+            for entry in content.lines().filter_map(parse_log_line) {
+                total += 1;
+                if cutoff.is_none_or(|cutoff| entry.ts.as_str() >= cutoff) {
+                    visit(entry);
                 }
             }
         }
     }
+    (total, files_scanned)
+}
 
-    // 按时间排序（字符串排序对 ISO 格式有效）
-    all_entries.sort_by(|a, b| a.ts.cmp(&b.ts));
+struct RecentEntries {
+    limit: usize,
+    order: usize,
+    entries: BTreeMap<(String, usize), TimelineEntry>,
+}
 
-    (all_entries, files_scanned)
+impl RecentEntries {
+    fn new(limit: usize) -> Self {
+        Self { limit, order: 0, entries: BTreeMap::new() }
+    }
+
+    fn push(&mut self, entry: TimelineEntry) {
+        self.entries.insert((entry.ts.clone(), self.order), entry);
+        self.order += 1;
+        if self.entries.len() > self.limit {
+            self.entries.pop_first();
+        }
+    }
 }
 
 #[tauri::command]
-pub fn get_diagnostics_preview(data: Value) -> Result<Value, String> {
+pub async fn get_diagnostics_preview(data: Value, app: AppHandle) -> Result<Value, String> {
     let req: PreviewRequest = serde_json::from_value(data).map_err(|e| e.to_string())?;
+    tokio::task::spawn_blocking(move || {
+        build_diagnostics_preview(req, app.state::<Storage>().inner())
+    }).await.map_err(|e| e.to_string())?
+}
 
-    let (all_entries, files_scanned) = read_and_parse_logs();
-    let total_raw = all_entries.len();
-
-    // 根据 issue_occurrence 过滤时间窗口
-    let entries = filter_entries_by_occurrence(&all_entries, &req.issue_occurrence);
-
-    // 统计 errors / warnings
-    let errors = entries.iter().filter(|e| e.level == "error").count();
-    let warnings = entries.iter().filter(|e| e.level == "warn" || e.level == "warning").count();
-
-    // 按 module 统计
-    let mut module_map = std::collections::HashMap::<String, usize>::new();
-    for entry in &entries {
+fn build_diagnostics_preview(req: PreviewRequest, storage: &Storage) -> Result<Value, String> {
+    let cutoff = occurrence_cutoff(&req.issue_occurrence);
+    let mut errors = 0;
+    let mut warnings = 0;
+    let mut module_map = HashMap::<String, usize>::new();
+    let mut last_error: Option<TimelineEntry> = None;
+    let mut range_start: Option<String> = None;
+    let mut range_end: Option<String> = None;
+    let mut recent = RecentEntries::new(200);
+    let (total_raw, files_scanned) = scan_log_entries(&log_dir(), cutoff.as_deref(), |entry| {
+        if entry.level == "error" {
+            errors += 1;
+            if last_error.as_ref().is_none_or(|previous| previous.ts <= entry.ts) {
+                last_error = Some(entry.clone());
+            }
+        } else if matches!(entry.level.as_str(), "warn" | "warning") {
+            warnings += 1;
+        }
         *module_map.entry(entry.module.clone()).or_insert(0) += 1;
-    }
-    let mut modules: Vec<ModuleCount> = module_map
-        .into_iter()
-        .map(|(module, count)| ModuleCount { module, count })
-        .collect();
+        if range_start.as_ref().is_none_or(|earliest| *earliest > entry.ts) {
+            range_start = Some(entry.ts.clone());
+        }
+        if range_end.as_ref().is_none_or(|latest| *latest < entry.ts) {
+            range_end = Some(entry.ts.clone());
+        }
+        recent.push(entry);
+    });
+
+    let mut modules: Vec<ModuleCount> = module_map.into_iter()
+        .map(|(module, count)| ModuleCount { module, count }).collect();
     modules.sort_by(|a, b| b.count.cmp(&a.count));
-
-    // 最后一个 error
-    let last_error = entries.iter().rev().find(|e| e.level == "error").cloned();
-
-    // 取最近 200 条作为 timeline
-    let timeline: Vec<TimelineEntry> = entries.iter().rev().take(200).rev().cloned().collect();
+    let timeline: Vec<_> = recent.entries.into_values().collect();
     let timeline_count = timeline.len();
-
-    let range_start = entries.first().map(|e| e.ts.clone());
-    let range_end = entries.last().map(|e| e.ts.clone());
 
     let preview = DiagnosticsPreview {
         generated_at: chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
-        retention_days: 7,
+        retention_days: super::system::log_retention_days(storage).ok(), // [自訂] S71
         files_scanned,
         total_raw_events: total_raw,
         total_timeline_entries: timeline_count,
@@ -313,9 +314,10 @@ struct DiagImage {
 }
 
 #[tauri::command]
-pub fn create_diagnostics_zip(data: Value) -> Result<String, String> {
+pub async fn create_diagnostics_zip(data: Value) -> Result<String, String> {
     let req: DiagnosticsZipRequest = serde_json::from_value(data).map_err(|e| e.to_string())?;
-    build_diagnostics_zip(req)
+    tokio::task::spawn_blocking(move || build_diagnostics_zip(req))
+        .await.map_err(|e| e.to_string())?
 }
 
 /// 同 create_diagnostics_zip，但截图以原始字节发过来（见 ipc_body），按 images[].size 依次切开。
@@ -323,10 +325,12 @@ pub fn create_diagnostics_zip(data: Value) -> Result<String, String> {
 /// 原来截图在前端被 `Array.from(new Uint8Array(...))` 转成 JSON 数字数组，一张 20 MB 的图
 /// 变成六七十 MB 的字符串再解析一遍。
 #[tauri::command]
-pub fn create_diagnostics_zip_raw(request: tauri::ipc::Request<'_>) -> Result<String, String> {
+pub async fn create_diagnostics_zip_raw(request: tauri::ipc::Request<'_>) -> Result<String, String> {
     let (mut req, payload): (DiagnosticsZipRequest, Vec<u8>) = crate::ipc_body::split_framed(&request)?;
-    attach_image_bytes(&mut req.images, &payload)?;
-    build_diagnostics_zip(req)
+    tokio::task::spawn_blocking(move || {
+        attach_image_bytes(&mut req.images, &payload)?;
+        build_diagnostics_zip(req)
+    }).await.map_err(|e| e.to_string())?
 }
 
 /// 按每张图声明的 size 依次从载荷里切出字节；总数对不上就拒绝（宁可报错也别把图切错位）。
@@ -368,19 +372,43 @@ mod raw_upload_tests {
         assert!(attach_image_bytes(&mut [image(1)], &[1, 2]).is_err());
         assert!(attach_image_bytes(&mut [image(usize::MAX), image(2)], &[1, 2]).is_err());
     }
+
+    #[test]
+    fn timeline_keeps_latest_entries_across_legacy_and_dated_logs() {
+        use std::fs;
+        let dir = std::env::temp_dir().join(format!("sayit-diag-test-{}", uuid::Uuid::new_v4()));
+        fs::create_dir(&dir).unwrap();
+        fs::write(dir.join("sayit.log"), "[2026-11-25 01:00:00.000] [INFO] [test] current\n").unwrap();
+        fs::write(dir.join("sayit.2026-11-24.0000000001.log"),
+            "[2026-11-24 02:00:00.000] [WARN] [test] dated\n").unwrap();
+        fs::write(dir.join("sayit.1.log"),
+            "[2026-11-23 01:00:00.000] [ERROR] [test] expired\n[2026-11-24 01:00:00.000] [INFO] [test] legacy\n").unwrap();
+        let mut recent = super::RecentEntries::new(2);
+        let (total, files) = super::scan_log_entries(&dir, Some("2026-11-24"), |entry| recent.push(entry));
+        assert_eq!((total, files), (4, 3));
+        assert_eq!(recent.order, 3);
+        let messages: Vec<_> = recent.entries.into_values().map(|entry| entry.title).collect();
+        assert_eq!(messages, ["dated", "current"]);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
 }
 
 fn build_diagnostics_zip(req: DiagnosticsZipRequest) -> Result<String, String> {
-
+    // [自訂] REV9：封裝在工作執行緒執行，序列化建立與刪除前一份診斷包。
+    static ZIP_BUILD: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _build = ZIP_BUILD.lock().unwrap_or_else(|error| error.into_inner());
     let diag_dir = diagnostics_dir();
     std::fs::create_dir_all(&diag_dir).map_err(|e| e.to_string())?;
     // [自訂] S45：產生新包前先清掉舊包（含日誌、詞彙、截圖），診斷目錄最多只留一份。
     purge_diagnostics_zips();
 
     let ts = chrono::Local::now().format("%Y%m%d-%H%M%S");
-    let zip_path = diag_dir.join(format!("diagnostics-{}.zip", ts));
+    // [自訂] REV9：前一份被清除後，尚未關閉的另存對話框不會指向新請求的包。
+    let stem = format!("diagnostics-{ts}-{}", uuid::Uuid::new_v4());
+    let zip_path = diag_dir.join(format!("{stem}.zip"));
     // [自訂] SCAN1-7（L-77）：先寫成暫存檔，完整寫完才改名成 .zip；中途出錯就刪掉暫存檔，不留半個包。
-    let partial_path = diag_dir.join(format!("diagnostics-{}.zip.partial", ts));
+    let partial_path = diag_dir.join(format!("{stem}.zip.partial"));
     match write_diagnostics_zip(&partial_path, &req) {
         Ok(()) => {
             if let Err(e) = std::fs::rename(&partial_path, &zip_path) {
@@ -435,9 +463,8 @@ fn write_diagnostics_zip(zip_path: &std::path::Path, req: &DiagnosticsZipRequest
     // 原本是逐位元組收錄全部日誌（含更早的路徑與事件）。時段外的檔案整個不放。
     let log_d = log_dir();
     let cutoff = occurrence_cutoff(&req.issue_occurrence);
-    for filename in &["sayit.log", "sayit.1.log", "sayit.2.log", "sayit.3.log"] {
-        let path = log_d.join(filename);
-        if path.exists() {
+    for path in log_paths(&log_d) {
+        if let Some(filename) = path.file_name().and_then(|name| name.to_str()) {
             // REV1：用 lossy 讀取，非 UTF-8 的日誌也照樣依時段過濾，不會整份略過。
             if let Ok(bytes) = std::fs::read(&path) {
                 let content = String::from_utf8_lossy(&bytes);
@@ -471,9 +498,9 @@ fn write_diagnostics_zip(zip_path: &std::path::Path, req: &DiagnosticsZipRequest
     }
 
     // 5. diagnostics preview (filtered by occurrence)
-    let (entries, _) = read_and_parse_logs();
-    let filtered = filter_entries_by_occurrence(&entries, &req.issue_occurrence);
-    let timeline: Vec<&TimelineEntry> = filtered.iter().rev().take(500).collect();
+    let mut recent = RecentEntries::new(500);
+    scan_log_entries(&log_d, cutoff.as_deref(), |entry| recent.push(entry));
+    let timeline: Vec<_> = recent.entries.into_values().rev().collect();
     zip.start_file("timeline.json", options).map_err(|e| e.to_string())?;
     zip.write_all(serde_json::to_string_pretty(&timeline).unwrap().as_bytes())
         .map_err(|e| e.to_string())?;
@@ -499,7 +526,7 @@ fn leading_timestamp(line: &str) -> Option<&str> {
 
 /// [自訂] SCAN1-5：只保留時間戳 >= cutoff 的日誌行。沒有時間戳的續行（例如多行錯誤）
 /// 跟隨上一個有時間戳的行；檔案開頭沒有時間戳的行一律不收。cutoff 為 None（不限時段）時全收。
-fn filter_raw_log_since(content: &str, cutoff: Option<&str>) -> String {
+pub(super) fn filter_raw_log_since(content: &str, cutoff: Option<&str>) -> String {
     let Some(cutoff) = cutoff else {
         return content.to_string();
     };
@@ -521,9 +548,7 @@ fn filter_raw_log_since(content: &str, cutoff: Option<&str>) -> String {
 // ─── Read helpers ───
 
 fn diagnostics_dir() -> std::path::PathBuf {
-    dirs::data_local_dir()
-        .unwrap_or_else(|| std::path::PathBuf::from("."))
-        .join("com.sayitlocally.desktop")
+    crate::commands::app_data_dir()
         .join("diagnostics")
 }
 
@@ -605,17 +630,18 @@ pub fn copy_diagnostics_zip(source: String, destination: String) -> Result<(), S
 pub fn read_log_file(log_type: String) -> Result<Option<String>, String> {
     let log_d = log_dir();
 
-    let filename = match log_type.as_str() {
-        "current" | "" | "frontend" => "sayit.log",
-        "ptt" => "sayit.log", // PTT 事件也写在同一个日志里
-        "1" => "sayit.1.log",
-        "2" => "sayit.2.log",
-        "3" => "sayit.3.log",
-        _ => "sayit.log",
+    // [自訂] REV9：舊版檢視器的 1～3 代表最近三個輪替檔案。
+    let path = match log_type.as_str() {
+        "1" | "2" | "3" => {
+            let index = log_type.parse::<usize>().map_err(|error| error.to_string())? - 1;
+            let Some(path) = rotated_logs(&log_d).into_iter().nth(index) else {
+                return Ok(None);
+            };
+            path
+        }
+        _ => log_d.join("sayit.log"),
     };
-
-    let path = log_d.join(filename);
-    if !path.exists() {
+    if !std::fs::symlink_metadata(&path).is_ok_and(|metadata| metadata.is_file()) {
         return Ok(None);
     }
 

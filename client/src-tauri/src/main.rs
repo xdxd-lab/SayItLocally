@@ -52,105 +52,13 @@ fn browser_args_fingerprint(value: &str) -> String {
     format!("{hash:016x}")
 }
 
-/// Clean up expired audio files based on retention setting.
-fn cleanup_expired_audio(storage: &Storage) {
-    // 默认必须和前端 defaults.ts 的 audioRetentionDays 一致（-1 = 永久保留）。
-    // 曾经这里写死 30：用户从没动过这个设置时，界面显示"永久"，实际 30 天就被删掉了 ——
-    // 不报错、没有提示，只是录音悄悄消失（"纠正识别"入口大面积置灰就是这么来的）。
-    // [自訂] S61：預設改為 7 天（與 defaults.ts 同步）。原：json!(-1)、unwrap_or(-1)
-    let retention_val = storage.get("audioRetentionDays", Some(&serde_json::json!(7)));
-    let retention_days = retention_val.as_i64().unwrap_or(7);
-    if retention_days < 0 {
-        return; // -1 = keep forever
+// [自訂] S71：啟動與執行中清理都讀目前設定，永遠保留錄音仍以 -1 表示。
+fn cleanup_retained_files(storage: &Storage) {
+    if let Ok(days @ (7 | 30 | 90)) = storage.retention_days("audioRetentionDays", 7) {
+        commands::audio::cleanup_expired_recordings(days);
     }
-
-    let cutoff_ms = chrono::Utc::now().timestamp_millis() - retention_days * 24 * 60 * 60 * 1000;
-    let audio_dir = dirs::data_local_dir()
-        .unwrap_or_else(|| std::path::PathBuf::from("."))
-        .join("com.sayitlocally.desktop")
-        .join("audio");
-
-    if !audio_dir.exists() {
-        return;
-    }
-
-    let mut deleted = 0u32;
-    if let Ok(entries) = std::fs::read_dir(&audio_dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if !path.is_file() {
-                continue;
-            }
-            if let Ok(meta) = std::fs::metadata(&path) {
-                if let Ok(modified) = meta.modified() {
-                    let mtime_ms = modified
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_millis() as i64;
-                    if mtime_ms < cutoff_ms {
-                        if std::fs::remove_file(&path).is_ok() {
-                            deleted += 1;
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    if deleted > 0 {
-        log::info!("Audio cleanup: deleted {} expired files", deleted);
-    }
-}
-
-/// Clean up expired log files based on retention setting.
-fn cleanup_expired_logs(storage: &Storage) {
-    let retention_val = storage.get("logRetentionDays", Some(&serde_json::json!(30)));
-    let retention_days = retention_val.as_i64().unwrap_or(30);
-    if retention_days <= 0 {
-        return;
-    }
-
-    let cutoff = chrono::Utc::now() - chrono::Duration::days(retention_days);
-    let cutoff_ts = cutoff.timestamp();
-
-    let log_dir = dirs::data_local_dir()
-        .unwrap_or_else(|| std::path::PathBuf::from("."))
-        .join("com.sayitlocally.desktop")
-        .join("logs");
-
-    if !log_dir.exists() {
-        return;
-    }
-
-    let mut deleted = 0u32;
-    if let Ok(entries) = std::fs::read_dir(&log_dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if !path.is_file() {
-                continue;
-            }
-            // 不删除当前日志文件
-            if path.file_name().map(|n| n == "sayit.log").unwrap_or(false) {
-                continue;
-            }
-            if let Ok(meta) = std::fs::metadata(&path) {
-                if let Ok(modified) = meta.modified() {
-                    let mtime = modified
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_secs() as i64;
-                    if mtime < cutoff_ts {
-                        if std::fs::remove_file(&path).is_ok() {
-                            deleted += 1;
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    if deleted > 0 {
-        log::info!("Log cleanup: deleted {} expired files", deleted);
+    if let Ok(days) = commands::system::log_retention_days(storage) {
+        commands::system::cleanup_retained_logs(days);
     }
 }
 
@@ -586,11 +494,7 @@ fn main() {
     //     eprintln!("Warning: Electron data migration failed: {}", e);
     // }
 
-    // Clean up expired audio files on startup
-    cleanup_expired_audio(&storage);
-
-    // Clean up expired log files on startup
-    cleanup_expired_logs(&storage);
+    cleanup_retained_files(&storage);
 
     // Read PTT setting before moving storage into managed state
     let ptt_setting_val = storage.get("shortcutPTT", None);
@@ -693,6 +597,12 @@ fn main() {
         .manage(context_detector)
         .manage(commands::update_notification::UpdateNotificationState::default())
         .setup(move |app| {
+            // [自訂] S71：在背景清理，不依賴 WebView 計時器或 App 重啟。
+            let retention_app = app.handle().clone();
+            thread::spawn(move || loop {
+                thread::sleep(std::time::Duration::from_secs(15 * 60));
+                cleanup_retained_files(retention_app.state::<Storage>().inner());
+            });
             // [自訂] S45：清掉上次殘留的診斷包。
             commands::diagnostics::purge_stale_diagnostics_zips();
             // macOS：登录时要不要启动只由「登录时自动启动」决定，不让系统的「重新登录时重新打开窗口」
@@ -869,6 +779,8 @@ fn main() {
             commands::storage::history_add,
             commands::storage::history_update,
             commands::storage::history_delete,
+            commands::storage::history_retained_counts, // [自訂] S61
+            commands::storage::history_clear_retained,
             commands::storage::history_set_favorite,
             // Window
             commands::window::present_overlay,
@@ -912,6 +824,9 @@ fn main() {
             commands::audio::read_audio_file,
             commands::audio::audio_file_exists,
             commands::audio::delete_audio_file,
+            commands::audio::protect_playing_recording, // [自訂] S71
+            commands::audio::renew_playing_recording,
+            commands::audio::release_playing_recording,
             // Audio output mute (录音期间静音系统输出，防回采)
             commands::audio_mute::mute_system_output,
             commands::audio_mute::restore_system_output,

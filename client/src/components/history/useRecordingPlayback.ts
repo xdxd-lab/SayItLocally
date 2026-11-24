@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { loadAudioAsObjectUrl } from '@/services/audioFileService'
+import { protectPlayingRecording, releasePlayingRecording, renewPlayingRecording } from '@/services/bridge'
 
 /**
  * 历史录音的播放状态。
@@ -62,10 +63,26 @@ export function useRecordingPlayback(audioFilePath?: string, initialDurationSec 
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const audioUrlRef = useRef<string>('')
   const rafRef = useRef<number>(0)
+  // [自訂] S71：保護期間涵蓋讀檔與實際播放，暫停、結束及卸載時釋放。
+  const leaseRef = useRef<Promise<string | null> | null>(null)
+  const releaseLease = useCallback(() => {
+    const lease = leaseRef.current
+    leaseRef.current = null
+    void lease?.then(token => token ? releasePlayingRecording(token) : undefined).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    if (!playing) return
+    const timer = setInterval(() => {
+      void leaseRef.current?.then(token => token ? renewPlayingRecording(token) : undefined).catch(() => {})
+    }, 5 * 60 * 1000)
+    return () => clearInterval(timer)
+  }, [playing])
 
   // 卸载时收摊：不 revoke 会攒一堆 blob URL
   useEffect(() => {
     return () => {
+      releaseLease()
       cancelAnimationFrame(rafRef.current)
       if (audioRef.current) {
         releaseHistoryPlayback(audioRef.current)
@@ -77,7 +94,7 @@ export function useRecordingPlayback(audioFilePath?: string, initialDurationSec 
         audioUrlRef.current = ''
       }
     }
-  }, [])
+  }, [releaseLease])
 
   // 用 requestAnimationFrame 推进度，比 timeupdate 平滑
   useEffect(() => {
@@ -104,19 +121,26 @@ export function useRecordingPlayback(audioFilePath?: string, initialDurationSec 
       return
     }
 
-    // 已经加载过：续播
-    if (audioRef.current && audioUrlRef.current) {
-      audioRef.current.playbackRate = playbackRate
-      await audioRef.current.play()
-      setPlaying(true)
-      return
-    }
-
+    if (leaseRef.current) return
+    const lease = protectPlayingRecording(audioFilePath)
+    leaseRef.current = lease
     setLoading(true)
     try {
+      await lease
+      if (leaseRef.current !== lease) return
+      // 已经加载过：续播
+      if (audioRef.current && audioUrlRef.current) {
+        audioRef.current.playbackRate = playbackRate
+        await audioRef.current.play()
+        return
+      }
       const dataUrl = await loadAudioAsObjectUrl(audioFilePath)
       if (!dataUrl) {
-        setLoading(false)
+        releaseLease()
+        return
+      }
+      if (leaseRef.current !== lease) {
+        URL.revokeObjectURL(dataUrl)
         return
       }
       const audio = new Audio(dataUrl)
@@ -131,22 +155,31 @@ export function useRecordingPlayback(audioFilePath?: string, initialDurationSec 
       // 导致进度条卡住。timeupdate 是媒体事件，不受 rAF 节流影响，保证进度稳定推进。
       audio.ontimeupdate = () => setCurrentTime(audio.currentTime)
       audio.onended = () => {
+        releaseLease()
         releaseHistoryPlayback(audio)
         setPlaying(false)
         setCurrentTime(0)
       }
-      audio.onpause = () => setPlaying(false)
+      audio.onpause = () => {
+        releaseLease()
+        setPlaying(false)
+      }
+      audio.onerror = () => {
+        releaseLease()
+        releaseHistoryPlayback(audio)
+        setPlaying(false)
+      }
       audio.onplay = () => {
         claimHistoryPlayback(audio)
         setPlaying(true)
       }
       await audio.play()
     } catch {
-      // ignore playback errors
+      if (leaseRef.current === lease) releaseLease()
     } finally {
       setLoading(false)
     }
-  }, [audioFilePath, playing, playbackRate])
+  }, [audioFilePath, playing, playbackRate, releaseLease])
 
   const seek = useCallback((seconds: number) => {
     if (audioRef.current) {

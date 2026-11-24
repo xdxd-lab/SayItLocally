@@ -292,6 +292,15 @@ export function historyDelete(id: string) {
   return invoke('history_delete', { id })
 }
 
+// [自訂] S61：查詢與清除舊歷史時也涵蓋本機孤立的錄音。
+export function historyRetainedCounts() {
+  return invoke<[number, number]>('history_retained_counts')
+}
+
+export function historyClearRetained(historyCount: number, audioCount: number) {
+  return invoke('history_clear_retained', { historyCount, audioCount })
+}
+
 export function historySetFavorite(id: string, favorite: boolean) {
   return invoke('history_set_favorite', { id, favorite })
 }
@@ -483,6 +492,19 @@ export function audioFileExists(filePath: string) {
 
 export function deleteAudioFile(filePath: string) {
   return invoke('delete_audio_file', { filePath })
+}
+
+// [自訂] S71：播放使用中的錄音延後清理。
+export function protectPlayingRecording(filePath: string) {
+  return invoke<string | null>('protect_playing_recording', { filePath })
+}
+
+export function renewPlayingRecording(token: string) {
+  return invoke<void>('renew_playing_recording', { token })
+}
+
+export function releasePlayingRecording(token: string) {
+  return invoke<void>('release_playing_recording', { token })
 }
 
 // ─── Diagnostics ───

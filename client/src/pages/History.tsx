@@ -431,6 +431,9 @@ export default function History() {
   const [visibleCount, setVisibleCount] = useState(HISTORY_PAGE_SIZE)
   const [totalCount, setTotalCount] = useState(0)
   const [exportResult, setExportResult] = useState<{ filePath: string | null; canceled: boolean } | null>(null)
+  const [exporting, setExporting] = useState(false)
+  const [exportError, setExportError] = useState(false)
+  const [deleteError, setDeleteError] = useState(false)
 
   const loadRecords = useCallback(async (searchKeyword: string, limit: number, favOnly: boolean) => {
     const [items, total] = await Promise.all([
@@ -464,13 +467,16 @@ export default function History() {
   }, [debouncedKeyword, visibleCount, favoriteOnly, loadRecords])
 
   const handleDelete = async (id: string) => {
-    // Clean up audio file if it exists
-    const record = records.find((r) => r.id === id)
-    if (record?.audioFilePath) {
-      try { await bridge.deleteAudioFile(record.audioFilePath) } catch { /* ignore */ }
+    // [自訂] S71：如果錄音仍在使用或刪除失敗，保留歷史列並顯示錯誤。
+    setDeleteError(false)
+    try {
+      const record = records.find((r) => r.id === id)
+      if (record?.audioFilePath) await bridge.deleteAudioFile(record.audioFilePath)
+      await deleteHistory(id)
+      void loadRecords(debouncedKeyword, visibleCount, favoriteOnly)
+    } catch {
+      setDeleteError(true)
     }
-    await deleteHistory(id)
-    void loadRecords(debouncedKeyword, visibleCount, favoriteOnly)
   }
 
   const handleToggleFavorite = async (id: string, nextFavorite: boolean) => {
@@ -503,10 +509,19 @@ export default function History() {
   }
 
   const handleExport = async () => {
-    // [自訂] SCAN1-12（L-82）：匯出時套用目前的「僅收藏」篩選，原本只帶搜尋字，會連非收藏一起匯出。
-    const result = await exportHistory({ keyword: debouncedKeyword, favoriteOnly })
-    setExportResult(result)
-    if (!result.canceled) setTimeout(() => setExportResult(null), 8000)
+    // [自訂] L-82：匯出確認和寫檔期間只處理一份篩選結果。
+    setExporting(true)
+    setExportError(false)
+    setExportResult(null)
+    try {
+      const result = await exportHistory({ keyword: debouncedKeyword, favoriteOnly })
+      setExportResult(result)
+      if (!result.canceled) setTimeout(() => setExportResult(null), 8000)
+    } catch {
+      setExportError(true)
+    } finally {
+      setExporting(false)
+    }
   }
 
   const handleReprocess = async (record: HistoryRecord) => {
@@ -653,6 +668,7 @@ export default function History() {
               size="icon"
               className="h-8 w-8 text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
               onClick={() => void handleExport()}
+              disabled={exporting}
               aria-label={t('history.export')}
               title={t('history.export')}
             >
@@ -677,6 +693,8 @@ export default function History() {
       {exportResult?.canceled && (
         <p className="mb-3 text-xs text-muted-foreground">{t('history.exportCanceled')}</p>
       )}
+      {exportError && <p role="alert" className="mb-3 text-xs text-destructive">{t('history.exportFailed')}</p>}
+      {deleteError && <p role="alert" className="mb-3 text-xs text-destructive">{t('history.deleteFailed')}</p>}
 
       <HistoryRecordList
         records={records}

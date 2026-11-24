@@ -15,7 +15,7 @@ use std::fs;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::storage::Storage;
 
@@ -180,9 +180,7 @@ fn app_version() -> String {
 }
 
 fn audio_dir() -> PathBuf {
-    dirs::data_local_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join("com.sayitlocally.desktop")
+    crate::commands::app_data_dir()
         .join("audio")
 }
 
@@ -190,9 +188,7 @@ fn backup_dir() -> PathBuf {
     dirs::download_dir()
         .or_else(dirs::document_dir)
         .unwrap_or_else(|| {
-            dirs::data_local_dir()
-                .unwrap_or_else(|| PathBuf::from("."))
-                .join("com.sayitlocally.desktop")
+            crate::commands::app_data_dir()
         })
         .join("SayItLocally Backups")
 }
@@ -904,6 +900,8 @@ pub fn write_backup_archive(
     on_progress: &mut dyn FnMut(ArchiveProgress),
 ) -> Result<(), String> {
     let temp_path = PathBuf::from(format!("{}.part", output.to_string_lossy()));
+    // [自訂] S71：收集與讀取備份錄音期間禁止清理。
+    let _recordings = scope.include_audio.then(super::audio::lock_recordings);
     let audio_files = collect_audio_export_files(scope.include_audio);
     let total_files = audio_files.len() as u64;
     let total_bytes = audio_files.iter().map(|file| file.size).sum::<u64>();
@@ -1351,8 +1349,10 @@ pub async fn import_config(
 }
 
 #[tauri::command]
-pub async fn import_full(in_path: String, storage: State<'_, Storage>) -> Result<(), String> {
-    apply_full_backup(storage.inner(), &in_path)
+pub async fn import_full(in_path: String, app: AppHandle) -> Result<(), String> {
+    // [自訂] REV9：錄音檔鎖及匯入 I/O 都在阻塞工作執行緒。
+    tokio::task::spawn_blocking(move || apply_full_backup(app.state::<Storage>().inner(), &in_path))
+        .await.map_err(|e| e.to_string())?
 }
 
 /// 应用一个全量备份 zip。本地导入与 WebDAV 恢复共用。
@@ -1374,6 +1374,8 @@ pub fn apply_full_backup(storage: &Storage, in_path: &str) -> Result<(), String>
     let data: Value = serde_json::from_str(&json_str).map_err(|e| format!("Failed to parse backup.json: {}", e))?;
     check_kind_and_version(&data, "full", FORMAT_VERSION)?;
 
+    // [自訂] S71：匯入的錄音寫完前禁止清理。
+    let _recordings = super::audio::lock_recordings();
     // 2. 释放音频文件到本机 audio 目录
     let adir = audio_dir();
     fs::create_dir_all(&adir).map_err(|e| format!("Failed to create audio directory: {}", e))?;

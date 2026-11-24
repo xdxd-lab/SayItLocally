@@ -1,4 +1,4 @@
-use rusqlite::{params, Connection, Result as SqlResult};
+use rusqlite::{params, Connection, OptionalExtension, Result as SqlResult};
 use serde_json::Value;
 use std::fs;
 use std::path::PathBuf;
@@ -216,6 +216,20 @@ impl Storage {
         }
     }
 
+    // [自訂] REV9：只有不存在的設定才能套用預設，讀取錯誤或型別損壞一律跳過清理。
+    pub(crate) fn retention_days(&self, key: &str, default: i64) -> Result<i64, String> {
+        let db = self.conn();
+        let raw: Option<String> = db.query_row(
+            "SELECT value_json FROM app_settings WHERE key = ?1",
+            params![key],
+            |row| row.get(0),
+        ).optional().map_err(|error| error.to_string())?;
+        match raw {
+            None => Ok(default),
+            Some(raw) => serde_json::from_str::<i64>(&raw).map_err(|error| error.to_string()),
+        }
+    }
+
     pub fn set(&self, key: &str, value: &Value) -> SqlResult<()> {
         if is_collection_key(key) {
             let items = match value {
@@ -418,7 +432,7 @@ impl Storage {
             "SELECT list_order, raw_json FROM history_records WHERE id = ?1",
             params![id],
             |row| Ok((row.get(0)?, row.get(1)?)),
-        ).ok();
+        ).optional()?; // [自訂] S61：清除失敗必須傳回，僅不存在可以忽略。
 
         let (list_order, raw_json) = match row {
             Some(r) => r,
@@ -435,6 +449,31 @@ impl Storage {
 
         self.update_stats_delta(&db, char_count, duration_sec, -1);
         db.commit()
+    }
+
+    // [自訂] REV9：統計及清除直接使用資料表，SQL 錯誤不折疊為空資料。
+    pub(crate) fn retained_history_count(&self) -> SqlResult<usize> {
+        Self::count_retained_history_on(&self.conn())
+    }
+
+    fn count_retained_history_on(db: &Connection) -> SqlResult<usize> {
+        db.query_row("SELECT COUNT(*) FROM history_records", [], |row| row.get(0))
+    }
+
+    pub(crate) fn clear_retained_history(&self, confirmed_count: usize) -> Result<(), String> {
+        let mut db = self.conn();
+        let tx = db.transaction().map_err(|error| error.to_string())?;
+        if Self::count_retained_history_on(&tx).map_err(|error| error.to_string())? > confirmed_count {
+            return Err("Retained history changed after confirmation".into());
+        }
+        tx.execute("DELETE FROM history_records", []).map_err(|error| error.to_string())?;
+        let stats = r#"{"totalDurationSec":0,"totalChars":0}"#;
+        tx.execute(
+            "INSERT INTO app_settings (key, value_json, updated_at) VALUES ('stats', ?1, ?2)
+             ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at",
+            params![stats, chrono::Utc::now().timestamp_millis()],
+        ).map_err(|error| error.to_string())?;
+        tx.commit().map_err(|error| error.to_string())
     }
 
     pub fn history_set_favorite(&self, id: &str, favorite: bool) -> SqlResult<()> {

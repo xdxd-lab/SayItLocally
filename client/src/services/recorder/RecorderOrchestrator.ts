@@ -2325,7 +2325,8 @@ export class RecorderOrchestrator {
       runId,
       result,
       textToPaste,
-      hasText,
+      // [自訂] S68：原選取文字可以貼回去，但不進歷史。
+      selectionNotApplied: !selectedEditWasApplied,
       audioDurationSec: audioDur,
       wallTimeSec: wallSec,
       mode: () => this.provider.mode,
