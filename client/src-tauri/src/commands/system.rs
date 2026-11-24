@@ -198,6 +198,10 @@ fn trim_logs(dir: &Path, file: &mut Option<std::fs::File>, cutoff: chrono::DateT
     for path in log_paths(dir) {
         let name = path.file_name().and_then(|name| name.to_str()).unwrap_or_default();
         if let Some((Some(day), _)) = rotation_id(name) {
+            // [自訂] REV9：比截止日新的封存整檔保留，只需逐行檢查邊界日。
+            if day > cutoff_day {
+                continue;
+            }
             // 日期是輪替前最後寫入時間，早於截止日的整個封存檔都已到期。
             if day < cutoff_day {
                 if let Err(error) = std::fs::remove_file(&path) {
@@ -332,6 +336,26 @@ mod log_retention_tests {
         assert!(!staging.exists());
         fs::remove_dir_all(dir).unwrap();
     }
+    #[test]
+    fn retention_trims_cutoff_date_and_keeps_entries_at_exact_cutoff() {
+        use chrono::TimeZone;
+        let dir = std::env::temp_dir().join(format!("sayit-log-test-{}", uuid::Uuid::new_v4()));
+        fs::create_dir(&dir).unwrap();
+        let cutoff = chrono::Local.with_ymd_and_hms(2026, 6, 15, 12, 0, 0).single().unwrap();
+        let boundary = dir.join("sayit.2026-06-15.0000000001.log");
+        let old = dir.join("sayit.2026-06-14.0000000001.log");
+        let recent = dir.join("sayit.2026-06-16.0000000001.log");
+        let at_cutoff = "[2026-06-15 12:00:00.000] [INFO] exact cutoff\n";
+        fs::write(&boundary, format!("[2026-06-15 11:59:59.999] [INFO] expired\n{at_cutoff}")).unwrap();
+        fs::write(&old, b"expired file").unwrap();
+        fs::write(&recent, b"recent archive stays byte-for-byte").unwrap();
+        trim_logs(&dir, &mut None, cutoff);
+        assert_eq!(fs::read_to_string(boundary).unwrap(), at_cutoff);
+        assert!(!old.exists());
+        assert_eq!(fs::read(recent).unwrap(), b"recent archive stays byte-for-byte");
+        fs::remove_dir_all(dir).unwrap();
+    }
+
     #[test]
     fn keeps_more_than_four_dated_logs_and_caps_oldest_first_without_day_limit() {
         let dir = std::env::temp_dir().join(format!("sayit-log-test-{}", uuid::Uuid::new_v4()));
@@ -776,7 +800,6 @@ async fn fetch_installer_part(
 ) -> Result<(u64, u64), String> {
     use futures_util::StreamExt;
     use std::io::Write;
-use std::path::{Path, PathBuf};
 
     let resume_from = std::fs::metadata(part_path).map(|m| m.len()).unwrap_or(0);
 

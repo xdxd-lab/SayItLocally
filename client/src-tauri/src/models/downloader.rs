@@ -906,8 +906,17 @@ fn parallel_chunk_path(temp_path: &Path, index: usize) -> PathBuf {
 fn persist_parallel_state(path: &Path, state: &ParallelDownloadState) -> Result<(), String> {
     let bytes = serde_json::to_vec(state)
         .map_err(|error| download_error("download_failed", format!("Failed to serialize download state: {}", error)))?;
-    std::fs::write(path, bytes)
-        .map_err(|error| download_io_error("Failed to persist parallel download state", error))
+    // [自訂] REV9：先寫另一份。磁碟滿時，舊的組裝進度仍可用於截短與重試。
+    let staged = sibling_path(path, &format!(".{}.tmp", uuid::Uuid::new_v4()));
+    let mut file = std::fs::OpenOptions::new().write(true).create_new(true).open(&staged)
+        .map_err(|error| download_io_error("Failed to stage parallel download state", error))?;
+    let result = file.write_all(&bytes).and_then(|()| file.sync_all());
+    drop(file);
+    let result = result.and_then(|()| std::fs::rename(&staged, path));
+    if result.is_err() {
+        let _ = std::fs::remove_file(&staged);
+    }
+    result.map_err(|error| download_io_error("Failed to persist parallel download state", error))
 }
 
 fn cleanup_parallel_artifacts(
@@ -1017,7 +1026,10 @@ fn chunk_file_len(path: &Path, maximum: u64) -> Result<u64, String> {
             Ok(0)
         }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(0),
-        Err(error) => Err(download_io_error("Failed to inspect chunk file", error)),
+        Err(error) => Err(download_error(
+            "download_parallel_verify_failed",
+            format!("Failed to inspect source chunk: {error}"),
+        )),
     }
 }
 
@@ -1063,10 +1075,14 @@ fn assemble_or_reset_parallel_download(
     state: &mut ParallelDownloadState,
 ) -> Result<(), String> {
     let result = assemble_parallel_chunks(temp_path, state_path, chunks, state);
-    if result.is_err() {
+    if result.as_ref().is_err_and(|error| is_parallel_integrity_error(error)) {
         cleanup_parallel_artifacts_best_effort(temp_path, state_path, chunks);
     }
     result
+}
+
+fn is_parallel_integrity_error(error: &str) -> bool {
+    error.starts_with("sayit_error:download_parallel_verify_failed:") || is_checksum_error(error)
 }
 
 fn assemble_parallel_chunks(
@@ -1086,6 +1102,7 @@ fn assemble_parallel_chunks(
         .append(true)
         .open(temp_path)
         .map_err(|error| download_io_error("Failed to open assembly file for append", error))?;
+    let mut buffer = vec![0; 64 * 1024];
     for chunk in chunks.iter().skip(state.assembled_chunks) {
         let chunk_path = parallel_chunk_path(temp_path, chunk.index);
         let actual = chunk_file_len(&chunk_path, chunk.len())?;
@@ -1095,10 +1112,10 @@ fn assemble_parallel_chunks(
                 format!("Chunk {} disappeared before assembly", chunk.index),
             ));
         }
-        let mut source = std::fs::File::open(&chunk_path)
-            .map_err(|error| download_io_error("Failed to open completed chunk", error))?;
-        let copied = std::io::copy(&mut source, &mut assembled)
-            .map_err(|error| download_io_error("Failed to assemble chunk", error))?;
+        let mut source = std::fs::File::open(&chunk_path).map_err(|error| {
+            download_error("download_parallel_verify_failed", format!("Failed to open completed chunk {}: {error}", chunk.index))
+        })?;
+        let copied = copy_completed_chunk(&mut source, &mut assembled, chunk.index, &mut buffer)?;
         if copied != chunk.len() {
             return Err(download_error(
                 "download_parallel_verify_failed",
@@ -1116,11 +1133,39 @@ fn assemble_parallel_chunks(
         assembled
             .sync_data()
             .map_err(|error| download_io_error("Failed to persist assembled chunk", error))?;
+        let previous = state.assembled_chunks;
         state.assembled_chunks = chunk.index + 1;
-        persist_parallel_state(state_path, state)?;
+        if let Err(error) = persist_parallel_state(state_path, state) {
+            state.assembled_chunks = previous;
+            return Err(error);
+        }
         remove_file_if_exists(&chunk_path)?;
     }
     Ok(())
+}
+
+// [自訂] REV10：讀不到來源分片就重置下載；寫入組裝檔失敗則保留續傳資料。
+fn copy_completed_chunk(
+    source: &mut impl std::io::Read,
+    assembled: &mut impl Write,
+    index: usize,
+    buffer: &mut [u8],
+) -> Result<u64, String> {
+    let mut copied = 0;
+    loop {
+        let read = match source.read(buffer) {
+            Ok(0) => return Ok(copied),
+            Ok(read) => read,
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(error) => return Err(download_error(
+                "download_parallel_verify_failed",
+                format!("Failed to read completed chunk {index}: {error}"),
+            )),
+        };
+        assembled.write_all(&buffer[..read])
+            .map_err(|error| download_io_error("Failed to write assembly file", error))?;
+        copied += read as u64;
+    }
 }
 
 /// 并发下载到独立分片文件；每个分片可跨调用续传，完成后按顺序组装并逐段释放空间。
@@ -1245,7 +1290,7 @@ async fn download_file_parallel(
         remove_file_if_exists(temp_path)?;
     }
 
-    // [自訂] REV9：完成途中讀不到分片也重置狀態，避免重試困在同一個分片。
+    // [自訂] REV9：分片缺失或不符才重置；可重試的 I/O 錯誤保留進度。
     assemble_or_reset_parallel_download(temp_path, &state_path, &chunks, &mut state)?;
 
     if let Err(error) = finalize_download(
@@ -1255,8 +1300,9 @@ async fn download_file_parallel(
         expected_sha256,
         "download_parallel_verify_failed",
     ) {
-        // [自訂] SC-38：完成階段錯誤後，下次從乾淨狀態重新下載或組裝。
-        cleanup_parallel_artifacts_best_effort(temp_path, &state_path, &chunks);
+        if is_parallel_integrity_error(&error) {
+            cleanup_parallel_artifacts_best_effort(temp_path, &state_path, &chunks);
+        }
         return Err(error);
     }
     cleanup_parallel_artifacts_best_effort(temp_path, &state_path, &chunks);
@@ -1284,8 +1330,7 @@ async fn download_file_parallel(
 fn should_fallback_to_single_stream(err_msg: &str) -> bool {
     err_msg.starts_with("sayit_error:download_range_invalid:")
         || err_msg.starts_with("sayit_error:download_source_changed:")
-        || err_msg.starts_with("sayit_error:download_parallel_verify_failed:")
-        || is_checksum_error(err_msg)
+        || is_parallel_integrity_error(err_msg)
 }
 
 /// 纯函数校验断点续传响应（严格遵循 RFC 9110 §14.1.2）
@@ -2081,6 +2126,67 @@ mod tests {
     }
 
     #[test]
+    fn assembly_distinguishes_source_read_failure_from_output_write_failure() {
+        struct FailingSource;
+        impl Read for FailingSource {
+            fn read(&mut self, _buffer: &mut [u8]) -> std::io::Result<usize> {
+                Err(std::io::Error::other("simulated source read failure"))
+            }
+        }
+
+        struct FullOutput;
+        impl Write for FullOutput {
+            fn write(&mut self, _data: &[u8]) -> std::io::Result<usize> {
+                Err(std::io::Error::new(std::io::ErrorKind::StorageFull, "simulated full disk"))
+            }
+            fn flush(&mut self) -> std::io::Result<()> { Ok(()) }
+        }
+
+        let mut buffer = [0; 16];
+        let read_error = copy_completed_chunk(&mut FailingSource, &mut Vec::new(), 0, &mut buffer).unwrap_err();
+        assert!(read_error.contains("Failed to read completed chunk"));
+        assert!(is_parallel_integrity_error(&read_error));
+        let write_error = copy_completed_chunk(&mut &b"completed"[..], &mut FullOutput, 0, &mut buffer).unwrap_err();
+        assert!(write_error.contains("Failed to write assembly file"));
+        assert!(!should_fallback_to_single_stream(&write_error));
+    }
+
+    #[test]
+    fn failed_progress_publish_preserves_completed_chunk_for_retry() {
+        use std::fs;
+        let dir = std::env::temp_dir().join(format!("sayit-download-test-{}", uuid::Uuid::new_v4()));
+        fs::create_dir(&dir).unwrap();
+        let partial = dir.join("weight.part");
+        let state_path = dir.join("state.json");
+        // The assembly lands, but the filesystem rejects replacing this directory with a state file.
+        fs::create_dir(&state_path).unwrap();
+        let chunks = vec![ChunkSpec { index: 0, start: 0, end: 2 }];
+        let chunk = parallel_chunk_path(&partial, 0);
+        fs::write(&chunk, b"abc").unwrap();
+        let mut state = ParallelDownloadState {
+            version: PARALLEL_STATE_VERSION,
+            total_size: 3,
+            expected_sha256: None,
+            source_url: String::new(),
+            strong_etag: None,
+            chunks: chunks.clone(),
+            phase: ParallelPhase::Assembling,
+            assembled_chunks: 0,
+        };
+        let error = assemble_or_reset_parallel_download(&partial, &state_path, &chunks, &mut state).unwrap_err();
+        assert!(error.contains("Failed to persist parallel download state"));
+        assert!(!should_fallback_to_single_stream(&error));
+        assert_eq!(state.assembled_chunks, 0);
+        assert_eq!(fs::read(&chunk).unwrap(), b"abc");
+        fs::remove_dir(&state_path).unwrap();
+        assemble_or_reset_parallel_download(&partial, &state_path, &chunks, &mut state).unwrap();
+        assert_eq!(fs::read(&partial).unwrap(), b"abc");
+        assert!(!chunk.exists());
+        assert_eq!(serde_json::from_slice::<ParallelDownloadState>(&fs::read(&state_path).unwrap()).unwrap().assembled_chunks, 1);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
     fn missing_completed_chunk_resets_assembly_and_leaves_destination_intact() {
         use std::fs;
         let dir = std::env::temp_dir().join(format!("sayit-download-test-{}", uuid::Uuid::new_v4()));
@@ -2126,7 +2232,9 @@ mod tests {
                     .unwrap_err();
                 assert!(error.contains("Failed to open completed chunk"));
                 assert!(!state_path.exists());
+                assert!(!partial.exists());
                 assert!(!blocked.exists());
+                assert!(should_fallback_to_single_stream(&error));
                 assert_eq!(fs::read(&dest).unwrap(), b"original");
             }
         }

@@ -53,12 +53,23 @@ fn browser_args_fingerprint(value: &str) -> String {
 }
 
 // [自訂] S71：啟動與執行中清理都讀目前設定，永遠保留錄音仍以 -1 表示。
-fn cleanup_retained_files(storage: &Storage) {
-    if let Ok(days @ (7 | 30 | 90)) = storage.retention_days("audioRetentionDays", 7) {
+fn cleanup_retained_files(storage: &Storage, recovery_session: bool) {
+    if let Some(days) = recording_retention_days(storage, recovery_session) {
         commands::audio::cleanup_expired_recordings(days);
     }
     if let Ok(days) = commands::system::log_retention_days(storage) {
         commands::system::cleanup_retained_logs(days);
+    }
+}
+
+// [自訂] L-72：重建資料庫的這次執行無法得知原設定，不清理舊錄音。
+fn recording_retention_days(storage: &Storage, recovery_session: bool) -> Option<i64> {
+    if recovery_session {
+        return None;
+    }
+    match storage.retention_days("audioRetentionDays", 7) {
+        Ok(days @ (7 | 30 | 90)) => Some(days),
+        _ => None,
     }
 }
 
@@ -466,12 +477,10 @@ fn main() {
     #[cfg(target_os = "macos")]
     platform::macos::appkit::disable_webkit_smart_substitutions();
 
-    let db_path = dirs::data_local_dir()
-        .unwrap_or_else(|| std::path::PathBuf::from("."))
-        .join("com.sayitlocally.desktop")
-        .join("sayit.db");
+    let db_path = commands::app_data_dir().join("sayit.db");
 
     let (storage, storage_recovery) = Storage::open_or_recover(db_path);
+    let recovery_session = storage_recovery.is_some();
     if let Some(recovery) = storage_recovery {
         notify_storage_recovery(recovery);
     }
@@ -494,7 +503,7 @@ fn main() {
     //     eprintln!("Warning: Electron data migration failed: {}", e);
     // }
 
-    cleanup_retained_files(&storage);
+    cleanup_retained_files(&storage, recovery_session);
 
     // Read PTT setting before moving storage into managed state
     let ptt_setting_val = storage.get("shortcutPTT", None);
@@ -601,7 +610,7 @@ fn main() {
             let retention_app = app.handle().clone();
             thread::spawn(move || loop {
                 thread::sleep(std::time::Duration::from_secs(15 * 60));
-                cleanup_retained_files(retention_app.state::<Storage>().inner());
+                cleanup_retained_files(retention_app.state::<Storage>().inner(), recovery_session);
             });
             // [自訂] S45：清掉上次殘留的診斷包。
             commands::diagnostics::purge_stale_diagnostics_zips();
@@ -768,11 +777,11 @@ fn main() {
                 })
                 .build(),
         )
-        .invoke_handler(tauri::generate_handler![
-            // Store
-            commands::storage::store_get,
-            commands::storage::store_set,
-            commands::storage::store_delete,
+        .invoke_handler(commands::storage::with_ordered_settings(tauri::generate_handler![
+            // [自訂] L-72
+            commands::corrupt_db::list_corrupt_db_copies,
+            commands::corrupt_db::reveal_corrupt_db_copy,
+            commands::corrupt_db::delete_corrupt_db_copy,
             // History
             commands::storage::history_list,
             commands::storage::history_count,
@@ -930,7 +939,7 @@ fn main() {
             models::gguf_asr::gguf_asr_diagnostics,
             models::test_audio::run_asr_benchmark,
             models::test_audio::get_test_audio_b64,
-        ])
+        ]))
         .on_window_event(|window, event| {
             // 点击关闭按钮时隐藏到托盘，而不是退出
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
@@ -959,6 +968,17 @@ fn main() {
                 let _ = app_handle;
             }
         });
+}
+
+#[cfg(test)]
+#[test]
+fn recovery_session_preserves_recordings_even_with_a_fresh_database() {
+    let storage = Storage::new(std::path::PathBuf::from(":memory:")).unwrap();
+    assert_eq!(recording_retention_days(&storage, false), Some(7));
+    assert_eq!(recording_retention_days(&storage, true), None);
+    storage.set("audioRetentionDays", &serde_json::json!(30)).unwrap();
+    assert_eq!(recording_retention_days(&storage, false), Some(30));
+    assert_eq!(recording_retention_days(&storage, true), None);
 }
 
 #[cfg(test)]
