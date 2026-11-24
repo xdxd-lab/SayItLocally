@@ -162,6 +162,50 @@ fn verify_temp_file_sha256(file_path: &Path, expected_sha256: &str) -> Result<()
     }
 }
 
+// [自訂] SC-36：不分大小寫的 APFS 替換檔案時可能保留舊的目錄項名稱。
+fn restore_catalog_filename(dest_path: &Path) -> Result<(), String> {
+    let invalid_path = || download_error("download_failed", "Missing catalog filename");
+    let expected = dest_path.file_name().ok_or_else(invalid_path)?;
+    let parent = dest_path.parent().ok_or_else(invalid_path)?;
+    let entries = std::fs::read_dir(parent)
+        .map_err(|e| download_io_error("Failed to read model directory", e))?;
+    let mut existing = None;
+    for entry in entries {
+        let entry = entry.map_err(|e| download_io_error("Failed to read model directory entry", e))?;
+        let name = entry.file_name();
+        if name == expected {
+            return Ok(());
+        }
+        if name.eq_ignore_ascii_case(expected) {
+            existing = Some(entry.path());
+        }
+    }
+    let existing = existing.ok_or_else(|| {
+        download_error("download_failed", "Could not find the verified model in its directory")
+    })?;
+
+    // 以獨立的同目錄暫存名稱中轉，避免覆寫續傳檔，也保留相對符號連結。
+    let scratch_name = format!(".sayit-model-{}.tmp", uuid::Uuid::new_v4());
+    let scratch = parent.join(&scratch_name);
+    std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&scratch)
+        .map_err(|e| download_io_error("Failed to reserve a model filename for renaming", e))?;
+    if let Err(e) = std::fs::rename(&existing, &scratch) {
+        let _ = std::fs::remove_file(&scratch);
+        return Err(download_io_error("Failed to stage verified model for renaming", e));
+    }
+    if let Err(e) = std::fs::rename(&scratch, dest_path) {
+        let error = download_io_error("Failed to apply the catalog filename", e);
+        if std::fs::rename(&scratch, &existing).is_err() {
+            return Err(format!("{error}. The verified file is still saved as {scratch_name}."));
+        }
+        return Err(error);
+    }
+    Ok(())
+}
+
 // [自訂] SC-35：所有完成路徑都核對暫存檔本身，通過後才以同目錄 rename 替換。
 fn finalize_download(
     temp_path: &Path,
@@ -183,7 +227,36 @@ fn finalize_download(
     }
     verify_temp_file_sha256(temp_path, expected_sha256)?;
     std::fs::rename(temp_path, dest_path)
-        .map_err(|e| download_io_error("Failed to finalize downloaded file", e))
+        .map_err(|e| download_io_error("Failed to finalize downloaded file", e))?;
+    restore_catalog_filename(dest_path)
+}
+
+// [自訂] SC-36：大小與雜湊都相符時，直接校正檔名並沿用現有權重。
+fn reuse_verified_download(
+    dest_path: &Path,
+    expected_size: u64,
+    expected_sha256: &str,
+) -> Result<bool, String> {
+    let metadata = match std::fs::metadata(dest_path) {
+        Ok(metadata) => metadata,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(e) => return Err(download_io_error("Failed to read existing model metadata", e)),
+    };
+    if metadata.is_file() && metadata.len() == expected_size {
+        match verify_file_sha256(dest_path, expected_sha256) {
+            Ok(()) => {
+                restore_catalog_filename(dest_path)?;
+                return Ok(true);
+            }
+            Err(e) if is_checksum_error(&e) => {}
+            Err(e) => return Err(e),
+        }
+    }
+    log::warn!(
+        "Existing model file {:?} failed size or SHA-256 validation; redownloading",
+        dest_path.file_name().unwrap_or_default()
+    );
+    Ok(false)
 }
 
 // [自訂] SC-35：避免舊暫存檔透過連結指向既有權重，導致寫入暫存時改到原檔。
@@ -1475,7 +1548,7 @@ pub async fn download_file(
             .map_err(|error| download_io_error("Failed to create model subdirectory", error))?;
     }
 
-    // A manually placed model may be a symlink. Preserve its target too.
+    // [自訂] SC-35：手動放入的模型可能是符號連結，也要保留它指向的檔案。
     let existing_target = std::fs::canonicalize(&dest_path).ok();
     let artifact_dir = std::fs::canonicalize(dest_path.parent().unwrap_or(dest_dir))
         .map_err(|e| download_io_error("Failed to resolve model directory", e))?;
@@ -1490,55 +1563,30 @@ pub async fn download_file(
         check_artifact(&parallel_chunk_path(&parallel_temp, chunk.index))?;
     }
 
-    match std::fs::metadata(&dest_path) {
-        Ok(metadata) => {
-            let size = metadata.len();
-            let hash_ok = if metadata.is_file() && size == expected_size {
-                match verify_file_sha256(&dest_path, expected_sha256) {
-                    Ok(()) => true,
-                    Err(error) if is_checksum_error(&error) => false,
-                    Err(error) => return Err(error),
-                }
-            } else {
-                false
-            };
-            if hash_ok {
-                if let Err(error) = remove_file_if_exists(&stream_temp) {
-                    log::warn!("Failed to remove stale single-stream partial: {}", error);
-                }
-                cleanup_parallel_artifacts_best_effort(
-                    &parallel_temp,
-                    &parallel_state_path(&parallel_temp),
-                    &calculate_chunks(expected_size),
-                );
-                emit_progress(
-                    &app,
-                    model_id,
-                    file_name,
-                    size,
-                    size,
-                    "completed",
-                    None,
-                    file_index,
-                    file_count,
-                );
-                return Ok(());
-            }
-            log::warn!(
-                "Existing model file {} failed size or SHA-256 validation; redownloading",
-                file_name
-            );
-            // [自訂] SC-35：舊檔保留至新檔通過驗證。
+    if reuse_verified_download(&dest_path, expected_size, expected_sha256)? {
+        if let Err(error) = remove_file_if_exists(&stream_temp) {
+            log::warn!("Failed to remove stale single-stream partial: {}", error);
         }
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-        Err(error) => {
-            return Err(download_io_error(
-                "Failed to read existing model metadata",
-                error,
-            ));
-        }
+        cleanup_parallel_artifacts_best_effort(
+            &parallel_temp,
+            &parallel_state_path(&parallel_temp),
+            &calculate_chunks(expected_size),
+        );
+        emit_progress(
+            &app,
+            model_id,
+            file_name,
+            expected_size,
+            expected_size,
+            "completed",
+            None,
+            file_index,
+            file_count,
+        );
+        return Ok(());
     }
 
+    // [自訂] SC-35：舊檔保留至新檔通過驗證。
     let client = build_http_client()?;
     let probe = probe_url(&client, url).await;
     let total_size = match resolve_download_size(expected_size, probe.size) {
@@ -2204,6 +2252,59 @@ mod tests {
         fs::write(&partial, b"abc").unwrap();
         finalize().unwrap();
         assert!(!partial.exists());
+        assert_eq!(fs::read(&dest).unwrap(), b"abc");
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    // [自訂] SC-36：目錄項必須逐字符合 catalog；原路徑能開啟檔案仍不足。
+    #[test]
+    fn finalized_download_repairs_existing_filename_case() {
+        use std::fs;
+        let dir = std::env::temp_dir().join(format!("sayit-download-test-{}", uuid::Uuid::new_v4()));
+        fs::create_dir(&dir).unwrap();
+        let dest = dir.join("weight.gguf");
+        fs::write(dir.join("weight.GGUF"), b"old").unwrap();
+        if !dest.exists() {
+            fs::remove_dir_all(dir).unwrap();
+            return;
+        }
+        let partial = dir.join("weight.gguf.part");
+        fs::write(&partial, b"abc").unwrap();
+        finalize_download(
+            &partial,
+            &dest,
+            3,
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+            "download_source_mismatch",
+        ).unwrap();
+
+        let names: Vec<_> = fs::read_dir(&dir).unwrap()
+            .map(|entry| entry.unwrap().file_name()).collect();
+        assert_eq!(names, [std::ffi::OsString::from("weight.gguf")]);
+        assert_eq!(fs::read(&dest).unwrap(), b"abc");
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn reusing_verified_weight_repairs_filename_case_without_downloading() {
+        use std::fs;
+        let dir = std::env::temp_dir().join(format!("sayit-download-test-{}", uuid::Uuid::new_v4()));
+        fs::create_dir(&dir).unwrap();
+        let dest = dir.join("weight.gguf");
+        fs::write(dir.join("weight.GGUF"), b"abc").unwrap();
+        if !dest.exists() {
+            fs::remove_dir_all(dir).unwrap();
+            return;
+        }
+        assert!(reuse_verified_download(
+            &dest,
+            3,
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+        ).unwrap());
+
+        let names: Vec<_> = fs::read_dir(&dir).unwrap()
+            .map(|entry| entry.unwrap().file_name()).collect();
+        assert_eq!(names, [std::ffi::OsString::from("weight.gguf")]);
         assert_eq!(fs::read(&dest).unwrap(), b"abc");
         fs::remove_dir_all(dir).unwrap();
     }
