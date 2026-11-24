@@ -1,5 +1,7 @@
 import * as bridge from './bridge'
 import { invoke } from '@tauri-apps/api/core'
+import { confirm } from '@tauri-apps/plugin-dialog'
+import { t } from '@/i18n'
 import { getHotwords } from './api'
 import {
   BUILTIN_SET_ACTIVE_KEY,
@@ -198,6 +200,12 @@ async function buildHotwordsPayload() {
 
 export async function exportHistory(query: HistoryListQuery = {}, format: ExportFormat = 'json') {
   const payload = await buildHistoryPayload(query)
+  // [自訂] L-82：確認的是實際要寫出的同一份篩選結果。
+  if (!await confirm(t('history.exportConfirmCount', { count: payload.records.length }), {
+    title: t('history.export'),
+    okLabel: t('history.export'),
+    cancelLabel: t('common.cancel'),
+  })) return { canceled: true, filePath: null }
   const stamp = slugTimestamp()
 
   if (format === 'csv') {

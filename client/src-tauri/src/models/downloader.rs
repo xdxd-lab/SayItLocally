@@ -162,8 +162,8 @@ fn verify_temp_file_sha256(file_path: &Path, expected_sha256: &str) -> Result<()
     }
 }
 
-// [自訂] SC-36：不分大小寫的 APFS 替換檔案時可能保留舊的目錄項名稱。
-fn restore_catalog_filename(dest_path: &Path) -> Result<(), String> {
+// [自訂] SC-36 / SC-38：優先取精確拼法，其次只接受 ASCII 大小寫差異。
+fn catalog_directory_entry(dest_path: &Path) -> Result<Option<PathBuf>, String> {
     let invalid_path = || download_error("download_failed", "Missing catalog filename");
     let expected = dest_path.file_name().ok_or_else(invalid_path)?;
     let parent = dest_path.parent().ok_or_else(invalid_path)?;
@@ -174,15 +174,41 @@ fn restore_catalog_filename(dest_path: &Path) -> Result<(), String> {
         let entry = entry.map_err(|e| download_io_error("Failed to read model directory entry", e))?;
         let name = entry.file_name();
         if name == expected {
-            return Ok(());
+            return Ok(Some(entry.path()));
         }
         if name.eq_ignore_ascii_case(expected) {
             existing = Some(entry.path());
         }
     }
-    let existing = existing.ok_or_else(|| {
+    Ok(existing)
+}
+
+// [自訂] SC-38：檔案系統可能將 Unicode 特殊字元視作同名，但我們只校正 ASCII。
+// 在覆寫前就拒絕這類目錄項，避免動到原檔。
+fn validate_download_destination(dest_path: &Path) -> Result<(), String> {
+    match std::fs::symlink_metadata(dest_path) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(e) => return Err(download_io_error("Failed to inspect model destination", e)),
+        Ok(_) => {}
+    }
+    if std::fs::metadata(dest_path).is_ok_and(|info| info.is_dir()) {
+        return Err(download_error("download_failed", "Model destination is a directory"));
+    }
+    if catalog_directory_entry(dest_path)?.is_none() {
+        return Err(download_error("download_failed", "Unsupported model filename spelling"));
+    }
+    Ok(())
+}
+
+// [自訂] SC-36：不分大小寫的 APFS 替換檔案時可能保留舊的目錄項名稱。
+fn restore_catalog_filename(dest_path: &Path) -> Result<(), String> {
+    let existing = catalog_directory_entry(dest_path)?.ok_or_else(|| {
         download_error("download_failed", "Could not find the verified model in its directory")
     })?;
+    if existing.file_name() == dest_path.file_name() {
+        return Ok(());
+    }
+    let parent = existing.parent().unwrap_or_else(|| std::path::Path::new("."));
 
     // 以獨立的同目錄暫存名稱中轉，避免覆寫續傳檔，也保留相對符號連結。
     let scratch_name = format!(".sayit-model-{}.tmp", uuid::Uuid::new_v4());
@@ -193,7 +219,8 @@ fn restore_catalog_filename(dest_path: &Path) -> Result<(), String> {
         .open(&scratch)
         .map_err(|e| download_io_error("Failed to reserve a model filename for renaming", e))?;
     if let Err(e) = std::fs::rename(&existing, &scratch) {
-        let _ = std::fs::remove_file(&scratch);
+        // [自訂] SC-38：只移除我們預留的空白檔；保留可能已有資料的暫存檔。
+        remove_empty_rename_placeholder(&scratch);
         return Err(download_io_error("Failed to stage verified model for renaming", e));
     }
     if let Err(e) = std::fs::rename(&scratch, dest_path) {
@@ -204,6 +231,12 @@ fn restore_catalog_filename(dest_path: &Path) -> Result<(), String> {
         return Err(error);
     }
     Ok(())
+}
+
+fn remove_empty_rename_placeholder(path: &Path) {
+    if std::fs::symlink_metadata(path).is_ok_and(|m| m.is_file() && m.len() == 0) {
+        let _ = std::fs::remove_file(path);
+    }
 }
 
 // [自訂] SC-35：所有完成路徑都核對暫存檔本身，通過後才以同目錄 rename 替換。
@@ -226,9 +259,46 @@ fn finalize_download(
         ));
     }
     verify_temp_file_sha256(temp_path, expected_sha256)?;
+    validate_download_destination(dest_path)?;
     std::fs::rename(temp_path, dest_path)
         .map_err(|e| download_io_error("Failed to finalize downloaded file", e))?;
     restore_catalog_filename(dest_path)
+}
+
+// [自訂] SC-38：中斷的檔名校正只救回大小及雜湊都符合的暫存權重。
+fn recover_staged_weight(
+    dest_path: &Path,
+    expected_size: u64,
+    expected_sha256: &str,
+) -> Result<bool, String> {
+    let dir = dest_path.parent().unwrap_or_else(|| Path::new("."));
+    let entries = std::fs::read_dir(dir)
+        .map_err(|e| download_io_error("Failed to check for staged model files", e))?;
+    for entry in entries {
+        let entry = entry.map_err(|e| download_io_error("Failed to inspect staged model files", e))?;
+        let name = entry.file_name();
+        let staged = name.to_str()
+            .and_then(|name| name.strip_prefix(".sayit-model-"))
+            .and_then(|name| name.strip_suffix(".tmp"))
+            .is_some_and(|id| uuid::Uuid::parse_str(id).is_ok());
+        if !staged {
+            continue;
+        }
+        let path = entry.path();
+        if !std::fs::symlink_metadata(&path).is_ok_and(|metadata| {
+            metadata.is_file() && metadata.len() == expected_size && !artifact_has_multiple_links(&metadata)
+        })
+            || verify_file_sha256(&path, expected_sha256).is_err()
+        {
+            continue;
+        }
+        validate_download_destination(dest_path)?;
+        std::fs::rename(&path, dest_path)
+            .map_err(|e| download_io_error("Failed to recover verified model file", e))?;
+        restore_catalog_filename(dest_path)?;
+        return Ok(true);
+    }
+    Ok(false)
 }
 
 // [自訂] SC-36：大小與雜湊都相符時，直接校正檔名並沿用現有權重。
@@ -259,6 +329,19 @@ fn reuse_verified_download(
     Ok(false)
 }
 
+// [自訂] REV9：下載暫存與中斷後的權重都不得指向其它檔案。
+fn artifact_has_multiple_links(_metadata: &std::fs::Metadata) -> bool {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        _metadata.nlink() > 1
+    }
+    #[cfg(not(unix))]
+    {
+        false
+    }
+}
+
 // [自訂] SC-35：避免舊暫存檔透過連結指向既有權重，導致寫入暫存時改到原檔。
 fn check_download_artifact(path: &Path, existing_target: Option<&Path>) -> Result<(), String> {
     let metadata = match std::fs::symlink_metadata(path) {
@@ -266,15 +349,11 @@ fn check_download_artifact(path: &Path, existing_target: Option<&Path>) -> Resul
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
         Err(e) => return Err(download_io_error("Failed to inspect download artifact", e)),
     };
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::MetadataExt;
-        if metadata.nlink() > 1 {
-            return Err(download_error(
-                "download_failed",
-                "Download artifact has multiple links",
-            ));
-        }
+    if artifact_has_multiple_links(&metadata) {
+        return Err(download_error(
+            "download_failed",
+            "Download artifact has multiple links",
+        ));
     }
     if !metadata.is_file() || existing_target.is_some_and(|target| target == path) {
         return Err(download_error(
@@ -305,7 +384,7 @@ pub struct DownloadProgress {
 }
 
 fn emit_progress(
-    app: &AppHandle,
+    report: &(dyn Fn(DownloadProgress) + Sync),
     model_id: &str,
     file_name: &str,
     downloaded: u64,
@@ -320,9 +399,7 @@ fn emit_progress(
     } else {
         0.0
     };
-    let _ = app.emit(
-        "model-download-progress",
-        DownloadProgress {
+    report(DownloadProgress {
             model_id: model_id.into(),
             file_name: file_name.into(),
             downloaded_bytes: downloaded,
@@ -332,8 +409,7 @@ fn emit_progress(
             file_count,
             status: status.into(),
             error: error.map(Into::into),
-        },
-    );
+    });
 }
 
 /// 用户自定义的模型存储根目录（进程级）。None = 用默认路径。
@@ -343,9 +419,7 @@ static CUSTOM_MODELS_DIR: RwLock<Option<PathBuf>> = RwLock::new(None);
 
 /// 默认模型存储根目录（未自定义时使用）。
 pub fn default_models_dir() -> PathBuf {
-    dirs::data_local_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join("com.sayitlocally.desktop")
+    crate::commands::app_data_dir()
         .join("models")
 }
 
@@ -854,8 +928,12 @@ fn cleanup_parallel_artifacts_best_effort(
     state_path: &Path,
     chunks: &[ChunkSpec],
 ) {
-    if let Err(error) = cleanup_parallel_artifacts(temp_path, state_path, chunks) {
-        log::warn!("Failed to clean parallel download artifacts: {}", error);
+    let chunk_paths = chunks.iter().map(|chunk| parallel_chunk_path(temp_path, chunk.index));
+    let paths = [state_path.to_path_buf(), temp_path.to_path_buf()].into_iter().chain(chunk_paths);
+    for path in paths {
+        if let Err(error) = remove_file_if_exists(&path) {
+            log::warn!("Failed to clean parallel download artifact: {}", error);
+        }
     }
 }
 
@@ -978,9 +1056,76 @@ fn prepare_assembly_file(
     Ok(())
 }
 
+fn assemble_or_reset_parallel_download(
+    temp_path: &Path,
+    state_path: &Path,
+    chunks: &[ChunkSpec],
+    state: &mut ParallelDownloadState,
+) -> Result<(), String> {
+    let result = assemble_parallel_chunks(temp_path, state_path, chunks, state);
+    if result.is_err() {
+        cleanup_parallel_artifacts_best_effort(temp_path, state_path, chunks);
+    }
+    result
+}
+
+fn assemble_parallel_chunks(
+    temp_path: &Path,
+    state_path: &Path,
+    chunks: &[ChunkSpec],
+    state: &mut ParallelDownloadState,
+) -> Result<(), String> {
+    prepare_assembly_file(temp_path, chunks, state.assembled_chunks)?;
+
+    for index in 0..state.assembled_chunks {
+        // 崩溃可能发生在状态落盘后、旧分片删除前；这些残留现在可以安全清理。
+        remove_file_if_exists(&parallel_chunk_path(temp_path, index))?;
+    }
+
+    let mut assembled = std::fs::OpenOptions::new()
+        .append(true)
+        .open(temp_path)
+        .map_err(|error| download_io_error("Failed to open assembly file for append", error))?;
+    for chunk in chunks.iter().skip(state.assembled_chunks) {
+        let chunk_path = parallel_chunk_path(temp_path, chunk.index);
+        let actual = chunk_file_len(&chunk_path, chunk.len())?;
+        if actual != chunk.len() {
+            return Err(download_error(
+                "download_parallel_verify_failed",
+                format!("Chunk {} disappeared before assembly", chunk.index),
+            ));
+        }
+        let mut source = std::fs::File::open(&chunk_path)
+            .map_err(|error| download_io_error("Failed to open completed chunk", error))?;
+        let copied = std::io::copy(&mut source, &mut assembled)
+            .map_err(|error| download_io_error("Failed to assemble chunk", error))?;
+        if copied != chunk.len() {
+            return Err(download_error(
+                "download_parallel_verify_failed",
+                format!(
+                    "Chunk {} changed during assembly: copied {}/{} bytes",
+                    chunk.index,
+                    copied,
+                    chunk.len()
+                ),
+            ));
+        }
+        assembled
+            .flush()
+            .map_err(|error| download_io_error("Failed to flush assembly file", error))?;
+        assembled
+            .sync_data()
+            .map_err(|error| download_io_error("Failed to persist assembled chunk", error))?;
+        state.assembled_chunks = chunk.index + 1;
+        persist_parallel_state(state_path, state)?;
+        remove_file_if_exists(&chunk_path)?;
+    }
+    Ok(())
+}
+
 /// 并发下载到独立分片文件；每个分片可跨调用续传，完成后按顺序组装并逐段释放空间。
 async fn download_file_parallel(
-    app: &AppHandle,
+    report: &(dyn Fn(DownloadProgress) + Sync),
     model_id: &str,
     file_name: &str,
     url: &str,
@@ -1032,7 +1177,7 @@ async fn download_file_parallel(
         }
 
         emit_progress(
-            app,
+            report,
             model_id,
             file_name,
             initial_downloaded,
@@ -1048,7 +1193,7 @@ async fn download_file_parallel(
             tokio::select! {
                 _ = progress_interval.tick() => {
                     emit_progress(
-                        app,
+                        report,
                         model_id,
                         file_name,
                         downloaded_total.load(Ordering::Relaxed),
@@ -1100,55 +1245,8 @@ async fn download_file_parallel(
         remove_file_if_exists(temp_path)?;
     }
 
-    if let Err(error) = prepare_assembly_file(temp_path, &chunks, state.assembled_chunks) {
-        cleanup_parallel_artifacts(temp_path, &state_path, &chunks)?;
-        return Err(error);
-    }
-
-    for index in 0..state.assembled_chunks {
-        // 崩溃可能发生在状态落盘后、旧分片删除前；这些残留现在可以安全清理。
-        remove_file_if_exists(&parallel_chunk_path(temp_path, index))?;
-    }
-
-    let mut assembled = std::fs::OpenOptions::new()
-        .append(true)
-        .open(temp_path)
-        .map_err(|error| download_io_error("Failed to open assembly file for append", error))?;
-    for chunk in chunks.iter().skip(state.assembled_chunks) {
-        let chunk_path = parallel_chunk_path(temp_path, chunk.index);
-        let actual = chunk_file_len(&chunk_path, chunk.len())?;
-        if actual != chunk.len() {
-            return Err(download_error(
-                "download_parallel_verify_failed",
-                format!("Chunk {} disappeared before assembly", chunk.index),
-            ));
-        }
-        let mut source = std::fs::File::open(&chunk_path)
-            .map_err(|error| download_io_error("Failed to open completed chunk", error))?;
-        let copied = std::io::copy(&mut source, &mut assembled)
-            .map_err(|error| download_io_error("Failed to assemble chunk", error))?;
-        if copied != chunk.len() {
-            return Err(download_error(
-                "download_parallel_verify_failed",
-                format!(
-                    "Chunk {} changed during assembly: copied {}/{} bytes",
-                    chunk.index,
-                    copied,
-                    chunk.len()
-                ),
-            ));
-        }
-        assembled
-            .flush()
-            .map_err(|error| download_io_error("Failed to flush assembly file", error))?;
-        assembled
-            .sync_data()
-            .map_err(|error| download_io_error("Failed to persist assembled chunk", error))?;
-        state.assembled_chunks = chunk.index + 1;
-        persist_parallel_state(&state_path, &state)?;
-        remove_file_if_exists(&chunk_path)?;
-    }
-    drop(assembled);
+    // [自訂] REV9：完成途中讀不到分片也重置狀態，避免重試困在同一個分片。
+    assemble_or_reset_parallel_download(temp_path, &state_path, &chunks, &mut state)?;
 
     if let Err(error) = finalize_download(
         temp_path,
@@ -1157,25 +1255,13 @@ async fn download_file_parallel(
         expected_sha256,
         "download_parallel_verify_failed",
     ) {
-        if should_fallback_to_single_stream(&error) {
-            cleanup_parallel_artifacts_best_effort(temp_path, &state_path, &chunks);
-        }
-        emit_progress(
-            app,
-            model_id,
-            file_name,
-            total_size,
-            total_size,
-            "failed",
-            Some(&error),
-            file_index,
-            file_count,
-        );
+        // [自訂] SC-38：完成階段錯誤後，下次從乾淨狀態重新下載或組裝。
+        cleanup_parallel_artifacts_best_effort(temp_path, &state_path, &chunks);
         return Err(error);
     }
     cleanup_parallel_artifacts_best_effort(temp_path, &state_path, &chunks);
     emit_progress(
-        app,
+        report,
         model_id,
         file_name,
         total_size,
@@ -1293,7 +1379,7 @@ fn prepare_stream_partial(
 
 /// 单流下载（用于小文件、不支持 Range 的服务端或并发协议失败时的 Fallback）
 async fn download_file_single_stream(
-    app: &AppHandle,
+    report: &(dyn Fn(DownloadProgress) + Sync),
     model_id: &str,
     file_name: &str,
     url: &str,
@@ -1309,7 +1395,7 @@ async fn download_file_single_stream(
         prepare_stream_partial(temp_path, dest_path, total_size, expected_sha256)?
     else {
         emit_progress(
-            app,
+            report,
             model_id,
             file_name,
             total_size,
@@ -1325,7 +1411,7 @@ async fn download_file_single_stream(
     let client = build_http_client()?;
     let (response, mut downloaded, is_resume) = if downloaded_initial > 0 {
         emit_progress(
-            app,
+            report,
             model_id,
             file_name,
             downloaded_initial,
@@ -1394,7 +1480,7 @@ async fn download_file_single_stream(
         }
     } else {
         emit_progress(
-            app,
+            report,
             model_id,
             file_name,
             0,
@@ -1449,7 +1535,7 @@ async fn download_file_single_stream(
         downloaded += bytes.len() as u64;
         if last_emit.elapsed().as_millis() >= 200 {
             emit_progress(
-                app,
+                report,
                 model_id,
                 file_name,
                 downloaded,
@@ -1474,41 +1560,17 @@ async fn download_file_single_stream(
                 file_name, downloaded, total_size
             ),
         );
-        emit_progress(
-            app,
-            model_id,
-            file_name,
-            downloaded,
-            total_size,
-            "failed",
-            Some(&error),
-            file_index,
-            file_count,
-        );
         return Err(error);
     }
-    if let Err(error) = finalize_download(
+    finalize_download(
         temp_path,
         dest_path,
         total_size,
         expected_sha256,
         "download_source_mismatch",
-    ) {
-        emit_progress(
-            app,
-            model_id,
-            file_name,
-            downloaded,
-            total_size,
-            "failed",
-            Some(&error),
-            file_index,
-            file_count,
-        );
-        return Err(error);
-    }
+    )?;
     emit_progress(
-        app,
+        report,
         model_id,
         file_name,
         downloaded,
@@ -1533,6 +1595,46 @@ pub async fn download_file(
     file_index: u32,
     file_count: u32,
 ) -> Result<(), String> {
+    download_file_with_progress(
+        &|progress| { let _ = app.emit("model-download-progress", progress); },
+        model_id, file_name, url, expected_size, expected_sha256, dest_dir, file_index, file_count,
+    ).await
+}
+
+// [自訂] SC-38：測試可走完整下載流程，終止失敗只通知一次。
+async fn download_file_with_progress(
+    report: &(dyn Fn(DownloadProgress) + Sync),
+    model_id: &str,
+    file_name: &str,
+    url: &str,
+    expected_size: u64,
+    expected_sha256: Option<&str>,
+    dest_dir: &Path,
+    file_index: u32,
+    file_count: u32,
+) -> Result<(), String> {
+    let result = download_file_inner(
+        report, model_id, file_name, url, expected_size, expected_sha256, dest_dir, file_index, file_count,
+    ).await;
+    if let Err(error) = &result {
+        emit_progress(
+            report, model_id, file_name, 0, expected_size, "failed", Some(error), file_index, file_count,
+        );
+    }
+    result
+}
+
+async fn download_file_inner(
+    report: &(dyn Fn(DownloadProgress) + Sync),
+    model_id: &str,
+    file_name: &str,
+    url: &str,
+    expected_size: u64,
+    expected_sha256: Option<&str>,
+    dest_dir: &Path,
+    file_index: u32,
+    file_count: u32,
+) -> Result<(), String> {
     // [自訂] SC-35：下載與續傳只接受 catalog 提供的大小與 SHA-256。
     let expected_sha256 = expected_sha256
         .filter(|_| expected_size > 0)
@@ -1547,6 +1649,8 @@ pub async fn download_file(
         std::fs::create_dir_all(parent)
             .map_err(|error| download_io_error("Failed to create model subdirectory", error))?;
     }
+
+    validate_download_destination(&dest_path)?;
 
     // [自訂] SC-35：手動放入的模型可能是符號連結，也要保留它指向的檔案。
     let existing_target = std::fs::canonicalize(&dest_path).ok();
@@ -1563,7 +1667,9 @@ pub async fn download_file(
         check_artifact(&parallel_chunk_path(&parallel_temp, chunk.index))?;
     }
 
-    if reuse_verified_download(&dest_path, expected_size, expected_sha256)? {
+    if reuse_verified_download(&dest_path, expected_size, expected_sha256)?
+        || recover_staged_weight(&dest_path, expected_size, expected_sha256)?
+    {
         if let Err(error) = remove_file_if_exists(&stream_temp) {
             log::warn!("Failed to remove stale single-stream partial: {}", error);
         }
@@ -1573,7 +1679,7 @@ pub async fn download_file(
             &calculate_chunks(expected_size),
         );
         emit_progress(
-            &app,
+            report,
             model_id,
             file_name,
             expected_size,
@@ -1589,23 +1695,7 @@ pub async fn download_file(
     // [自訂] SC-35：舊檔保留至新檔通過驗證。
     let client = build_http_client()?;
     let probe = probe_url(&client, url).await;
-    let total_size = match resolve_download_size(expected_size, probe.size) {
-        Ok(size) => size,
-        Err(error) => {
-            emit_progress(
-                &app,
-                model_id,
-                file_name,
-                0,
-                expected_size,
-                "failed",
-                Some(&error),
-                file_index,
-                file_count,
-            );
-            return Err(error);
-        }
-    };
+    let total_size = resolve_download_size(expected_size, probe.size)?;
 
     // 旧版留下的连续 .part 优先续传，避免为了切换并发实现而浪费已有进度。
     let stream_partial_exists = std::fs::metadata(&stream_temp)
@@ -1616,7 +1706,7 @@ pub async fn download_file(
 
     if can_parallel && (!stream_partial_exists || parallel_state_exists) {
         let result = download_file_parallel(
-            &app,
+            report,
             model_id,
             file_name,
             url,
@@ -1649,7 +1739,7 @@ pub async fn download_file(
                     &chunks,
                 );
                 download_file_single_stream(
-                    &app,
+                    report,
                     model_id,
                     file_name,
                     url,
@@ -1663,25 +1753,12 @@ pub async fn download_file(
                 )
                 .await
             }
-            Err(error) => {
-                // 网络中断保留各 chunk；再次点击会从每个 chunk 的现有长度继续。
-                emit_progress(
-                    &app,
-                    model_id,
-                    file_name,
-                    0,
-                    total_size,
-                    "failed",
-                    Some(&error),
-                    file_index,
-                    file_count,
-                );
-                Err(error)
-            }
+            // 網路中斷保留分片，重試時可續傳。
+            Err(error) => Err(error),
         }
     } else {
         let result = download_file_single_stream(
-            &app,
+            report,
             model_id,
             file_name,
             url,
@@ -1793,6 +1870,70 @@ mod tests {
         [headers.as_bytes(), body].concat()
     }
 
+    // [自訂] SC-38：涵蓋入口到網路失敗，先刪 dest 的回歸會讓此測試失敗。
+    #[tokio::test(flavor = "current_thread")]
+    async fn full_download_keeps_old_weight_and_reports_one_failure() {
+        let dir = unique_test_path("full_download");
+        std::fs::create_dir(&dir).unwrap();
+        let dest = dir.join("weight.gguf");
+        std::fs::write(&dest, b"old").unwrap();
+        let (url, server) = spawn_http_server(vec![
+            partial_response(0, 0, 3, "\"model-v1\"", b"x"),
+            b"HTTP/1.1 200 OK\r\nContent-Length: 3\r\nConnection: close\r\n\r\nxyz".to_vec(),
+        ]);
+        let statuses = Mutex::new(Vec::new());
+        let error = download_file_with_progress(
+            &|progress| statuses.lock().unwrap().push(progress.status),
+            "test", "weight.gguf", &url, 3,
+            Some("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"),
+            &dir, 1, 1,
+        ).await.unwrap_err();
+        assert!(is_checksum_error(&error));
+        assert_eq!(std::fs::read(&dest).unwrap(), b"old");
+        let statuses = statuses.into_inner().unwrap();
+        assert_eq!(statuses.iter().filter(|status| *status == "failed").count(), 1);
+        assert_eq!(statuses.last().map(String::as_str), Some("failed"));
+        assert_eq!(server.join().unwrap().len(), 2);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn download_recovers_verified_weight_without_network_and_keeps_invalid_staging() {
+        let dir = unique_test_path("recover_weight");
+        std::fs::create_dir(&dir).unwrap();
+        let invalid = dir.join(format!(".sayit-model-{}.tmp", uuid::Uuid::new_v4()));
+        let valid = dir.join(format!(".sayit-model-{}.tmp", uuid::Uuid::new_v4()));
+        std::fs::write(&invalid, b"xyz").unwrap();
+        std::fs::write(&valid, b"abc").unwrap();
+        let dest = dir.join("weight.gguf");
+        let statuses = Mutex::new(Vec::new());
+        download_file_with_progress(
+            &|progress| statuses.lock().unwrap().push(progress.status),
+            "test", "weight.gguf", "http://127.0.0.1:0/model", 3,
+            Some("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"),
+            &dir, 1, 1,
+        ).await.unwrap();
+        assert_eq!(std::fs::read(&dest).unwrap(), b"abc");
+        assert_eq!(std::fs::read(&invalid).unwrap(), b"xyz");
+        assert!(!valid.exists());
+        assert_eq!(statuses.into_inner().unwrap(), ["completed"]);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn download_rejects_destination_directory_before_connecting() {
+        let dir = unique_test_path("directory_destination");
+        std::fs::create_dir_all(dir.join("weight.gguf")).unwrap();
+        let error = download_file_with_progress(
+            &|_| {},
+            "test", "weight.gguf", "http://127.0.0.1:0/model", 3,
+            Some("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"),
+            &dir, 1, 1,
+        ).await.unwrap_err();
+        assert!(error.contains("Model destination is a directory"));
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
     #[tokio::test(flavor = "current_thread")]
     async fn probe_requires_exact_range_and_captures_strong_etag() {
         let (url, server) = spawn_http_server(vec![partial_response(
@@ -1878,6 +2019,125 @@ mod tests {
         assert!(!chunk_path.exists());
         let request = server.join().unwrap()[0].to_ascii_lowercase();
         assert!(request.contains("if-match: \"model-v1\""));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn model_recovery_leaves_symbolic_and_hard_links_untouched() {
+        use std::fs;
+        let dir = std::env::temp_dir().join(format!("sayit-download-test-{}", uuid::Uuid::new_v4()));
+        fs::create_dir(&dir).unwrap();
+        let backing = dir.join("backing");
+        let symbolic = dir.join(format!(".sayit-model-{}.tmp", uuid::Uuid::new_v4()));
+        let hard = dir.join(format!(".sayit-model-{}.tmp", uuid::Uuid::new_v4()));
+        let dest = dir.join("expected.gguf");
+        fs::write(&backing, b"abc").unwrap();
+        std::os::unix::fs::symlink(&backing, &symbolic).unwrap();
+        fs::hard_link(&backing, &hard).unwrap();
+        let sha = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+        assert!(!recover_staged_weight(&dest, 3, sha).unwrap());
+        assert!(!dest.exists());
+        assert!(fs::symlink_metadata(&symbolic).unwrap().is_symlink());
+        assert_eq!(fs::read(&hard).unwrap(), b"abc");
+        assert_eq!(fs::read(&backing).unwrap(), b"abc");
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn failed_catalog_rename_only_cleans_empty_placeholders() {
+        use std::fs;
+        let dir = std::env::temp_dir().join(format!("sayit-download-test-{}", uuid::Uuid::new_v4()));
+        fs::create_dir(&dir).unwrap();
+        let empty = dir.join("empty.tmp");
+        let weight = dir.join("weight.tmp");
+        fs::write(&empty, b"").unwrap();
+        fs::write(&weight, b"keep").unwrap();
+        remove_empty_rename_placeholder(&empty);
+        remove_empty_rename_placeholder(&weight);
+        assert!(!empty.exists());
+        assert_eq!(fs::read(&weight).unwrap(), b"keep");
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn unicode_filename_alias_leaves_original_weight_untouched() {
+        use std::fs;
+        let dir = std::env::temp_dir().join(format!("sayit-download-test-{}", uuid::Uuid::new_v4()));
+        fs::create_dir(&dir).unwrap();
+        let alias = dir.join("Kit.gguf");
+        let expected = dir.join("Kit.gguf");
+        let partial = dir.join("weight.part");
+        fs::write(&alias, b"original").unwrap();
+        assert!(catalog_directory_entry(&expected).unwrap().is_none());
+        if expected.exists() {
+            fs::write(&partial, b"abc").unwrap();
+            let sha = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+            let error = finalize_download(&partial, &expected, 3, sha, "download_source_mismatch").unwrap_err();
+            assert!(error.contains("Unsupported model filename spelling"));
+            assert_eq!(fs::read(&partial).unwrap(), b"abc");
+        }
+        assert_eq!(fs::read(&alias).unwrap(), b"original");
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn missing_completed_chunk_resets_assembly_and_leaves_destination_intact() {
+        use std::fs;
+        let dir = std::env::temp_dir().join(format!("sayit-download-test-{}", uuid::Uuid::new_v4()));
+        fs::create_dir(&dir).unwrap();
+        let dest = dir.join("weight.gguf");
+        let partial = dir.join("weight.part");
+        let state_path = dir.join("assembly-state.json");
+        let chunks = vec![
+            ChunkSpec { index: 0, start: 0, end: 1 },
+            ChunkSpec { index: 1, start: 2, end: 3 },
+        ];
+        let mut state = ParallelDownloadState {
+            version: PARALLEL_STATE_VERSION,
+            total_size: 4,
+            expected_sha256: None,
+            source_url: String::new(),
+            strong_etag: None,
+            chunks: chunks.clone(),
+            phase: ParallelPhase::Assembling,
+            assembled_chunks: 0,
+        };
+        fs::write(&dest, b"original").unwrap();
+        fs::write(parallel_chunk_path(&partial, 0), b"ab").unwrap();
+        persist_parallel_state(&state_path, &state).unwrap();
+        let error = assemble_or_reset_parallel_download(&partial, &state_path, &chunks, &mut state).unwrap_err();
+        assert!(error.contains("Chunk 1 disappeared before assembly"));
+        assert!(!state_path.exists());
+        assert!(!partial.exists());
+        assert!(!parallel_chunk_path(&partial, 0).exists());
+        assert_eq!(fs::read(&dest).unwrap(), b"original");
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            state.assembled_chunks = 0;
+            fs::write(parallel_chunk_path(&partial, 0), b"ab").unwrap();
+            let blocked = parallel_chunk_path(&partial, 1);
+            fs::write(&blocked, b"cd").unwrap();
+            fs::set_permissions(&blocked, fs::Permissions::from_mode(0o000)).unwrap();
+            if fs::File::open(&blocked).is_err() {
+                persist_parallel_state(&state_path, &state).unwrap();
+                let error = assemble_or_reset_parallel_download(&partial, &state_path, &chunks, &mut state)
+                    .unwrap_err();
+                assert!(error.contains("Failed to open completed chunk"));
+                assert!(!state_path.exists());
+                assert!(!blocked.exists());
+                assert_eq!(fs::read(&dest).unwrap(), b"original");
+            }
+        }
+
+        state.assembled_chunks = 0;
+        fs::write(parallel_chunk_path(&partial, 0), b"ab").unwrap();
+        remove_file_if_exists(&parallel_chunk_path(&partial, 1)).unwrap();
+        fs::write(parallel_chunk_path(&partial, 1), b"cd").unwrap();
+        assemble_or_reset_parallel_download(&partial, &state_path, &chunks, &mut state).unwrap();
+        assert_eq!(fs::read(&partial).unwrap(), b"abcd");
+        fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]

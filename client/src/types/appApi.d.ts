@@ -27,7 +27,7 @@ export type DiagnosticIssueType =
 
 export interface DiagnosticsPreview {
   generatedAt: string
-  retentionDays: number
+  retentionDays: number | null
   filesScanned: number
   totalRawEvents: number
   totalTimelineEntries: number

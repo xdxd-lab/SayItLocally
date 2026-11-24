@@ -188,7 +188,7 @@ export class HistoryWriter {
     runId: number
     result: FinalResult
     textToPaste: string
-    hasText: boolean
+    selectionNotApplied: boolean
     audioDurationSec: number
     wallTimeSec: number
     /** 原来在几次 await 之后才读工作模式，这里保持同一时刻取值。 */
@@ -196,7 +196,10 @@ export class HistoryWriter {
     isRunCurrent: () => boolean
     metadata: () => HistoryMetadata
   }): Promise<{ aborted: true } | { aborted: false; artifact: HistoryArtifact | null }> {
-    const { runId, result, textToPaste, hasText } = params
+    const { runId, result } = params
+    // [自訂] S68：貼回原選取文字只用於插入，歷史與備份只保存口述內容。
+    const historyText = params.selectionNotApplied ? result.asrText : params.textToPaste
+    const hasText = Boolean(historyText?.trim())
     const audioDur = params.audioDurationSec
     const wallSec = params.wallTimeSec
     let historyArtifact: HistoryArtifact | null = null
@@ -225,13 +228,13 @@ export class HistoryWriter {
           id: recordId,
           timestamp: Date.now(),
           asrText: result.asrText,
-          llmText: textToPaste,
+          llmText: historyText,
           asrMs: result.asrMs,
           llmMs: result.llmMs,
           durationSec: wallSec,
           audioDurationSec: audioDur > 0 ? audioDur : undefined,
           asrDurationSec: result.durationSec > 0 ? result.durationSec : undefined,
-          charCount: hasText ? textToPaste.length : 0,
+          charCount: hasText ? historyText.length : 0,
           isEmpty: !hasText,
           // 区分「ASR 本来就没出字」和「ASR 出了字但后处理把它清空了」——
           // 后者是我们自己的问题（替换规则/格式化），别让用户以为是没识别到

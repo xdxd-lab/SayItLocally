@@ -58,9 +58,7 @@ fn resolve_export_path(default_path: &str) -> Result<std::path::PathBuf, String>
     Ok(dirs::download_dir()
         .or_else(dirs::document_dir)
         .unwrap_or_else(|| {
-            dirs::data_local_dir()
-                .unwrap_or_else(|| std::path::PathBuf::from("."))
-                .join("com.sayitlocally.desktop")
+            crate::commands::app_data_dir()
         })
         .join("SayItLocally Exports")
         .join(name))
@@ -131,30 +129,14 @@ pub async fn save_full_export(
         let _ = fs::create_dir_all(parent);
     }
 
-    // 收集音频文件列表
-    let audio_dir = dirs::data_local_dir()
-        .unwrap_or_else(|| std::path::PathBuf::from("."))
-        .join("com.sayitlocally.desktop")
-        .join("audio");
-
-    let mut audio_files: Vec<std::path::PathBuf> = Vec::new();
-    if audio_dir.exists() {
-        if let Ok(entries) = fs::read_dir(&audio_dir) {
-            for entry in entries.flatten() {
-                let p = entry.path();
-                if p.is_file() {
-                    audio_files.push(p);
-                }
-            }
-        }
-    }
-
-    let total = payload.files.len() + audio_files.len();
     let json_files = payload.files;
     let app_handle = app.clone();
 
-    // 在阻塞线程中执行 zip 打包
+    // [自訂] S71：列舉、讀檔及封裝在同一錄音鎖內。
     tokio::task::spawn_blocking(move || {
+        let _recordings = super::audio::lock_recordings();
+        let audio_files = super::audio::retained_recordings()?;
+        let total = json_files.len() + audio_files.len();
         let file = fs::File::create(&out_path).map_err(|e| e.to_string())?;
         let mut zip = zip::ZipWriter::new(file);
         let text_opts = zip::write::FileOptions::default()

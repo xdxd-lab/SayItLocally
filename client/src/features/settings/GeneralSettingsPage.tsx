@@ -5,6 +5,8 @@ import { refreshPTTSetting } from '@/services/webviewKeyboardFallback'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Info } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Modal } from '@/components/ui/modal'
 import { Tooltip } from '@/components/ui/tooltip'
 import { listMicrophones, normalizeSelectedMicId } from '@/services/audio'
 import { resolveMicPlan, type MicPlan } from '@/services/micRouting'
@@ -16,6 +18,7 @@ import { Switch } from '@/components/ui/switch'
 import { Segmented } from '@/components/ui/segmented'
 import AppSection from './AppSection'
 import BackupSection from './BackupSection'
+import { canConfirmHistoryClear, HISTORY_CLEAR_DELAY_MS } from './historyClearConfirmation'
 // [自訂] S18／S35 WebDAV 設定區塊已註解停用：import WebDavSection from './WebDavSection'
 import MicrophoneSection from './MicrophoneSection'
 import type { MicVolumeLevel } from './MicrophoneSection'
@@ -67,6 +70,22 @@ export default function GeneralSettingsPage() {
   const [handsFreeKey, setHandsFreeKey] = useState('AltRight')
   const [aiToggleKey, setAiToggleKey] = useState('')
   const [historyEnabled, setHistoryEnabled] = useState(true)
+  const [historyBusy, setHistoryBusy] = useState(false)
+  const [historyError, setHistoryError] = useState<TranslationKey | null>(null)
+  const [retainedHistory, setRetainedHistory] = useState<[number, number] | null>(null)
+  const [historyClearReadyAt, setHistoryClearReadyAt] = useState<number | null>(null)
+  const [historyClearUnlocked, setHistoryClearUnlocked] = useState(false)
+  const historyClearInFlight = useRef(false)
+  const confirmHistoryClear = historyClearReadyAt !== null
+
+  useEffect(() => {
+    if (historyClearReadyAt === null) return
+    const timer = window.setTimeout(
+      () => setHistoryClearUnlocked(true),
+      Math.max(0, Math.ceil(historyClearReadyAt - performance.now())),
+    )
+    return () => window.clearTimeout(timer)
+  }, [historyClearReadyAt])
   const [audioRetentionEnabled, setAudioRetentionEnabled] = useState(true)
   const [audioRetentionDays, setAudioRetentionDays] = useState(30)
   const [logRetentionDays, setLogRetentionDays] = useState(30)
@@ -163,7 +182,49 @@ export default function GeneralSettingsPage() {
   const handleMicChange = async (deviceId: string) => { setSelectedMic(deviceId); await setSetting('selectedMic', deviceId); await refreshRecorderSettings() }
   const toggleMuteSystemAudio = async () => { const next = !muteSystemAudio; setMuteSystemAudio(next); await setSetting('muteSystemAudioWhileRecording', next); await refreshRecorderSettings() }
   const toggleProtectClipboard = async () => { const next = !protectClipboard; setProtectClipboard(next); await setSetting('protectClipboard', next); await refreshRecorderSettings() }
-  const toggleHistoryEnabled = async () => { const next = !historyEnabled; setHistoryEnabled(next); await setSetting('historyEnabled', next) }
+  // [自訂] S61：關閉後預設保留舊資料。清除必須再確認一次。
+  const toggleHistoryEnabled = async () => {
+    const next = !historyEnabled
+    setHistoryError(null)
+    setHistoryBusy(true)
+    try {
+      await setSetting('historyEnabled', next)
+      setHistoryEnabled(next)
+      if (!next) {
+        const counts = await bridge.historyRetainedCounts()
+        if (counts.some(count => count > 0)) setRetainedHistory(counts)
+      }
+    } catch {
+      setHistoryError('settings.history.changeFailed')
+    } finally {
+      setHistoryBusy(false)
+    }
+  }
+  const closeHistoryPrompt = () => {
+    setRetainedHistory(null)
+    setHistoryClearReadyAt(null)
+    setHistoryClearUnlocked(false)
+  }
+  const clearRetainedHistory = async (clickCount: number) => {
+    if (
+      !retainedHistory || historyClearInFlight.current || historyClearReadyAt === null
+      || !canConfirmHistoryClear(performance.now(), historyClearReadyAt, clickCount)
+    ) return
+    historyClearInFlight.current = true
+    setHistoryBusy(true)
+    try {
+      await bridge.historyClearRetained(...retainedHistory)
+      void bridge.emit('history-updated')
+      closeHistoryPrompt()
+    } catch {
+      setHistoryError('settings.history.clearFailed')
+      closeHistoryPrompt()
+      void bridge.emit('history-updated')
+    } finally {
+      historyClearInFlight.current = false
+      setHistoryBusy(false)
+    }
+  }
   const toggleAudioRetention = async () => { const next = !audioRetentionEnabled; setAudioRetentionEnabled(next); await setSetting('audioRetentionEnabled', next) }
   const toggleReadySound = async () => { const next = !readySoundEnabled; setReadySoundEnabled(next); await setSetting('readySoundEnabled', next); await refreshRecorderSettings() }
   const handleAudioRetentionDaysChange = async (value: number) => { setAudioRetentionDays(value); await setSetting('audioRetentionDays', value) }
@@ -363,8 +424,43 @@ export default function GeneralSettingsPage() {
                 <h2 className="text-lg font-semibold">{t('settings.history.title')}</h2>
                 <p className="mt-1 text-sm text-muted-foreground">{t('settings.history.desc')}</p>
               </div>
-              <Switch checked={historyEnabled} onChange={() => void toggleHistoryEnabled()} noAnimation={!animate} hidden={!ready} />
+              <Switch checked={historyEnabled} onChange={() => void toggleHistoryEnabled()} disabled={historyBusy || retainedHistory !== null} noAnimation={!animate} hidden={!ready} />
             </div>
+            {historyError && <p role="alert" className="mt-3 text-sm text-destructive">{t(historyError)}</p>}
+            {retainedHistory && (
+              <Modal
+                key={String(confirmHistoryClear)}
+                title={t(confirmHistoryClear ? 'settings.history.clearTitle' : 'settings.history.retainedTitle')}
+                onClose={closeHistoryPrompt}
+                locked={historyBusy}
+                panelClassName="w-96"
+              >
+                <p className="mt-2 text-sm text-muted-foreground">
+                  {t(confirmHistoryClear ? 'settings.history.clearConfirm' : 'settings.history.retainedCount', {
+                    records: retainedHistory[0],
+                    recordings: retainedHistory[1],
+                  })}
+                </p>
+                <div className="mt-5 flex justify-end gap-2">
+                  <Button variant="outline" data-modal-autofocus disabled={historyBusy} onClick={closeHistoryPrompt}>
+                    {t('settings.history.keep')}
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    disabled={historyBusy || (confirmHistoryClear && !historyClearUnlocked)}
+                    onClick={(event) => {
+                      if (confirmHistoryClear) {
+                        void clearRetainedHistory(event.detail)
+                      } else if (event.detail <= 1) {
+                        setHistoryClearReadyAt(performance.now() + HISTORY_CLEAR_DELAY_MS)
+                      }
+                    }}
+                  >
+                    {t('settings.history.clear')}
+                  </Button>
+                </div>
+              </Modal>
+            )}
           </CardContent>
         </Card>
 

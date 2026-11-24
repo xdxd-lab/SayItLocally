@@ -3,32 +3,64 @@ use serde_json::Value;
 use tauri::{AppHandle, Emitter, State};
 use crate::storage::Storage;
 use std::io::Write;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use base64::Engine;
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 
 /// Persistent log file writer — opened once, reused across calls.
-static LOG_FILE: std::sync::LazyLock<Mutex<Option<std::fs::File>>> =
-    std::sync::LazyLock::new(|| {
-        let file = open_log_file();
-        Mutex::new(file)
-    });
+static LOG_FILE: Mutex<Option<std::fs::File>> = Mutex::new(None);
 
-/// Max log file size before rotation (5 MB)
 const MAX_LOG_SIZE: u64 = 5 * 1024 * 1024;
-/// Number of rotated files to keep
-const ROTATED_FILES_KEEP: usize = 3;
+// [自訂] REV9：總量上限包含目前及舊版日誌。一般用量仍依設定天數保留。
+const MAX_TOTAL_LOG_SIZE: u64 = 512 * 1024 * 1024;
+const CURRENT_LOG: &str = "sayit.log";
 
-fn log_dir() -> std::path::PathBuf {
-    dirs::data_local_dir()
-        .unwrap_or_else(|| std::path::PathBuf::from("."))
-        .join("com.sayitlocally.desktop")
-        .join("logs")
+pub(super) fn log_dir() -> PathBuf {
+    super::app_data_dir().join("logs")
 }
 
-fn log_file_path() -> std::path::PathBuf {
-    log_dir().join("sayit.log")
+fn log_file_path() -> PathBuf {
+    log_dir().join(CURRENT_LOG)
+}
+
+// 接受舊版 1～3，或日期＋序號的輪替檔名。
+fn rotation_id(name: &str) -> Option<(Option<chrono::NaiveDate>, u32)> {
+    let suffix = name.strip_prefix("sayit.")?.strip_suffix(".log")?;
+    if matches!(suffix, "1" | "2" | "3") {
+        return Some((None, 4 - suffix.parse::<u32>().ok()?));
+    }
+    let (date, number) = suffix.split_once('.')?;
+    let day = chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d").ok()?;
+    let sequence = number.parse::<u32>().ok()?;
+    (date.len() == 10 && number.len() == 10 && number.bytes().all(|b| b.is_ascii_digit()))
+        .then_some((Some(day), sequence))
+}
+
+// [自訂] REV9：清理、預覽、匯出及檢視採同一個名單，依新到舊排序。
+pub(super) fn rotated_logs(dir: &Path) -> Vec<PathBuf> {
+    let Ok(entries) = std::fs::read_dir(dir) else { return Vec::new() };
+    let mut logs: Vec<_> = entries.flatten().filter_map(|entry| {
+        let name = entry.file_name();
+        let (date, sequence) = rotation_id(name.to_str()?)?;
+        let metadata = std::fs::symlink_metadata(entry.path()).ok()?;
+        if !metadata.is_file() {
+            return None;
+        }
+        let modified = metadata.modified().unwrap_or(std::time::UNIX_EPOCH);
+        let modified = chrono::DateTime::<chrono::Local>::from(modified);
+        Some((date.unwrap_or(modified.date_naive()), date.is_some(), sequence, modified, entry.path()))
+    }).collect();
+    logs.sort_unstable_by(|a, b| b.cmp(a));
+    logs.into_iter().map(|(_, _, _, _, path)| path).collect()
+}
+
+pub(super) fn log_paths(dir: &Path) -> impl Iterator<Item = PathBuf> {
+    let active = dir.join(CURRENT_LOG);
+    let active = std::fs::symlink_metadata(&active)
+        .is_ok_and(|metadata| metadata.is_file()).then_some(active);
+    active.into_iter().chain(rotated_logs(dir))
 }
 
 fn open_log_file() -> Option<std::fs::File> {
@@ -38,6 +70,9 @@ fn open_log_file() -> Option<std::fs::File> {
         return None;
     }
     let path = log_file_path();
+    if std::fs::symlink_metadata(&path).is_ok_and(|metadata| !metadata.is_file()) {
+        return None;
+    }
     std::fs::OpenOptions::new()
         .create(true)
         .append(true)
@@ -45,27 +80,164 @@ fn open_log_file() -> Option<std::fs::File> {
         .ok()
 }
 
-fn rotate_if_needed(file: &mut Option<std::fs::File>) {
-    let path = log_file_path();
-    let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
-    if size < MAX_LOG_SIZE {
+// [自訂] S71：日期改變或超過大小時輪替；不覆寫任何舊的日誌。
+fn rotate_if_needed(
+    dir: &Path,
+    file: &mut Option<std::fs::File>,
+    now: chrono::DateTime<chrono::Local>,
+    incoming: u64,
+) -> bool {
+    let path = dir.join(CURRENT_LOG);
+    let Ok(metadata) = std::fs::symlink_metadata(&path) else { return false };
+    let Ok(modified) = metadata.modified() else { return false };
+    if !metadata.is_file() || metadata.len() == 0 {
+        return false;
+    }
+    let previous_date = chrono::DateTime::<chrono::Local>::from(modified).date_naive();
+    if previous_date == now.date_naive()
+        && metadata.len().saturating_add(incoming) <= MAX_LOG_SIZE
+    {
+        return false;
+    }
+    let prefix = format!("sayit.{previous_date}");
+    let next_sequence = rotated_logs(dir).iter().find_map(|path| {
+        let (date, sequence) = rotation_id(path.file_name()?.to_str()?)?;
+        (date == Some(previous_date)).then_some(sequence)
+    }).unwrap_or(0).saturating_add(1);
+    for sequence in next_sequence..=u32::MAX {
+        let target = dir.join(format!("{prefix}.{sequence:010}.log"));
+        match std::fs::symlink_metadata(&target) {
+            Ok(_) => continue,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                eprintln!("[log] failed to inspect rotation destination: {error}");
+                return false;
+            }
+        }
+        *file = None; // Windows: close the active file before renaming.
+        if let Err(error) = std::fs::rename(&path, target) {
+            eprintln!("[log] failed to rotate log: {error}");
+            return false;
+        }
+        return true;
+    }
+    false
+}
+
+pub(crate) fn log_retention_days(storage: &Storage) -> Result<i64, String> {
+    let days = storage.retention_days("logRetentionDays", 30)?;
+    if days <= 0 || matches!(days, 7 | 15 | 30 | 90) {
+        Ok(days)
+    } else {
+        Err("Invalid log retention days".into())
+    }
+}
+
+pub(crate) fn cleanup_retained_logs(days: i64) {
+    let mut file = LOG_FILE.lock().unwrap_or_else(|e| e.into_inner());
+    maintain_logs(&log_dir(), &mut file, chrono::Local::now(), days, MAX_TOTAL_LOG_SIZE);
+}
+
+fn cap_log_size(dir: &Path, limit: u64, pending_bytes: u64) {
+    let logs: Vec<_> = log_paths(dir).filter_map(|path| {
+        let size = std::fs::symlink_metadata(&path).ok()?.len();
+        Some((path, size))
+    }).collect();
+    let mut total = logs.iter().fold(pending_bytes, |total, (_, size)| total.saturating_add(*size));
+    for (path, size) in logs.into_iter().rev() {
+        if total <= limit || path.file_name().is_some_and(|name| name == CURRENT_LOG) {
+            break;
+        }
+        match std::fs::remove_file(path) {
+            Ok(()) => total -= size,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => total -= size,
+            Err(error) => {
+                eprintln!("[log] failed to apply log size limit: {error}");
+                break;
+            }
+        }
+    }
+}
+
+// [自訂] S71：輪替和清理與寫入使用同一把鎖。舊版混合多日的日誌也逐行套用保留期。
+fn maintain_logs(
+    dir: &std::path::Path,
+    file: &mut Option<std::fs::File>,
+    now: chrono::DateTime<chrono::Local>,
+    days: i64,
+    total_limit: u64,
+) {
+    if !std::fs::symlink_metadata(dir).is_ok_and(|m| m.is_dir()) {
         return;
     }
-
-    // Windows 不允许重命名仍由本进程打开的日志文件。先释放句柄，否则轮转会
-    // 静默失败，正式版长期运行后 sayit.log 会无限增长。
-    *file = None;
-
-    // Rotate: sayit.log -> sayit.1.log, sayit.1.log -> sayit.2.log, etc.
-    let dir = log_dir();
-    for i in (1..ROTATED_FILES_KEEP).rev() {
-        let from = dir.join(format!("sayit.{}.log", i));
-        let to = dir.join(format!("sayit.{}.log", i + 1));
-        let _ = std::fs::rename(&from, &to);
+    // 前次程序中斷可能留下完成一半的保留期暫存檔。
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            let staging = name.to_str()
+                .and_then(|name| name.strip_prefix(".sayit-retention-"))
+                .and_then(|name| name.strip_suffix(".tmp"))
+                .is_some_and(|id| uuid::Uuid::parse_str(id).is_ok());
+            if staging && entry.file_type().is_ok_and(|kind| kind.is_file()) {
+                let _ = std::fs::remove_file(entry.path());
+            }
+        }
     }
-    let rotated = dir.join("sayit.1.log");
-    let _ = std::fs::rename(&path, &rotated);
-    *file = open_log_file();
+    rotate_if_needed(dir, file, now, 0);
+    let cutoff = (days > 0).then(|| chrono::Duration::try_days(days))
+        .flatten().and_then(|age| now.checked_sub_signed(age));
+    if let Some(cutoff) = cutoff {
+        trim_logs(dir, file, cutoff);
+    }
+    cap_log_size(dir, total_limit, 0);
+}
+
+fn trim_logs(dir: &Path, file: &mut Option<std::fs::File>, cutoff: chrono::DateTime<chrono::Local>) {
+    let cutoff_day = cutoff.date_naive();
+    let cutoff = cutoff.format("%Y-%m-%d %H:%M:%S%.3f").to_string();
+    for path in log_paths(dir) {
+        let name = path.file_name().and_then(|name| name.to_str()).unwrap_or_default();
+        if let Some((Some(day), _)) = rotation_id(name) {
+            // 日期是輪替前最後寫入時間，早於截止日的整個封存檔都已到期。
+            if day < cutoff_day {
+                if let Err(error) = std::fs::remove_file(&path) {
+                    eprintln!("[log] failed to remove expired log: {error}");
+                }
+                continue;
+            }
+        }
+        let modified = std::fs::symlink_metadata(&path).and_then(|metadata| metadata.modified());
+        let Ok(bytes) = std::fs::read(&path) else { continue };
+        let content = String::from_utf8_lossy(&bytes);
+        let kept = super::diagnostics::filter_raw_log_since(&content, Some(&cutoff));
+        if kept.as_bytes() == bytes {
+            continue;
+        }
+        if name == CURRENT_LOG {
+            *file = None;
+        }
+        let result = if kept.is_empty() {
+            std::fs::remove_file(&path)
+        } else {
+            let temp = dir.join(format!(".sayit-retention-{}.tmp", uuid::Uuid::new_v4()));
+            let result = (|| {
+                let mut staged = std::fs::OpenOptions::new().write(true).create_new(true).open(&temp)?;
+                staged.write_all(kept.as_bytes())?;
+                if let Ok(modified) = modified {
+                    staged.set_times(std::fs::FileTimes::new().set_modified(modified))?;
+                }
+                drop(staged);
+                std::fs::rename(&temp, &path)
+            })();
+            if result.is_err() {
+                let _ = std::fs::remove_file(&temp);
+            }
+            result
+        };
+        if let Err(e) = result {
+            eprintln!("[log] failed to apply log retention: {e}");
+        }
+    }
 }
 
 pub fn write_log_line(line: &str) {
@@ -73,16 +245,119 @@ pub fn write_log_line(line: &str) {
     // （poisoned），日志功能也不能跟着永久失效——否则会形成"一次意外 panic 导致
     // 之后所有诊断日志都写不出来"的雪崩，恰恰是排查间歇性问题最怕遇到的情况。
     let mut guard = LOG_FILE.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-    // Rotate check — reopen file if needed
-    rotate_if_needed(&mut guard);
+    let now = chrono::Local::now();
+    let incoming = line.len() as u64 + 32;
+    if incoming > MAX_LOG_SIZE {
+        return;
+    }
+    let dir = log_dir();
+    if rotate_if_needed(&dir, &mut guard, now, incoming) {
+        cap_log_size(&dir, MAX_TOTAL_LOG_SIZE, MAX_LOG_SIZE);
+    }
     if guard.is_none() {
         *guard = open_log_file();
     }
     if let Some(ref mut f) = *guard {
-        let ts = chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.3f");
+        let ts = now.format("%Y-%m-%d %H:%M:%S%.3f");
         let _ = writeln!(f, "[{}] {}", ts, line);
         let _ = f.flush();
     }
+}
+
+#[cfg(test)]
+mod log_retention_tests {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    fn validates_log_retention_setting_and_routes_test_logger_to_temp() {
+        let storage = Storage::new(PathBuf::from(":memory:")).unwrap();
+        storage.set("logRetentionDays", &serde_json::json!(1)).unwrap();
+        assert!(log_retention_days(&storage).is_err());
+        for days in [0, -1, 7, 15, 30, 90] {
+            storage.set("logRetentionDays", &serde_json::json!(days)).unwrap();
+            assert_eq!(log_retention_days(&storage).unwrap(), days);
+        }
+        assert!(log_dir().starts_with(std::env::temp_dir()));
+        write_log_line("[INFO] test log is isolated");
+        assert!(fs::read_to_string(log_file_path()).unwrap().contains("test log is isolated"));
+    }
+
+    // [自訂] S71：日期與大小各自觸發輪替。
+    #[test]
+    fn rotates_logs_on_date_change_and_size_limit() {
+        let dir = std::env::temp_dir().join(format!("sayit-log-test-{}", uuid::Uuid::new_v4()));
+        fs::create_dir(&dir).unwrap();
+        let active = dir.join("sayit.log");
+        fs::write(&active, b"previous day").unwrap();
+        let modified = chrono::DateTime::<chrono::Local>::from(fs::metadata(&active).unwrap().modified().unwrap());
+        let mut file = Some(fs::File::open(&active).unwrap());
+        rotate_if_needed(&dir, &mut file, modified + chrono::Duration::days(2), 0);
+        assert!(file.is_none());
+        assert_eq!(fs::read(&rotated_logs(&dir)[0]).unwrap(), b"previous day");
+
+        let large = fs::File::create(&active).unwrap();
+        large.set_len(MAX_LOG_SIZE).unwrap();
+        let modified = chrono::DateTime::<chrono::Local>::from(large.metadata().unwrap().modified().unwrap());
+        let mut file = Some(large);
+        rotate_if_needed(&dir, &mut file, modified, 1);
+        assert!(file.is_none());
+        let archived = rotated_logs(&dir);
+        assert_eq!(archived.len(), 2);
+        assert_eq!(fs::metadata(&archived[0]).unwrap().len(), MAX_LOG_SIZE);
+        assert_eq!(fs::read(&archived[1]).unwrap(), b"previous day");
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn retention_trims_current_log_and_removes_expired_rotated_logs() {
+        let dir = std::env::temp_dir().join(format!("sayit-log-test-{}", uuid::Uuid::new_v4()));
+        fs::create_dir(&dir).unwrap();
+        let active = dir.join("sayit.log");
+        let now = chrono::Local::now();
+        let line = |date: chrono::DateTime<chrono::Local>, marker| {
+            format!("[{}] {marker}\n", date.format("%Y-%m-%d %H:%M:%S%.3f"))
+        };
+        let expired = line(now - chrono::Duration::days(10), "expired");
+        let recent = line(now, "recent");
+        fs::write(&active, format!("{expired}old stack trace\n{recent}")).unwrap();
+        fs::write(dir.join("sayit.1.log"), expired).unwrap();
+        let staging = dir.join(format!(".sayit-retention-{}.tmp", uuid::Uuid::new_v4()));
+        fs::write(&staging, b"incomplete log rewrite").unwrap();
+        let mut file = Some(fs::File::open(&active).unwrap());
+        maintain_logs(&dir, &mut file, now, 7, MAX_TOTAL_LOG_SIZE);
+        assert_eq!(fs::read_to_string(&active).unwrap(), recent);
+        assert!(file.is_none());
+        assert!(!dir.join("sayit.1.log").exists());
+        assert!(!staging.exists());
+        fs::remove_dir_all(dir).unwrap();
+    }
+    #[test]
+    fn keeps_more_than_four_dated_logs_and_caps_oldest_first_without_day_limit() {
+        let dir = std::env::temp_dir().join(format!("sayit-log-test-{}", uuid::Uuid::new_v4()));
+        fs::create_dir(&dir).unwrap();
+        let now = chrono::Local::now();
+        let active = dir.join(CURRENT_LOG);
+        for age in (2..=7).rev() {
+            let date = now - chrono::Duration::days(age);
+            let mut file = fs::File::create(&active).unwrap();
+            writeln!(file, "[{}] example", date.format("%Y-%m-%d %H:%M:%S%.3f")).unwrap();
+            file.set_times(fs::FileTimes::new().set_modified(date.into())).unwrap();
+            let mut file = Some(file);
+            assert!(rotate_if_needed(&dir, &mut file, date + chrono::Duration::days(1), 0));
+        }
+        maintain_logs(&dir, &mut None, now, 15, MAX_TOTAL_LOG_SIZE);
+        let full = rotated_logs(&dir);
+        assert_eq!(full.len(), 6);
+        maintain_logs(&dir, &mut None, now + chrono::Duration::days(100), 0, MAX_TOTAL_LOG_SIZE);
+        assert_eq!(rotated_logs(&dir), full);
+        let bytes_in_newest_two: u64 = full.iter().take(2)
+            .map(|path| fs::metadata(path).unwrap().len()).sum();
+        maintain_logs(&dir, &mut None, now, 0, bytes_in_newest_two);
+        assert_eq!(rotated_logs(&dir), &full[..2]);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
 }
 
 fn get_os_version() -> String {
@@ -501,6 +776,7 @@ async fn fetch_installer_part(
 ) -> Result<(u64, u64), String> {
     use futures_util::StreamExt;
     use std::io::Write;
+use std::path::{Path, PathBuf};
 
     let resume_from = std::fs::metadata(part_path).map(|m| m.len()).unwrap_or(0);
 
