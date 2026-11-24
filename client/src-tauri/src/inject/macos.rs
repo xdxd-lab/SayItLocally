@@ -162,12 +162,16 @@ struct ClipboardBackup {
 }
 
 impl ClipboardBackup {
-    fn capture(protect: bool) -> Self {
+    fn capture(
+        protect: bool,
+        read_text: impl FnOnce() -> Option<String>,
+        read_snapshot: impl FnOnce() -> Option<appkit::PasteboardSnapshot>,
+    ) -> Self {
         if !protect {
             return Self::default();
         }
-        let previous_text = appkit::pasteboard_get_text();
-        let snapshot = appkit::pasteboard_snapshot(CLIPBOARD_SNAPSHOT_BUDGET, CLIPBOARD_SNAPSHOT_MAX_BYTES);
+        let previous_text = read_text();
+        let snapshot = read_snapshot();
         Self { snapshot, previous_text }
     }
 
@@ -225,7 +229,9 @@ fn focus_failure(change: focus::FocusChange) -> InjectResult {
     }
 }
 
-fn do_inject(text: &str, target_pid: i32, restore_clipboard: bool, focus_token: Option<&str>, keycode: CGKeyCode) -> InjectResult {
+fn inject_with_native_services(
+    text: &str, target_pid: i32, restore_clipboard: bool, focus_token: Option<&str>, keycode: CGKeyCode,
+) -> InjectResult {
     let _transaction = PASTE_TRANSACTION.lock().unwrap_or_else(|error| error.into_inner());
 
     // 模拟按键需要「辅助功能」授权；没有授权时 CGEventPost 会被系统静默丢弃。
@@ -234,10 +240,15 @@ fn do_inject(text: &str, target_pid: i32, restore_clipboard: bool, focus_token: 
         return result(false, "cmd_v", Some("accessibility_not_granted"), String::new());
     }
 
-    let attempt = guarded_paste(
+    do_inject(
+        restore_clipboard,
         || focus::verify(focus_token, target_pid),
         || {
-            let backup = ClipboardBackup::capture(restore_clipboard);
+            let backup = ClipboardBackup::capture(
+                restore_clipboard,
+                appkit::pasteboard_get_text,
+                || appkit::pasteboard_snapshot(CLIPBOARD_SNAPSHOT_BUDGET, CLIPBOARD_SNAPSHOT_MAX_BYTES),
+            );
             match appkit::pasteboard_set_text(text, true) {
                 Ok(count) => Ok((count, backup)),
                 Err(error) => Err((error, backup)),
@@ -245,12 +256,25 @@ fn do_inject(text: &str, target_pid: i32, restore_clipboard: bool, focus_token: 
         },
         || PasteEvents::create(keycode),
         PasteEvents::post,
-    );
+        ClipboardBackup::restore,
+    )
+}
+
+// [自訂] L-80：測試和實際貼上共用完整核對、暫存及拒絕還原流程。
+fn do_inject<K>(
+    restore_clipboard: bool,
+    verify: impl FnMut() -> Result<(), focus::FocusChange>,
+    stage: impl FnOnce() -> Result<(isize, ClipboardBackup), (appkit::PasteboardWriteError, ClipboardBackup)>,
+    create_events: impl FnOnce() -> Result<K, PostFailure>,
+    post: impl FnOnce(K),
+    rollback: impl FnOnce(&ClipboardBackup, isize) -> bool,
+) -> InjectResult {
+    let attempt = guarded_paste(verify, stage, create_events, post);
     let (written_count, backup, posted) = match attempt {
         PasteAttempt::FocusRejected(change) => return focus_failure(change),
         PasteAttempt::StageFailed((error, backup)) => {
             if let Some(count) = error.written_count {
-                backup.restore(count);
+                rollback(&backup, count);
             }
             write_log_line("[RUST] [inject] clipboard write failed");
             return result(false, "clipboard", Some("clipboard_blocked"), error.detail.to_owned());
@@ -259,7 +283,7 @@ fn do_inject(text: &str, target_pid: i32, restore_clipboard: bool, focus_token: 
     };
     let paste_id = PASTE_GENERATION.fetch_add(1, Ordering::AcqRel) + 1;
     if let Err(PostFailure::Focus(change)) = posted {
-        backup.restore(written_count);
+        rollback(&backup, written_count);
         return focus_failure(change);
     }
 
@@ -277,7 +301,7 @@ fn do_inject(text: &str, target_pid: i32, restore_clipboard: bool, focus_token: 
 // [自訂] L-80：錄音貼上與診斷貼上共用最後一道原生核對。
 pub fn inject_recording_text(text: &str, target_pid: i32, restore_clipboard: bool, focus_token: Option<&str>, keycode: CGKeyCode) -> InjectResult {
     if target_pid > 0 {
-        return do_inject(text, target_pid, restore_clipboard, focus_token, keycode);
+        return inject_with_native_services(text, target_pid, restore_clipboard, focus_token, keycode);
     }
     // [自訂] L-80：無 PID 時仍走基準版可編輯探測；失效權杖先拒絕。
     if let Some(token) = focus_token {
@@ -306,7 +330,7 @@ pub fn inject_recording_text(text: &str, target_pid: i32, restore_clipboard: boo
             uncertain: false,
         };
     }
-    do_inject(text, ctx.pid as i32, restore_clipboard, focus_token, keycode)
+    inject_with_native_services(text, ctx.pid as i32, restore_clipboard, focus_token, keycode)
 }
 
 /// 只写剪贴板（结果卡的「复制」、不可输入时的兜底）。复制是用户要的，正常进剪贴板历史。
@@ -484,6 +508,47 @@ mod tests {
         );
         assert!(matches!(attempt, PasteAttempt::Staged(None, Ok(()))));
         assert!(posted.get());
+    }
+
+    #[test]
+    fn do_inject_runs_both_focus_checks_and_rolls_back_a_late_mismatch() {
+        use std::cell::RefCell;
+        let calls = RefCell::new(Vec::new());
+        let result = do_inject(false,
+            || {
+                let mut calls = calls.borrow_mut();
+                let at_start = calls.is_empty();
+                calls.push("verify");
+                if at_start { Ok(()) } else { Err(focus::FocusChange::Window) }
+            },
+            || {
+                calls.borrow_mut().push("stage");
+                Ok((41, ClipboardBackup::default()))
+            },
+            || {
+                calls.borrow_mut().push("prepare");
+                Ok(())
+            },
+            |_| panic!("no keys should reach the changed window"),
+            |_, count| {
+                assert_eq!(count, 41);
+                calls.borrow_mut().push("rollback");
+                true
+            },
+        );
+        assert!(!result.ok);
+        assert_eq!(result.reason.as_deref(), Some("window_changed"));
+        assert_eq!(*calls.borrow(), ["verify", "stage", "prepare", "verify", "rollback"]);
+    }
+
+    #[test]
+    fn clipboard_protection_off_never_reads_old_text_or_formats() {
+        let backup = ClipboardBackup::capture(false,
+            || panic!("old clipboard text must not be read"),
+            || panic!("clipboard formats must not be read"),
+        );
+        assert!(backup.previous_text.is_none());
+        assert!(backup.snapshot.is_none());
     }
 
     #[test]
