@@ -4,10 +4,128 @@ use super::catalog::{self, LocalModelInfo, ModelInfo};
 use super::downloader;
 use crate::storage::Storage;
 use serde::Serialize;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use tauri::AppHandle;
 
 use crate::error_protocol;
+
+// [自訂] S88：由 catalog 決定唯一權重檔；即使檔案系統不區分大小寫，也要檔名一致。
+fn catalog_file(model: &ModelInfo) -> Option<&catalog::ModelFile> {
+    model.sources.first()?.files.first()
+}
+
+fn model_file_path(dir: &Path, file: &catalog::ModelFile) -> Result<PathBuf, String> {
+    let entries = std::fs::read_dir(dir)
+        .map_err(|e| format!("Cannot read model folder for {}: {}", file.name, e))?;
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("Cannot read model folder: {e}"))?;
+        if entry.file_name() == std::ffi::OsStr::new(&file.name) {
+            return Ok(entry.path());
+        }
+    }
+    Err(format!(
+        "Missing model file: {}. Use the exact catalog filename.",
+        file.name
+    ))
+}
+
+// [自訂] S88：只快取最近一次成功驗證的檔案。Unix 的 ctime 也會反映同大小覆寫。
+#[cfg(unix)]
+#[derive(PartialEq, Eq)]
+struct FileIdentity {
+    path: PathBuf,
+    device: u64,
+    inode: u64,
+    size: u64,
+    mtime: (i64, i64),
+    ctime: (i64, i64),
+    expected_sha256: String,
+}
+
+#[cfg(unix)]
+impl FileIdentity {
+    fn new(path: &Path, metadata: &std::fs::Metadata, sha256: &str) -> Self {
+        use std::os::unix::fs::MetadataExt;
+        Self {
+            path: path.into(),
+            device: metadata.dev(),
+            inode: metadata.ino(),
+            size: metadata.len(),
+            mtime: (metadata.mtime(), metadata.mtime_nsec()),
+            ctime: (metadata.ctime(), metadata.ctime_nsec()),
+            expected_sha256: sha256.into(),
+        }
+    }
+}
+
+#[cfg(unix)]
+static VERIFIED_FILE: std::sync::Mutex<Option<FileIdentity>> = std::sync::Mutex::new(None);
+
+fn verify_local_file(dir: &Path, spec: &catalog::ModelFile) -> Result<PathBuf, String> {
+    let path = model_file_path(dir, spec)?;
+    let read_error = |e| format!("Cannot read model file {}: {e}", spec.name);
+    if !std::fs::metadata(&path).map_err(read_error)?.is_file() {
+        return Err(format!("Model file {} must be a regular file.", spec.name));
+    }
+    let file = std::fs::File::open(&path).map_err(read_error)?;
+    let metadata = file.metadata().map_err(read_error)?;
+    if !metadata.is_file() || metadata.len() != spec.size_bytes {
+        return Err(format!(
+            "Model file {} has the wrong size: expected {} bytes, found {}. Use the catalog version.",
+            spec.name, spec.size_bytes, metadata.len()
+        ));
+    }
+    let sha256 = spec
+        .sha256
+        .as_deref()
+        .ok_or_else(|| format!("Missing catalog SHA-256 for {}.", spec.name))?;
+
+    #[cfg(unix)]
+    let identity = FileIdentity::new(&path, &metadata, sha256);
+    #[cfg(unix)]
+    if VERIFIED_FILE
+        .lock()
+        .ok()
+        .is_some_and(|cached| cached.as_ref() == Some(&identity))
+    {
+        return Ok(path);
+    }
+
+    downloader::verify_open_file_sha256(&file, sha256).map_err(|_| {
+        format!(
+            "SHA-256 verification failed for {}. Check the file against the catalog.",
+            spec.name
+        )
+    })?;
+
+    #[cfg(unix)]
+    {
+        if identity != FileIdentity::new(&path, &file.metadata().map_err(read_error)?, sha256) {
+            return Err(format!(
+                "Model file {} changed during verification. Try again.",
+                spec.name
+            ));
+        }
+        if let Ok(mut cached) = VERIFIED_FILE.lock() {
+            *cached = Some(identity);
+        }
+    }
+    Ok(path)
+}
+
+fn catalog_model(model_id: &str) -> Result<ModelInfo, String> {
+    catalog::get_available_models()
+        .into_iter()
+        .find(|model| model.id == model_id)
+        .ok_or_else(|| "Unknown local model ID. Select a model from the catalog.".into())
+}
+
+pub(super) fn verified_model_path(model_id: &str) -> Result<PathBuf, String> {
+    let model = catalog_model(model_id)?;
+    let file = catalog_file(&model)
+        .ok_or_else(|| format!("No weight file in the catalog for {}.", model.id))?;
+    verify_local_file(&downloader::model_dir(&model.id), file)
+}
 
 /// 列出所有可用模型
 #[tauri::command]
@@ -32,17 +150,19 @@ pub fn list_downloaded_models() -> Vec<LocalModelInfo> {
             continue;
         }
 
-        // 检查所有文件是否都已下载
+        // [自訂] S88：列表只核對檔名和大小；SHA-256 留到實際載入。
         let mut complete = true;
         let mut actual_size: u64 = 0;
 
         for source in &model.sources {
             for file in &source.files {
-                let file_path = model_path.join(&file.name);
-                if file_path.exists() {
-                    actual_size += std::fs::metadata(&file_path)
-                        .map(|m| m.len())
-                        .unwrap_or(0);
+                let metadata = model_file_path(&model_path, file)
+                    .ok()
+                    .and_then(|path| std::fs::metadata(path).ok())
+                    .filter(|metadata| metadata.is_file());
+                if let Some(metadata) = metadata {
+                    actual_size += metadata.len();
+                    complete &= metadata.len() == file.size_bytes;
                 } else {
                     complete = false;
                 }
@@ -302,4 +422,101 @@ pub fn open_model_folder(model_id: String) -> Result<String, String> {
         let _ = std::process::Command::new("xdg-open").arg(&path).spawn();
     }
     Ok(path)
+}
+
+// [自訂] S88：驗證流程以小型檔案測試，無需下載模型或初始化辨識引擎。
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    const MODEL_FILE: &str = "registered.gguf";
+
+    struct ModelFixture {
+        dir: PathBuf,
+        spec: catalog::ModelFile,
+    }
+
+    impl ModelFixture {
+        fn new() -> Self {
+            let dir = std::env::temp_dir().join(format!("sayit-model-test-{}", uuid::Uuid::new_v4()));
+            fs::create_dir(&dir).unwrap();
+            Self {
+                dir,
+                spec: catalog::ModelFile {
+                    name: MODEL_FILE.into(),
+                    url: String::new(),
+                    size_bytes: 3,
+                    sha256: Some("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad".into()),
+                },
+            }
+        }
+
+        fn verify(&self) -> Result<PathBuf, String> {
+            verify_local_file(&self.dir, &self.spec)
+        }
+    }
+
+    impl Drop for ModelFixture {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.dir);
+        }
+    }
+
+    #[test]
+    fn accepts_catalog_filename_size_and_hash() {
+        let fixture = ModelFixture::new();
+        let path = fixture.dir.join(MODEL_FILE);
+        fs::write(&path, b"abc").unwrap();
+        assert_eq!(fixture.verify().unwrap(), path);
+    }
+
+    #[test]
+    fn rejects_nonmatching_filename_even_on_case_insensitive_filesystems() {
+        let fixture = ModelFixture::new();
+        fs::write(fixture.dir.join("Registered.gguf"), b"abc").unwrap();
+        assert!(fixture.verify().unwrap_err().contains("exact catalog filename"));
+    }
+
+    #[test]
+    fn rejects_incorrect_size() {
+        let fixture = ModelFixture::new();
+        fs::write(fixture.dir.join(MODEL_FILE), b"abcd").unwrap();
+        assert!(fixture.verify().unwrap_err().contains("wrong size"));
+    }
+
+    #[test]
+    fn rejects_incorrect_hash_without_deleting_file() {
+        let fixture = ModelFixture::new();
+        let path = fixture.dir.join(MODEL_FILE);
+        fs::write(&path, b"def").unwrap();
+        assert!(fixture.verify().unwrap_err().contains("SHA-256 verification failed"));
+        assert_eq!(fs::read(&path).unwrap(), b"def");
+    }
+
+    #[test]
+    fn rejects_unknown_model_id() {
+        let result = verified_model_path("unregistered-test-model");
+        assert!(result.unwrap_err().contains("Unknown local model ID"));
+    }
+
+    #[test]
+    fn ignores_larger_unregistered_gguf() {
+        let fixture = ModelFixture::new();
+        let path = fixture.dir.join(MODEL_FILE);
+        fs::write(&path, b"abc").unwrap();
+        fs::write(fixture.dir.join("other.gguf"), b"bigger").unwrap();
+        assert_eq!(fixture.verify().unwrap(), path);
+    }
+
+    #[test]
+    fn rejects_replacement_after_successful_verification() {
+        let fixture = ModelFixture::new();
+        let path = fixture.dir.join(MODEL_FILE);
+        fs::write(&path, b"abc").unwrap();
+        assert_eq!(fixture.verify().unwrap(), path);
+        fs::rename(&path, fixture.dir.join("original.gguf")).unwrap();
+        fs::write(&path, b"def").unwrap();
+        assert!(fixture.verify().unwrap_err().contains("SHA-256 verification failed"));
+    }
 }

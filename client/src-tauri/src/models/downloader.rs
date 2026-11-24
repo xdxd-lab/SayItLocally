@@ -110,9 +110,17 @@ fn remove_file_if_exists(path: &Path) -> Result<(), String> {
 
 /// 校验落地文件的 SHA-256 哈希值
 fn verify_file_sha256(file_path: &Path, expected_sha256: &str) -> Result<(), String> {
-    use std::io::Read;
-    let mut file = std::fs::File::open(file_path)
+    let file = std::fs::File::open(file_path)
         .map_err(|e| download_io_error("Failed to open file for SHA-256 verification", e))?;
+    verify_open_file_sha256(&file, expected_sha256)
+}
+
+// [自訂] S88：下載與載入共用雜湊檢查；載入端可核對同一個已開啟檔案的身分。
+pub(super) fn verify_open_file_sha256(
+    mut file: &std::fs::File,
+    expected_sha256: &str,
+) -> Result<(), String> {
+    use std::io::Read;
     let mut hasher = Sha256::new();
     let mut buffer = [0u8; 64 * 1024];
 

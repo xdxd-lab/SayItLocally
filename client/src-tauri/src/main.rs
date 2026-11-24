@@ -459,6 +459,12 @@ fn notify_main_window_unavailable() {
 }
 
 fn main() {
+    // [自訂] S64：在初始化及啟動執行緒前關閉 transcribe-cpp 的語音特徵傾印。
+    std::env::remove_var("TRANSCRIBE_DUMP_DIR");
+    // Metal 的 GPU trace 也可能保存辨識運算資料。
+    #[cfg(target_os = "macos")]
+    std::env::remove_var("GGML_METAL_CAPTURE_COMPUTE");
+
     // Mirror the Rust log facade to sayit.log as well as stderr. This is essential on
     // Windows release builds (`windows_subsystem = "windows"`), where stderr is invisible.
     // It also captures tauri-runtime-wry errors such as the original WebView2 HRESULT.

@@ -13,6 +13,7 @@
 // 只允许一个 run 在飞（库内部用 per-model 锁保证）。所以这里用一个全局
 // Mutex<Option<Loaded>> 常驻，推理时拿 &mut。
 
+#[cfg(test)]
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::Instant;
@@ -24,7 +25,8 @@ use transcribe_cpp::{
 #[cfg(test)]
 use transcribe_cpp::TimestampKind;
 
-// 生产路径一律走 checked_model_dir（先校验 id 再拼路径），未校验的版本只留给测试。
+// [自訂] S88：正式載入由 registry 核對 catalog；未登錄的探針只存在於測試。
+use super::registry;
 #[cfg(test)]
 use super::downloader::model_dir;
 
@@ -170,11 +172,11 @@ pub fn init_backends() {
     });
 }
 
-/// 该模型的权重是否已经下载好（目录里能找到 .gguf）。
+/// [自訂] S88：測試只在 catalog 權重存在且通過驗證時啟用。
 /// 只给测试用：生产路径上"没下载"是由 `ensure_loaded` 报错表达的，不需要预检。
 #[cfg(test)]
 pub fn model_is_downloaded(model_id: &str) -> bool {
-    find_gguf(&model_dir(model_id)).is_ok()
+    registry::verified_model_path(model_id).is_ok()
 }
 
 /// 一个已注册的计算设备，给前端（诊断页 / 设置页）展示用。
@@ -374,9 +376,9 @@ pub fn describe_devices() -> Vec<GgufDevice> {
         .collect()
 }
 
-/// 在模型目录里找唯一的 .gguf 文件。catalog 里每个 GGUF 模型只下一个权重文件，
-/// 所以不需要用户/前端记住文件名，避免换量化档时两头都要改。
-fn find_gguf(dir: &Path) -> Result<PathBuf, String> {
+/// [自訂] S88：僅供尚未進 catalog 的忽略測試使用。
+#[cfg(test)]
+fn find_probe_gguf(dir: &Path) -> Result<PathBuf, String> {
     if !dir.exists() {
         return Err("The model has not been downloaded".into());
     }
@@ -458,8 +460,8 @@ fn ensure_loaded(model_id: &str, accelerator: &str, gpu_device: &str) -> Result<
     // 先释放旧引擎再建新的，避免同时驻留两份权重（GGUF 动辄几百 MB ~ 数 GB）。
     *cache = None;
 
-    // model_id 来自前端（设置里的 localAsr.modelId），先校验再拼路径。
-    let path = find_gguf(&crate::models::downloader::checked_model_dir(model_id)?)?;
+    // [自訂] S88：預載、辨識與重新載入均先驗證，再把檔案交給本機引擎。
+    let path = registry::verified_model_path(model_id)?;
     log::info!("Loading GGUF ASR model: {} ({})", model_id, path.display());
     let start = Instant::now();
 
@@ -936,7 +938,7 @@ mod tests {
 
     /// 模型没下载就跳过（CI / 干净机器上不该因为缺几百 MB 权重而红）。
     fn model_present(model_id: &str) -> bool {
-        find_gguf(&model_dir(model_id)).is_ok()
+        model_is_downloaded(model_id)
     }
 
     fn run(model_id: &str, repeats: usize) -> String {
@@ -1526,7 +1528,7 @@ mod tests {
         let audio_sec = pcm.len() as f64 / SR_U as f64;
 
         for dir in ["funasr-nano-2512-gguf"] {
-            let path = match find_gguf(&model_dir(dir)) {
+            let path = match find_probe_gguf(&model_dir(dir)) {
                 Ok(p) => p,
                 Err(e) => {
                     eprintln!("skip: {dir} ({e})");
@@ -1596,7 +1598,7 @@ mod tests {
                 eprintln!("skip: {id} 未下载");
                 continue;
             }
-            let path = find_gguf(&model_dir(id)).unwrap();
+            let path = registry::verified_model_path(id).unwrap();
             let model = Model::load_with(
                 &path,
                 &ModelOptions {
@@ -1658,7 +1660,7 @@ mod tests {
                 eprintln!("skip: {id} 未下载");
                 continue;
             }
-            let path = find_gguf(&model_dir(id)).unwrap();
+            let path = registry::verified_model_path(id).unwrap();
             let model = Model::load_with(
                 &path,
                 &ModelOptions {

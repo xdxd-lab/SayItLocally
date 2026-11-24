@@ -1,6 +1,6 @@
 # LuLu 安裝與封鎖指引（L-26、L-54）
 
-整理時間：2026-11-20 22:35（UTC+08:00）。此步驟需使用者自行操作，因為要在系統設定中核准網路延伸功能。
+整理時間：2026-11-20 22:35（UTC+08:00）。最後更新：2026-11-25 00:24。此步驟需使用者自行操作，因為要在系統設定中核准網路延伸功能。
 
 ## 為什麼需要
 
@@ -31,15 +31,20 @@ Homebrew 也提供 `lulu` cask（`brew install --cask lulu`），下載的是同
 
 ## 封鎖 SayItLocally
 
-建議順序：先下載本機模型，再設定封鎖。
-
-1. 第一次開啟 `SayItLocally.app` 並下載模型時，LuLu 會跳出提示。確認連線的主機是 `huggingface.co`（或它的 CDN），再選 Allow，並且**不要**勾選永久規則。
-2. 模型下載完成後，開啟 LuLu 的 Rules 視窗，選 Add Rule：
+1. 用瀏覽器或另一台裝置下載模型。先從 [模型 catalog](../client/src-tauri/src/models/catalog.rs) 找到要用的模型 ID、官方下載來源及檔名。
+2. 執行 `shasum -a 256 "<模型檔案>"`，比對結果與同一款模型在 catalog 的 `sha256`。兩者一致才繼續。
+3. 保留 catalog 的原始檔名，將模型搬到 `~/Library/Application Support/com.sayitlocally.desktop/models/<模型 ID>/`。若曾自訂模型位置，請用自訂的模型根目錄。缺少的目錄可先建立。
+4. **第一次開啟 `SayItLocally.app` 之前**，先在 LuLu 的 Rules 視窗選 Add Rule，加入下列封鎖規則：
    - 程式路徑：`/Applications/SayItLocally.app/Contents/MacOS/sayitlocally`（依實際安裝位置調整）
    - 遠端位址：`*`，連接埠：`*`
    - 動作：**Block**
-3. 自建版本是 ad-hoc 簽章，每次重新建置簽章都會改變，LuLu 可能把它當成新程式而再次詢問。官方文件沒有說明規則是依路徑還是依簽章比對，所以每次重建後請確認規則仍然存在；再出現提示時一律選 Block（下載模型時除外）。
-4. 平常可以留意 LuLu 的提示與規則清單，作為 App 是否嘗試連線的紀錄（相關項目：S10 抓封包）。
+5. 開啟 App 並選取模型。App 載入前會核對登錄的檔名、大小及 SHA-256（L-94）。
+
+每次重建後請確認封鎖規則仍然存在。LuLu 可能把重新 ad-hoc 簽章的版本視為新程式，再次提示時請選 Block。平常可留意 LuLu 的提示與規則清單，查看 App 是否嘗試連線（S10）。
+
+### 備案：暫時允許 App 下載
+
+若必須在 App 內下載，請只暫時放行。LuLu 提示時先確認目的地是 `huggingface.co` 或該模型下載所用的 CDN，再選 Allow，且**不要**勾選永久規則。下載完成後移除暫時的放行規則，並依上述步驟加入或恢復 Block 規則。
 
 ## 模式
 
