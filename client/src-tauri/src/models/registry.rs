@@ -9,24 +9,55 @@ use tauri::AppHandle;
 
 use crate::error_protocol;
 
-// [自訂] S88：由 catalog 決定唯一權重檔；即使檔案系統不區分大小寫，也要檔名一致。
-fn catalog_file(model: &ModelInfo) -> Option<&catalog::ModelFile> {
-    model.sources.first()?.files.first()
+// [自訂] S88 / SC-35：每個來源必須提供同一份且唯一的權重。
+fn catalog_file(model: &ModelInfo) -> Result<&catalog::ModelFile, String> {
+    let invalid = || error_protocol::encode(
+        "local_model_invalid",
+        "The catalog must specify the same single weight file for every source.",
+    );
+    let Some([expected]) = model.sources.first().map(|source| source.files.as_slice()) else {
+        return Err(invalid());
+    };
+    for source in &model.sources {
+        match source.files.as_slice() {
+            [file] if file.name == expected.name
+                && file.size_bytes == expected.size_bytes
+                && file.sha256 == expected.sha256 => {}
+            _ => return Err(invalid()),
+        }
+    }
+    Ok(expected)
 }
 
 fn model_file_path(dir: &Path, file: &catalog::ModelFile) -> Result<PathBuf, String> {
-    let entries = std::fs::read_dir(dir)
-        .map_err(|e| format!("Cannot read model folder for {}: {}", file.name, e))?;
+    let missing = || error_protocol::encode(
+        "local_model_missing",
+        format!("Missing model file: {}.", file.name),
+    );
+    let read_error = |e| error_protocol::encode(
+        "local_model_read",
+        format!("Cannot read model folder for {}: {e}", file.name),
+    );
+    let entries = std::fs::read_dir(dir).map_err(|e| {
+        if e.kind() == std::io::ErrorKind::NotFound { missing() } else { read_error(e) }
+    })?;
+    let mut other_gguf = false;
     for entry in entries {
-        let entry = entry.map_err(|e| format!("Cannot read model folder: {e}"))?;
-        if entry.file_name() == std::ffi::OsStr::new(&file.name) {
+        let entry = entry.map_err(read_error)?;
+        let name = entry.file_name();
+        if name == std::ffi::OsStr::new(&file.name) {
             return Ok(entry.path());
         }
+        other_gguf |= Path::new(&name).extension().and_then(|ext| ext.to_str())
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("gguf"));
     }
-    Err(format!(
-        "Missing model file: {}. Use the exact catalog filename.",
-        file.name
-    ))
+    if other_gguf {
+        return Err(error_protocol::encode(
+            "local_model_invalid",
+            format!("Use the exact catalog filename: {}.", file.name),
+        ));
+    }
+    Err(missing())
 }
 
 // [自訂] S88：只快取最近一次成功驗證的檔案。Unix 的 ctime 也會反映同大小覆寫。
@@ -61,29 +92,46 @@ impl FileIdentity {
 #[cfg(unix)]
 static VERIFIED_FILE: std::sync::Mutex<Option<FileIdentity>> = std::sync::Mutex::new(None);
 
-fn verify_local_file(dir: &Path, spec: &catalog::ModelFile) -> Result<PathBuf, String> {
+fn verify_local_file(
+    dir: &Path,
+    spec: &catalog::ModelFile,
+    #[cfg(unix)] cache: &std::sync::Mutex<Option<FileIdentity>>,
+    verify_hash: impl FnOnce(&std::fs::File, &str) -> Result<(), String>,
+) -> Result<PathBuf, String> {
     let path = model_file_path(dir, spec)?;
-    let read_error = |e| format!("Cannot read model file {}: {e}", spec.name);
+    let read_error = |e| error_protocol::encode(
+        "local_model_read",
+        format!("Cannot read model file {}: {e}", spec.name),
+    );
     if !std::fs::metadata(&path).map_err(read_error)?.is_file() {
-        return Err(format!("Model file {} must be a regular file.", spec.name));
+        return Err(error_protocol::encode(
+            "local_model_invalid",
+            format!("Model file {} must be a regular file.", spec.name),
+        ));
     }
     let file = std::fs::File::open(&path).map_err(read_error)?;
     let metadata = file.metadata().map_err(read_error)?;
     if !metadata.is_file() || metadata.len() != spec.size_bytes {
-        return Err(format!(
-            "Model file {} has the wrong size: expected {} bytes, found {}. Use the catalog version.",
-            spec.name, spec.size_bytes, metadata.len()
+        return Err(error_protocol::encode(
+            "local_model_invalid",
+            format!(
+                "Model file {} has the wrong size: expected {} bytes, found {}.",
+                spec.name, spec.size_bytes, metadata.len()
+            ),
         ));
     }
     let sha256 = spec
         .sha256
         .as_deref()
-        .ok_or_else(|| format!("Missing catalog SHA-256 for {}.", spec.name))?;
+        .ok_or_else(|| error_protocol::encode(
+            "local_model_invalid",
+            format!("Missing catalog SHA-256 for {}.", spec.name),
+        ))?;
 
     #[cfg(unix)]
     let identity = FileIdentity::new(&path, &metadata, sha256);
     #[cfg(unix)]
-    if VERIFIED_FILE
+    if cache
         .lock()
         .ok()
         .is_some_and(|cached| cached.as_ref() == Some(&identity))
@@ -91,22 +139,27 @@ fn verify_local_file(dir: &Path, spec: &catalog::ModelFile) -> Result<PathBuf, S
         return Ok(path);
     }
 
-    downloader::verify_open_file_sha256(&file, sha256).map_err(|_| {
-        format!(
-            "SHA-256 verification failed for {}. Check the file against the catalog.",
-            spec.name
-        )
+    verify_hash(&file, sha256).map_err(|error| {
+        if downloader::is_checksum_error(&error) {
+            return error_protocol::encode(
+                "local_model_invalid",
+                format!("SHA-256 verification failed for {}.", spec.name),
+            );
+        }
+        // [自訂] SC-35：共用驗證器的 I/O 細節來自已開啟的檔案，沒有路徑。
+        let reason = error.splitn(3, ':').nth(2).unwrap_or(&error);
+        error_protocol::encode("local_model_read", format!("{}: {reason}", spec.name))
     })?;
 
     #[cfg(unix)]
     {
         if identity != FileIdentity::new(&path, &file.metadata().map_err(read_error)?, sha256) {
-            return Err(format!(
-                "Model file {} changed during verification. Try again.",
-                spec.name
+            return Err(error_protocol::encode(
+                "local_model_invalid",
+                format!("Model file {} changed during verification. Try again.", spec.name),
             ));
         }
-        if let Ok(mut cached) = VERIFIED_FILE.lock() {
+        if let Ok(mut cached) = cache.lock() {
             *cached = Some(identity);
         }
     }
@@ -117,14 +170,33 @@ fn catalog_model(model_id: &str) -> Result<ModelInfo, String> {
     catalog::get_available_models()
         .into_iter()
         .find(|model| model.id == model_id)
-        .ok_or_else(|| "Unknown local model ID. Select a model from the catalog.".into())
+        .ok_or_else(|| error_protocol::encode(
+            "local_model_missing",
+            "Unknown local model ID. Select a model from the catalog.",
+        ))
 }
 
 pub(super) fn verified_model_path(model_id: &str) -> Result<PathBuf, String> {
     let model = catalog_model(model_id)?;
-    let file = catalog_file(&model)
-        .ok_or_else(|| format!("No weight file in the catalog for {}.", model.id))?;
-    verify_local_file(&downloader::model_dir(&model.id), file)
+    let file = catalog_file(&model)?;
+    verify_local_file(
+        &downloader::model_dir(&model.id),
+        file,
+        #[cfg(unix)]
+        &VERIFIED_FILE,
+        downloader::verify_open_file_sha256,
+    )
+}
+
+// [自訂] SC-35：列表只讀檔名與大小，載入時才核對 SHA-256。
+fn listed_weight(dir: &Path, file: &catalog::ModelFile) -> Option<(u64, bool)> {
+    let path = model_file_path(dir, file).ok()?;
+    let metadata = std::fs::metadata(path).ok()?;
+    if !metadata.is_file() || metadata.len() == 0 {
+        return None;
+    }
+    let size = metadata.len();
+    Some((size, size == file.size_bytes))
 }
 
 /// 列出所有可用模型
@@ -150,36 +222,21 @@ pub fn list_downloaded_models() -> Vec<LocalModelInfo> {
             continue;
         }
 
-        // [自訂] S88：列表只核對檔名和大小；SHA-256 留到實際載入。
-        let mut complete = true;
-        let mut actual_size: u64 = 0;
+        let Some((actual_size, complete)) = catalog_file(model)
+            .ok()
+            .and_then(|file| listed_weight(&model_path, file))
+        else {
+            continue;
+        };
 
-        for source in &model.sources {
-            for file in &source.files {
-                let metadata = model_file_path(&model_path, file)
-                    .ok()
-                    .and_then(|path| std::fs::metadata(path).ok())
-                    .filter(|metadata| metadata.is_file());
-                if let Some(metadata) = metadata {
-                    actual_size += metadata.len();
-                    complete &= metadata.len() == file.size_bytes;
-                } else {
-                    complete = false;
-                }
-            }
-            break; // 只检查第一个 source
-        }
-
-        if actual_size > 0 {
-            result.push(LocalModelInfo {
-                id: model.id.clone(),
-                name: model.name.clone(),
-                model_type: model.model_type.clone(),
-                total_size_bytes: actual_size,
-                path: model_path.to_string_lossy().to_string(),
-                complete,
-            });
-        }
+        result.push(LocalModelInfo {
+            id: model.id.clone(),
+            name: model.name.clone(),
+            model_type: model.model_type.clone(),
+            total_size_bytes: actual_size,
+            path: model_path.to_string_lossy().to_string(),
+            complete,
+        });
     }
 
     result
@@ -435,6 +492,8 @@ mod tests {
     struct ModelFixture {
         dir: PathBuf,
         spec: catalog::ModelFile,
+        #[cfg(unix)]
+        cache: std::sync::Mutex<Option<FileIdentity>>,
     }
 
     impl ModelFixture {
@@ -449,11 +508,19 @@ mod tests {
                     size_bytes: 3,
                     sha256: Some("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad".into()),
                 },
+                #[cfg(unix)]
+                cache: std::sync::Mutex::new(None),
             }
         }
 
         fn verify(&self) -> Result<PathBuf, String> {
-            verify_local_file(&self.dir, &self.spec)
+            verify_local_file(
+                &self.dir,
+                &self.spec,
+                #[cfg(unix)]
+                &self.cache,
+                downloader::verify_open_file_sha256,
+            )
         }
     }
 
@@ -475,7 +542,9 @@ mod tests {
     fn rejects_nonmatching_filename_even_on_case_insensitive_filesystems() {
         let fixture = ModelFixture::new();
         fs::write(fixture.dir.join("Registered.gguf"), b"abc").unwrap();
-        assert!(fixture.verify().unwrap_err().contains("exact catalog filename"));
+        let error = fixture.verify().unwrap_err();
+        assert!(error.starts_with("sayit_error:local_model_invalid:"));
+        assert!(error.contains("exact catalog filename"));
     }
 
     #[test]
@@ -497,7 +566,7 @@ mod tests {
     #[test]
     fn rejects_unknown_model_id() {
         let result = verified_model_path("unregistered-test-model");
-        assert!(result.unwrap_err().contains("Unknown local model ID"));
+        assert!(result.unwrap_err().starts_with("sayit_error:local_model_missing:"));
     }
 
     #[test]
@@ -518,5 +587,101 @@ mod tests {
         fs::rename(&path, fixture.dir.join("original.gguf")).unwrap();
         fs::write(&path, b"def").unwrap();
         assert!(fixture.verify().unwrap_err().contains("SHA-256 verification failed"));
+    }
+
+    // [自訂] SC-35：區分缺檔、讀檔、catalog、快取與列表的判定。
+    #[test]
+    fn missing_weight_has_its_own_code() {
+        let fixture = ModelFixture::new();
+        let error = fixture.verify().unwrap_err();
+        assert!(error.starts_with("sayit_error:local_model_missing:"));
+        assert!(error.contains(MODEL_FILE));
+    }
+
+    #[test]
+    fn read_error_keeps_reason_without_directory_path() {
+        let fixture = ModelFixture::new();
+        let not_a_directory = fixture.dir.join("file");
+        fs::write(&not_a_directory, b"abc").unwrap();
+        let error = model_file_path(&not_a_directory, &fixture.spec).unwrap_err();
+        assert!(error.starts_with("sayit_error:local_model_read:"));
+        assert!(error.contains(MODEL_FILE));
+        let reason = fs::read_dir(&not_a_directory).unwrap_err().to_string();
+        assert!(error.contains(&reason));
+        assert!(!error.contains(fixture.dir.to_str().unwrap()));
+    }
+
+    #[test]
+    fn hash_read_error_preserves_the_io_reason() {
+        let fixture = ModelFixture::new();
+        fs::write(fixture.dir.join(MODEL_FILE), b"abc").unwrap();
+        let reason = "Failed to read file during SHA-256 verification: Permission denied";
+        let error = verify_local_file(
+            &fixture.dir,
+            &fixture.spec,
+            #[cfg(unix)]
+            &fixture.cache,
+            |_, _| Err(error_protocol::encode("download_permission", reason)),
+        ).unwrap_err();
+        assert_eq!(error, format!("sayit_error:local_model_read:{MODEL_FILE}: {reason}"));
+    }
+
+    #[test]
+    fn rejects_any_catalog_source_without_exactly_one_weight() {
+        let mut model = catalog::get_available_models().remove(0);
+        let mut other_source = model.sources[0].clone();
+        other_source.files.push(other_source.files[0].clone());
+        model.sources.push(other_source);
+        assert!(catalog_file(&model).unwrap_err().starts_with("sayit_error:local_model_invalid:"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn reuses_verified_file_identity_on_cache_hit() {
+        let fixture = ModelFixture::new();
+        let path = fixture.dir.join(MODEL_FILE);
+        fs::write(&path, b"abc").unwrap();
+        assert_eq!(fixture.verify().unwrap(), path);
+        let cached = verify_local_file(
+            &fixture.dir,
+            &fixture.spec,
+            &fixture.cache,
+            |_, _| panic!("cache hit should not rehash the file"),
+        );
+        assert_eq!(cached.unwrap(), path);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_same_inode_and_size_overwrite_with_restored_mtime() {
+        use std::os::unix::fs::MetadataExt;
+
+        let fixture = ModelFixture::new();
+        let path = fixture.dir.join(MODEL_FILE);
+        fs::write(&path, b"abc").unwrap();
+        fixture.verify().unwrap();
+        let before = fs::metadata(&path).unwrap();
+        let modified = before.modified().unwrap();
+        // 等待可區辨的時戳，涵蓋 ctime 精度為一秒的檔案系統。
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        fs::write(&path, b"xyz").unwrap();
+        fs::OpenOptions::new().write(true).open(&path).unwrap()
+            .set_times(fs::FileTimes::new().set_modified(modified)).unwrap();
+        let after = fs::metadata(&path).unwrap();
+        assert_eq!(before.ino(), after.ino());
+        assert_eq!(before.len(), after.len());
+        assert_eq!((before.mtime(), before.mtime_nsec()), (after.mtime(), after.mtime_nsec()));
+        assert!(fixture.verify().unwrap_err().contains("SHA-256 verification failed"));
+    }
+
+    #[test]
+    fn listed_weight_marks_complete_by_size_without_reading_hash() {
+        let fixture = ModelFixture::new();
+        let path = fixture.dir.join(MODEL_FILE);
+        fs::write(&path, b"ab").unwrap();
+        assert_eq!(listed_weight(&fixture.dir, &fixture.spec), Some((2, false)));
+        fs::write(&path, b"xyz").unwrap();
+        assert_eq!(listed_weight(&fixture.dir, &fixture.spec), Some((3, true)));
+        assert!(fixture.verify().is_err());
     }
 }

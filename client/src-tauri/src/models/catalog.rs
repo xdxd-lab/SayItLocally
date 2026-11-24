@@ -417,6 +417,26 @@ mod tests {
         );
     }
 
+    // [自訂] SC-35：所有下載來源必須指向同一份且唯一的權重。
+    #[test]
+    fn every_source_has_the_same_single_weight() {
+        for model in get_available_models() {
+            let [expected] = model.sources.first().unwrap().files.as_slice() else {
+                panic!("{} must have exactly one weight", model.id);
+            };
+            for source in &model.sources {
+                let [file] = source.files.as_slice() else {
+                    panic!("{} / {} must have exactly one weight", model.id, source.source);
+                };
+                assert_eq!(
+                    (&file.name, file.size_bytes, &file.sha256),
+                    (&expected.name, expected.size_bytes, &expected.sha256),
+                    "{} / {}", model.id, source.source,
+                );
+            }
+        }
+    }
+
     /// 前端的下载源下拉框是拿 `models[0].sources` 生成的，然后把选中的名字用于
     /// **所有**模型的下载。所以每个模型都必须提供同一组源名，否则选了某个源之后
     /// 下载别的模型会静默回落到第一个源。

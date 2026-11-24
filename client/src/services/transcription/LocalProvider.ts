@@ -95,7 +95,8 @@ export class LocalProvider extends BufferedProvider {
     } catch (err) {
       if (!this.isRunCurrent(runId)) return
       addRuntimeEvent('error', 'local', 'Local ASR failed', { error: String(err) })
-      this.callbacks.onError?.(String(err))
+      // [自訂] SC-35：保留 Rust 錯誤碼的起始位置，避免 Error: 前綴。
+      this.callbacks.onError?.(err instanceof Error ? err.message || String(err) : String(err))
       this.callbacks.onDone?.()
       return
     }

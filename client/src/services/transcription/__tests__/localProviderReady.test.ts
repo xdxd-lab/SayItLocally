@@ -9,6 +9,7 @@ vi.mock('../../store', () => ({ getSetting: (...args: unknown[]) => getSettingMo
 vi.mock('../../debugLog', () => ({ addRuntimeEvent: () => { } }))
 
 import { LocalProvider } from '../LocalProvider'
+import { describeProviderError } from '@/lib/errorMessages'
 
 /** 让 getSetting 返回选中的模型 id，其余键给默认值 */
 function settings(modelId: string) {
@@ -93,5 +94,40 @@ describe('LocalProvider 的就绪判定', () => {
     const provider = new LocalProvider()
     await provider.connect({})
     expect(provider.isReady()).toBe(true)
+  })
+})
+
+// [自訂] SC-35：經真實 bridge 和 LocalProvider 傳到錄音回呼，依錯誤碼分類。
+describe('LocalProvider model validation errors', () => {
+  it.each([
+    ['string', 'local_model_invalid', 'SHA-256 mismatch'],
+    ['Error', 'local_model_invalid', 'SHA-256 mismatch'],
+    ['Error', 'local_model_missing', 'file not found'],
+    ['Error', 'local_model_read', 'read timed out: connection refused'],
+  ] as const)('preserves a %s rejection tagged %s (%s)', async (kind, code, detail) => {
+    settings('sensevoice-small-gguf')
+    const encoded = `sayit_error:${code}:${detail}`
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === 'list_downloaded_models') {
+        return [{ id: 'sensevoice-small-gguf', complete: true }]
+      }
+      if (command === 'local_transcribe_raw') {
+        throw kind === 'Error' ? new Error(encoded) : encoded
+      }
+    })
+
+    const provider = new LocalProvider()
+    const onError = vi.fn()
+    let done!: () => void
+    const finished = new Promise<void>(resolve => { done = resolve })
+    await provider.connect({ onError, onDone: done })
+    expect(provider.start({ runId: 1 })).toBe(true)
+    provider.sendAudio(new ArrayBuffer(16000))
+    expect(provider.stop()).toBe(true)
+    await finished
+
+    expect(invokeMock).toHaveBeenCalledWith('local_transcribe_raw', expect.any(Uint8Array))
+    expect(onError).toHaveBeenCalledExactlyOnceWith(encoded)
+    expect(describeProviderError(onError.mock.calls[0][0])).toMatchObject({ code, detail, action: 'none' })
   })
 })

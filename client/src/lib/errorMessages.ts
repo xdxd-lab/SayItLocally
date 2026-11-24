@@ -25,6 +25,10 @@ export type FriendlyErrorCode =
   | 'provider_rate_limit'
   | 'provider_insufficient_balance'
   | 'provider_no_model'
+  // [自訂] SC-35：本機模型錯誤由 Rust 提供穩定碼。
+  | 'local_model_missing'
+  | 'local_model_invalid'
+  | 'local_model_read'
   | 'download_network'
   | 'download_busy'
   | 'download_source_mismatch'
@@ -65,6 +69,9 @@ const FRIENDLY_ERROR_CODES = new Set<FriendlyErrorCode>([
   'provider_rate_limit',
   'provider_insufficient_balance',
   'provider_no_model',
+  'local_model_missing',
+  'local_model_invalid',
+  'local_model_read',
   'download_network',
   'download_busy',
   'download_source_mismatch',
@@ -180,8 +187,24 @@ export function describeServerError(error: unknown, hasCustomUrl: boolean): Frie
   }
 }
 
-/** 云 API 供应商类错误（密钥校验、试拨一次识别） */
+// [自訂] SC-35：歷史重跑也使用同一則本機模型訊息。
+export function describeLocalModelError(error: unknown): FriendlyError | null {
+  const { code, text } = decodeError(error)
+  switch (code) {
+    case 'local_model_missing':
+    case 'local_model_invalid':
+    case 'local_model_read':
+      return { code, message: t(`err.localModel.${code}`), detail: text, action: 'none' }
+    default:
+      return null
+  }
+}
+
+/** 本機辨識與雲端供應商錯誤 */
 export function describeProviderError(error: unknown): FriendlyError {
+  const localModelError = describeLocalModelError(error)
+  if (localModelError) return localModelError
+
   const { code: stableCode, text } = decodeError(error)
   const status = extractHttpStatus(text)
 
