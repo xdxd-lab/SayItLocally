@@ -1,6 +1,7 @@
 pub mod audio;
 pub mod audio_mute;
 pub mod backup;
+pub mod corrupt_db;
 pub mod diagnostics;
 pub mod export;
 pub mod paste;

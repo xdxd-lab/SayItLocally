@@ -18,6 +18,7 @@ import { Switch } from '@/components/ui/switch'
 import { Segmented } from '@/components/ui/segmented'
 import AppSection from './AppSection'
 import BackupSection from './BackupSection'
+import CorruptDbCopiesSection from './CorruptDbCopiesSection'
 import { canConfirmHistoryClear, HISTORY_CLEAR_DELAY_MS } from './historyClearConfirmation'
 // [自訂] S18／S35 WebDAV 設定區塊已註解停用：import WebDavSection from './WebDavSection'
 import MicrophoneSection from './MicrophoneSection'
@@ -512,6 +513,7 @@ export default function GeneralSettingsPage() {
           </CardContent>
         </Card>
 
+        <CorruptDbCopiesSection />
         <BackupSection />
 
         {/* [自訂] S18／S35 WebDAV 設定區塊已註解停用：<WebDavSection /> */}

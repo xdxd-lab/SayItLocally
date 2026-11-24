@@ -10,27 +10,79 @@ pub(super) fn lock_history_retention() -> MutexGuard<'static, ()> {
     HISTORY_RETENTION.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-#[tauri::command]
-pub fn store_get(key: String, storage: State<Storage>) -> Result<Value, String> {
-    Ok(storage.get(&key, None))
+// [自訂] REV9：在 IPC 接收時排入 FIFO，讀寫均在同一背景工作執行緒。
+type SettingJob = Box<dyn FnOnce() + Send>;
+
+fn settings_queue() -> std::sync::mpsc::Sender<SettingJob> {
+    let (sender, receiver) = std::sync::mpsc::channel::<SettingJob>();
+    std::thread::spawn(move || {
+        for job in receiver {
+            job();
+        }
+    });
+    sender
 }
 
-#[tauri::command]
-pub async fn store_set(key: String, value: Value, app: AppHandle) -> Result<(), String> {
-    tokio::task::spawn_blocking(move || {
-        let _retention = matches!(key.as_str(), "historyEnabled" | "audioRetentionEnabled")
-            .then(lock_history_retention);
-        app.state::<Storage>().set(&key, &value).map_err(|e| e.to_string())
-    }).await.map_err(|e| e.to_string())?
+pub fn with_ordered_settings(
+    next: impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + Send + Sync + 'static,
+) -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + Send + Sync + 'static {
+    let settings = settings_queue();
+
+    move |invoke| {
+        let command = invoke.message.command();
+        if !matches!(command, "store_get" | "store_set" | "store_delete") {
+            return next(invoke);
+        }
+        let tauri::ipc::InvokeBody::Json(args) = invoke.message.payload() else {
+            invoke.resolver.reject("Expected a JSON settings request");
+            return true;
+        };
+        let Some(key) = args.get("key").and_then(Value::as_str).map(str::to_owned) else {
+            invoke.resolver.reject("Expected a settings key");
+            return true;
+        };
+        let operation = match command {
+            "store_get" => SettingOperation::Get,
+            "store_set" => match args.get("value") {
+                Some(value) => SettingOperation::Set(value.clone()),
+                None => {
+                    invoke.resolver.reject("Expected a settings value");
+                    return true;
+                }
+            },
+            _ => SettingOperation::Delete,
+        };
+        let app = invoke.message.webview_ref().app_handle().clone();
+        let resolver = invoke.resolver.clone();
+        let submitted = settings.send(Box::new(move || {
+            resolver.respond(operation.run(app.state::<Storage>().inner(), &key).map_err(tauri::ipc::InvokeError::from));
+        }));
+        if submitted.is_err() {
+            invoke.resolver.reject("Settings worker is unavailable");
+        }
+        true
+    }
 }
 
-#[tauri::command]
-pub async fn store_delete(key: String, app: AppHandle) -> Result<(), String> {
-    tokio::task::spawn_blocking(move || {
-        let _retention = matches!(key.as_str(), "historyEnabled" | "audioRetentionEnabled")
+enum SettingOperation {
+    Get,
+    Set(Value),
+    Delete,
+}
+
+impl SettingOperation {
+    fn run(self, storage: &Storage, key: &str) -> Result<Value, String> {
+        if matches!(self, Self::Get) {
+            return Ok(storage.get(key, None));
+        }
+        let _retention = matches!(key, "historyEnabled" | "audioRetentionEnabled")
             .then(lock_history_retention);
-        app.state::<Storage>().delete(&key).map_err(|e| e.to_string())
-    }).await.map_err(|e| e.to_string())?
+        match self {
+            Self::Get => unreachable!(),
+            Self::Set(value) => storage.set(key, &value),
+            Self::Delete => storage.delete(key),
+        }.map(|()| Value::Null).map_err(|error| error.to_string())
+    }
 }
 
 #[tauri::command]
@@ -142,6 +194,31 @@ fn parse_history_query(query: &Option<Value>) -> (Option<String>, bool, Option<i
 mod retention_tests {
     use super::*;
     use std::path::PathBuf;
+
+    #[test]
+    fn setting_operations_keep_ipc_order_and_reads_follow_writes() {
+        let storage = std::sync::Arc::new(Storage::new(PathBuf::from(":memory:")).unwrap());
+        let queue = settings_queue();
+        let (done, results) = std::sync::mpsc::channel();
+        let (resume, paused) = std::sync::mpsc::channel();
+        queue.send(Box::new(move || paused.recv().unwrap())).unwrap();
+        for operation in [
+            SettingOperation::Set(serde_json::json!(1)),
+            SettingOperation::Set(serde_json::json!(2)),
+            SettingOperation::Get,
+            SettingOperation::Delete,
+            SettingOperation::Get,
+        ] {
+            let db = storage.clone();
+            let done = done.clone();
+            queue.send(Box::new(move || done.send(operation.run(&db, "orderTest")).unwrap())).unwrap();
+        }
+        assert!(results.try_recv().is_err());
+        resume.send(()).unwrap();
+        let outputs: Vec<Value> = (0..5).map(|_| results.recv_timeout(std::time::Duration::from_secs(2))
+            .unwrap().unwrap()).collect();
+        assert_eq!(outputs, serde_json::json!([null, null, 2, null, null]).as_array().unwrap().clone());
+    }
 
     #[test]
     fn history_clear_reports_partial_audio_failure_and_rolls_back_sql_failure() {

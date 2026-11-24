@@ -250,16 +250,49 @@ export function appendDebugLog(payload: unknown) {
 
 // ─── Store ───
 
+// [自訂] REV9：同一 WebView 未 await 的設定呼叫也依送出順序進入原生佇列。
+const pendingSettings = new Map<string, Promise<void>>()
+
+function queueSetting<T>(key: string, invokeSetting: () => Promise<T>): Promise<T> {
+  const previous = pendingSettings.get(key)
+  const result = previous ? previous.then(invokeSetting) : invokeSetting()
+  const tail = result.then(() => {}, () => {})
+  pendingSettings.set(key, tail)
+  void tail.then(() => {
+    if (pendingSettings.get(key) === tail) pendingSettings.delete(key)
+  })
+  return result
+}
+
 export function storeGet(key: string) {
-  return invoke<unknown>('store_get', { key })
+  return queueSetting(key, () => invoke<unknown>('store_get', { key }))
 }
 
 export function storeSet(key: string, value: unknown) {
-  return invoke('store_set', { key, value })
+  return queueSetting(key, () => invoke('store_set', { key, value }))
 }
 
 export function storeDelete(key: string) {
-  return invoke('store_delete', { key })
+  return queueSetting(key, () => invoke('store_delete', { key }))
+}
+
+// [自訂] L-72：只傳副本名稱，路徑由原生端查出。
+export interface CorruptDbCopy {
+  name: string
+  createdAtLocal: string
+  sizeBytes: number
+}
+
+export function listCorruptDbCopies() {
+  return invoke<CorruptDbCopy[]>('list_corrupt_db_copies')
+}
+
+export function revealCorruptDbCopy(name: string) {
+  return invoke<void>('reveal_corrupt_db_copy', { name })
+}
+
+export function deleteCorruptDbCopy(name: string) {
+  return invoke<void>('delete_corrupt_db_copy', { name })
 }
 
 // ─── History ───

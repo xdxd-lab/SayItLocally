@@ -198,6 +198,10 @@ fn trim_logs(dir: &Path, file: &mut Option<std::fs::File>, cutoff: chrono::DateT
     for path in log_paths(dir) {
         let name = path.file_name().and_then(|name| name.to_str()).unwrap_or_default();
         if let Some((Some(day), _)) = rotation_id(name) {
+            // [自訂] REV9：比截止日新的封存整檔保留，只需逐行檢查邊界日。
+            if day > cutoff_day {
+                continue;
+            }
             // 日期是輪替前最後寫入時間，早於截止日的整個封存檔都已到期。
             if day < cutoff_day {
                 if let Err(error) = std::fs::remove_file(&path) {
@@ -776,7 +780,6 @@ async fn fetch_installer_part(
 ) -> Result<(u64, u64), String> {
     use futures_util::StreamExt;
     use std::io::Write;
-use std::path::{Path, PathBuf};
 
     let resume_from = std::fs::metadata(part_path).map(|m| m.len()).unwrap_or(0);
 

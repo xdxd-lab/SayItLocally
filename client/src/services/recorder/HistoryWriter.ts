@@ -169,13 +169,19 @@ export class HistoryWriter {
   }
 
   async discard(artifact: { recordId: string; audioFilePath?: string }) {
-    try {
-      if (artifact.audioFilePath) await bridge.deleteAudioFile(artifact.audioFilePath)
-    } catch { /* 取消清理失败不阻塞状态复位 */ }
+    // [自訂] REV9：先移除歷史，錄音等備份釋放後再刪，讓聽寫收尾繼續。
     try {
       await deleteHistory(artifact.recordId)
       void bridge.emit('history-updated')
-    } catch { /* 记录可能尚未写入；processFinalResult 完成写入后会再次清理 */ }
+    } catch (error) {
+      addRuntimeEvent('warn', 'recorder', 'Failed to discard history entry', { error: String(error) })
+    }
+    const audioFilePath = artifact.audioFilePath
+    if (audioFilePath) {
+      void Promise.resolve().then(() => bridge.deleteAudioFile(audioFilePath)).catch(error => {
+        addRuntimeEvent('warn', 'recorder', 'Failed to discard archived audio', { error: String(error) })
+      })
+    }
   }
 
   /**
