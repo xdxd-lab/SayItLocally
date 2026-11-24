@@ -247,6 +247,12 @@ fn finalize_download(
     expected_sha256: &str,
     size_error_code: &str,
 ) -> Result<(), String> {
+    verify_temp_size(temp_path, expected_size, size_error_code)?;
+    verify_temp_file_sha256(temp_path, expected_sha256)?;
+    install_verified_download(temp_path, dest_path)
+}
+
+fn verify_temp_size(temp_path: &Path, expected_size: u64, size_error_code: &str) -> Result<(), String> {
     let metadata = std::fs::symlink_metadata(temp_path)
         .map_err(|e| download_io_error("Failed to inspect temporary download", e))?;
     if !metadata.is_file() || metadata.len() != expected_size {
@@ -258,7 +264,10 @@ fn finalize_download(
             ),
         ));
     }
-    verify_temp_file_sha256(temp_path, expected_sha256)?;
+    Ok(())
+}
+
+fn install_verified_download(temp_path: &Path, dest_path: &Path) -> Result<(), String> {
     validate_download_destination(dest_path)?;
     std::fs::rename(temp_path, dest_path)
         .map_err(|e| download_io_error("Failed to finalize downloaded file", e))?;
@@ -1001,7 +1010,11 @@ fn load_or_create_parallel_state(
             // 清理由旧版下载器或崩溃在状态文件落盘前留下的同名文件。
             cleanup_parallel_artifacts(temp_path, &state_path, chunks)?;
         }
-        Err(error) => return Err(download_io_error("Failed to read parallel download state", error)),
+        Err(error) => {
+            // [自訂] L-94：狀態檔不可讀時也能捨棄續傳資料，下一次不會再讀同一份。
+            log::warn!("Resetting unreadable parallel download state: {error}");
+            cleanup_parallel_artifacts(temp_path, &state_path, chunks)?;
+        }
     }
 
     let state = ParallelDownloadState {
@@ -1018,7 +1031,7 @@ fn load_or_create_parallel_state(
     Ok(state)
 }
 
-fn chunk_file_len(path: &Path, maximum: u64) -> Result<u64, String> {
+fn chunk_file_len(path: &Path, maximum: u64, phase: ParallelPhase) -> Result<u64, String> {
     match std::fs::metadata(path) {
         Ok(metadata) if metadata.len() <= maximum => Ok(metadata.len()),
         Ok(_) => {
@@ -1026,11 +1039,14 @@ fn chunk_file_len(path: &Path, maximum: u64) -> Result<u64, String> {
             Ok(0)
         }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(0),
-        Err(error) => Err(download_error(
-            "download_parallel_verify_failed",
-            format!("Failed to inspect source chunk: {error}"),
-        )),
+        Err(error) if phase == ParallelPhase::Assembling => Err(parallel_read_error("Failed to inspect source chunk", error)),
+        Err(error) => Err(download_io_error("Failed to inspect chunk file", error)),
     }
+}
+
+// [自訂] L-94：讀取平行暫存檔失敗和完整性錯誤同樣需要重置。
+fn parallel_read_error(context: &str, error: impl std::fmt::Display) -> String {
+    download_error("download_parallel_verify_failed", format!("{context}: {error}"))
 }
 
 fn prepare_assembly_file(
@@ -1047,10 +1063,18 @@ fn prepare_assembly_file(
         .create(true)
         .write(true)
         .open(temp_path)
-        .map_err(|error| download_io_error("Failed to open assembly file", error))?;
+        .map_err(|error| {
+            // 如果已有組裝進度，確認是否只是無法寫入；已存資料也讀不到才丟棄。
+            if expected_len > 0 {
+                if let Err(read_error) = std::fs::File::open(temp_path) {
+                    return parallel_read_error("Failed to open existing assembly file for reading", read_error);
+                }
+            }
+            download_io_error("Failed to open assembly file", error)
+        })?;
     let actual_len = file
         .metadata()
-        .map_err(|error| download_io_error("Failed to inspect assembly file", error))?
+        .map_err(|error| parallel_read_error("Failed to inspect assembly file", error))?
         .len();
     if actual_len < expected_len {
         return Err(download_error(
@@ -1105,7 +1129,7 @@ fn assemble_parallel_chunks(
     let mut buffer = vec![0; 64 * 1024];
     for chunk in chunks.iter().skip(state.assembled_chunks) {
         let chunk_path = parallel_chunk_path(temp_path, chunk.index);
-        let actual = chunk_file_len(&chunk_path, chunk.len())?;
+        let actual = chunk_file_len(&chunk_path, chunk.len(), ParallelPhase::Assembling)?;
         if actual != chunk.len() {
             return Err(download_error(
                 "download_parallel_verify_failed",
@@ -1199,6 +1223,7 @@ async fn download_file_parallel(
             initial_downloaded += chunk_file_len(
                 &parallel_chunk_path(temp_path, chunk.index),
                 chunk.len(),
+                ParallelPhase::Downloading,
             )?;
         }
         let downloaded_total = Arc::new(AtomicU64::new(initial_downloaded));
@@ -1207,7 +1232,7 @@ async fn download_file_parallel(
 
         for chunk in chunks.iter().cloned() {
             let path = parallel_chunk_path(temp_path, chunk.index);
-            if chunk_file_len(&path, chunk.len())? == chunk.len() {
+            if chunk_file_len(&path, chunk.len(), ParallelPhase::Downloading)? == chunk.len() {
                 continue;
             }
             futures.push(download_chunk(
@@ -1270,7 +1295,7 @@ async fn download_file_parallel(
 
         for chunk in &chunks {
             let path = parallel_chunk_path(temp_path, chunk.index);
-            let actual = chunk_file_len(&path, chunk.len())?;
+            let actual = chunk_file_len(&path, chunk.len(), ParallelPhase::Downloading)?;
             if actual != chunk.len() {
                 return Err(download_error(
                     "download_parallel_verify_failed",
@@ -1290,22 +1315,11 @@ async fn download_file_parallel(
         remove_file_if_exists(temp_path)?;
     }
 
-    // [自訂] REV9：分片缺失或不符才重置；可重試的 I/O 錯誤保留進度。
-    assemble_or_reset_parallel_download(temp_path, &state_path, &chunks, &mut state)?;
-
-    if let Err(error) = finalize_download(
-        temp_path,
-        dest_path,
-        total_size,
-        expected_sha256,
-        "download_parallel_verify_failed",
-    ) {
-        if is_parallel_integrity_error(&error) {
-            cleanup_parallel_artifacts_best_effort(temp_path, &state_path, &chunks);
-        }
-        return Err(error);
+    // [自訂] L-94：已完成的組裝可直接驗證，不再要求以寫入模式開啟。
+    if state.assembled_chunks < chunks.len() {
+        assemble_or_reset_parallel_download(temp_path, &state_path, &chunks, &mut state)?;
     }
-    cleanup_parallel_artifacts_best_effort(temp_path, &state_path, &chunks);
+    finalize_parallel_download(temp_path, dest_path, &state_path, &chunks, total_size, expected_sha256)?;
     emit_progress(
         report,
         model_id,
@@ -1322,6 +1336,30 @@ async fn download_file_parallel(
         file_name,
         total_size
     );
+    Ok(())
+}
+
+// [自訂] L-94：只對組裝檔驗證階段的讀取錯誤清理。目的地檢查與重新命名保持原來的重試行為。
+fn finalize_parallel_download(
+    temp_path: &Path,
+    dest_path: &Path,
+    state_path: &Path,
+    chunks: &[ChunkSpec],
+    expected_size: u64,
+    expected_sha256: &str,
+) -> Result<(), String> {
+    let verification = verify_temp_size(temp_path, expected_size, "download_parallel_verify_failed")
+        .and_then(|()| verify_file_sha256(temp_path, expected_sha256));
+    if let Err(error) = verification {
+        cleanup_parallel_artifacts_best_effort(temp_path, state_path, chunks);
+        return Err(if is_parallel_integrity_error(&error) {
+            error
+        } else {
+            parallel_read_error("Unable to verify assembled download", error)
+        });
+    }
+    install_verified_download(temp_path, dest_path)?;
+    cleanup_parallel_artifacts_best_effort(temp_path, state_path, chunks);
     Ok(())
 }
 
@@ -2122,6 +2160,57 @@ mod tests {
             assert_eq!(fs::read(&partial).unwrap(), b"abc");
         }
         assert_eq!(fs::read(&alias).unwrap(), b"original");
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn unreadable_parallel_assembly_resets_without_replacing_existing_destination() {
+        use std::fs;
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("sayit-download-test-{}", uuid::Uuid::new_v4()));
+        fs::create_dir(&dir).unwrap();
+        let dest = dir.join("weight.gguf");
+        let partial = dir.join("weight.gguf.par.part");
+        let state_path = parallel_state_path(&partial);
+        let chunks = [ChunkSpec { index: 0, start: 0, end: 2 }];
+        let sha = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+        fs::write(&dest, b"old").unwrap();
+        fs::write(&partial, b"abc").unwrap();
+        fs::write(&state_path, b"completed").unwrap();
+        let chunk_path = parallel_chunk_path(&partial, 0);
+        fs::write(&chunk_path, b"abc").unwrap();
+        fs::set_permissions(&partial, fs::Permissions::from_mode(0o200)).unwrap();
+        // A privileged test runner may bypass the read permission; normal Unix users exercise the assertion.
+        if fs::File::open(&partial).is_err() {
+            let error = finalize_parallel_download(&partial, &dest, &state_path, &chunks, 3, sha).unwrap_err();
+            assert!(error.starts_with("sayit_error:download_parallel_verify_failed:"));
+            assert!(should_fallback_to_single_stream(&error));
+            assert!(!partial.exists());
+            assert!(!state_path.exists());
+            assert!(!chunk_path.exists());
+            assert_eq!(fs::read(&dest).unwrap(), b"old");
+        }
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn parallel_destination_rejection_preserves_verified_assembly_and_state() {
+        use std::fs;
+        let dir = std::env::temp_dir().join(format!("sayit-download-test-{}", uuid::Uuid::new_v4()));
+        fs::create_dir(&dir).unwrap();
+        let dest = dir.join("weight.gguf");
+        let partial = dir.join("weight.gguf.par.part");
+        let state_path = parallel_state_path(&partial);
+        let sha = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+        fs::create_dir(&dest).unwrap();
+        fs::write(&partial, b"abc").unwrap();
+        fs::write(&state_path, b"completed").unwrap();
+        let error = finalize_parallel_download(&partial, &dest, &state_path, &[], 3, sha).unwrap_err();
+        assert!(!should_fallback_to_single_stream(&error));
+        assert_eq!(fs::read(&partial).unwrap(), b"abc");
+        assert_eq!(fs::read(&state_path).unwrap(), b"completed");
+        assert!(dest.is_dir());
         fs::remove_dir_all(dir).unwrap();
     }
 
