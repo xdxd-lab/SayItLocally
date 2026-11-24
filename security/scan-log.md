@@ -1,6 +1,6 @@
 # 掃描記錄
 
-時間皆為 UTC+08:00；最後更新：2026-11-24 01:37
+時間皆為 UTC+08:00；最後更新：2026-11-24 23:22
 
 | 編號 | 開始 | 完成 | 範圍 | 方法 | 主要結果 | 相關登錄 |
 |---|---|---|---|---|---|---|
@@ -29,6 +29,8 @@
 | SC-23 | 2026-11-24 01:08 | 2026-11-24 01:09 | 處理 L-84～L-92（建置期供應鏈；分支 `fix/scan2-build-offline`，基準 `a34bf0b`＝PR #7 合併後） | `client/.npmrc` 加上 `audit=false`、`fund=false`、`update-notifier=false`；新增 `client/scripts/macos/build-offline.sh` 與 `security/build-offline.md`；腳本只做 `zsh -n` 語法檢查，並單獨測試清除 `APPLE_*` 變數的迴圈 | 7 項已執行（待驗證），2 項部分處理（L-87 的 esbuild 備援下載、L-91 的系統更新，都要靠 LuLu 封鎖）。**腳本尚未實際執行；未建置、未執行 App** | L-84～L-92 |
 | SC-24 | 2026-11-24 01:31 | 2026-11-24 01:33 | 外部覆核 PR #8（commit `ecdfdf2`）並修正覆核意見 | Codex（GPT-6.2-Sol）靜態核對；t2h 修改腳本後執行 `zsh -n`，並測試版本比較的邏輯 | 覆核結論：首次建置零外連**不通過**；L-87、L-91 列為部分處理合理。指出的問題：esbuild 的檢查發生在 postinstall 之後，太晚；用 `uname` 而不是 Node 判斷架構；沒有強制 include=dev；環境檔在離線設定之前執行；轉傳的自訂 config 或 runner 不受限制；工具鏈與 SDK 的檢查不夠；用 npx 可能改用全域 CLI；文件的保證寫得太寬。以上全部修正：安裝時 `--ignore-scripts`，確認 binary 後才以 `ESBUILD_BINARY_PATH` 執行 `npm rebuild esbuild`；改依 Node 判斷架構；加上 `--include=dev`；環境檔前後都套用離線設定；參數改用白名單；要求 rustup 1.28.1 以上，並檢查 `rustc`、`cargo`、`xcrun`；直接呼叫專案內的 CLI；文件註明「不保證零外連」。**腳本尚未實際執行** | L-84、L-87、L-90、L-91 |
 | SC-25 | 2026-11-24 01:35 | 2026-11-24 01:37 | 外部再覆核 PR #8 的修正（commit `8015c7c`）並修正 | Codex（GPT-6.2-Sol）靜態核對；t2h 修改後跑 `zsh -n`，並單獨測試工具鏈的讀檔檢查 | 覆核結論：L-87、白名單、專案 CLI、Apple 變數清除都通過；首次零外連仍**不通過**，原因有三：舊版 rustup 執行 `rustup --version` 時可能先自動補裝工具鏈；環境檔本身可能連網；用 `ESBUILD_BINARY_PATH` 重建會把絕對路徑寫進 node_modules。修正：先讀檔確認工具鏈與標準庫，並拒絕 override；不再 source 環境檔；不再重建 esbuild（`--ignore-scripts` 也能用）。**腳本尚未實際執行** | L-87、L-90 |
+| SC-26 | 2026-11-24 22:17 | 2026-11-24 22:19 | REV4 覆核 PR #8（`8015c7c..a4f24e2`） | 靜態比較與子代理覆核 | **不通過**。前置檢查漏查儲存庫上層，舊版 rustup 的版本探測仍可能依上層工具鏈檔補裝。移除環境檔與 esbuild 重建兩項通過。系統信任查詢、工具設定與子程序的外連仍需防火牆 | L-87、L-90、L-91、L-93 |
+| SC-27 | 2026-11-24 23:15 | 2026-11-24 23:22 | 修正 PR #8 的 Rust 工具鏈選擇（基準 `a4f24e2`） | `zsh -n`、隔離片段測試、鎖定版本原始碼與差異檢查 | 直接使用核對過的預設 Cargo、rustc 和標準庫；移出 Cargo home 的 PATH 入口並限制部分繼承設定。Tauri CLI 2.10.1 的 target 檢查在白名單下不執行。腳本未整份執行，LuLu 尚未安裝，未建置或驗證外連 | L-90、L-93 |
 
 ## 更正
 

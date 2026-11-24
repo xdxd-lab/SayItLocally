@@ -6,8 +6,7 @@
 #   - esbuild：安裝時不跑任何安裝腳本（--ignore-scripts），並確認平台 binary 已在本機；
 #     esbuild 的 postinstall 只是加速用，不跑也能正常使用（L-87）
 #   - Cargo：CARGO_NET_OFFLINE＋--locked，不更新索引、不下載 crate（L-88、L-89）
-#   - rustup：呼叫任何 rustup／rustc 之前，先從檔案確認工具鏈與標準庫已安裝；
-#     再要求 rustup 1.28.1 以上，並設定 RUSTUP_AUTO_INSTALL=0（L-90）
+#   - Rust：確認已安裝的預設工具鏈與標準庫，直接使用該工具鏈的 Cargo、rustc（L-90）
 #   - Xcode／CLT、SDK、CMake：只檢查是否可用，缺少就停下，不觸發系統補裝（L-91）
 #   - Apple 公證：清除所有 APPLE_* 變數，只用 ad hoc 簽章（L-92）
 # 這個腳本只降低連網的機會，不保證零外連；第一次執行請同時用 LuLu 封鎖外連，
@@ -25,12 +24,16 @@ cd "$CLIENT_DIR"
 
 # L-84～L-86、L-88～L-90：離線與不回報設定（子程序、巢狀 npm 都會繼承）
 apply_offline_env() {
+  unset NPM_CONFIG_OFFLINE NPM_CONFIG_AUDIT NPM_CONFIG_FUND NPM_CONFIG_UPDATE_NOTIFIER
+  unset NODE_OPTIONS npm_config_node_options NPM_CONFIG_NODE_OPTIONS NPM_CONFIG_SCRIPT_SHELL
+  unset CARGO_BUILD_TARGET CMAKE_ARGS TRANSCRIBE_CMAKE_ARGS
   export npm_config_offline=true
   export npm_config_audit=false
   export npm_config_fund=false
   export npm_config_update_notifier=false
+  export npm_config_script_shell=/bin/sh
   export CARGO_NET_OFFLINE=true
-  export RUSTUP_AUTO_INSTALL=0
+  export RUSTC_WRAPPER= RUSTC_WORKSPACE_WRAPPER=
   # L-92：不走 Apple 公證；清掉所有 APPLE_* 變數（簽章維持 tauri.macos.conf.json 的 ad hoc「-」）
   local name
   for name in ${(k)parameters[(I)APPLE_*]}; do
@@ -38,8 +41,40 @@ apply_offline_env() {
   done
 }
 
-# 不執行外部環境檔（它也可能連網）；直接把本機安裝的 Node、CMake、Rust 加進 PATH（REV3）。
-export PATH="$HOME/.local/node/bin:$HOME/.local/cmake/CMake.app/Contents/bin:$HOME/.cargo/bin:$PATH"
+# L-90：只讀 rustup 的預設設定，直接選用工具鏈目錄裡的執行檔。
+use_local_rust() {
+  local rustup_dir="${RUSTUP_HOME:-$HOME/.rustup}" cargo_home="${CARGO_HOME:-$HOME/.cargo}"
+  local toolchain triple toolchain_bin entry
+  local -a stdlibs kept_path
+  toolchain=$(
+    /usr/bin/sed -n '/^[[:space:]]*\[/q; s/^default_toolchain[[:space:]]*=[[:space:]]*"\([^"]*\)"[[:space:]]*$/\1/p' \
+      "$rustup_dir/settings.toml" 2>/dev/null
+  ) || toolchain=
+  case "$toolchain" in
+    *-aarch64-apple-darwin) triple=aarch64-apple-darwin ;;
+    *-x86_64-apple-darwin) triple=x86_64-apple-darwin ;;
+    *) echo "找不到已設定的 macOS 預設 Rust 工具鏈。" >&2; return 1 ;;
+  esac
+  [[ "$toolchain" != *[^a-zA-Z0-9_.-]* ]] || { echo "預設 Rust 工具鏈名稱無效。" >&2; return 1; }
+  toolchain_bin="$rustup_dir/toolchains/$toolchain/bin"
+  toolchain_bin=${toolchain_bin:A}
+  stdlibs=( "${toolchain_bin:h}/lib/rustlib/$triple/lib"/libstd-*.rlib(N.) )
+  if [[ ! -f "$toolchain_bin/cargo" || ! -x "$toolchain_bin/cargo" || -L "$toolchain_bin/cargo" ||
+        ! -f "$toolchain_bin/rustc" || ! -x "$toolchain_bin/rustc" || -L "$toolchain_bin/rustc" ||
+        "$toolchain_bin/cargo" -ef "$cargo_home/bin/rustup" ||
+        "$toolchain_bin/rustc" -ef "$cargo_home/bin/rustup" ]] || (( ! ${#stdlibs} )); then
+    echo "預設 Rust 工具鏈缺少可直接執行的 Cargo、rustc 或 $triple 標準庫。" >&2
+    return 1
+  fi
+  for entry in "${path[@]}"; do
+    [[ ${entry:A} == ${cargo_home:A}/bin || ${entry:A} == ${HOME:A}/.cargo/bin ]] || kept_path+=("$entry")
+  done
+  path=("$toolchain_bin" "${kept_path[@]}")
+  export CARGO="$toolchain_bin/cargo" RUSTC="$toolchain_bin/rustc"
+}
+
+# 直接加入本機 Node 和 CMake，避免執行外部環境檔。
+export PATH="$HOME/.local/node/bin:$HOME/.local/cmake/CMake.app/Contents/bin:$PATH"
 apply_offline_env
 
 INSTALL=0
@@ -57,41 +92,19 @@ while (( $# )); do
   shift
 done
 
-# L-90、L-91：檢查工具是否可用，只讀不補裝
+use_local_rust
+
+# L-91：檢查工具是否可用，只讀不補裝
 missing=()
 command -v node >/dev/null || missing+=(node)
 command -v npm >/dev/null || missing+=(npm)
-command -v rustup >/dev/null || missing+=(rustup)
-command -v rustc >/dev/null || missing+=(rustc)
 command -v cmake >/dev/null || missing+=(cmake)
 /usr/bin/xcode-select -p >/dev/null 2>&1 || missing+=("Xcode Command Line Tools")
 if (( ${#missing} )); then
   echo "缺少：${(j:、:)missing}。請先自行安裝；本腳本不會下載或補裝。" >&2
   exit 1
 fi
-# L-90：呼叫 rustup／rustc 前，先從檔案確認工具鏈與標準庫已安裝，避免舊版 rustup 先自動補裝（REV3）
-RUSTUP_DIR="${RUSTUP_HOME:-$HOME/.rustup}"
-if [[ -n "${RUSTUP_TOOLCHAIN:-}" ]] || [[ -e src-tauri/rust-toolchain || -e src-tauri/rust-toolchain.toml || -e rust-toolchain || -e rust-toolchain.toml || -e ../rust-toolchain || -e ../rust-toolchain.toml ]]; then
-  echo "偵測到 RUSTUP_TOOLCHAIN 或 rust-toolchain 檔案，可能指定未安裝的工具鏈；請先移除後再執行。" >&2
-  exit 1
-fi
-if [[ -f "$RUSTUP_DIR/settings.toml" ]] && sed -n '/^\[overrides\]/,$p' "$RUSTUP_DIR/settings.toml" | grep -q '='; then
-  echo "rustup 設有目錄 override，可能指定未安裝的工具鏈；請先確認（rustup override list）。" >&2
-  exit 1
-fi
-TOOLCHAIN=$(sed -n 's/^default_toolchain = "\(.*\)"$/\1/p' "$RUSTUP_DIR/settings.toml" 2>/dev/null)
-TRIPLE=${TOOLCHAIN#*-}
-if [[ -z "$TOOLCHAIN" || ! -d "$RUSTUP_DIR/toolchains/$TOOLCHAIN/lib/rustlib/$TRIPLE/lib" ]]; then
-  echo "預設工具鏈「${TOOLCHAIN:-未設定}」或它的標準庫（$TRIPLE）沒有安裝；本腳本不會補裝。" >&2
-  exit 1
-fi
-rustup_ver=$(rustup --version 2>/dev/null | awk '{print $2}')
-if ! printf '1.28.1\n%s\n' "$rustup_ver" | sort -V -C; then
-  echo "rustup $rustup_ver 太舊（需要 1.28.1 以上才認得 RUSTUP_AUTO_INSTALL=0），停止以免自動補裝工具鏈。" >&2
-  exit 1
-fi
-rustc --version >/dev/null 2>&1 || { echo "目前的 Rust 工具鏈不可用（不會自動補裝）。" >&2; exit 1; }
-cargo --version >/dev/null 2>&1 || { echo "cargo 不可用（不會自動補裝）。" >&2; exit 1; }
+export CMAKE="$(command -v cmake)"
 /usr/bin/xcrun --sdk macosx --show-sdk-path >/dev/null 2>&1 || { echo "找不到 macOS SDK（不會自動補裝）。" >&2; exit 1; }
 
 # L-87：esbuild 平台套件名稱依 Node 的架構判斷（不是 uname，避免 Rosetta 下不一致）
