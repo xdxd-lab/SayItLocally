@@ -20,6 +20,18 @@ import {
 } from '@/lib/overlayWaveColors'
 import { prefersReducedMotion, usePillMorph } from './pillMorph'
 
+// [自訂] L-80：焦點核對拒絕的結果卡要說明文字未送出。
+function fallbackHintKey(reason: string) {
+  switch (reason) {
+    case 'insertion_timeout': return 'overlay.insertionTimeoutHint'
+    case 'application_changed':
+    case 'window_changed':
+    case 'element_changed': return 'overlay.focusChangedHintMac'
+    case 'target_expired': return 'overlay.focusExpiredHintMac'
+    default: return IS_MAC ? 'overlay.fallbackHintMac' : 'overlay.fallbackHint'
+  }
+}
+
 /**
  * `blank` 什么都不渲染，只在**隐藏窗口之前**用一下。
  *
@@ -560,10 +572,7 @@ export default function Overlay() {
               <span className="block text-xs" style={{ color: copyError ? '#fca5a5' : 'var(--overlay-text-dim)' }}>
                 {copyError
                   ? t('overlay.copyFailedHint')
-                  : fallbackReason === 'insertion_timeout'
-                    ? t('overlay.insertionTimeoutHint')
-                    // mac 上卡片的复制键是 ⌘C（Rust 侧 keyboard/macos.rs 的 only_command_is_down）
-                    : t(IS_MAC ? 'overlay.fallbackHintMac' : 'overlay.fallbackHint')}
+                  : t(fallbackHintKey(fallbackReason))}
               </span>
             </div>
             <div className="flex shrink-0 items-center gap-2">

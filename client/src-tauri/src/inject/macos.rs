@@ -12,8 +12,8 @@
 
 use super::InjectResult;
 use crate::commands::system::write_log_line;
-use crate::platform::macos::{appkit, ax, ffi::*, focus, keycodes};
-use std::sync::atomic::{AtomicU64, Ordering};
+use crate::platform::macos::{appkit, ax, cf::CfOwned, ffi::*, focus, keycodes};
+use std::sync::atomic::{AtomicU16, AtomicU64, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
@@ -23,7 +23,6 @@ static PASTE_GENERATION: AtomicU64 = AtomicU64::new(0);
 static PASTE_TRANSACTION: Mutex<()> = Mutex::new(());
 
 const CLIPBOARD_SNAPSHOT_BUDGET: Duration = Duration::from_millis(150);
-const ROLLBACK_SNAPSHOT_BUDGET: Duration = Duration::from_millis(20);
 const CLIPBOARD_SNAPSHOT_MAX_BYTES: usize = 64 * 1024 * 1024;
 /// 还原前等多久。比 Windows 的 400 ms 稍长：mac 上目标程序是在处理 ⌘V 事件时才去读剪贴板，
 /// Electron / 浏览器还是异步读，太早还原会让它读到旧内容。
@@ -39,13 +38,20 @@ fn result(ok: bool, strategy: &str, reason: Option<&str>, detail: String) -> Inj
     }
 }
 
+// [自訂] L-80：主執行緒忙時沿用最近一次成功查得的鍵碼。
+static PASTE_KEYCODE: AtomicU16 = AtomicU16::new(keycodes::KVK_ANSI_V);
+
+pub fn cached_keycode_for_v() -> CGKeyCode {
+    PASTE_KEYCODE.load(Ordering::Relaxed)
+}
+
 /// 当前键盘布局下打出「v」的那个键码。Dvorak 等布局里 ⌘V 不在 QWERTY 的 V 位置上。
 /// 中文输入法激活时取它底下的 ASCII 布局。找不到就用 ANSI V。
 pub fn keycode_for_v() -> CGKeyCode {
     unsafe {
         let source = TISCopyCurrentASCIICapableKeyboardLayoutInputSource();
         if source.is_null() {
-            return keycodes::KVK_ANSI_V;
+            return cached_keycode_for_v();
         }
         let layout_data = TISGetInputSourceProperty(source, kTISPropertyUnicodeKeyLayoutData) as CFDataRef;
         let mut found = None;
@@ -75,44 +81,110 @@ pub fn keycode_for_v() -> CGKeyCode {
             }
         }
         CFRelease(source as CFTypeRef);
-        found.unwrap_or(keycodes::KVK_ANSI_V)
+        if let Some(keycode) = found {
+            PASTE_KEYCODE.store(keycode, Ordering::Relaxed);
+        }
+        cached_keycode_for_v()
     }
 }
 
-/// 发 ⌘V。flags 显式只带 ⌘：用户此刻还按着的 ⌥（按住说话键）不会混进来。
-/// 事件带 SayIt 标记，自己的 event tap 会放行、不当成用户按键。
 enum PostFailure {
     Focus(focus::FocusChange),
-    ClipboardChanged,
     EventCreation,
 }
 
-fn post_command_v(keycode: CGKeyCode, before_post: impl FnOnce() -> Result<(), PostFailure>) -> Result<(), PostFailure> {
-    use crate::platform::macos::cf::CfOwned;
-    unsafe {
-        let source = CfOwned::from_create(CGEventSourceCreate(kCGEventSourceStateHIDSystemState));
-        let source_ptr = source.as_ref().map_or(std::ptr::null_mut(), |source| source.as_ptr().cast_mut());
-        let down = CfOwned::from_create(CGEventCreateKeyboardEvent(source_ptr, keycode, true))
-            .ok_or(PostFailure::EventCreation)?;
-        let up = CfOwned::from_create(CGEventCreateKeyboardEvent(source_ptr, keycode, false))
-            .ok_or(PostFailure::EventCreation)?;
-        let down = down.as_ptr().cast_mut();
-        let up = up.as_ptr().cast_mut();
-        for event in [down, up] {
-            CGEventSetFlags(event, kCGEventFlagMaskCommand);
-            CGEventSetIntegerValueField(event, kCGEventSourceUserData, crate::keyboard::SAYIT_EVENT_MARKER);
-        }
-        // [自訂] L-80：鍵盤事件已備妥，核對後立刻送出。
-        before_post()?;
-        CGEventPost(kCGHIDEventTap, down);
-        std::thread::sleep(Duration::from_millis(8));
-        CGEventPost(kCGHIDEventTap, up);
+// [自訂] L-80：兩道核對共用同一原生貼上路徑；測試可替換所有系統動作。
+enum PasteAttempt<S, E> {
+    FocusRejected(focus::FocusChange),
+    StageFailed(E),
+    Staged(S, Result<(), PostFailure>),
+}
+
+fn guarded_paste<S, E, K>(
+    mut verify: impl FnMut() -> Result<(), focus::FocusChange>,
+    stage: impl FnOnce() -> Result<S, E>,
+    create_events: impl FnOnce() -> Result<K, PostFailure>,
+    post: impl FnOnce(K),
+) -> PasteAttempt<S, E> {
+    if let Err(change) = verify() {
+        return PasteAttempt::FocusRejected(change);
     }
-    Ok(())
+    let staged = match stage() {
+        Ok(staged) => staged,
+        Err(error) => return PasteAttempt::StageFailed(error),
+    };
+    let posted = create_events().and_then(|events| {
+        verify().map_err(PostFailure::Focus)?;
+        post(events);
+        Ok(())
+    });
+    PasteAttempt::Staged(staged, posted)
+}
+
+/// ⌘V 事件带 SayIt 标记，自己的 event tap 会放行、不当成用户按键。
+struct PasteEvents {
+    down: CfOwned,
+    up: CfOwned,
+    _source: Option<CfOwned>,
+}
+
+impl PasteEvents {
+    fn create(keycode: CGKeyCode) -> Result<Self, PostFailure> {
+        unsafe {
+            let source = CfOwned::from_create(CGEventSourceCreate(kCGEventSourceStateHIDSystemState));
+            let source_ptr = source.as_ref().map_or(std::ptr::null_mut(), |source| source.as_ptr().cast_mut());
+            let down = CfOwned::from_create(CGEventCreateKeyboardEvent(source_ptr, keycode, true))
+                .ok_or(PostFailure::EventCreation)?;
+            let up = CfOwned::from_create(CGEventCreateKeyboardEvent(source_ptr, keycode, false))
+                .ok_or(PostFailure::EventCreation)?;
+            for event in [&down, &up] {
+                let ptr = event.as_ptr().cast_mut();
+                CGEventSetFlags(ptr, kCGEventFlagMaskCommand);
+                CGEventSetIntegerValueField(ptr, kCGEventSourceUserData, crate::keyboard::SAYIT_EVENT_MARKER);
+            }
+            Ok(Self { down, up, _source: source })
+        }
+    }
+
+    fn post(self) {
+        unsafe {
+            CGEventPost(kCGHIDEventTap, self.down.as_ptr().cast_mut());
+            std::thread::sleep(Duration::from_millis(8));
+            CGEventPost(kCGHIDEventTap, self.up.as_ptr().cast_mut());
+        }
+    }
+}
+
+#[derive(Default)]
+struct ClipboardBackup {
+    snapshot: Option<appkit::PasteboardSnapshot>,
+    previous_text: Option<String>,
+}
+
+impl ClipboardBackup {
+    fn capture(protect: bool) -> Self {
+        if !protect {
+            return Self::default();
+        }
+        let previous_text = appkit::pasteboard_get_text();
+        let snapshot = appkit::pasteboard_snapshot(CLIPBOARD_SNAPSHOT_BUDGET, CLIPBOARD_SNAPSHOT_MAX_BYTES);
+        Self { snapshot, previous_text }
+    }
+
+    fn restore(&self, written_count: isize) -> bool {
+        if let Some(snapshot) = &self.snapshot {
+            appkit::pasteboard_restore(snapshot, true, written_count)
+        } else if let Some(text) = &self.previous_text {
+            appkit::pasteboard_restore_text(text, written_count)
+        } else {
+            // 保護關閉時不讀取舊內容，只在剪貼簿仍是本次寫入時清掉暫存文字。
+            appkit::pasteboard_clear_if_unchanged(written_count)
+        }
+    }
 }
 
 /// 粘贴后延时还原剪贴板（在独立线程里，不拖慢插字）。
-fn schedule_restore(paste_id: u64, written_change_count: isize, snapshot: appkit::PasteboardSnapshot) {
+fn schedule_restore(paste_id: u64, written_change_count: isize, backup: ClipboardBackup) {
     let scheduled_at = Instant::now();
     std::thread::spawn(move || {
         std::thread::sleep(RESTORE_DELAY);
@@ -133,8 +205,8 @@ fn schedule_restore(paste_id: u64, written_change_count: isize, snapshot: appkit
             ));
             return;
         }
-        let restored = appkit::pasteboard_restore(&snapshot, true, written_change_count);
-        let formats = snapshot.type_count();
+        let restored = backup.restore(written_change_count);
+        let formats = backup.snapshot.as_ref().map_or(0, |snapshot| snapshot.type_count());
         write_log_line(&format!(
             "[RUST] [inject] clipboard restore finished pasteId={paste_id} restored={restored} formats={formats} elapsedMs={elapsed_ms}"
         ));
@@ -162,64 +234,56 @@ fn do_inject(text: &str, target_pid: i32, restore_clipboard: bool, focus_token: 
         return result(false, "cmd_v", Some("accessibility_not_granted"), String::new());
     }
 
-    let budget = if restore_clipboard { CLIPBOARD_SNAPSHOT_BUDGET } else { ROLLBACK_SNAPSHOT_BUDGET };
-    let original_count = appkit::pasteboard_change_count();
-    let snapshot = appkit::pasteboard_snapshot(budget, CLIPBOARD_SNAPSHOT_MAX_BYTES);
-
-    if let Err(change) = focus::verify(focus_token, target_pid) {
-        return focus_failure(change);
-    }
-    // [自訂] L-80：無法完整備份原內容時，不能在第二次核對可能拒絕前先覆寫剪貼簿。
-    let Some(snapshot) = snapshot else {
-        return result(false, "clipboard", Some("clipboard_backup_unavailable"), String::new());
-    };
-    // [自訂] L-80：取得所有權後若寫入失敗，只在剪貼簿仍屬於這次嘗試時還原。
-    let written_change_count = match appkit::pasteboard_set_text(text, true, Some(original_count)) {
-        Ok(count) => count,
-        Err(appkit::PasteboardWriteError::Changed) => {
-            return result(false, "clipboard", Some("clipboard_changed"), String::new());
-        }
-        Err(appkit::PasteboardWriteError::Failed { detail, written_count }) => {
-            if let Some(count) = written_count {
-                let _ = appkit::pasteboard_restore(&snapshot, true, count);
+    let attempt = guarded_paste(
+        || focus::verify(focus_token, target_pid),
+        || {
+            let backup = ClipboardBackup::capture(restore_clipboard);
+            match appkit::pasteboard_set_text(text, true) {
+                Ok(count) => Ok((count, backup)),
+                Err(error) => Err((error, backup)),
+            }
+        },
+        || PasteEvents::create(keycode),
+        PasteEvents::post,
+    );
+    let (written_count, backup, posted) = match attempt {
+        PasteAttempt::FocusRejected(change) => return focus_failure(change),
+        PasteAttempt::StageFailed((error, backup)) => {
+            if let Some(count) = error.written_count {
+                backup.restore(count);
             }
             write_log_line("[RUST] [inject] clipboard write failed");
-            return result(false, "clipboard", Some("clipboard_blocked"), detail.to_owned());
+            return result(false, "clipboard", Some("clipboard_blocked"), error.detail.to_owned());
         }
+        PasteAttempt::Staged((count, backup), posted) => (count, backup, posted),
     };
     let paste_id = PASTE_GENERATION.fetch_add(1, Ordering::AcqRel) + 1;
+    if let Err(PostFailure::Focus(change)) = posted {
+        backup.restore(written_count);
+        return focus_failure(change);
+    }
 
-    let posted = post_command_v(keycode, || {
-        focus::verify(focus_token, target_pid).map_err(PostFailure::Focus)?;
-        if appkit::pasteboard_change_count() != written_change_count {
-            return Err(PostFailure::ClipboardChanged);
-        }
-        Ok(())
-    });
-    match posted {
-        Ok(()) => {
-            if restore_clipboard {
-                schedule_restore(paste_id, written_change_count, snapshot);
-            }
-            result(true, "cmd_v", None, format!("pasteId={paste_id}"))
-        }
-        Err(PostFailure::Focus(change)) => {
-            let _ = appkit::pasteboard_restore(&snapshot, true, written_change_count);
-            focus_failure(change)
-        }
-        Err(PostFailure::ClipboardChanged) => result(false, "clipboard", Some("clipboard_changed"), String::new()),
-        Err(PostFailure::EventCreation) => {
-            let _ = appkit::pasteboard_restore(&snapshot, true, written_change_count);
-            write_log_line("[RUST] [inject] failed to create paste event");
-            result(false, "cmd_v", Some("post_event_failed"), format!("pasteId={paste_id}"))
-        }
+    if restore_clipboard {
+        schedule_restore(paste_id, written_count, backup);
+    }
+    if posted.is_ok() {
+        result(true, "cmd_v", None, format!("pasteId={paste_id}"))
+    } else {
+        write_log_line("[RUST] [inject] failed to create paste event");
+        result(false, "cmd_v", Some("post_event_failed"), format!("pasteId={paste_id}"))
     }
 }
 
 // [自訂] L-80：錄音貼上與診斷貼上共用最後一道原生核對。
 pub fn inject_recording_text(text: &str, target_pid: i32, restore_clipboard: bool, focus_token: Option<&str>, keycode: CGKeyCode) -> InjectResult {
-    if focus_token.is_some() || target_pid > 0 {
+    if target_pid > 0 {
         return do_inject(text, target_pid, restore_clipboard, focus_token, keycode);
+    }
+    // [自訂] L-80：無 PID 時仍走基準版可編輯探測；失效權杖先拒絕。
+    if let Some(token) = focus_token {
+        if let Err(change) = focus::TARGET.ensure_active(token) {
+            return focus_failure(change);
+        }
     }
     let ctx = crate::context::capture_context("inject");
     if ctx.pid == 0 {
@@ -242,24 +306,16 @@ pub fn inject_recording_text(text: &str, target_pid: i32, restore_clipboard: boo
             uncertain: false,
         };
     }
-    do_inject(text, ctx.pid as i32, restore_clipboard, None, keycode)
+    do_inject(text, ctx.pid as i32, restore_clipboard, focus_token, keycode)
 }
 
 /// 只写剪贴板（结果卡的「复制」、不可输入时的兜底）。复制是用户要的，正常进剪贴板历史。
 /// [自訂] S33／S11：改為 transient（剪貼簿歷史 App 不記錄）＋只限本機（pasteboard_set_text 內處理）。
 pub fn copy_to_clipboard(text: &str) -> Result<(), String> {
-    appkit::pasteboard_set_text(text, true, None).map(|_| ()).map_err(|error| match error {
-        appkit::PasteboardWriteError::Changed => "Clipboard changed".into(),
-        appkit::PasteboardWriteError::Failed { detail, .. } => detail.into(),
-    })
+    appkit::pasteboard_set_text(text, true).map(|_| ()).map_err(|error| error.detail.into())
 }
 
 // ─── 「这里能不能打字」的 mac 判据 ───
-
-/// 明确是文本输入的 AX 角色。
-fn is_text_role(role: &str) -> bool {
-    matches!(role, "AXTextField" | "AXTextArea" | "AXComboBox" | "AXSearchField")
-}
 
 /// 明确不是输入区域的 AX 角色（按钮、菜单、列表……）。
 fn is_definitely_not_editable(role: &str) -> bool {
@@ -320,7 +376,7 @@ pub fn editability_gate(ctx: &crate::context::AppContext) -> super::EditableGate
     let role = ctx.control_type.as_str();
     let bundle = ctx.bundle_id.to_lowercase();
     let process = ctx.process_name.to_lowercase();
-    let text_role = is_text_role(role) || ctx.focus_class == "AXSecureTextField";
+    let text_role = ax::is_text_role(role) || ctx.focus_class == "AXSecureTextField";
 
     // Finder（含桌面）：只有重命名框、搜索框这类文本框才是输入目标（对应 explorer 桌面）
     if bundle == "com.apple.finder" && !text_role {
@@ -385,6 +441,49 @@ mod tests {
         assert_eq!(editability_gate(&ctx("com.example.player", "AXButton")), EditableGate::NoSignal);
         assert_eq!(editability_gate(&ctx("com.example.player", "")), EditableGate::AxOptimistic);
         assert_eq!(editability_gate(&ctx("com.example.player", "AXGroup")), EditableGate::AxOptimistic);
+    }
+
+    #[test]
+    fn initial_focus_mismatch_neither_stages_text_nor_posts_events() {
+        let attempt: PasteAttempt<(), ()> = guarded_paste(
+            || Err(focus::FocusChange::Window),
+            || panic!("clipboard must not be staged for a changed target"),
+            || Ok(()),
+            |_| panic!("must not post to a changed target"),
+        );
+        assert!(matches!(attempt, PasteAttempt::FocusRejected(focus::FocusChange::Window)));
+    }
+
+    #[test]
+    fn second_check_blocks_post_when_focus_changes_while_events_are_prepared() {
+        use std::cell::Cell;
+        let focus_changed = Cell::new(false);
+        let attempt = guarded_paste(
+            || if focus_changed.get() { Err(focus::FocusChange::Element) } else { Ok(()) },
+            || Ok::<_, ()>("rollback state"),
+            || {
+                focus_changed.set(true);
+                Ok(())
+            },
+            |_| panic!("must recheck immediately before posting"),
+        );
+        assert!(matches!(attempt, PasteAttempt::Staged(
+            "rollback state", Err(PostFailure::Focus(focus::FocusChange::Element)),
+        )));
+    }
+
+    #[test]
+    fn missing_clipboard_backup_still_posts_for_an_unchanged_target() {
+        use std::cell::Cell;
+        let posted = Cell::new(false);
+        let attempt = guarded_paste(
+            || Ok(()),
+            || Ok::<_, ()>(None::<appkit::PasteboardSnapshot>),
+            || Ok(()),
+            |_| posted.set(true),
+        );
+        assert!(matches!(attempt, PasteAttempt::Staged(None, Ok(()))));
+        assert!(posted.get());
     }
 
     #[test]

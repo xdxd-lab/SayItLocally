@@ -66,11 +66,13 @@ pub async fn paste_text(
 ) -> Result<PasteResult, String> {
     // Text Input Sources requires the main thread. The AX work below never runs on it.
     let (send, keycode) = tokio::sync::oneshot::channel();
-    app.run_on_main_thread(move || { let _ = send.send(inject::keycode_for_v()); })
-        .map_err(|error| error.to_string())?;
-    let keycode = tokio::time::timeout(std::time::Duration::from_millis(100), keycode)
-        .await.map_err(|_| "Keyboard layout lookup timed out".to_string())?
-        .map_err(|error| error.to_string())?;
+    let scheduled = app.run_on_main_thread(move || { let _ = send.send(inject::keycode_for_v()); });
+    let keycode = if scheduled.is_ok() {
+        tokio::time::timeout(std::time::Duration::from_secs(2), keycode)
+            .await.ok().and_then(Result::ok)
+    } else {
+        None
+    }.unwrap_or_else(inject::cached_keycode_for_v);
 
     tokio::task::spawn_blocking(move || {
         let pid = hwnd.and_then(|value| value.parse().ok()).unwrap_or(0);
@@ -152,15 +154,15 @@ pub fn get_recording_context(
 pub async fn get_recording_context(include_text_context: Option<bool>) -> Result<Value, String> {
     tokio::task::spawn_blocking(move || {
         use crate::platform::macos::focus;
-        let token = focus::begin();
+        let token = focus::TARGET.begin();
         let started_at = chrono::Utc::now().timestamp_millis();
         let (ctx, target) = crate::context::capture_recording_with_focus(include_text_context.unwrap_or(false));
         let completed_at = chrono::Utc::now().timestamp_millis();
         let response = recording_context_response(&ctx, started_at, completed_at, Some(&token));
         if response.is_ok() {
-            focus::save(&token, target);
+            focus::TARGET.save(&token, target);
         } else {
-            focus::release(&token);
+            focus::TARGET.release(&token);
         }
         response
     }).await.map_err(|error| error.to_string())?
@@ -169,7 +171,7 @@ pub async fn get_recording_context(include_text_context: Option<bool>) -> Result
 #[tauri::command]
 pub async fn release_recording_focus(focus_token: String) -> Result<(), String> {
     #[cfg(target_os = "macos")]
-    tokio::task::spawn_blocking(move || crate::platform::macos::focus::release(&focus_token))
+    tokio::task::spawn_blocking(move || crate::platform::macos::focus::TARGET.release(&focus_token))
         .await.map_err(|error| error.to_string())?;
     #[cfg(not(target_os = "macos"))]
     let _ = focus_token;

@@ -1,10 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { RecorderOrchestrator } from '../RecorderOrchestrator'
+import * as promptRouter from '../../personalization/promptRouter'
+import type { EscapeActionMode } from '../../bridge'
 
 const mocks = vi.hoisted(() => ({
   addHistory: vi.fn(async () => {}),
   copyText: vi.fn(async () => {}),
   pasteText: vi.fn(),
+  getRecordingContext: vi.fn(),
+  onEscapeAction: vi.fn<(cb: (data: { mode: EscapeActionMode; token: number }) => void) => void>(),
   postToTarget: vi.fn(),
   releaseRecordingFocus: vi.fn(async () => {}),
   presentOverlay: vi.fn(async () => {}),
@@ -15,6 +19,15 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('../../bridge', () => ({
   pasteText: mocks.pasteText,
+  getRecordingContext: mocks.getRecordingContext,
+  onEscapeAction: mocks.onEscapeAction,
+  onCardDismissed: vi.fn(),
+  onPTTDown: vi.fn(),
+  onPTTUp: vi.fn(),
+  onPTTToggle: vi.fn(),
+  onToggleHandsFree: vi.fn(),
+  onPTTTimeoutWarning: vi.fn(),
+  listen: vi.fn(async () => () => {}),
   copyText: mocks.copyText,
   releaseRecordingFocus: mocks.releaseRecordingFocus,
   presentOverlay: mocks.presentOverlay,
@@ -29,7 +42,11 @@ vi.mock('../../store', () => ({
   deleteHistory: vi.fn(),
 }))
 vi.mock('../../debugLog', () => ({ addRuntimeEvent: vi.fn() }))
-vi.mock('../../transcription', () => ({ getProvider: () => ({ mode: 'local' }) }))
+vi.mock('../../transcription', () => ({ getProvider: () => ({ mode: 'local', isReady: () => true }) }))
+vi.mock('../../textInsertion', async importOriginal => ({
+  ...await importOriginal<typeof import('../../textInsertion')>(),
+  captureActiveInsertionTarget: vi.fn(() => ({ strategy: 'renderer_dom', ok: false })),
+}))
 vi.mock('../../textPostProcess', () => ({ applyTextTransforms: vi.fn(async (text: string) => text) }))
 vi.mock('../../personalization/store', () => ({}))
 
@@ -104,6 +121,53 @@ describe('recording focus guard', () => {
       expect(mocks.copyText).not.toHaveBeenCalled()
       expect(mocks.clipboard).toBe('original clipboard')
       expect(mocks.scheduledClipboardRestores).toBe(0)
+    } finally {
+      recorder['overlayService'].dispose()
+    }
+  })
+
+  it('releases the previous focus before the next capture and saves the returned token', async () => {
+    const recorder = new RecorderOrchestrator()
+    recorder['activeRunId'] = 1
+    recorder['runSequence'] = 1
+    recorder['recordingFocus'] = { runId: 1, token: 'previous-focus' }
+    const stopAfterCapture = new Error('stop before opening the microphone')
+    const routing = vi.spyOn(promptRouter, 'resolvePromptRouting').mockImplementationOnce(() => {
+      throw stopAfterCapture
+    })
+    vi.spyOn(recorder['micLevel'], 'checkConfiguredMicMuted').mockResolvedValue()
+    mocks.getRecordingContext.mockResolvedValue({ appContext: {}, probe })
+
+    try {
+      await expect(recorder['startRecordingInner']()).rejects.toBe(stopAfterCapture)
+      expect(mocks.releaseRecordingFocus).toHaveBeenCalledExactlyOnceWith('previous-focus')
+      expect(mocks.releaseRecordingFocus.mock.invocationCallOrder[0])
+        .toBeLessThan(mocks.getRecordingContext.mock.invocationCallOrder[0])
+      expect(recorder['recordingFocus']).toEqual({ runId: 2, token: probe.focusToken })
+      expect(recorder['run'].cachedProbeResult?.focusToken).toBe(probe.focusToken)
+    } finally {
+      routing.mockRestore()
+      recorder['overlayService'].dispose()
+    }
+  })
+
+  it('releases the native token when the user abandons a late result', async () => {
+    const recorder = new RecorderOrchestrator()
+    recorder['activeRunId'] = 4
+    recorder['lateResultRunId'] = 4
+    recorder['recordingFocus'] = { runId: 4, token: probe.focusToken }
+    vi.spyOn(recorder, 'refreshRuntimeSettings').mockResolvedValue()
+    vi.spyOn(recorder, 'ensureClientRuntimeInfo').mockResolvedValue()
+
+    try {
+      await recorder.init()
+      const callback = mocks.onEscapeAction.mock.calls[0]![0]
+      callback({ mode: 'abandon_late_result', token: 3 })
+      expect(mocks.releaseRecordingFocus).not.toHaveBeenCalled()
+      callback({ mode: 'abandon_late_result', token: 4 })
+      expect(mocks.releaseRecordingFocus).toHaveBeenCalledExactlyOnceWith(probe.focusToken)
+      expect(recorder['recordingFocus']).toBeNull()
+      expect(recorder['lateResultAbandoned']).toBe(true)
     } finally {
       recorder['overlayService'].dispose()
     }

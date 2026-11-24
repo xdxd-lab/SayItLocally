@@ -64,6 +64,12 @@ fn capture_context(
         ctx.process_name = app.name.clone();
     }
 
+    // [自訂] L-80：自身輸入框走 PID 判斷，避免跨執行緒向自己的 AX 伺服器送查詢。
+    if app.pid == std::process::id() as i32 {
+        give_up(&mut ctx, "own_process");
+        return ctx;
+    }
+
     // 没有辅助功能授权时只能拿到应用级信息；可编辑判据会退回 bundle 白名单。
     if !ax::is_trusted() {
         give_up(&mut ctx, "no_permission");
@@ -80,13 +86,8 @@ fn capture_context(
         let _ = app_element.set_bool("AXManualAccessibility", true);
     }
 
-    let (window, focused) = if snapshot.is_some() {
-        // [自訂] L-80：在讀視窗標題及其他屬性前，先取這次錄音的目標參照。
-        let target = focus::keyboard_target(app.pid, &app_element);
-        (target.window, target.element)
-    } else {
-        (app_element.attr_element("AXFocusedWindow"), app_element.attr_element("AXFocusedUIElement"))
-    };
+    // [自訂] L-80：錄音開始沿用原有的查詢順序與 DEFAULT_TIMEOUT_SECS。
+    let window = app_element.attr_element("AXFocusedWindow");
     if let Some(window) = &window {
         window.set_timeout(ax::DEFAULT_TIMEOUT_SECS);
         ctx.window_title = window.attr_string("AXTitle").unwrap_or_default();
@@ -95,7 +96,7 @@ fn capture_context(
         target.window = window;
     }
 
-    let Some(focused) = focused else {
+    let Some(focused) = app_element.attr_element("AXFocusedUIElement") else {
         give_up(&mut ctx, "no_focused_element");
         return ctx;
     };
@@ -135,8 +136,11 @@ fn capture_context(
             ctx.text_context_diag = Some(text_diag(result, depth, text_started));
         }
     }
+    // Chrome／Electron 的首個焦點回應可能只是容器。只有初始文字元件可用於比較。
     if let Some(target) = snapshot {
-        target.element = Some(focused);
+        if ax::is_text_role(&ctx.control_type) || ctx.is_password || selection.is_some() {
+            target.element = Some(focused);
+        }
     }
     ctx
 }

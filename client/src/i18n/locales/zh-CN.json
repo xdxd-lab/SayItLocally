@@ -60,6 +60,8 @@
   "overlay.recognizedText": "识别文本",
   "overlay.fallbackHint": "当前目标不支持直接写入。按 Ctrl + C 复制，或按 Esc 关闭。",
   "overlay.fallbackHintMac": "当前目标不支持直接写入。按 ⌘C 复制，或按 Esc 关闭。",
+  "overlay.focusChangedHintMac": "输入焦点已更改。按 ⌘C 复制，或按 Esc 关闭。",
+  "overlay.focusExpiredHintMac": "本次录音的原输入目标已失效。按 ⌘C 复制，或按 Esc 关闭。",
   "overlay.copyText": "复制文本",
   "overlay.copyTextWithHotkey": "复制文本（Ctrl + C）",
   "overlay.copyTextWithHotkeyMac": "复制文本（⌘C）",

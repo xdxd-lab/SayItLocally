@@ -640,6 +640,7 @@ export class RecorderOrchestrator {
   }
 
   cleanup() {
+    if (this.recordingFocus) this.releaseRecordingFocus(this.recordingFocus.runId)
     this.clearProcessingTimeout()
     this.micLevel.clearAutoCancelTimer()
     this.micLevel.invalidateProbes()

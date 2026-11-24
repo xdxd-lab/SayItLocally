@@ -163,50 +163,55 @@ pub fn pasteboard_get_text() -> Option<String> {
 }
 
 // [自訂] L-80：寫入失敗時保留取得所有權時的計數，只還原本程式仍持有的剪貼簿。
-pub enum PasteboardWriteError {
-    Changed,
-    Failed { detail: &'static str, written_count: Option<isize> },
+pub struct PasteboardWriteError {
+    pub detail: &'static str,
+    pub written_count: Option<isize>,
 }
 
-pub fn pasteboard_set_text(
+pub fn pasteboard_set_text(text: &str, transient: bool) -> Result<isize, PasteboardWriteError> {
+    write_pasteboard_text(text, transient, None)
+}
+
+pub fn pasteboard_restore_text(text: &str, expected_count: isize) -> bool {
+    write_pasteboard_text(text, true, Some(expected_count)).is_ok()
+}
+
+fn write_pasteboard_text(
     text: &str,
     transient: bool,
     expected_count: Option<isize>,
 ) -> Result<isize, PasteboardWriteError> {
-    use PasteboardWriteError::{Changed, Failed};
     autoreleasepool(|_| unsafe {
         let pb = general_pasteboard();
         if pb.is_null() {
-            return Err(Failed { detail: "step=generalPasteboard err=null", written_count: None });
+            return Err(PasteboardWriteError { detail: "step=generalPasteboard err=null", written_count: None });
         }
         let string_type = NSString::from_str(PASTEBOARD_TYPE_STRING);
         let item: Option<Retained<AnyObject>> = msg_send![class!(NSPasteboardItem), new];
         let Some(item) = item else {
-            return Err(Failed { detail: "step=NSPasteboardItem err=null", written_count: None });
+            return Err(PasteboardWriteError { detail: "step=NSPasteboardItem err=null", written_count: None });
         };
         let value = NSString::from_str(text);
         let ok: bool = msg_send![&*item, setString: &*value, forType: &*string_type];
         if !ok {
-            return Err(Failed { detail: "step=setString err=rejected", written_count: None });
+            return Err(PasteboardWriteError { detail: "step=setString err=rejected", written_count: None });
         }
         if transient {
             let transient_type = NSString::from_str(PASTEBOARD_TYPE_TRANSIENT);
             let empty = NSData::with_bytes(&[]);
-            let ok: bool = msg_send![&*item, setData: &*empty, forType: &*transient_type];
-            if !ok {
-                return Err(Failed { detail: "step=setTransient err=rejected", written_count: None });
-            }
+            let _: bool = msg_send![&*item, setData: &*empty, forType: &*transient_type];
         }
         let array = NSArray::from_retained_slice(&[item]);
-        let count: isize = msg_send![pb, changeCount];
-        if expected_count.is_some_and(|expected| expected != count) {
-            return Err(Changed);
+        if let Some(expected) = expected_count {
+            let actual: isize = msg_send![pb, changeCount];
+            if actual != expected {
+                return Err(PasteboardWriteError { detail: "clipboard ownership changed", written_count: None });
+            }
         }
-
         let written_count = prepare_current_host_only(pb);
         let written: bool = msg_send![pb, writeObjects: &*array];
         if !written {
-            return Err(Failed { detail: "step=writeObjects err=rejected", written_count: Some(written_count) });
+            return Err(PasteboardWriteError { detail: "step=writeObjects err=rejected", written_count: Some(written_count) });
         }
         Ok(written_count)
     })
@@ -219,6 +224,22 @@ pub fn pasteboard_clear() -> bool {
             return false;
         }
         let _: isize = msg_send![pb, clearContents];
+        true
+    })
+}
+
+// [自訂] L-80：拒絕貼上時不清除其他程式後來放入的內容。
+pub fn pasteboard_clear_if_unchanged(expected_count: isize) -> bool {
+    autoreleasepool(|_| unsafe {
+        let pb = general_pasteboard();
+        if pb.is_null() {
+            return false;
+        }
+        let count: isize = msg_send![pb, changeCount];
+        if count != expected_count {
+            return false;
+        }
+        prepare_current_host_only(pb);
         true
     })
 }
@@ -247,8 +268,8 @@ unsafe fn nsarray_get(array: *mut AnyObject, index: usize) -> *mut AnyObject {
     msg_send![array, objectAtIndex: index]
 }
 
-/// 给剪贴板拍快照。超时、超出字节上限或有格式无法读取时返回 None。
-/// 剪贴板为空时返回空快照。
+/// 尽量保存剪贴板格式，跳过读不到的类型。超时或超出空间上限返回 None，
+/// 调用方仍可贴上，并在保护开启时尝试以之前的纯文本还原。
 ///
 /// 预算的理由与 Windows 侧相同：有些程序是「延迟提供」数据，读的那一刻才现场生成，
 /// 可能很慢，而这一步在插字的关键路径上。
@@ -260,6 +281,9 @@ pub fn pasteboard_snapshot(budget: Duration, max_bytes: usize) -> Option<Pastebo
             return None;
         }
         let items: *mut AnyObject = msg_send![pb, pasteboardItems];
+        if items.is_null() {
+            return None;
+        }
         let mut snapshot = PasteboardSnapshot::default();
         let mut total = 0usize;
         for i in 0..nsarray_count(items) {
@@ -271,14 +295,14 @@ pub fn pasteboard_snapshot(budget: Duration, max_bytes: usize) -> Option<Pastebo
                     return None;
                 }
                 let ty = nsarray_get(types, j);
-                let type_name = nsstring_to_string(ty)?;
+                let Some(type_name) = nsstring_to_string(ty) else { continue };
                 // 我们自己的标记不必还原
                 if type_name == PASTEBOARD_TYPE_TRANSIENT {
                     continue;
                 }
                 let data: *mut AnyObject = msg_send![item, dataForType: ty];
                 if data.is_null() {
-                    return None;
+                    continue;
                 }
                 let len: usize = msg_send![data, length];
                 total = total.saturating_add(len);
@@ -287,7 +311,7 @@ pub fn pasteboard_snapshot(budget: Duration, max_bytes: usize) -> Option<Pastebo
                 }
                 let bytes: *const c_void = msg_send![data, bytes];
                 if len > 0 && bytes.is_null() {
-                    return None;
+                    continue;
                 }
                 let copy = if len == 0 {
                     Vec::new()
@@ -319,21 +343,15 @@ pub fn pasteboard_restore(snapshot: &PasteboardSnapshot, transient: bool, expect
         let mut new_items: Vec<Retained<AnyObject>> = Vec::with_capacity(snapshot.items.len());
         for (index, entry) in snapshot.items.iter().enumerate() {
             let item: Option<Retained<AnyObject>> = msg_send![class!(NSPasteboardItem), new];
-            let Some(item) = item else { return false };
+            let Some(item) = item else { continue };
             for (type_name, bytes) in entry {
                 let ty = NSString::from_str(type_name);
                 let data = NSData::with_bytes(bytes);
-                let ok: bool = msg_send![&*item, setData: &*data, forType: &*ty];
-                if !ok {
-                    return false;
-                }
+                let _: bool = msg_send![&*item, setData: &*data, forType: &*ty];
             }
             if transient && index == 0 {
                 let empty = NSData::with_bytes(&[]);
-                let ok: bool = msg_send![&*item, setData: &*empty, forType: &*transient_type];
-                if !ok {
-                    return false;
-                }
+                let _: bool = msg_send![&*item, setData: &*empty, forType: &*transient_type];
             }
             new_items.push(item);
         }

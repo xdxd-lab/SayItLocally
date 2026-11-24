@@ -11,6 +11,10 @@ use std::ffi::c_void;
 /// 超过这个时间就当拿不到，宁可少一条信号也不拖慢热键。
 pub const DEFAULT_TIMEOUT_SECS: f32 = 0.25;
 
+pub fn is_text_role(role: &str) -> bool {
+    matches!(role, "AXTextField" | "AXTextArea" | "AXComboBox" | "AXSearchField")
+}
+
 pub struct AxElement(CfOwned);
 
 impl AxElement {

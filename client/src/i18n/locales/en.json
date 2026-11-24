@@ -60,6 +60,8 @@
   "overlay.recognizedText": "Transcript",
   "overlay.fallbackHint": "This app won't accept text directly. Press Ctrl + C to copy, or Esc to dismiss.",
   "overlay.fallbackHintMac": "This app won't accept text directly. Press ⌘C to copy, or Esc to dismiss.",
+  "overlay.focusChangedHintMac": "The input focus changed. Press ⌘C to copy, or Esc to dismiss.",
+  "overlay.focusExpiredHintMac": "The original input target is no longer available. Press ⌘C to copy, or Esc to dismiss.",
   "overlay.copyText": "Copy text",
   "overlay.copyTextWithHotkey": "Copy text (Ctrl + C)",
   "overlay.copyTextWithHotkeyMac": "Copy text (⌘C)",
