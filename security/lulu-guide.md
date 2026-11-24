@@ -1,6 +1,6 @@
 # LuLu 安裝與封鎖指引（L-26、L-54）
 
-整理時間：2026-11-20 22:35（UTC+08:00）。最後更新：2026-11-25 00:24。此步驟需使用者自行操作，因為要在系統設定中核准網路延伸功能。
+整理時間：2026-11-20 22:35（UTC+08:00）。最後更新：2026-11-25 00:36。此步驟需使用者自行操作，因為要在系統設定中核准網路延伸功能。
 
 ## 為什麼需要
 
@@ -26,19 +26,27 @@ SayItLocally 是自行建置的 App，沒有沙盒，只有 ad-hoc 簽章。CSP 
 2. 打開 dmg，把 `LuLu.app` 拖到「應用程式」，再從「應用程式」開啟。
 3. 依照提示到「系統設定」核准 LuLu 的系統延伸功能與網路過濾器（內容過濾器）。這是 LuLu 攔截連線的方式，不是 VPN。核准時需要輸入密碼。
 4. 第一次設定時，建議選擇允許 Apple 程式與既有程式，以免日常程式跳出大量提示。
+   - 請先安裝並設定 LuLu，再放入 `SayItLocally.app`，或取消勾選「允許既有程式」。若重建後規則失配，「允許既有程式」可能導致 App 自動放行。這是依設定行為推論，尚待實機確認。
 
 Homebrew 也提供 `lulu` cask（`brew install --cask lulu`），下載的是同一個 GitHub 檔案，SHA-256 也相同。
 
 ## 封鎖 SayItLocally
 
-1. 用瀏覽器或另一台裝置下載模型。先從 [模型 catalog](../client/src-tauri/src/models/catalog.rs) 找到要用的模型 ID、官方下載來源及檔名。
+1. 用瀏覽器或另一台裝置從 catalog 登錄的來源下載模型。網址格式為 `https://huggingface.co/<repo>/resolve/main/<file>`。模型 ID、上游作者的 Hugging Face 倉庫（`repo`）及原始檔名（`file`）請查 [模型 catalog](../client/src-tauri/src/models/catalog.rs)。
 2. 執行 `shasum -a 256 "<模型檔案>"`，比對結果與同一款模型在 catalog 的 `sha256`。兩者一致才繼續。
-3. 保留 catalog 的原始檔名，將模型搬到 `~/Library/Application Support/com.sayitlocally.desktop/models/<模型 ID>/`。若曾自訂模型位置，請用自訂的模型根目錄。缺少的目錄可先建立。
+3. 保留 catalog 的原始檔名，將模型搬到 `~/Library/Application Support/com.sayitlocally.desktop/models/<模型 ID>/`。若曾自訂模型位置，請用自訂的模型根目錄。可用下列指令建立預設目錄，先把 `<模型 ID>` 換成實際的模型 ID。
+
+   ```sh
+   mkdir -p "$HOME/Library/Application Support/com.sayitlocally.desktop/models/<模型 ID>"
+   ```
+
 4. **第一次開啟 `SayItLocally.app` 之前**，先在 LuLu 的 Rules 視窗選 Add Rule，加入下列封鎖規則：
    - 程式路徑：`/Applications/SayItLocally.app/Contents/MacOS/sayitlocally`（依實際安裝位置調整）
    - 遠端位址：`*`，連接埠：`*`
    - 動作：**Block**
 5. 開啟 App 並選取模型。App 載入前會核對登錄的檔名、大小及 SHA-256（L-94）。
+   - 聽寫畫面若只顯示「連接失敗」，可能是模型的 SHA-256 不符。**請保留 Block 規則**，到「語音引擎」頁的測試卡查看詳細原因。
+   - 模型大小不符時，設定頁會顯示未下載或提供「下載」按鈕。**請勿按「下載」**。現有下載流程會先刪除大小不符的檔案，再嘗試連線。在 Block 規則下，原檔會被刪除，下載也會失敗。請依步驟 1～3 驗證正確的檔案並重新搬入。
 
 每次重建後請確認封鎖規則仍然存在。LuLu 可能把重新 ad-hoc 簽章的版本視為新程式，再次提示時請選 Block。平常可留意 LuLu 的提示與規則清單，查看 App 是否嘗試連線（S10）。
 
