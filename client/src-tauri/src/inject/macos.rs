@@ -162,6 +162,7 @@ struct ClipboardBackup {
 }
 
 impl ClipboardBackup {
+    // [自訂] L-80：保護關閉時略過所有剪貼簿讀取。
     fn capture(
         protect: bool,
         read_text: impl FnOnce() -> Option<String>,
@@ -229,6 +230,7 @@ fn focus_failure(change: focus::FocusChange) -> InjectResult {
     }
 }
 
+// [自訂] L-80：實際貼上接入原生焦點核對與剪貼簿服務。
 fn inject_with_native_services(
     text: &str, target_pid: i32, restore_clipboard: bool, focus_token: Option<&str>, keycode: CGKeyCode,
 ) -> InjectResult {

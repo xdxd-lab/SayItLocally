@@ -1,6 +1,7 @@
 use serde::Deserialize;
 use std::fs;
-use std::io::Write;
+use std::io::{Seek, Write};
+use std::path::Path;
 use tauri::Emitter;
 
 #[derive(Deserialize)]
@@ -88,12 +89,8 @@ pub fn save_export_bundle(payload: ExportBundlePayload) -> Result<Option<String>
 
     let file = fs::File::create(&path).map_err(|e| e.to_string())?;
     let mut zip = zip::ZipWriter::new(file);
-    let options = zip::write::FileOptions::default()
-        .compression_method(zip::CompressionMethod::Deflated);
-
     for item in &payload.files {
-        zip.start_file(&item.name, options).map_err(|e| e.to_string())?;
-        zip.write_all(item.content.as_bytes()).map_err(|e| e.to_string())?;
+        super::archive::write_deflated_entry(&mut zip, &item.name, item.content.as_bytes())?;
     }
 
     zip.finish().map_err(|e| e.to_string())?;
@@ -139,11 +136,6 @@ pub async fn save_full_export(
         let total = json_files.len() + audio_files.len();
         let file = fs::File::create(&out_path).map_err(|e| e.to_string())?;
         let mut zip = zip::ZipWriter::new(file);
-        let text_opts = zip::write::FileOptions::default()
-            .compression_method(zip::CompressionMethod::Deflated);
-        let audio_opts = zip::write::FileOptions::default()
-            .compression_method(zip::CompressionMethod::Stored); // 音频不压缩，速度快
-
         let mut current = 0usize;
 
         // 写入 JSON 文件
@@ -152,8 +144,7 @@ pub async fn save_full_export(
             let _ = app_handle.emit("export-progress", ExportProgress {
                 current, total, filename: item.name.clone(),
             });
-            zip.start_file(&item.name, text_opts).map_err(|e| e.to_string())?;
-            zip.write_all(item.content.as_bytes()).map_err(|e| e.to_string())?;
+            super::archive::write_deflated_entry(&mut zip, &item.name, item.content.as_bytes())?;
         }
 
         // 写入音频文件
@@ -165,10 +156,7 @@ pub async fn save_full_export(
             let _ = app_handle.emit("export-progress", ExportProgress {
                 current, total, filename: fname.clone(),
             });
-            let zip_name = format!("audio/{}", fname);
-            zip.start_file(&zip_name, audio_opts).map_err(|e| e.to_string())?;
-            let bytes = fs::read(audio_path).map_err(|e| format!("Failed to read audio file {}: {}", fname, e))?;
-            zip.write_all(&bytes).map_err(|e| e.to_string())?;
+            write_export_recording(&mut zip, &fname, audio_path)?;
         }
 
         zip.finish().map_err(|e| e.to_string())?;
@@ -179,4 +167,39 @@ pub async fn save_full_export(
     })
     .await
     .map_err(|e| format!("Export task failed: {}", e))?
+}
+
+fn write_export_recording<W: Write + Seek>(
+    zip: &mut zip::ZipWriter<W>,
+    name: &str,
+    path: &Path,
+) -> Result<(), String> {
+    let read_error = |error| format!("Failed to read audio file {name}: {error}");
+    let mut source = fs::File::open(path).map_err(read_error)?;
+    let length = source.metadata().map_err(read_error)?.len();
+    let options = super::archive::file_options(zip::CompressionMethod::Stored, length);
+    zip.start_file(format!("audio/{name}"), options).map_err(|e| e.to_string())?;
+    std::io::copy(&mut source, zip).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::{Cursor, Read};
+
+    #[test]
+    fn full_export_recording_keeps_the_audio_name_and_stored_method() {
+        let source = std::env::temp_dir().join(format!("sayit-export-test-{}.wav", uuid::Uuid::new_v4()));
+        fs::write(&source, b"recording").unwrap();
+        let mut writer = zip::ZipWriter::new(Cursor::new(Vec::new()));
+        write_export_recording(&mut writer, "example.wav", &source).unwrap();
+        let mut archive = zip::ZipArchive::new(writer.finish().unwrap()).unwrap();
+        let mut recording = archive.by_name("audio/example.wav").unwrap();
+        assert_eq!(recording.compression(), zip::CompressionMethod::Stored);
+        let mut bytes = Vec::new();
+        recording.read_to_end(&mut bytes).unwrap();
+        assert_eq!(bytes, b"recording");
+        fs::remove_file(source).unwrap();
+    }
 }

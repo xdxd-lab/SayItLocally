@@ -12,6 +12,7 @@ import {
 } from './ConfigTransferDialogs'
 import {
   exportConfigFile,
+  describeBackupRestoreError,
   exportFullFile,
   inspectConfigImport,
   pickImportFile,
@@ -210,7 +211,7 @@ export default function BackupSection() {
       // 略作停留让用户看到提示，再自动重启使更改生效
       setTimeout(() => { void restartApp() }, 1500)
     } catch (error) {
-      setActionError(t('backup.importFailed', { message: String(error) }))
+      setActionError(t('backup.importFailed', { message: describeBackupRestoreError(error) }))
       setBusyAction(null)
     }
   }

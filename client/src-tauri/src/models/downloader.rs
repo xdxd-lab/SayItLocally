@@ -1977,6 +1977,65 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
+    fn zero_progress_rejects_assembly_links_without_touching_target() {
+        use std::fs;
+        let dir = unique_test_path("assembly_links");
+        fs::create_dir(&dir).unwrap();
+        let dest = dir.join("weight.gguf");
+        let partial = dir.join("weight.gguf.par.part");
+        let state = assembly_test_state(0);
+        fs::write(&dest, b"existing").unwrap();
+        for symbolic in [false, true] {
+            if symbolic {
+                std::os::unix::fs::symlink(&dest, &partial).unwrap();
+            } else {
+                fs::hard_link(&dest, &partial).unwrap();
+            }
+            assert!(prepare_assembly_file(&partial, &dest, &state.chunks, 0).is_err());
+            assert_eq!(fs::read(&partial).unwrap(), b"existing");
+            assert_eq!(fs::read(&dest).unwrap(), b"existing");
+            fs::remove_file(&partial).unwrap();
+        }
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn zero_progress_remove_failure_keeps_chunks_state_and_destination() {
+        use std::fs::{self, Permissions};
+        use std::os::unix::fs::PermissionsExt;
+        let dir = unique_test_path("assembly_remove");
+        fs::create_dir(&dir).unwrap();
+        let dest = dir.join("weight.gguf");
+        let partial = dir.join("weight.gguf.par.part");
+        let state_path = parallel_state_path(&partial);
+        let first_chunk = parallel_chunk_path(&partial, 0);
+        let remove_probe = dir.join("remove-probe");
+        let mut state = assembly_test_state(0);
+        let chunks = state.chunks.clone();
+        fs::write(&dest, b"existing").unwrap();
+        fs::write(&partial, b"stale").unwrap();
+        fs::write(&first_chunk, b"a").unwrap();
+        fs::write(&remove_probe, b"").unwrap();
+        persist_parallel_state(&state_path, &state).unwrap();
+        fs::set_permissions(&dir, Permissions::from_mode(0o500)).unwrap();
+        let blocked = fs::remove_file(&remove_probe).is_err();
+        let result = blocked.then(|| assemble_or_reset_parallel_download(&partial, &dest, &state_path, &chunks, &mut state));
+        fs::set_permissions(&dir, Permissions::from_mode(0o700)).unwrap();
+        if let Some(result) = result {
+            let error = result.unwrap_err();
+            assert!(error.contains("Failed to remove temporary/corrupted file"), "{error}");
+            assert_eq!(fs::read(&partial).unwrap(), b"stale");
+            assert_eq!(fs::read(&first_chunk).unwrap(), b"a");
+            let saved: ParallelDownloadState = serde_json::from_slice(&fs::read(&state_path).unwrap()).unwrap();
+            assert_eq!(saved.assembled_chunks, 0);
+            assert_eq!(fs::read(&dest).unwrap(), b"existing");
+        }
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn completed_read_only_assembly_skips_preparation() {
         use std::fs::{self, Permissions};
         use std::os::unix::fs::PermissionsExt;

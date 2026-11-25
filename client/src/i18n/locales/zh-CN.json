@@ -1005,6 +1005,8 @@
   "backup.unknownError": "未知错误",
   "backup.exportFailed": "导出失败：{message}",
   "backup.importFailed": "导入失败：{message}",
+  "backup.audioDirectoryUnsafe": "audio 录音目录是符号链接或其他非目录项目。请先移走该项目，使用普通录音目录后再试。",
+  "backup.audioDestinationUnsafe": "录音目标位置是符号链接、目录或其他非文件项目。请将冲突项目移出录音目录后再试。",
   "backup.configTitle": "配置",
   "backup.configDesc": "可选择导出完整设置，或单独导出热词、文本替换和润色模式",
   "backup.exporting": "正在导出",
