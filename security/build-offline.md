@@ -33,6 +33,7 @@
 ## 建置入口與外連限制
 
 - 只接受 `--install`、`--bundles app|dmg`、`--debug`、`--verbose` 這幾個參數。自訂的 Tauri config 或 runner 可能繞過離線設定，所以一律拒絕。
+- SC-49 更新鎖定檔後，既有的 `client/node_modules` 仍是舊版。下次建置須加上 `--install`，才能從本機快取重裝並使用更新後的前端套件。本輪已在暫存複本驗證本機 npm 快取足以離線安裝。
 - 清除繼承的 `TAURI_CONFIG`，避免透過環境變數傳入額外的 Tauri 建置設定。
 - 直接呼叫專案內的 `node_modules/.bin/tauri`，不經過 `npx`，避免改用全域或快取裡的 CLI。
 - PATH 直接加入本機 Node、CMake 及已核對的工具鏈，並移除預設與自訂 Cargo home 的 `bin`，以略過常見的 rustup proxy。Tauri CLI 2.10.1 的桌面建置只有在顯式指定 target 時會執行 `rustup target list`。腳本的白名單排除了這個入口。專案的 `build.rs` 和快取中的 `tauri-build` 2.5.6 原始碼未發現 rustup 呼叫，其他傳遞依賴的執行行為未查證。

@@ -222,6 +222,24 @@ mod tests {
     }
 
     #[test]
+    fn verify_with_rejects_same_pid_window_change_and_same_window_element_change() {
+        let targets = FocusTargets::new();
+        let token = targets.begin();
+        targets.save(&token, snapshot(Some(20), Some(11), Some(12)));
+        for (window, element, why) in [
+            (23, 12, FocusChange::Window),
+            (11, 24, FocusChange::Element),
+        ] {
+            let result = targets.verify_with(Some(&token), 20, FocusReader {
+                own_pid: 21,
+                frontmost_pid: || Some(20),
+                keyboard_target: |pid| Some(snapshot(Some(pid), Some(window), Some(element))),
+            }, i32::eq);
+            assert_eq!(result, Err(why));
+        }
+    }
+
+    #[test]
     fn verification_rejects_expired_tokens_and_release_during_ax_read() {
         let targets = FocusTargets::new();
         let token = targets.begin();
