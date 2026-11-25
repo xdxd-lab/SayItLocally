@@ -137,15 +137,21 @@ fn capture_context(
         }
     }
     // Chrome／Electron 的首個焦點回應可能只是容器。只有初始文字元件可用於比較。
-    if let Some(target) = snapshot {
-        target.element = editable_element_ref(focused, &ctx.control_type, ctx.is_password, selection.is_some());
-    }
+    set_snapshot_element(snapshot, focused, &ctx.control_type, ctx.is_password, selection.is_some());
     ctx
 }
 
 // [自訂] L-80：初始容器不提供可信的編輯目標身分。
-fn editable_element_ref<T>(element: T, role: &str, is_password: bool, has_range: bool) -> Option<T> {
-    (ax::is_text_role(role) || is_password || has_range).then_some(element)
+fn set_snapshot_element<T>(
+    snapshot: Option<&mut focus::Snapshot<T>>,
+    element: T,
+    role: &str,
+    is_password: bool,
+    has_range: bool,
+) {
+    if let Some(target) = snapshot {
+        target.element = (ax::is_text_role(role) || is_password || has_range).then_some(element);
+    }
 }
 
 fn utf16_slice(units: &[u16], start: usize, end: usize) -> String {
@@ -282,14 +288,23 @@ mod tests {
 
 #[cfg(test)]
 mod focus_target_tests {
-    use super::editable_element_ref;
+    use super::{focus::Snapshot, set_snapshot_element};
 
     #[test]
     fn only_initial_editable_elements_are_retained_for_focus_comparison() {
-        assert_eq!(editable_element_ref(1, "AXTextField", false, false), Some(1));
-        assert_eq!(editable_element_ref(2, "AXGroup", false, true), Some(2));
-        assert_eq!(editable_element_ref(3, "AXUnknown", true, false), Some(3));
-        assert_eq!(editable_element_ref(4, "AXGroup", false, false), None);
-        assert_eq!(editable_element_ref(5, "", false, false), None);
+        let mut snapshot = Snapshot { pid: Some(42), window: Some(7), element: None };
+        set_snapshot_element(Some(&mut snapshot), 1, "AXTextField", false, false);
+        assert_eq!(snapshot.element, Some(1));
+        set_snapshot_element(Some(&mut snapshot), 2, "AXGroup", false, true);
+        assert_eq!(snapshot.element, Some(2));
+        set_snapshot_element(Some(&mut snapshot), 3, "AXUnknown", true, false);
+        assert_eq!(snapshot.element, Some(3));
+        set_snapshot_element(Some(&mut snapshot), 4, "AXGroup", false, false);
+        assert_eq!(snapshot.element, None);
+        set_snapshot_element(Some(&mut snapshot), 5, "", false, false);
+        assert_eq!(snapshot.element, None);
+        set_snapshot_element(None, 6, "AXTextField", false, false);
+        assert_eq!(snapshot.pid, Some(42));
+        assert_eq!(snapshot.window, Some(7));
     }
 }

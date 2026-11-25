@@ -252,6 +252,7 @@ fn finalize_download(
     install_verified_download(temp_path, dest_path)
 }
 
+// [自訂] L-94：先驗證暫存檔，成功後才檢查與更換目的地。
 fn verify_temp_size(temp_path: &Path, expected_size: u64, size_error_code: &str) -> Result<(), String> {
     let metadata = std::fs::symlink_metadata(temp_path)
         .map_err(|e| download_io_error("Failed to inspect temporary download", e))?;
@@ -267,6 +268,7 @@ fn verify_temp_size(temp_path: &Path, expected_size: u64, size_error_code: &str)
     Ok(())
 }
 
+// [自訂] L-94：目的地錯誤與平行暫存完整性錯誤分開處理。
 fn install_verified_download(temp_path: &Path, dest_path: &Path) -> Result<(), String> {
     validate_download_destination(dest_path)?;
     std::fs::rename(temp_path, dest_path)
@@ -1031,6 +1033,7 @@ fn load_or_create_parallel_state(
     Ok(state)
 }
 
+// [自訂] L-94：只有組裝階段的分片 stat 錯誤觸發完整性重置。
 fn chunk_file_len(path: &Path, maximum: u64, phase: ParallelPhase) -> Result<u64, String> {
     match std::fs::metadata(path) {
         Ok(metadata) if metadata.len() <= maximum => Ok(metadata.len()),
@@ -1051,9 +1054,26 @@ fn parallel_read_error(context: &str, error: impl std::fmt::Display) -> String {
 
 fn prepare_assembly_file(
     temp_path: &Path,
+    dest_path: &Path,
     chunks: &[ChunkSpec],
     assembled_chunks: usize,
 ) -> Result<(), String> {
+    // [自訂] L-94：沒有已提交的組裝進度，可安全丟棄舊組裝檔並重建。
+    if assembled_chunks == 0 {
+        let existing_target = std::fs::canonicalize(dest_path).ok();
+        let artifact_dir = std::fs::canonicalize(temp_path.parent().unwrap_or(Path::new(".")))
+            .map_err(|error| download_io_error("Failed to resolve model directory", error))?;
+        let artifact = artifact_dir.join(temp_path.file_name().unwrap_or_default());
+        check_download_artifact(&artifact, existing_target.as_deref())?;
+        remove_file_if_exists(&artifact)?;
+        std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&artifact)
+            .map_err(|error| download_io_error("Failed to create assembly file", error))?;
+        return Ok(());
+    }
+
     let expected_len: u64 = chunks
         .iter()
         .take(assembled_chunks)
@@ -1064,11 +1084,9 @@ fn prepare_assembly_file(
         .write(true)
         .open(temp_path)
         .map_err(|error| {
-            // 如果已有組裝進度，確認是否只是無法寫入；已存資料也讀不到才丟棄。
-            if expected_len > 0 {
-                if let Err(read_error) = std::fs::File::open(temp_path) {
-                    return parallel_read_error("Failed to open existing assembly file for reading", read_error);
-                }
+            // [自訂] L-94：已有組裝進度，已存資料也讀不到才丟棄。
+            if let Err(read_error) = std::fs::File::open(temp_path) {
+                return parallel_read_error("Failed to open existing assembly file for reading", read_error);
             }
             download_io_error("Failed to open assembly file", error)
         })?;
@@ -1094,11 +1112,12 @@ fn prepare_assembly_file(
 
 fn assemble_or_reset_parallel_download(
     temp_path: &Path,
+    dest_path: &Path,
     state_path: &Path,
     chunks: &[ChunkSpec],
     state: &mut ParallelDownloadState,
 ) -> Result<(), String> {
-    let result = assemble_parallel_chunks(temp_path, state_path, chunks, state);
+    let result = assemble_parallel_chunks(temp_path, dest_path, state_path, chunks, state);
     if result.as_ref().is_err_and(|error| is_parallel_integrity_error(error)) {
         cleanup_parallel_artifacts_best_effort(temp_path, state_path, chunks);
     }
@@ -1111,11 +1130,12 @@ fn is_parallel_integrity_error(error: &str) -> bool {
 
 fn assemble_parallel_chunks(
     temp_path: &Path,
+    dest_path: &Path,
     state_path: &Path,
     chunks: &[ChunkSpec],
     state: &mut ParallelDownloadState,
 ) -> Result<(), String> {
-    prepare_assembly_file(temp_path, chunks, state.assembled_chunks)?;
+    prepare_assembly_file(temp_path, dest_path, chunks, state.assembled_chunks)?;
 
     for index in 0..state.assembled_chunks {
         // 崩溃可能发生在状态落盘后、旧分片删除前；这些残留现在可以安全清理。
@@ -1295,6 +1315,7 @@ async fn download_file_parallel(
 
         for chunk in &chunks {
             let path = parallel_chunk_path(temp_path, chunk.index);
+            // [自訂] L-94：切換到 Assembling 前仍沿用下載階段的 I/O 分類。
             let actual = chunk_file_len(&path, chunk.len(), ParallelPhase::Downloading)?;
             if actual != chunk.len() {
                 return Err(download_error(
@@ -1312,12 +1333,11 @@ async fn download_file_parallel(
         state.phase = ParallelPhase::Assembling;
         state.assembled_chunks = 0;
         persist_parallel_state(&state_path, &state)?;
-        remove_file_if_exists(temp_path)?;
     }
 
     // [自訂] L-94：已完成的組裝可直接驗證，不再要求以寫入模式開啟。
     if state.assembled_chunks < chunks.len() {
-        assemble_or_reset_parallel_download(temp_path, &state_path, &chunks, &mut state)?;
+        assemble_or_reset_parallel_download(temp_path, dest_path, &state_path, &chunks, &mut state)?;
     }
     finalize_parallel_download(temp_path, dest_path, &state_path, &chunks, total_size, expected_sha256)?;
     emit_progress(
@@ -1902,6 +1922,181 @@ mod tests {
         ))
     }
 
+    #[cfg(unix)]
+    fn assembly_test_state(assembled_chunks: usize) -> ParallelDownloadState {
+        ParallelDownloadState {
+            version: PARALLEL_STATE_VERSION,
+            total_size: 3,
+            expected_sha256: Some("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad".into()),
+            source_url: "offline-test".into(),
+            strong_etag: None,
+            chunks: calculate_chunks(3),
+            phase: ParallelPhase::Assembling,
+            assembled_chunks,
+        }
+    }
+
+    #[cfg(unix)]
+    fn check_zero_progress_recreates_assembly(mode: u32) {
+        use std::fs::{self, Permissions};
+        use std::os::unix::fs::PermissionsExt;
+        let dir = unique_test_path("zero_assembly");
+        fs::create_dir(&dir).unwrap();
+        let dest = dir.join("weight.gguf");
+        let partial = dir.join("weight.gguf.par.part");
+        let state_path = parallel_state_path(&partial);
+        let mut state = assembly_test_state(0);
+        let chunks = state.chunks.clone();
+        fs::write(&dest, b"old").unwrap();
+        fs::write(&partial, b"stale bytes").unwrap();
+        fs::set_permissions(&partial, Permissions::from_mode(mode)).unwrap();
+        for (chunk, byte) in chunks.iter().zip(b"abc") {
+            fs::write(parallel_chunk_path(&partial, chunk.index), [*byte]).unwrap();
+        }
+        persist_parallel_state(&state_path, &state).unwrap();
+        assemble_or_reset_parallel_download(&partial, &dest, &state_path, &chunks, &mut state).unwrap();
+        assert_eq!(fs::read(&partial).unwrap(), b"abc");
+        assert_ne!(fs::metadata(&partial).unwrap().permissions().mode() & 0o200, 0);
+        assert_eq!(fs::read(&dest).unwrap(), b"old");
+        let persisted: ParallelDownloadState = serde_json::from_slice(&fs::read(&state_path).unwrap()).unwrap();
+        assert_eq!(persisted.assembled_chunks, chunks.len());
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn zero_progress_recreates_no_access_assembly() {
+        check_zero_progress_recreates_assembly(0o000);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn zero_progress_recreates_read_only_assembly() {
+        check_zero_progress_recreates_assembly(0o444);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn completed_read_only_assembly_skips_preparation() {
+        use std::fs::{self, Permissions};
+        use std::os::unix::fs::PermissionsExt;
+        let dir = unique_test_path("complete_assembly");
+        fs::create_dir(&dir).unwrap();
+        let dest = dir.join("weight.gguf");
+        let partial = dir.join("weight.gguf.par.part");
+        fs::write(&dest, b"old").unwrap();
+        fs::write(&partial, b"abc").unwrap();
+        fs::set_permissions(&partial, Permissions::from_mode(0o444)).unwrap();
+        let state = assembly_test_state(calculate_chunks(3).len());
+        let state_path = parallel_state_path(&partial);
+        persist_parallel_state(&state_path, &state).unwrap();
+        tauri::async_runtime::block_on(download_file_parallel(
+            &|_| {}, "test", "weight.gguf", &state.source_url, state.total_size,
+            state.expected_sha256.as_deref().unwrap(), None, &partial, &dest, 1, 1,
+        )).unwrap();
+        assert!(!state_path.exists());
+        assert!(!partial.exists());
+        assert_eq!(fs::read(&dest).unwrap(), b"abc");
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn unreadable_parallel_state_resets_without_touching_destination() {
+        use std::fs::{self, Permissions};
+        use std::os::unix::fs::PermissionsExt;
+        let dir = unique_test_path("unreadable_state");
+        fs::create_dir(&dir).unwrap();
+        let dest = dir.join("weight.gguf");
+        let partial = dir.join("weight.gguf.par.part");
+        let state = assembly_test_state(1);
+        let state_path = parallel_state_path(&partial);
+        let chunk_path = parallel_chunk_path(&partial, 1);
+        fs::write(&dest, b"old").unwrap();
+        fs::write(&partial, b"a").unwrap();
+        fs::write(&chunk_path, b"b").unwrap();
+        persist_parallel_state(&state_path, &state).unwrap();
+        fs::set_permissions(&state_path, Permissions::from_mode(0o000)).unwrap();
+        if fs::File::open(&state_path).is_err() {
+            let recovered = load_or_create_parallel_state(
+                &partial, state.total_size, state.expected_sha256.as_deref(), &state.source_url, None, &state.chunks,
+            ).unwrap();
+            assert_eq!(recovered.phase, ParallelPhase::Downloading);
+            assert_eq!(recovered.assembled_chunks, 0);
+            assert!(!partial.exists());
+            assert!(!chunk_path.exists());
+            assert!(fs::read(&state_path).is_ok());
+            assert_eq!(fs::read(&dest).unwrap(), b"old");
+        }
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[cfg(unix)]
+    fn check_partial_assembly_read_probe(mode: u32, should_reset: bool) {
+        use std::fs::{self, OpenOptions, Permissions};
+        use std::os::unix::fs::PermissionsExt;
+        let dir = unique_test_path("partial_assembly");
+        fs::create_dir(&dir).unwrap();
+        let dest = dir.join("weight.gguf");
+        let partial = dir.join("weight.gguf.par.part");
+        let state_path = parallel_state_path(&partial);
+        let mut state = assembly_test_state(1);
+        let chunks = state.chunks.clone();
+        let chunk_path = parallel_chunk_path(&partial, 1);
+        fs::write(&dest, b"old").unwrap();
+        fs::write(&partial, b"a").unwrap();
+        fs::write(&chunk_path, b"b").unwrap();
+        persist_parallel_state(&state_path, &state).unwrap();
+        fs::set_permissions(&partial, Permissions::from_mode(mode)).unwrap();
+        if OpenOptions::new().write(true).open(&partial).is_err() {
+            let error = assemble_or_reset_parallel_download(&partial, &dest, &state_path, &chunks, &mut state).unwrap_err();
+            assert_eq!(is_parallel_integrity_error(&error), should_reset);
+            assert_eq!(partial.exists(), !should_reset);
+            assert_eq!(chunk_path.exists(), !should_reset);
+            assert_eq!(state_path.exists(), !should_reset);
+            assert_eq!(fs::read(&dest).unwrap(), b"old");
+        }
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn partial_assembly_read_probe_resets_unreadable_file() {
+        check_partial_assembly_read_probe(0o000, true);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn partial_assembly_read_probe_preserves_read_only_file() {
+        check_partial_assembly_read_probe(0o444, false);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn chunk_stat_error_resets_only_during_assembly() {
+        use std::fs;
+        let dir = unique_test_path("chunk_stat");
+        fs::create_dir(&dir).unwrap();
+        let dest = dir.join("weight.gguf");
+        let partial = dir.join("weight.gguf.par.part");
+        let state_path = parallel_state_path(&partial);
+        let mut state = assembly_test_state(0);
+        let chunks = state.chunks.clone();
+        let chunk_path = parallel_chunk_path(&partial, 0);
+        fs::write(&dest, b"old").unwrap();
+        // An existing loop forces metadata() to fail without changing directory permissions.
+        std::os::unix::fs::symlink(&chunk_path, &chunk_path).unwrap();
+        persist_parallel_state(&state_path, &state).unwrap();
+        assert!(!is_parallel_integrity_error(&chunk_file_len(&chunk_path, 1, ParallelPhase::Downloading).unwrap_err()));
+        let error = assemble_or_reset_parallel_download(&partial, &dest, &state_path, &chunks, &mut state).unwrap_err();
+        assert!(is_parallel_integrity_error(&error));
+        assert!(fs::symlink_metadata(&chunk_path).is_err());
+        assert!(!partial.exists());
+        assert!(!state_path.exists());
+        assert_eq!(fs::read(&dest).unwrap(), b"old");
+        fs::remove_dir_all(dir).unwrap();
+    }
+
     fn spawn_http_server(
         responses: Vec<Vec<u8>>,
     ) -> (String, thread::JoinHandle<Vec<String>>) {
@@ -2246,6 +2441,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("sayit-download-test-{}", uuid::Uuid::new_v4()));
         fs::create_dir(&dir).unwrap();
         let partial = dir.join("weight.part");
+        let dest = dir.join("weight.gguf");
         let state_path = dir.join("state.json");
         // The assembly lands, but the filesystem rejects replacing this directory with a state file.
         fs::create_dir(&state_path).unwrap();
@@ -2262,13 +2458,13 @@ mod tests {
             phase: ParallelPhase::Assembling,
             assembled_chunks: 0,
         };
-        let error = assemble_or_reset_parallel_download(&partial, &state_path, &chunks, &mut state).unwrap_err();
+        let error = assemble_or_reset_parallel_download(&partial, &dest, &state_path, &chunks, &mut state).unwrap_err();
         assert!(error.contains("Failed to persist parallel download state"));
         assert!(!should_fallback_to_single_stream(&error));
         assert_eq!(state.assembled_chunks, 0);
         assert_eq!(fs::read(&chunk).unwrap(), b"abc");
         fs::remove_dir(&state_path).unwrap();
-        assemble_or_reset_parallel_download(&partial, &state_path, &chunks, &mut state).unwrap();
+        assemble_or_reset_parallel_download(&partial, &dest, &state_path, &chunks, &mut state).unwrap();
         assert_eq!(fs::read(&partial).unwrap(), b"abc");
         assert!(!chunk.exists());
         assert_eq!(serde_json::from_slice::<ParallelDownloadState>(&fs::read(&state_path).unwrap()).unwrap().assembled_chunks, 1);
@@ -2300,7 +2496,7 @@ mod tests {
         fs::write(&dest, b"original").unwrap();
         fs::write(parallel_chunk_path(&partial, 0), b"ab").unwrap();
         persist_parallel_state(&state_path, &state).unwrap();
-        let error = assemble_or_reset_parallel_download(&partial, &state_path, &chunks, &mut state).unwrap_err();
+        let error = assemble_or_reset_parallel_download(&partial, &dest, &state_path, &chunks, &mut state).unwrap_err();
         assert!(error.contains("Chunk 1 disappeared before assembly"));
         assert!(!state_path.exists());
         assert!(!partial.exists());
@@ -2317,7 +2513,7 @@ mod tests {
             fs::set_permissions(&blocked, fs::Permissions::from_mode(0o000)).unwrap();
             if fs::File::open(&blocked).is_err() {
                 persist_parallel_state(&state_path, &state).unwrap();
-                let error = assemble_or_reset_parallel_download(&partial, &state_path, &chunks, &mut state)
+                let error = assemble_or_reset_parallel_download(&partial, &dest, &state_path, &chunks, &mut state)
                     .unwrap_err();
                 assert!(error.contains("Failed to open completed chunk"));
                 assert!(!state_path.exists());
@@ -2332,7 +2528,7 @@ mod tests {
         fs::write(parallel_chunk_path(&partial, 0), b"ab").unwrap();
         remove_file_if_exists(&parallel_chunk_path(&partial, 1)).unwrap();
         fs::write(parallel_chunk_path(&partial, 1), b"cd").unwrap();
-        assemble_or_reset_parallel_download(&partial, &state_path, &chunks, &mut state).unwrap();
+        assemble_or_reset_parallel_download(&partial, &dest, &state_path, &chunks, &mut state).unwrap();
         assert_eq!(fs::read(&partial).unwrap(), b"abcd");
         fs::remove_dir_all(dir).unwrap();
     }
@@ -2363,7 +2559,7 @@ mod tests {
                 end: 7,
             },
         ];
-        prepare_assembly_file(&temp_path, &chunks, 3).unwrap();
+        prepare_assembly_file(&temp_path, &unique_test_path("assembly_dest"), &chunks, 3).unwrap();
         assert_eq!(std::fs::read(&temp_path).unwrap(), b"abcdef");
         std::fs::remove_file(temp_path).unwrap();
     }
