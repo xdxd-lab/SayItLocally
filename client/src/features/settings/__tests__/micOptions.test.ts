@@ -77,12 +77,12 @@ describe('麦克风下拉的选项', () => {
     ]
     // label 为空的条目不算真实端点（无从辨认），所以列表里只剩「系统默认」。
     expect(buildMicOptions(unnamed, '', labels).map((option) => option.value)).toEqual([''])
-    // 但选中它时仍要有可选中的项，不能显示成空白。
+    // 已选设备仍在清单内，使用无名标签。
     const selected = buildMicOptions(unnamed, 'abcdef1234567890', labels)
     expect(selected[selected.length - 1]).toEqual({
       value: 'abcdef1234567890',
-      label: '上次选的麦克风当前不可用',
-      title: '上次选的麦克风当前不可用',
+      label: '麦克风 abcdef12',
+      title: '麦克风 abcdef12',
     })
   })
 

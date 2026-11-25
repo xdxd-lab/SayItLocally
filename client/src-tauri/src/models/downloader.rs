@@ -39,7 +39,10 @@ struct DownloadActivity {
 static DOWNLOAD_ACTIVITY: Lazy<Mutex<DownloadActivity>> =
     Lazy::new(|| Mutex::new(DownloadActivity::default()));
 
-/// 同一路径只能有一个下载或删除任务；存储目录迁移期间也不接受新下载。
+#[cfg(test)]
+pub(super) static TEST_MODEL_LEASES: Mutex<()> = Mutex::new(());
+
+/// 同一路径只能有一个下载或删除任务；存储目录切换期间也不接受新下载。
 pub struct ModelPathLease {
     path: PathBuf,
 }
@@ -439,6 +442,11 @@ pub fn set_custom_models_dir(dir: Option<PathBuf>) {
     if let Ok(mut guard) = CUSTOM_MODELS_DIR.write() {
         *guard = dir;
     }
+}
+
+/// Treat a poisoned setting lock as custom so startup cleanup skips it.
+pub(super) fn has_custom_models_dir() -> bool {
+    CUSTOM_MODELS_DIR.read().map_or(true, |dir| dir.is_some())
 }
 
 /// 获取模型存储根目录：优先自定义路径，否则默认路径。
@@ -2625,6 +2633,7 @@ mod tests {
 
     #[test]
     fn model_path_and_storage_leases_are_mutually_exclusive() {
+        let _guard = TEST_MODEL_LEASES.lock().unwrap();
         let path = unique_test_path("lease");
         let lease = acquire_model_path(&path).unwrap();
         assert!(acquire_model_path(&path).is_err());

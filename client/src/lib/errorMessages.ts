@@ -30,6 +30,8 @@ export type FriendlyErrorCode =
   | 'local_model_invalid'
   | 'local_model_read'
   | 'model_dir_invalid'
+  | 'model_dir_not_directory'
+  | 'model_dir_permission'
   | 'model_dir_overlap'
   | 'model_dir_unwritable'
   | 'model_dir_save'
@@ -77,6 +79,8 @@ const FRIENDLY_ERROR_CODES = new Set<FriendlyErrorCode>([
   'local_model_invalid',
   'local_model_read',
   'model_dir_invalid',
+  'model_dir_not_directory',
+  'model_dir_permission',
   'model_dir_overlap',
   'model_dir_unwritable',
   'model_dir_save',
@@ -286,6 +290,8 @@ export function describeModelsDirError(error: unknown): { message: string; detai
   const { code, text } = decodeError(error)
   switch (code) {
     case 'model_dir_invalid':
+    case 'model_dir_not_directory':
+    case 'model_dir_permission':
     case 'model_dir_overlap':
     case 'model_dir_unwritable':
     case 'model_dir_save':

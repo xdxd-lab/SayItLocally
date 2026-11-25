@@ -1,7 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { microphoneOpened } from '@/services/audio'
-import { createSettingsMicrophone } from '../settingsMicrophone'
+import { microphoneOpened, startCapture, stopCapture } from '@/services/audio'
+import { getSetting, setSetting } from '@/services/store'
+import { createSettingsMicrophone, mountSettingsMicrophone, type SettingsMicrophone } from '../settingsMicrophone'
 import { buildMicOptions } from '../utils'
+
+vi.mock('@/services/store', () => ({ getSetting: vi.fn(), setSetting: vi.fn() }))
 
 const blank = { kind: 'audioinput', deviceId: '', groupId: '', label: '' }
 const named = { ...blank, deviceId: 'live', label: 'Local mic' }
@@ -18,8 +21,8 @@ let makeContext: ReturnType<typeof vi.fn>
 let cancelFrame: ReturnType<typeof vi.fn>
 let frameCallback: FrameRequestCallback
 
-function mount() {
-  const callbacks = {
+function microphoneCallbacks() {
+  return {
     onDevices: vi.fn(),
     onTesting: vi.fn(),
     onRevealing: vi.fn(),
@@ -27,15 +30,26 @@ function mount() {
     onError: vi.fn(),
     canvas: () => null,
   }
+}
+
+function mount() {
+  const callbacks = microphoneCallbacks()
   const mic = createSettingsMicrophone(callbacks)
   disposals.push(mic.dispose)
   return { ...mic, ...callbacks }
+}
+
+async function flushMicrophoneUpdates() {
+  await Promise.resolve()
+  await Promise.resolve()
 }
 
 const disposals: (() => void)[] = []
 
 beforeEach(() => {
   vi.useFakeTimers()
+  vi.mocked(getSetting).mockReset().mockResolvedValue('')
+  vi.mocked(setSetting).mockReset().mockResolvedValue(undefined)
   stopFirst = vi.fn()
   stopSecond = vi.fn()
   stream = { getTracks: () => [{ stop: stopFirst }, { stop: stopSecond }] }
@@ -113,20 +127,55 @@ describe('settings microphone names', () => {
     vi.advanceTimersByTime(1000)
     expect(stopFirst).toHaveBeenCalledOnce()
     expect(stopSecond).toHaveBeenCalledOnce()
-    expect(mic.onError).toHaveBeenLastCalledWith('mic.error.failed')
+    expect(mic.onError).toHaveBeenLastCalledWith('mic.error.namesUnavailable')
     finishListing([named])
     await reveal
     expect(mic.onDevices).not.toHaveBeenCalledWith([named])
   })
 
-  it('reports denial without prompting again, including from the other button', async () => {
-    getUserMedia.mockRejectedValue(new DOMException('blocked', 'NotAllowedError'))
+  it('reports denial and allows an explicit retry without prompting on a device refresh', async () => {
+    getUserMedia.mockRejectedValueOnce(new DOMException('blocked', 'NotAllowedError'))
     const mic = mount()
     await mic.revealNames()
     expect(mic.onError).toHaveBeenLastCalledWith('mic.error.denied')
-    await mic.revealNames()
-    await mic.test('')
+    navigator.mediaDevices.dispatchEvent(new Event('devicechange'))
+    await flushMicrophoneUpdates()
     expect(getUserMedia).toHaveBeenCalledOnce()
+    enumerate.mockResolvedValue([named])
+    await mic.revealNames()
+    expect(getUserMedia).toHaveBeenCalledTimes(2)
+    expect(mic.onDevices).toHaveBeenLastCalledWith([named])
+    expect(mic.onError).toHaveBeenLastCalledWith(null)
+  })
+
+  it.each(['unnamed entries', 'failed enumeration'])('reports unavailable names after %s', async (scenario) => {
+    const mic = mount()
+    if (scenario === 'failed enumeration') enumerate.mockRejectedValueOnce(new Error('enumeration failed'))
+    await mic.revealNames()
+    expect(mic.onError).toHaveBeenLastCalledWith('mic.error.namesUnavailable')
+    expect(stopFirst).toHaveBeenCalledOnce()
+    expect(stopSecond).toHaveBeenCalledOnce()
+  })
+
+  it('keeps names through concurrent and later passive refreshes, matching by id only', async () => {
+    const mic = mount()
+    let finishListing!: (devices: unknown[]) => void
+    enumerate.mockReturnValueOnce(new Promise((resolve) => { finishListing = resolve }))
+    const reveal = mic.revealNames()
+    await flushMicrophoneUpdates()
+    navigator.mediaDevices.dispatchEvent(new Event('devicechange'))
+    await flushMicrophoneUpdates()
+    finishListing([named])
+    await reveal
+    expect(mic.onDevices).toHaveBeenLastCalledWith([named])
+    const same = { ...blank, deviceId: 'live', groupId: 'new-group' }
+    const other = { ...blank, deviceId: 'other' }
+    enumerate.mockResolvedValue([same, other])
+    navigator.mediaDevices.dispatchEvent(new Event('devicechange'))
+    await flushMicrophoneUpdates()
+    expect(mic.onDevices).toHaveBeenLastCalledWith([
+      { deviceId: 'live', label: named.label, groupId: 'new-group' }, other,
+    ])
   })
 
   it('retains an unavailable selection in the options while its labels are hidden', () => {
@@ -210,5 +259,90 @@ describe('settings microphone test', () => {
     expect(first.onTesting.mock.calls).toEqual(action === 'test' ? [[true]] : [])
     expect(first.onRevealing.mock.calls).toEqual(action === 'revealNames' ? [[true]] : [])
     expect(second.onTesting).not.toHaveBeenCalled()
+  })
+})
+
+
+describe('settings microphone page binding', () => {
+  it.each([['default', ''], ['prior-device', 'prior-device']])(
+    'loads %s at entry and re-entry without updating storage or losing the selection on refresh',
+    async (stored, expected) => {
+      vi.mocked(getSetting).mockResolvedValue(stored)
+      const ref: { current: SettingsMicrophone | null } = { current: null }
+      const callbacks = { ...microphoneCallbacks(), onSelectedMic: vi.fn() }
+      const leave = mountSettingsMicrophone(ref, callbacks)
+      await flushMicrophoneUpdates()
+      expect(callbacks.onSelectedMic).toHaveBeenCalledExactlyOnceWith(expected)
+      expect(setSetting).not.toHaveBeenCalled()
+      enumerate.mockResolvedValue([named])
+      navigator.mediaDevices.dispatchEvent(new Event('devicechange'))
+      await flushMicrophoneUpdates()
+      enumerate.mockResolvedValue([])
+      navigator.mediaDevices.dispatchEvent(new Event('devicechange'))
+      await flushMicrophoneUpdates()
+      expect(callbacks.onSelectedMic).toHaveBeenCalledExactlyOnceWith(expected)
+      expect(setSetting).not.toHaveBeenCalled()
+      leave()
+      const leaveAgain = mountSettingsMicrophone(ref, callbacks)
+      await flushMicrophoneUpdates()
+      expect(callbacks.onSelectedMic.mock.calls).toEqual([[expected], [expected]])
+      expect(setSetting).not.toHaveBeenCalled()
+      await ref.current!.select('live')
+      expect(setSetting).toHaveBeenCalledExactlyOnceWith('selectedMic', 'live')
+      leaveAgain()
+    },
+  )
+
+  it('cleans up both registered listeners and an active stream when the page leaves', async () => {
+    const addDevice = vi.spyOn(navigator.mediaDevices, 'addEventListener')
+    const removeDevice = vi.spyOn(navigator.mediaDevices, 'removeEventListener')
+    const addRecording = vi.spyOn(microphoneOpened, 'addEventListener')
+    const removeRecording = vi.spyOn(microphoneOpened, 'removeEventListener')
+    try {
+      const ref: { current: SettingsMicrophone | null } = { current: null }
+      const leave = mountSettingsMicrophone(ref, { ...microphoneCallbacks(), onSelectedMic: vi.fn() })
+      await ref.current!.test('')
+      leave()
+      expect(ref.current).toBeNull()
+      expect(addDevice).toHaveBeenCalledExactlyOnceWith('devicechange', expect.any(Function))
+      expect(removeDevice.mock.calls).toEqual(addDevice.mock.calls)
+      expect(addRecording).toHaveBeenCalledExactlyOnceWith('change', expect.any(Function))
+      expect(removeRecording.mock.calls).toEqual(addRecording.mock.calls)
+      expect(stopFirst).toHaveBeenCalledOnce()
+      expect(stopSecond).toHaveBeenCalledOnce()
+    } finally {
+      addDevice.mockRestore()
+      removeDevice.mockRestore()
+      addRecording.mockRestore()
+      removeRecording.mockRestore()
+    }
+  })
+
+  it('refreshes through the event produced when recorder capture succeeds', async () => {
+    const mic = mount()
+    await flushMicrophoneUpdates()
+    expect(mic.onDevices).toHaveBeenLastCalledWith([blank])
+    const recordingStream = { ...stream, getAudioTracks: () => [] }
+    getUserMedia.mockResolvedValueOnce(recordingStream)
+    enumerate.mockResolvedValue([named])
+    vi.stubGlobal('window', {
+      AudioContext: function () {
+        return {
+          state: 'running',
+          sampleRate: 16000,
+          close: closeContext,
+          createMediaStreamSource: makeSource,
+          audioWorklet: { addModule: vi.fn().mockResolvedValue(undefined) },
+        }
+      },
+    })
+    vi.stubGlobal('AudioWorkletNode', class extends EventTarget { port = {}; disconnect() {} })
+    try {
+      await startCapture(undefined, vi.fn())
+      expect(mic.onDevices).toHaveBeenLastCalledWith([named])
+      expect(getUserMedia).toHaveBeenCalledOnce()
+    } finally {
+      await stopCapture()
+    }
   })
 })

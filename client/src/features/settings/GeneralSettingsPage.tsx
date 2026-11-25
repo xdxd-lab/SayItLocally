@@ -8,7 +8,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Modal } from '@/components/ui/modal'
 import { Tooltip } from '@/components/ui/tooltip'
-import { normalizeSelectedMicId } from '@/services/audio'
+import type { MicEndpoint } from '@/services/audio'
 import { resolveMicPlan, type MicPlan } from '@/services/micRouting'
 import { refreshRecorderSettings } from '@/services/recorder'
 import { getPresetShortcuts, getSetting, setSetting } from '@/services/store'
@@ -21,7 +21,7 @@ import CorruptDbCopiesSection from './CorruptDbCopiesSection'
 import { canConfirmHistoryClear, HISTORY_CLEAR_DELAY_MS } from './historyClearConfirmation'
 // [自訂] S18／S35 WebDAV 設定區塊已註解停用：import WebDavSection from './WebDavSection'
 import MicrophoneSection from './MicrophoneSection'
-import { createSettingsMicrophone, type MicVolumeLevel } from './settingsMicrophone'
+import { mountSettingsMicrophone, type MicVolumeLevel, type SettingsMicrophone } from './settingsMicrophone'
 import { ComboShortcutInput, PTTShortcutInput } from './ShortcutInputs'
 import { pttShortcutConflictsWithAccelerator } from '@/lib/shortcutKeys'
 import { t, type LanguagePreference, type TranslationKey } from '@/i18n'
@@ -56,7 +56,7 @@ export default function GeneralSettingsPage() {
   const t = useT()
   const [languagePreference, setLanguagePreference] = useState<LanguagePreference>('auto')
   const [autoLaunch, setAutoLaunch] = useState(false)
-  const [mics, setMics] = useState<MediaDeviceInfo[]>([])
+  const [mics, setMics] = useState<MicEndpoint[]>([])
   const [selectedMic, setSelectedMic] = useState('')
   /** 跟随系统默认时录音实际会用哪个设备（系统默认是虚拟声卡时会换掉，见 micRouting.ts） */
   const [micPlan, setMicPlan] = useState<MicPlan | null>(null)
@@ -100,22 +100,16 @@ export default function GeneralSettingsPage() {
   const [animate, setAnimate] = useState(false)
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
-  const microphone = useRef<ReturnType<typeof createSettingsMicrophone> | null>(null)
-  useEffect(() => {
-    const settingsMic = createSettingsMicrophone({
-      onDevices: setMics,
-      onTesting: setTesting,
-      onRevealing: setRevealingNames,
-      onVolume: setVolumeLevel,
-      onError: setMicError,
-      canvas: () => canvasRef.current,
-    })
-    microphone.current = settingsMic
-    return () => {
-      settingsMic.dispose()
-      microphone.current = null
-    }
-  }, [])
+  const microphone = useRef<SettingsMicrophone | null>(null)
+  useEffect(() => mountSettingsMicrophone(microphone, {
+    onDevices: setMics,
+    onSelectedMic: setSelectedMic,
+    onTesting: setTesting,
+    onRevealing: setRevealingNames,
+    onVolume: setVolumeLevel,
+    onError: setMicError,
+    canvas: () => canvasRef.current,
+  }), [])
 
   useEffect(() => {
     let cancelled = false
@@ -151,9 +145,6 @@ export default function GeneralSettingsPage() {
       }))
     })()
     getLanguagePreference().then(setLanguagePreference).catch(() => { })
-    getSetting('selectedMic', '').then((raw) => {
-      if (!cancelled) setSelectedMic(normalizeSelectedMicId(raw))
-    }).catch(() => { })
     getSetting<string>('shortcutPTT').then((value) => setPttKey(value))
     getSetting('shortcutHandsFree', 'AltRight').then((value) => setHandsFreeKey(value as string))
     getSetting('shortcutToggleAi', '').then((value) => setAiToggleKey(value as string))
@@ -185,7 +176,11 @@ export default function GeneralSettingsPage() {
     void bridge.refreshNativeMenus().catch(() => { })
   }
   const toggleAutoLaunch = async () => { const next = !autoLaunch; setAutoLaunch(next); await bridge.setAutoLaunch(next) }
-  const handleMicChange = async (deviceId: string) => { setSelectedMic(deviceId); await setSetting('selectedMic', deviceId); await refreshRecorderSettings() }
+  const handleMicChange = async (deviceId: string) => {
+    if (!microphone.current) return
+    await microphone.current.select(deviceId)
+    await refreshRecorderSettings()
+  }
   const toggleMuteSystemAudio = async () => { const next = !muteSystemAudio; setMuteSystemAudio(next); await setSetting('muteSystemAudioWhileRecording', next); await refreshRecorderSettings() }
   const toggleProtectClipboard = async () => { const next = !protectClipboard; setProtectClipboard(next); await setSetting('protectClipboard', next); await refreshRecorderSettings() }
   // [自訂] S61：關閉後預設保留舊資料。清除必須再確認一次。
@@ -347,7 +342,7 @@ export default function GeneralSettingsPage() {
           onCanvasRef={(node) => { canvasRef.current = node }}
           onMicChange={handleMicChange} onTestMic={testMic}
           onRevealNames={() => void microphone.current?.revealNames()} revealingNames={revealingNames}
-          permissionDenied={micError === 'mic.error.denied'} errorMessage={micError ? t(micError) : ''} />
+          errorMessage={micError ? t(micError) : ''} />
 
         <Card>
           <CardContent className="space-y-4 p-6">

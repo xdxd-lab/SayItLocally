@@ -5,6 +5,7 @@ import { Select } from '@/components/ui/select'
 import { buildMicOptions } from './utils'
 import type { TranslationKey } from '@/i18n'
 import { useT } from '@/i18n/useT'
+import { isPseudoInputDevice, type MicEndpoint } from '@/services/audio'
 
 import type { MicVolumeLevel } from './settingsMicrophone'
 
@@ -27,12 +28,11 @@ export default function MicrophoneSection({
   onTestMic,
   onRevealNames,
   revealingNames,
-  permissionDenied,
   virtualDefaultNote,
 }: {
   /** 系统默认是虚拟声卡、录音会改用别的麦克风时的说明；空串不显示 */
   virtualDefaultNote?: string
-  mics: MediaDeviceInfo[]
+  mics: MicEndpoint[]
   selectedMic: string
   testing: boolean
   volumeLevel: MicVolumeLevel
@@ -42,16 +42,15 @@ export default function MicrophoneSection({
   onTestMic: () => void
   onRevealNames: () => void
   revealingNames: boolean
-  permissionDenied: boolean
 }) {
   const t = useT()
-  const hasNames = mics.some((device) => device.label.trim())
-  const micOptions = useMemo(() => buildMicOptions(hasNames ? mics : [], selectedMic, {
+  const hasNames = mics.some((device) => !isPseudoInputDevice(device.deviceId) && device.label.trim())
+  const micOptions = useMemo(() => buildMicOptions(mics, selectedMic, {
     systemDefault: t('mic.systemDefault'),
     systemDefaultWith: (deviceName) => t('mic.systemDefaultWith', { device: deviceName }),
     unnamed: (idPrefix) => t('mic.unnamed', { id: idPrefix }),
     unavailable: t('mic.unavailable'),
-  }), [hasNames, mics, selectedMic, t])
+  }), [mics, selectedMic, t])
 
   const vol = VOLUME_CONFIG[volumeLevel]
 
@@ -69,13 +68,13 @@ export default function MicrophoneSection({
                 options={micOptions}
                 className="sm:flex-1"
               />
-              <Button variant="outline" size="sm" onClick={onTestMic} disabled={testing || revealingNames || permissionDenied} className="h-9 shrink-0 px-4">
+              <Button variant="outline" size="sm" onClick={onTestMic} disabled={testing || revealingNames} className="h-9 shrink-0 px-4">
                 {testing ? t('mic.testing') : t('mic.test')}
               </Button>
             </div>
             {!hasNames && (
               <Button variant="outline" size="sm" onClick={onRevealNames}
-                disabled={testing || revealingNames || permissionDenied} className="mt-2">
+                disabled={testing || revealingNames} className="mt-2">
                 {t('mic.showNames')}
               </Button>
             )}

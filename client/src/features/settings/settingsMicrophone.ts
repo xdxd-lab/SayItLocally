@@ -1,4 +1,5 @@
-import { listMicrophones, microphoneOpened } from '@/services/audio'
+import { isPseudoInputDevice, listMicrophones, microphoneOpened, normalizeSelectedMicId, type MicEndpoint } from '@/services/audio'
+import { getSetting, setSetting } from '@/services/store'
 import { drawBars, resetWaveform } from '@/services/waveform'
 import type { TranslationKey } from '@/i18n'
 
@@ -12,7 +13,7 @@ export function createSettingsMicrophone({
   onError,
   canvas,
 }: {
-  onDevices: (devices: MediaDeviceInfo[]) => void
+  onDevices: (devices: MicEndpoint[]) => void
   onTesting: (testing: boolean) => void
   onRevealing: (revealing: boolean) => void
   onVolume: (volume: MicVolumeLevel) => void
@@ -21,43 +22,45 @@ export function createSettingsMicrophone({
 }) {
   const media = navigator.mediaDevices
   let disposed = false
-  let denied = false
+  let devices: MicEndpoint[] = []
   let revision = 0
   let closeActive: (() => void) | null = null
 
   function reportError(error: unknown) {
     const name = error instanceof Error ? error.name : ''
-    denied ||= name === 'NotAllowedError'
     onError(name === 'NotAllowedError' ? 'mic.error.denied'
       : name === 'NotFoundError' ? 'mic.error.notFound' : 'mic.error.failed')
+  }
+
+  function updateDevices(next: MicEndpoint[]) {
+    const labels = new Map(devices.filter((device) => device.deviceId && device.label.trim())
+      .map((device) => [device.deviceId, device.label]))
+    devices = next.map((device) => {
+      const label = labels.get(device.deviceId)
+      return !device.label.trim() && label
+        ? { deviceId: device.deviceId, groupId: device.groupId, label }
+        : device
+    })
+    onDevices(devices)
   }
 
   async function refresh() {
     const id = ++revision
     try {
-      const devices = await listMicrophones()
-      if (!disposed && id === revision) onDevices(devices)
+      const next = await listMicrophones()
+      if (!disposed && id === revision) updateDevices(next)
     } catch {
       // Passive refresh must not request access or clear a working list.
     }
   }
 
   const refreshDevices = () => { void refresh() }
-  function refreshAfterRecording() {
-    if (disposed) return
-    if (denied) {
-      denied = false
-      onError(null)
-    }
-    refreshDevices()
-  }
-
   media?.addEventListener('devicechange', refreshDevices)
-  microphoneOpened.addEventListener('change', refreshAfterRecording)
+  microphoneOpened.addEventListener('change', refreshDevices)
   refreshDevices()
 
   async function start(mode: 'names' | 'test', deviceId = '') {
-    if (disposed || denied || closeActive) return
+    if (disposed || closeActive) return
     let stream: MediaStream | undefined
     let context: AudioContext | undefined
     let frame: number | undefined
@@ -92,12 +95,24 @@ export function createSettingsMicrophone({
         // Some browsers expose names only during capture. Stop as soon as the
         // list arrives (or if the single enumeration stalls), without sampling audio.
         timeout = setTimeout(() => {
-          revision += 1
           close()
-          onError('mic.error.failed')
+          onError('mic.error.namesUnavailable')
         }, 1000)
-        await refresh()
-        close()
+        try {
+          const next = await listMicrophones()
+          if (closeActive === close) {
+            // An older passive enumeration must not take precedence.
+            revision += 1
+            updateDevices(next)
+            if (!next.some((device) => !isPseudoInputDevice(device.deviceId) && device.label.trim())) {
+              onError('mic.error.namesUnavailable')
+            }
+          }
+        } catch {
+          if (closeActive === close) onError('mic.error.namesUnavailable')
+        } finally {
+          close()
+        }
         return
       }
 
@@ -146,8 +161,40 @@ export function createSettingsMicrophone({
     dispose() {
       disposed = true
       media?.removeEventListener('devicechange', refreshDevices)
-      microphoneOpened.removeEventListener('change', refreshAfterRecording)
+      microphoneOpened.removeEventListener('change', refreshDevices)
       closeActive?.()
     },
+  }
+}
+
+export type SettingsMicrophone = ReturnType<typeof createSettingsMicrophone> & {
+  select: (id: string) => Promise<void>
+}
+
+// Loading and refreshing are read-only. Only a selection made by the user writes the setting.
+export function mountSettingsMicrophone(
+  ref: { current: SettingsMicrophone | null },
+  { onSelectedMic, ...callbacks }: Parameters<typeof createSettingsMicrophone>[0] & {
+    onSelectedMic: (id: string) => void
+  },
+) {
+  let disposed = false
+  let selected = false
+  const mic = createSettingsMicrophone(callbacks)
+  ref.current = {
+    ...mic,
+    async select(id) {
+      selected = true
+      onSelectedMic(id)
+      await setSetting('selectedMic', id)
+    },
+  }
+  void getSetting('selectedMic', '').then((raw) => {
+    if (!disposed && !selected) onSelectedMic(normalizeSelectedMicId(raw))
+  }).catch(() => {})
+  return () => {
+    disposed = true
+    mic.dispose()
+    ref.current = null
   }
 }
