@@ -96,15 +96,15 @@ fn notify_storage_recovery(recovery: storage::StorageRecovery) {
                 (false, false) => "SayItLocally could not read its local database because it is damaged.",
             };
             if zh {
-                format!("{reason}\n\n已用全新的数据启动，设置和历史记录暂时为空。\n原文件已保留，可在设置的数据库副本列表中查看。副本名称：\n{}\n\n这个副本只在本机，可能含有旧的设置、历史记录或密钥。不需要时请自行删除，请勿发给他人。旧录音已暂停自动清理，可在设置中恢复。", backup.display())
+                format!("{reason}\n\n已用全新的数据启动，设置和历史记录暂时为空。\n原文件已保留，可在设置的数据库副本列表中查看。副本路径：\n{}\n\n这个副本只在本机，可能含有旧的设置、历史记录或密钥。不需要时请自行删除，请勿发给他人。旧录音已暂停自动清理，可在设置中恢复。", backup.display())
             } else {
-                format!("{reason}\n\nIt has started with fresh data, so settings and history are empty for now.\nThe original files are in the database copies list in Settings under:\n{}\n\nThis copy stays on this computer and may contain old settings, history or keys. Delete it yourself when you no longer need it, and do not send it to anyone. Automatic recording cleanup is paused. You can resume it in Settings.", backup.display())
+                format!("{reason}\n\nIt has started with fresh data, so settings and history are empty for now.\nThe original files are listed under Database Copies in Settings. Copy path:\n{}\n\nThis copy stays on this computer and may contain old settings, history or keys. Delete it yourself when you no longer need it, and do not send it to anyone. Automatic recording cleanup is paused. You can resume it in Settings.", backup.display())
             }
         }
         storage::StorageRecovery::MovedAsideInMemory { backup } => if zh {
-            format!("SayItLocally 已保留原数据库文件，但无法打开新数据文件。副本名称：\n{}\n\n本次使用内存，设置和历史记录退出后不会保存。旧录音已暂停自动清理。", backup.display())
+            format!("SayItLocally 已保留原数据库文件，但无法打开新数据文件。副本路径：\n{}\n\n本次使用内存，设置和历史记录退出后不会保存。旧录音已暂停自动清理。", backup.display())
         } else {
-            format!("SayItLocally kept the original database files but could not open a replacement. Copy name:\n{}\n\nSettings and history will not be saved after you quit. Automatic recording cleanup is paused.", backup.display())
+            format!("SayItLocally kept the original database files but could not open a replacement. Copy path:\n{}\n\nSettings and history will not be saved after you quit. Automatic recording cleanup is paused.", backup.display())
         },
         storage::StorageRecovery::IncompleteMove => {
             let dir = commands::app_data_dir();
