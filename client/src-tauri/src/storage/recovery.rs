@@ -207,10 +207,12 @@ impl MovePlan {
         append_suffix(db, &format!(".corrupt-{}-{}", self.stamp, self.id))
     }
 
-    fn start(dir: &Path, db: &Path, orphaned: bool) -> io::Result<Self> {
-        let members = group_members(db)?;
+    fn start(dir: &Path, db: &Path, members: [bool; 4], orphaned: bool) -> io::Result<Self> {
         if !members[3] && (!orphaned || !members.iter().any(|&present| present)) {
             return Err(io::Error::new(io::ErrorKind::InvalidData, "Database main file missing"));
+        }
+        if group_members(db)? != members {
+            return Err(io::Error::new(io::ErrorKind::WouldBlock, "Database group changed before planning"));
         }
         let plan = Self {
             stamp: chrono::Local::now().format("%Y%m%d-%H%M%S").to_string(),
@@ -596,7 +598,8 @@ fn open_or_recover_with(
             Ok(_) => return failed("database changed during confirmation", io::Error::from(io::ErrorKind::WouldBlock), StorageRecovery::InMemory),
             Err(error) => return failed("validate database for recovery", error, StorageRecovery::InMemory),
         }
-        match MovePlan::start(dir, db, orphaned) {
+        let members = stamp.each_ref().map(Option::is_some);
+        match MovePlan::start(dir, db, members, orphaned) {
             Ok(plan) => (plan, guard),
             Err(error) => return failed("prepare database recovery", error, StorageRecovery::IncompleteMove),
         }

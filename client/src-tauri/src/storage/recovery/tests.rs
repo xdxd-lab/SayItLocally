@@ -31,6 +31,11 @@ impl Fixture {
         db
     }
 
+    fn start_move(&self, orphaned: bool) -> io::Result<MovePlan> {
+        let members = group_members(&self.db)?;
+        MovePlan::start(&self.dir, &self.db, members, orphaned)
+    }
+
     fn write_broken_group(&self) {
         for suffix in MEMBERS {
             fs::write(append_suffix(&self.db, suffix), format!("old data {suffix}")).unwrap();
@@ -229,7 +234,7 @@ fn orphaned_group_resumes_after_every_companion_move_without_a_main_file() {
             fs::write(append_suffix(&fixture.db, suffix), suffix).unwrap();
         }
         let original = snapshot(&fixture.db);
-        let plan = MovePlan::start(&fixture.dir, &fixture.db, true).unwrap();
+        let plan = fixture.start_move(true).unwrap();
         let backup = plan.backup(&fixture.db);
         for suffix in &COMPANION_SUFFIXES[..completed] {
             move_exclusive(&append_suffix(&fixture.db, suffix), &append_suffix(&backup, suffix)).unwrap();
@@ -241,6 +246,20 @@ fn orphaned_group_resumes_after_every_companion_move_without_a_main_file() {
         assert!(recording_cleanup_protected(&fixture.dir));
         assert!(!recovery_move_pending(&fixture.dir));
     }
+}
+
+#[test]
+fn a_main_that_appears_during_orphan_recovery_is_excluded_from_the_move() {
+    let fixture = Fixture::new();
+    let wal = append_suffix(&fixture.db, "-wal");
+    fs::write(&wal, b"orphan WAL").unwrap();
+    let observed = group_members(&fixture.db).unwrap();
+    fs::write(&fixture.db, b"new main file").unwrap();
+
+    assert!(MovePlan::start(&fixture.dir, &fixture.db, observed, true).is_err());
+    assert!(!recording_cleanup_protected(&fixture.dir));
+    assert_eq!(fs::read(&fixture.db).unwrap(), b"new main file");
+    assert_eq!(fs::read(wal).unwrap(), b"orphan WAL");
 }
 
 #[cfg(unix)]
@@ -349,7 +368,7 @@ fn every_injected_move_failure_rolls_back_original_members() {
         let fixture = Fixture::new();
         fixture.write_broken_group();
         let before = snapshot(&fixture.db);
-        let plan = MovePlan::start(&fixture.dir, &fixture.db, false).unwrap();
+        let plan = fixture.start_move(false).unwrap();
         let step = Cell::new(0);
         assert!(plan.finish(&fixture.dir, &fixture.db, |from, to| {
             assert!(recording_cleanup_protected(&fixture.dir));
@@ -374,7 +393,7 @@ fn restarting_after_each_move_finishes_before_opening_a_new_database() {
         let fixture = Fixture::new();
         fixture.write_broken_group();
         let before = snapshot(&fixture.db);
-        let plan = MovePlan::start(&fixture.dir, &fixture.db, false).unwrap();
+        let plan = fixture.start_move(false).unwrap();
         let backup = plan.backup(&fixture.db);
         for suffix in &MEMBERS[..completed] {
             move_exclusive(&append_suffix(&fixture.db, suffix), &append_suffix(&backup, suffix)).unwrap();
@@ -403,7 +422,7 @@ fn invalid_plan_and_unexpected_members_never_reach_sqlite() {
     fs::remove_file(fixture.dir.join(INTENT)).unwrap();
     fs::remove_file(append_suffix(&fixture.db, "-wal")).unwrap();
     fs::write(&fixture.db, b"old data").unwrap();
-    let plan = MovePlan::start(&fixture.dir, &fixture.db, false).unwrap();
+    let plan = fixture.start_move(false).unwrap();
     let backup = plan.backup(&fixture.db);
     move_exclusive(&fixture.db, &backup).unwrap();
     fs::write(append_suffix(&fixture.db, "-journal"), b"unexpected companion").unwrap();
@@ -426,7 +445,7 @@ fn plan_rejects_invalid_dates_and_noncanonical_ids_without_touching_the_database
         let fixture = Fixture::new();
         fixture.write_broken_group();
         let original = snapshot(&fixture.db);
-        let plan = MovePlan::start(&fixture.dir, &fixture.db, false).unwrap();
+        let plan = fixture.start_move(false).unwrap();
         let mut malformed = serde_json::to_value(&plan).unwrap();
         malformed[field] = json!(invalid);
         fs::write(fixture.dir.join(INTENT), serde_json::to_vec(&malformed).unwrap()).unwrap();
@@ -441,7 +460,7 @@ fn plan_rejects_invalid_dates_and_noncanonical_ids_without_touching_the_database
 fn a_pending_plan_with_both_main_files_never_reinstalls_old_companions() {
     let fixture = Fixture::new();
     fixture.write_broken_group();
-    let plan = MovePlan::start(&fixture.dir, &fixture.db, false).unwrap();
+    let plan = fixture.start_move(false).unwrap();
     let backup = plan.backup(&fixture.db);
     for suffix in MEMBERS {
         move_exclusive(&append_suffix(&fixture.db, suffix), &append_suffix(&backup, suffix)).unwrap();
@@ -470,7 +489,7 @@ fn isolating_the_files_named_in_the_dialog_allows_a_safe_restart() {
         match scenario {
             "malformed plan" => fs::write(fixture.dir.join(INTENT), b"invalid plan").unwrap(),
             "missing member" | "both mains" | "busy live lock" => {
-                let plan = MovePlan::start(&fixture.dir, &fixture.db, false).unwrap();
+                let plan = fixture.start_move(false).unwrap();
                 let backup = plan.backup(&fixture.db);
                 move_exclusive(&fixture.db, &backup).unwrap();
                 if scenario == "missing member" {
@@ -553,7 +572,7 @@ fn isolating_a_linked_plan_never_moves_its_target() {
 fn same_second_backup_names_are_distinct_and_moves_never_overwrite() {
     let fixture = Fixture::new();
     fixture.write_broken_group();
-    let plan = MovePlan::start(&fixture.dir, &fixture.db, false).unwrap();
+    let plan = fixture.start_move(false).unwrap();
     let other = MovePlan { stamp: plan.stamp.clone(), id: uuid::Uuid::new_v4().to_string(), members: plan.members, orphaned: false };
     assert_ne!(plan.backup(&fixture.db), other.backup(&fixture.db));
     let backup = plan.backup(&fixture.db);
@@ -703,7 +722,7 @@ fn files_reappearing_after_plan_completion_also_block_replacement_creation() {
     let _startup = startup_lock(&fixture.dir).unwrap();
     let live = open_lock(&fixture.dir, LIVE_LOCK).unwrap();
     lock(&live, false).unwrap();
-    let plan = MovePlan::start(&fixture.dir, &fixture.db, false).unwrap();
+    let plan = fixture.start_move(false).unwrap();
     let backup = plan.finish(&fixture.dir, &fixture.db, move_exclusive).unwrap();
     assert!(!recovery_move_pending(&fixture.dir));
     let journal = append_suffix(&fixture.db, "-journal");
@@ -819,7 +838,7 @@ fn killing_a_new_database_transaction_allows_normal_restart() {
         let saved = if replacement {
             fixture.write_broken_group();
             let original = snapshot(&fixture.db);
-            let plan = MovePlan::start(&fixture.dir, &fixture.db, false).unwrap();
+            let plan = fixture.start_move(false).unwrap();
             let backup = plan.finish(&fixture.dir, &fixture.db, move_exclusive).unwrap();
             Some((backup, original))
         } else {
