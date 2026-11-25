@@ -265,33 +265,13 @@ async function snapshotInputEndpoints(): Promise<MicEndpoint[]> {
   }
 }
 
+// Keep Chromium's pseudo-devices: their groupId can identify the current default.
 export async function listMicrophones(): Promise<MediaDeviceInfo[]> {
-  const audioInputs = (list: MediaDeviceInfo[]) => list.filter((d) => d.kind === 'audioinput')
-
-  let devices = audioInputs(await navigator.mediaDevices.enumerateDevices())
-
-  // 没有持久麦克风权限时，enumerateDevices() 只返回一个无名字的通用项。
-  // 此时临时打开一路音频流触发授权，趁流活跃时重新枚举，拿到真实名称。
-  if (devices.length <= 1 || devices.some((d) => !d.label)) {
-    let stream: MediaStream | null = null
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      devices = audioInputs(await navigator.mediaDevices.enumerateDevices())
-    } catch {
-      // 权限被拒或无可用麦克风：保留已有结果
-    } finally {
-      if (stream) stream.getTracks().forEach((t) => t.stop())
-    }
-  }
-
-  // **原样返回，含 Chromium 的伪设备**。
-  //
-  // 这里刻意不替调用方剔除伪设备：它们虽然不是麦克风，却携带唯一一条「系统默认现在
-  // 指向谁」的信息（label 是 `<前缀> - <真实端点名>`，groupId 指向那个端点）。设置页
-  // 要靠它把第一项写成「系统默认（某某麦克风）」。
-  // 「哪些该进下拉」是产品判断，归 buildMicOptions；这个函数只负责"系统报了什么"。
-  return devices
+  return (await navigator.mediaDevices.enumerateDevices()).filter((device) => device.kind === 'audioinput')
 }
+
+// Settings refreshes its list passively when an actual recording opens a microphone.
+export const microphoneOpened = new EventTarget()
 
 function createAudioContext() {
   const AudioContextCtor = window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
@@ -672,6 +652,7 @@ export async function startCapture(
   try {
     console.log('[audio-diag] getUserMedia starting...', { deviceId: deviceId || 'default' })
     mediaStream = await navigator.mediaDevices.getUserMedia(constraints)
+    microphoneOpened.dispatchEvent(new Event('change'))
     const track = mediaStream.getAudioTracks()[0] || null
     const settings = track?.getSettings?.()
     const activeMicrophone: ActiveMicrophoneInfo = {

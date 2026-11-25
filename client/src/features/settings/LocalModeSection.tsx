@@ -15,7 +15,7 @@ import { Modal } from '@/components/ui/modal'
 import { getSetting, setSetting } from '@/services/store'
 import { refreshModeStatus } from '@/stores/modeStatus'
 import { reconnectProvider } from '@/services/recorder'
-import { describeDownloadError } from '@/lib/errorMessages'
+import { describeDownloadError, describeModelsDirError } from '@/lib/errorMessages'
 import { getLocale, t } from '@/i18n'
 import { IS_MAC } from '@/lib/platform'
 import { useT } from '@/i18n/useT'
@@ -259,11 +259,12 @@ function OfflineGuideDialog({ models, onClose }: { models: ModelInfo[]; onClose:
   )
 }
 
-/** 模型存储位置：查看 / 更改 / 恢复默认。更改时可选把已下载模型一并迁移。 */
+/** 模型存储位置：查看 / 更改 / 恢复默认。旧文件保留在原目录。 */
 function ModelsDirSection({ onChanged }: { onChanged: () => void }) {
   const [info, setInfo] = useState<ModelsDirInfo | null>(null)
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
+  const [error, setError] = useState<{ message: string; detail: string } | null>(null)
+  const [unchanged, setUnchanged] = useState(false)
   // 待确认的目录变更：null=无。dir=null 表示恢复默认。
   const [pending, setPending] = useState<{ dir: string | null } | null>(null)
 
@@ -273,34 +274,39 @@ function ModelsDirSection({ onChanged }: { onChanged: () => void }) {
   useEffect(() => { void load() }, [])
 
   async function pickDir() {
-    setError('')
+    setError(null)
+    setUnchanged(false)
     try {
       const selected = await open({ directory: true, multiple: false, title: t('local.pickDirTitle') })
       if (typeof selected !== 'string') return // 取消
-      if (info && selected === info.current) return // 未变化
+      if (info && selected === info.current) { setUnchanged(true); return }
       setPending({ dir: selected })
     } catch (err) {
-      setError(String(err))
+      setError(describeModelsDirError(err))
     }
   }
 
   function requestResetDefault() {
     if (!info || !info.is_custom) return
+    setError(null)
+    setUnchanged(false)
     setPending({ dir: null })
   }
 
   async function applyChange() {
     if (!pending) return
     setBusy(true)
-    setError('')
+    setError(null)
+    setUnchanged(false)
     try {
-      // 一律自动迁移已下载的模型到新目录
-      await invoke<string>('set_models_dir', { dir: pending.dir, moveExisting: true })
+      const effective = await invoke<string>('set_models_dir', { dir: pending.dir })
       setPending(null)
       await load()
-      onChanged() // 路径变了，刷新已下载模型列表
+      if (pending.dir !== null && effective === info?.current) setUnchanged(true)
+      else onChanged()
     } catch (err) {
-      setError(String(err))
+      setPending(null)
+      setError(describeModelsDirError(err))
     } finally {
       setBusy(false)
     }
@@ -346,7 +352,8 @@ function ModelsDirSection({ onChanged }: { onChanged: () => void }) {
           )}
         </div>
 
-        {error && <Feedback className="mt-3" tone="error" message={t('local.dirOpFailed')} detail={error} />}
+        {error && <Feedback className="mt-3" tone="error" message={error.message} detail={error.detail} />}
+        {unchanged && <Feedback className="mt-3" tone="info" message={t('local.dirUnchanged')} />}
       </CardContent>
 
       {pending && (

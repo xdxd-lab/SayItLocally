@@ -67,7 +67,7 @@ pub fn acquire_model_path(path: &Path) -> Result<ModelPathLease, String> {
     Ok(ModelPathLease { path: key })
 }
 
-/// 目录迁移必须与所有模型下载、删除互斥，避免跨盘复制正在写入的临时文件。
+/// 切换模型目录必须与所有模型下载、删除互斥。
 pub struct ModelStorageLease;
 
 impl Drop for ModelStorageLease {
