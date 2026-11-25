@@ -151,7 +151,7 @@ fn unreadable_database_and_unwritable_directory_preserve_originals() {
 }
 
 #[test]
-fn directory_paths_and_orphaned_sidecars_are_never_given_to_sqlite() {
+fn directory_paths_are_never_given_to_sqlite() {
     let fixture = Fixture::new();
     fs::create_dir(&fixture.db).unwrap();
     let (_storage, mode) = fixture.open();
@@ -162,12 +162,80 @@ fn directory_paths_and_orphaned_sidecars_are_never_given_to_sqlite() {
     let (_storage, mode) = open_or_recover(&path_without_directory.join("sayit.db"), Duration::ZERO);
     assert!(matches!(mode, Some(StorageRecovery::InMemory)));
     assert_eq!(fs::read(&path_without_directory).unwrap(), b"ordinary file");
-    fs::remove_dir_all(&fixture.db).unwrap();
-    fs::write(append_suffix(&fixture.db, "-wal"), b"orphan WAL").unwrap();
-    fs::write(append_suffix(&fixture.db, "-journal"), b"orphan journal").unwrap();
-    fixture.assert_volatile_unchanged(snapshot(&fixture.db));
-    fs::write(&fixture.db, b"").unwrap();
-    fixture.assert_volatile_unchanged(snapshot(&fixture.db));
+}
+
+#[test]
+fn interrupted_first_initialization_reopens_the_existing_empty_database() {
+    for (journal, wal) in [(true, false), (false, true), (true, true)] {
+        let fixture = Fixture::new();
+        fs::write(&fixture.db, []).unwrap();
+        if journal {
+            fs::write(append_suffix(&fixture.db, "-journal"), [0; 512]).unwrap();
+        }
+        if wal {
+            fs::write(append_suffix(&fixture.db, "-wal"), []).unwrap();
+        }
+        for _ in 0..2 {
+            let (storage, mode) = fixture.open();
+            assert!(mode.is_none(), "{mode:?}");
+            let db_path = fixture.dir.canonicalize().unwrap().join("sayit.db");
+            assert_eq!(storage.conn().path().map(Path::new), Some(db_path.as_path()));
+            assert!(Storage::migration_exists(&storage.conn(), 2).unwrap());
+            assert!(!recording_cleanup_protected(&fixture.dir));
+        }
+    }
+}
+
+#[test]
+fn orphaned_companions_are_archived_intact_before_sqlite_can_open() {
+    for (main, suffix, contents) in [
+        (false, "-wal", &b"orphan WAL"[..]),
+        (false, "-journal", &b""[..]),
+        (false, "-wal", &b""[..]),
+        (true, "-wal", &b"orphan WAL"[..]),
+        (true, "-shm", &b"orphan SHM"[..]),
+    ] {
+        let fixture = Fixture::new();
+        if main {
+            fs::write(&fixture.db, []).unwrap();
+        }
+        fs::write(append_suffix(&fixture.db, suffix), contents).unwrap();
+        let original = snapshot(&fixture.db);
+        let (storage, mode) = fixture.open();
+        let Some(StorageRecovery::MovedAside { backup, orphaned: true }) = mode else {
+            panic!("{mode:?}");
+        };
+        assert_eq!(snapshot(&backup), original);
+        assert!(Storage::migration_exists(&storage.conn(), 2).unwrap());
+        assert!(recording_cleanup_protected(&fixture.dir));
+        assert!(!recovery_move_pending(&fixture.dir));
+        drop(storage);
+        let (_storage, mode) = fixture.open();
+        assert!(mode.is_none(), "{mode:?}");
+        assert_eq!(snapshot(&backup), original);
+    }
+}
+
+#[test]
+fn orphaned_group_resumes_after_every_companion_move_without_a_main_file() {
+    for completed in 0..=3 {
+        let fixture = Fixture::new();
+        for suffix in COMPANION_SUFFIXES {
+            fs::write(append_suffix(&fixture.db, suffix), suffix).unwrap();
+        }
+        let original = snapshot(&fixture.db);
+        let plan = MovePlan::start(&fixture.dir, &fixture.db, true).unwrap();
+        let backup = plan.backup(&fixture.db);
+        for suffix in &COMPANION_SUFFIXES[..completed] {
+            move_exclusive(&append_suffix(&fixture.db, suffix), &append_suffix(&backup, suffix)).unwrap();
+        }
+        let (storage, mode) = fixture.open();
+        assert!(matches!(mode, Some(StorageRecovery::MovedAside { backup: moved, orphaned: true }) if moved == backup));
+        assert_eq!(snapshot(&backup), original);
+        assert!(Storage::migration_exists(&storage.conn(), 2).unwrap());
+        assert!(recording_cleanup_protected(&fixture.dir));
+        assert!(!recovery_move_pending(&fixture.dir));
+    }
 }
 
 #[cfg(unix)]
@@ -251,7 +319,7 @@ fn sqlite_reports_a_damaged_btree_as_corrupt_and_preserves_it() {
     assert!(matches!(error, OpenError::Sql(rusqlite::Error::SqliteFailure(code, _))
         if code.code == ErrorCode::DatabaseCorrupt));
     let (_storage, mode) = fixture.open();
-    let Some(StorageRecovery::MovedAside { backup }) = mode else { panic!("{mode:?}") };
+    let Some(StorageRecovery::MovedAside { backup, .. }) = mode else { panic!("{mode:?}") };
     assert_eq!(fs::read(backup).unwrap(), damaged);
 }
 
@@ -261,7 +329,7 @@ fn not_a_database_is_confirmed_and_existing_wal_bytes_are_preserved() {
     fixture.write_broken_group();
     let before = snapshot(&fixture.db);
     let (_storage, mode) = fixture.open();
-    let Some(StorageRecovery::MovedAside { backup }) = mode else { panic!("{mode:?}") };
+    let Some(StorageRecovery::MovedAside { backup, .. }) = mode else { panic!("{mode:?}") };
     // The pager can rebuild SHM or consume a rollback journal on its ordinary open.
     let saved = snapshot(&backup);
     assert_eq!(saved[0], before[0]);
@@ -276,7 +344,7 @@ fn every_injected_move_failure_rolls_back_original_members() {
         let fixture = Fixture::new();
         fixture.write_broken_group();
         let before = snapshot(&fixture.db);
-        let plan = MovePlan::start(&fixture.dir, &fixture.db).unwrap();
+        let plan = MovePlan::start(&fixture.dir, &fixture.db, false).unwrap();
         let step = Cell::new(0);
         assert!(plan.finish(&fixture.dir, &fixture.db, |from, to| {
             assert!(recording_cleanup_protected(&fixture.dir));
@@ -301,13 +369,13 @@ fn restarting_after_each_move_finishes_before_opening_a_new_database() {
         let fixture = Fixture::new();
         fixture.write_broken_group();
         let before = snapshot(&fixture.db);
-        let plan = MovePlan::start(&fixture.dir, &fixture.db).unwrap();
+        let plan = MovePlan::start(&fixture.dir, &fixture.db, false).unwrap();
         let backup = plan.backup(&fixture.db);
         for suffix in &MEMBERS[..completed] {
             move_exclusive(&append_suffix(&fixture.db, suffix), &append_suffix(&backup, suffix)).unwrap();
         }
         let (storage, mode) = fixture.open();
-        assert!(matches!(mode, Some(StorageRecovery::MovedAside { backup: moved }) if moved == backup));
+        assert!(matches!(mode, Some(StorageRecovery::MovedAside { backup: moved, .. }) if moved == backup));
         assert_eq!(snapshot(&backup), before);
         assert!(!recovery_move_pending(&fixture.dir));
         assert!(recording_cleanup_protected(&fixture.dir));
@@ -330,7 +398,7 @@ fn invalid_plan_and_unexpected_members_never_reach_sqlite() {
     fs::remove_file(fixture.dir.join(INTENT)).unwrap();
     fs::remove_file(append_suffix(&fixture.db, "-wal")).unwrap();
     fs::write(&fixture.db, b"old data").unwrap();
-    let plan = MovePlan::start(&fixture.dir, &fixture.db).unwrap();
+    let plan = MovePlan::start(&fixture.dir, &fixture.db, false).unwrap();
     let backup = plan.backup(&fixture.db);
     move_exclusive(&fixture.db, &backup).unwrap();
     fs::write(append_suffix(&fixture.db, "-journal"), b"unexpected companion").unwrap();
@@ -346,7 +414,7 @@ fn invalid_plan_and_unexpected_members_never_reach_sqlite() {
 fn a_pending_plan_with_both_main_files_never_reinstalls_old_companions() {
     let fixture = Fixture::new();
     fixture.write_broken_group();
-    let plan = MovePlan::start(&fixture.dir, &fixture.db).unwrap();
+    let plan = MovePlan::start(&fixture.dir, &fixture.db, false).unwrap();
     let backup = plan.backup(&fixture.db);
     for suffix in MEMBERS {
         move_exclusive(&append_suffix(&fixture.db, suffix), &append_suffix(&backup, suffix)).unwrap();
@@ -365,8 +433,8 @@ fn a_pending_plan_with_both_main_files_never_reinstalls_old_companions() {
 fn same_second_backup_names_are_distinct_and_moves_never_overwrite() {
     let fixture = Fixture::new();
     fixture.write_broken_group();
-    let plan = MovePlan::start(&fixture.dir, &fixture.db).unwrap();
-    let other = MovePlan { stamp: plan.stamp.clone(), id: uuid::Uuid::new_v4().to_string(), members: plan.members };
+    let plan = MovePlan::start(&fixture.dir, &fixture.db, false).unwrap();
+    let other = MovePlan { stamp: plan.stamp.clone(), id: uuid::Uuid::new_v4().to_string(), members: plan.members, orphaned: false };
     assert_ne!(plan.backup(&fixture.db), other.backup(&fixture.db));
     let backup = plan.backup(&fixture.db);
     fs::write(&backup, b"older backup").unwrap();

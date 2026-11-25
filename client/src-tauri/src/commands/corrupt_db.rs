@@ -188,7 +188,7 @@ mod tests {
         let db = dir.join("sayit.db");
         fs::write(&db, b"damaged test database").unwrap();
         let (storage, recovery) = Storage::open_or_recover(db);
-        let Some(StorageRecovery::MovedAside { backup }) = recovery else { panic!("{recovery:?}") };
+        let Some(StorageRecovery::MovedAside { backup, .. }) = recovery else { panic!("{recovery:?}") };
         let name = backup.file_name().unwrap().to_str().unwrap();
         let journal = dir.join(format!("{name}-journal"));
         fs::write(&journal, b"journal").unwrap();
@@ -200,6 +200,26 @@ mod tests {
         delete_copy(&dir, name).unwrap();
         assert!(copy_groups(&dir).unwrap().is_empty());
         assert!(!journal.exists());
+        assert!(recovery::recording_cleanup_protected(&dir));
+        drop(storage);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn recovery_copy_with_only_a_wal_can_be_listed_and_deleted() {
+        use crate::storage::{Storage, StorageRecovery};
+
+        let dir = std::env::temp_dir().join(format!("sayit-corrupt-test-{}", uuid::Uuid::new_v4()));
+        fs::create_dir(&dir).unwrap();
+        fs::write(dir.join("sayit.db-wal"), b"orphan WAL").unwrap();
+        let (storage, mode) = Storage::open_or_recover(dir.join("sayit.db"));
+        let Some(StorageRecovery::MovedAside { backup, orphaned: true }) = mode else { panic!("{mode:?}") };
+        let name = backup.file_name().unwrap().to_str().unwrap();
+        let copy = copy_groups(&dir).unwrap().remove(name).unwrap();
+        assert_eq!(copy.info.size_bytes, 10);
+        assert_eq!(copy.files, [dir.join(format!("{name}-wal"))]);
+        delete_copy(&dir, name).unwrap();
+        assert!(copy_groups(&dir).unwrap().is_empty());
         assert!(recovery::recording_cleanup_protected(&dir));
         drop(storage);
         fs::remove_dir_all(dir).unwrap();

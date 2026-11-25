@@ -21,7 +21,7 @@ const LIVE_LOCK: &str = "sayit.db.live-lock";
 
 #[derive(Debug)]
 pub(crate) enum StorageRecovery {
-    MovedAside { backup: PathBuf },
+    MovedAside { backup: PathBuf, orphaned: bool },
     MovedAsideInMemory { backup: PathBuf },
     InMemory,
     IncompleteMove,
@@ -195,6 +195,8 @@ struct MovePlan {
     stamp: String,
     id: String,
     members: [bool; 4],
+    #[serde(default)]
+    orphaned: bool,
 }
 
 impl MovePlan {
@@ -202,15 +204,16 @@ impl MovePlan {
         append_suffix(db, &format!(".corrupt-{}-{}", self.stamp, self.id))
     }
 
-    fn start(dir: &Path, db: &Path) -> io::Result<Self> {
+    fn start(dir: &Path, db: &Path, orphaned: bool) -> io::Result<Self> {
         let members = group_members(db)?;
-        if !members[3] {
+        if !members[3] && (!orphaned || !members.iter().any(|&present| present)) {
             return Err(io::Error::new(io::ErrorKind::InvalidData, "Database main file missing"));
         }
         let plan = Self {
             stamp: chrono::Local::now().format("%Y%m%d-%H%M%S").to_string(),
             id: uuid::Uuid::new_v4().to_string(),
             members,
+            orphaned,
         };
         if group_members(&plan.backup(db))? != [false; 4] {
             return Err(io::ErrorKind::AlreadyExists.into());
@@ -236,7 +239,7 @@ impl MovePlan {
             return Err(io::Error::new(io::ErrorKind::InvalidData, "Invalid database recovery plan"));
         }
         let plan: Self = serde_json::from_reader(file)?;
-        if !plan.members[3]
+        if (!plan.members[3] && (!plan.orphaned || !plan.members.iter().any(|&present| present)))
             || plan.stamp.len() != 15
             || !plan.stamp.as_bytes().iter().enumerate().all(|(i, byte)| {
                 if i == 8 { *byte == b'-' } else { byte.is_ascii_digit() }
@@ -297,7 +300,13 @@ impl MovePlan {
     }
 
     fn rollback(&self, dir: &Path, db: &Path, backup: &Path) {
-        if !matches!((regular_file(db), regular_file(backup)), (Ok(true), Ok(false)) | (Ok(false), Ok(true))) {
+        let main = (regular_file(db), regular_file(backup));
+        let unambiguous = match main {
+            (Ok(true), Ok(false)) | (Ok(false), Ok(true)) => self.members[3],
+            (Ok(false), Ok(false)) => !self.members[3],
+            _ => false,
+        };
+        if !unambiguous {
             return;
         }
         for (suffix, expected) in MEMBERS.into_iter().zip(self.members).rev() {
@@ -404,13 +413,33 @@ fn main_file_size(db: &Path) -> io::Result<Option<u64>> {
     }
 }
 
-fn open_existing_or_empty(db: &Path, timeout: Duration) -> Result<Storage, OpenError> {
-    let main = main_file_size(db)?;
-    let mut companions_present = false;
-    for suffix in COMPANION_SUFFIXES {
-        companions_present |= regular_file(&append_suffix(db, suffix))?;
+fn has_orphaned_companions([wal, shm, journal, main]: [Option<u64>; 4]) -> bool {
+    match main {
+        None => wal.is_some() || shm.is_some() || journal.is_some(),
+        // Interrupted initial creation may leave a rollback journal or an
+        // empty WAL. SQLite can retry that transaction safely.
+        Some(0) => shm.is_some() || wal.is_some_and(|size| size != 0),
+        Some(_) => false,
     }
-    if companions_present && main.is_none_or(|size| size == 0) {
+}
+
+fn inspect_database(db: &Path) -> io::Result<(Option<u64>, bool)> {
+    let main = main_file_size(db)?;
+    let mut sizes = [None, None, None, main];
+    for (slot, suffix) in sizes.iter_mut().zip(COMPANION_SUFFIXES) {
+        match fs::symlink_metadata(append_suffix(db, suffix)) {
+            Ok(metadata) if metadata.is_file() => *slot = Some(metadata.len()),
+            Ok(_) => return Err(io::ErrorKind::InvalidData.into()),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error),
+        }
+    }
+    Ok((main, has_orphaned_companions(sizes)))
+}
+
+fn open_existing_or_empty(db: &Path, timeout: Duration) -> Result<Storage, OpenError> {
+    let (main, orphaned) = inspect_database(db)?;
+    if orphaned {
         return Err(io::Error::new(io::ErrorKind::InvalidData, "Database has orphaned companion files").into());
     }
     Ok(Storage::open_sqlite(db, main.is_none(), timeout)?)
@@ -494,9 +523,10 @@ pub(super) fn open_or_recover(db: &Path, timeout: Duration) -> (Storage, Option<
             return failed("resume database recovery", error, StorageRecovery::IncompleteMove);
         }
         let backup = plan.backup(db);
-        let guard = match (regular_file(db), regular_file(&backup)) {
-            (Ok(true), Ok(false)) => lease::sqlite_exclusive(db),
-            (Ok(false), Ok(true)) => lease::sqlite_exclusive(&backup),
+        let guard = match (regular_file(db), regular_file(&backup), plan.members[3]) {
+            (Ok(true), Ok(false), true) => lease::sqlite_exclusive(db).map(Some),
+            (Ok(false), Ok(true), true) => lease::sqlite_exclusive(&backup).map(Some),
+            (Ok(false), Ok(false), false) => Ok(None),
             _ => Err(io::Error::new(io::ErrorKind::InvalidData, "Ambiguous database main file").into()),
         };
         match guard {
@@ -507,28 +537,37 @@ pub(super) fn open_or_recover(db: &Path, timeout: Duration) -> (Storage, Option<
         if let Err(error) = lock(&live, true) {
             return failed("acquire database lease", error, StorageRecovery::InMemory);
         }
-        let stamp = match retry_open(timeout, |remaining| open_existing_or_empty(db, remaining)) {
-            Ok(mut storage) => {
-                storage.recovery_lease = Some(live);
-                return (storage, None);
-            }
-            Err((error, false)) => return failed("database unavailable", error, StorageRecovery::InMemory),
-            Err((error, true)) => {
-                error.log("confirmed database corruption");
-                // SQLite may have performed standard journal recovery on open.
-                // Compare the resulting group before and after taking move locks.
-                match group_stamp(db) {
-                    Ok(stamp) => stamp,
-                    Err(error) => return failed("inspect confirmed database for recovery", error, StorageRecovery::InMemory),
+        let orphaned = match inspect_database(db) {
+            Ok((_, orphaned)) => orphaned,
+            Err(error) => return failed("inspect database", error, StorageRecovery::InMemory),
+        };
+        if !orphaned {
+            match retry_open(timeout, |remaining| open_existing_or_empty(db, remaining)) {
+                Ok(mut storage) => {
+                    storage.recovery_lease = Some(live);
+                    return (storage, None);
                 }
+                Err((error, false)) => return failed("database unavailable", error, StorageRecovery::InMemory),
+                Err((error, true)) => error.log("confirmed database corruption"),
             }
+        }
+        // SQLite may have done standard journal recovery. Compare the
+        // resulting group before and after acquiring the move locks.
+        let stamp = match group_stamp(db) {
+            Ok(stamp) if if orphaned {
+                has_orphaned_companions(stamp.each_ref().map(|member| member.as_ref().map(|m| m.size)))
+            } else {
+                stamp[3].is_some()
+            } => stamp,
+            Ok(_) => return failed("database changed before recovery", io::Error::from(io::ErrorKind::WouldBlock), StorageRecovery::InMemory),
+            Err(error) => return failed("inspect database for recovery", error, StorageRecovery::InMemory),
         };
         // Other live App connections retain a shared lease. SQLite's BUSY /
         // LOCKED results above also prohibit moving a database used externally.
         if let Err(error) = unlock(&live).and_then(|()| lock(&live, false)) {
             return failed("acquire exclusive recovery lease", error, StorageRecovery::InMemory);
         }
-        let guard = match lease::sqlite_exclusive(db) {
+        let guard = match stamp[3].as_ref().map(|_| lease::sqlite_exclusive(db)).transpose() {
             Ok(guard) => guard,
             Err(error) => return failed("lock original database for recovery", error, StorageRecovery::InMemory),
         };
@@ -537,7 +576,7 @@ pub(super) fn open_or_recover(db: &Path, timeout: Duration) -> (Storage, Option<
             Ok(_) => return failed("database changed during confirmation", io::Error::from(io::ErrorKind::WouldBlock), StorageRecovery::InMemory),
             Err(error) => return failed("validate database for recovery", error, StorageRecovery::InMemory),
         }
-        match MovePlan::start(dir, db) {
+        match MovePlan::start(dir, db, orphaned) {
             Ok(plan) => (plan, guard),
             Err(error) => return failed("prepare database recovery", error, StorageRecovery::IncompleteMove),
         }
@@ -560,7 +599,7 @@ pub(super) fn open_or_recover(db: &Path, timeout: Duration) -> (Storage, Option<
     match result {
         Ok(mut storage) => {
             storage.recovery_lease = Some(live);
-            (storage, Some(StorageRecovery::MovedAside { backup }))
+            (storage, Some(StorageRecovery::MovedAside { backup, orphaned: plan.orphaned }))
         }
         Err(error) => failed("open replacement database", error, StorageRecovery::MovedAsideInMemory { backup }),
     }

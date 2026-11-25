@@ -88,15 +88,23 @@ fn notify_storage_recovery(recovery: storage::StorageRecovery) {
     // [自訂] SCAN1-2（L-72）：提示改成「副本只在本機、可能含舊資料與密鑰、請自行刪除」，不再請使用者把檔案交給開發者。
     let zh = matches!(locale::system_ui_lang(), locale::Lang::ZhCn);
     let text = match &recovery {
-        storage::StorageRecovery::MovedAside { backup, .. } => if zh {
-            format!("SayItLocally 的本地数据文件损坏，无法读取。\n\n已用全新的数据启动，设置和历史记录暂时为空。\n原文件已保留在：\n{}\n\n这个副本只在本机，可能含有旧的设置、历史记录或密钥。不需要时请自行删除，请勿发给他人。旧录音已暂停自动清理，可在设置中恢复。", backup.display())
-        } else {
-            format!("SayItLocally could not read its local data file because it is damaged.\n\nIt has started with fresh data, so settings and history are empty for now.\nThe original file was kept at:\n{}\n\nThis copy stays on this computer and may contain old settings, history or keys. Delete it yourself when you no longer need it, and do not send it to anyone. Automatic recording cleanup is paused. You can resume it in Settings.", backup.display())
-        },
+        storage::StorageRecovery::MovedAside { backup, orphaned } => {
+            let reason = match (zh, orphaned) {
+                (true, true) => "SayItLocally 发现未配对的数据库伴随文件。",
+                (true, false) => "SayItLocally 的本地数据库文件损坏，无法读取。",
+                (false, true) => "SayItLocally found database companion files without a usable main file.",
+                (false, false) => "SayItLocally could not read its local database because it is damaged.",
+            };
+            if zh {
+                format!("{reason}\n\n已用全新的数据启动，设置和历史记录暂时为空。\n原文件已保留，可在设置的数据库副本列表中查看。副本名称：\n{}\n\n这个副本只在本机，可能含有旧的设置、历史记录或密钥。不需要时请自行删除，请勿发给他人。旧录音已暂停自动清理，可在设置中恢复。", backup.display())
+            } else {
+                format!("{reason}\n\nIt has started with fresh data, so settings and history are empty for now.\nThe original files are in the database copies list in Settings under:\n{}\n\nThis copy stays on this computer and may contain old settings, history or keys. Delete it yourself when you no longer need it, and do not send it to anyone. Automatic recording cleanup is paused. You can resume it in Settings.", backup.display())
+            }
+        }
         storage::StorageRecovery::MovedAsideInMemory { backup } => if zh {
-            format!("SayItLocally 已保留损坏的数据库文件，但无法打开新数据文件。原文件保留在：\n{}\n\n本次使用内存，设置和历史记录退出后不会保存。旧录音已暂停自动清理。", backup.display())
+            format!("SayItLocally 已保留原数据库文件，但无法打开新数据文件。副本名称：\n{}\n\n本次使用内存，设置和历史记录退出后不会保存。旧录音已暂停自动清理。", backup.display())
         } else {
-            format!("SayItLocally kept the damaged database files but could not open a replacement. The original files were kept at:\n{}\n\nSettings and history will not be saved after you quit. Automatic recording cleanup is paused.", backup.display())
+            format!("SayItLocally kept the original database files but could not open a replacement. Copy name:\n{}\n\nSettings and history will not be saved after you quit. Automatic recording cleanup is paused.", backup.display())
         },
         storage::StorageRecovery::IncompleteMove => if zh {
             "SayItLocally 未完成数据库文件搬移。为保护原文件，本次使用内存，设置和历史记录退出后不会保存。可在设置中查看已搬移的副本。".to_string()
