@@ -110,7 +110,7 @@ pub struct ConfigExportSelection {
     hotword_group_ids: Vec<String>,
     #[serde(default)]
     include_text_replacements: bool,
-    #[serde(default, alias = "textReplacements")]
+    #[serde(default)]
     default_text_replacements: Option<Vec<Value>>,
     #[serde(default)]
     prompt_preset_ids: Vec<String>,
@@ -807,16 +807,16 @@ fn collect_audio_export_files(include_audio: bool, adir: &Path) -> Result<Vec<Au
         return Ok(Vec::new());
     }
     let directory_error = |_| "BACKUP_READ_RECORDINGS".to_owned();
-    match fs::symlink_metadata(adir) {
-        Ok(metadata) if metadata.is_dir() => {}
-        Ok(_) => return Err("BACKUP_AUDIO_DIRECTORY_UNSAFE".into()),
+    // Backups may read a linked audio directory; the entries below must be regular files.
+    let entries = match fs::read_dir(adir) {
+        Ok(entries) => entries,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
         Err(error) => return Err(directory_error(error)),
-    }
+    };
     let mut files = Vec::new();
     let mut skipped = 0;
     let mut names = HashSet::new();
-    for entry in fs::read_dir(adir).map_err(directory_error)? {
+    for entry in entries {
         let entry = entry.map_err(directory_error)?;
         let metadata = entry.metadata().map_err(directory_error)?; // Does not follow links.
         let name = entry.file_name();
@@ -918,8 +918,7 @@ fn write_config_file(storage: &Storage, selection: &ConfigExportSelection, outpu
     })
 }
 
-// Publish a complete file without truncating an existing backup, even if two
-// exports choose the same timestamp. Only remove the temporary file we created.
+// Publish only the completed file. Only remove the temporary file we created.
 fn publish_backup(
     output: &Path,
     write: impl FnOnce(fs::File) -> Result<fs::File, String>,
@@ -932,7 +931,7 @@ fn publish_backup(
     };
     let parent = output.parent().filter(|path| !path.as_os_str().is_empty()).unwrap_or(Path::new("."));
     fs::create_dir_all(parent).map_err(export_io_error)?;
-    let temp = parent.join(format!(".sayit-backup-{}.part", uuid::Uuid::new_v4()));
+    let temp = parent.join(format!("sayit-backup-{}.part", uuid::Uuid::new_v4()));
     let file = fs::OpenOptions::new().write(true).create_new(true).open(&temp)
         .map_err(export_io_error)?;
     let result = write(file).map_err(|error| {
@@ -966,14 +965,13 @@ fn publish_without_replacing(source: &Path, output: &Path) -> std::io::Result<()
     use std::ffi::CString;
     use std::os::unix::ffi::OsStrExt;
 
-    let source = CString::new(source.as_os_str().as_bytes())?;
-    let output = CString::new(output.as_os_str().as_bytes())?;
-    // Both paths have the same parent; RENAME_EXCL atomically refuses an existing destination.
-    let result = unsafe { libc::renamex_np(source.as_ptr(), output.as_ptr(), libc::RENAME_EXCL) };
-    if result != 0 {
-        return Err(std::io::Error::last_os_error());
-    }
-    Ok(())
+    let source_c = CString::new(source.as_os_str().as_bytes())?;
+    let output_c = CString::new(output.as_os_str().as_bytes())?;
+    publish_with_rename_fallback(source, output, || {
+        // Both paths have the same parent; RENAME_EXCL atomically refuses an existing destination.
+        let result = unsafe { libc::renamex_np(source_c.as_ptr(), output_c.as_ptr(), libc::RENAME_EXCL) };
+        if result == 0 { Ok(()) } else { Err(std::io::Error::last_os_error()) }
+    })
 }
 
 #[cfg(windows)]
@@ -1005,7 +1003,34 @@ fn publish_without_replacing(source: &Path, output: &Path) -> std::io::Result<()
 
 #[cfg(not(any(target_os = "macos", windows)))]
 fn publish_without_replacing(source: &Path, output: &Path) -> std::io::Result<()> {
-    fs::hard_link(source, output)
+    publish_with_rename_fallback(source, output, || fs::hard_link(source, output))
+}
+
+#[cfg(any(not(windows), test))]
+fn publish_with_rename_fallback(
+    source: &Path,
+    output: &Path,
+    publish: impl FnOnce() -> std::io::Result<()>,
+) -> std::io::Result<()> {
+    use std::io::{Error, ErrorKind};
+
+    let Err(error) = publish() else { return Ok(()); };
+    let unsupported = matches!(error.kind(), ErrorKind::Unsupported | ErrorKind::InvalidInput);
+    #[cfg(target_os = "macos")]
+    let unsupported = unsupported || error.raw_os_error() == Some(libc::EOPNOTSUPP);
+    if !unsupported {
+        return Err(error);
+    }
+
+    // Serialize this fallback across exports. Another process could still create
+    // the destination between the check and rename on filesystems without no-clobber.
+    static FALLBACK_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _guard = FALLBACK_LOCK.lock().map_err(|_| Error::other("Backup publication lock poisoned"))?;
+    match fs::symlink_metadata(output) {
+        Ok(_) => Err(ErrorKind::AlreadyExists.into()),
+        Err(error) if error.kind() == ErrorKind::NotFound => fs::rename(source, output),
+        Err(error) => Err(error),
+    }
 }
 
 /// 打包过程中的一帧进度。`phase` 取值与前端 `BackupExportProgress['phase']` 对齐。
@@ -2156,10 +2181,40 @@ mod tests {
         let choices = read_config_export_choices(&storage).unwrap();
         assert!(choices.get("textReplacements").is_none());
         assert_eq!(build_selected_config_value(&storage, &selection).unwrap_err(), "BACKUP_NOTHING_SELECTED");
+        storage.db.lock().unwrap().execute_batch(
+            "UPDATE app_settings SET value_json = x'3132' WHERE key = 'textReplacements'",
+        ).unwrap();
+        for value in [build_config_value(&storage).unwrap(), build_full_value(&storage, scope).unwrap()] {
+            assert!(value["appSettings"].get("textReplacements").is_none());
+            assert_eq!(value["appSettings"]["overlayWidth"], json!("long"));
+        }
+        assert!(read_config_export_choices(&storage).unwrap().get("textReplacements").is_none());
+        assert_eq!(build_selected_config_value(&storage, &selection).unwrap_err(), "BACKUP_NOTHING_SELECTED");
         storage.db.lock().unwrap().execute_batch("DROP TABLE app_settings").unwrap();
         let output = dir.join("config.json");
         assert!(write_config_file(&storage, &selection, &output).unwrap_err().contains("textReplacements"));
         assert!(!output.exists());
+        assert_no_backup_parts(&dir);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn missing_settings_table_aborts_both_full_export_formats() {
+        let (storage, dir) = temp_storage("missing_settings");
+        storage.db.lock().unwrap().execute_batch("DROP TABLE app_settings").unwrap();
+        let config = dir.join("config.json");
+        let archive = dir.join("backup.zip");
+        let scope = BackupScope { include_history: true, include_audio: false };
+        assert_eq!(
+            write_config_file(&storage, &config_export_selection("full"), &config),
+            Err("BACKUP_READ_SETTINGS".into()),
+        );
+        assert_eq!(
+            write_backup_archive_in_dir(&storage, scope, &archive, &dir.join("audio"), &mut |_| {}),
+            Err("BACKUP_READ_SETTINGS".into()),
+        );
+        assert!(!config.exists());
+        assert!(!archive.exists());
         assert_no_backup_parts(&dir);
         fs::remove_dir_all(dir).unwrap();
     }
@@ -2235,6 +2290,32 @@ mod tests {
         fs::remove_dir_all(dir).unwrap();
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn linked_audio_directory_can_be_backed_up_but_not_restored_to() {
+        use std::os::unix::fs::symlink;
+
+        let (storage, dir) = temp_storage("linked_audio");
+        let target = dir.join("recordings");
+        let audio = dir.join("audio");
+        fs::create_dir(&target).unwrap();
+        fs::write(target.join("real.wav"), b"recording").unwrap();
+        symlink("real.wav", target.join("link.wav")).unwrap();
+        symlink(&target, &audio).unwrap();
+
+        let output = dir.join("backup.zip");
+        let scope = BackupScope { include_history: false, include_audio: true };
+        write_backup_archive_in_dir(&storage, scope, &output, &audio, &mut |_| {}).unwrap();
+        let mut archive = zip::ZipArchive::new(fs::File::open(&output).unwrap()).unwrap();
+        assert_eq!(archive.len(), 2);
+        let mut bytes = Vec::new();
+        archive.by_name("audio/real.wav").unwrap().read_to_end(&mut bytes).unwrap();
+        assert_eq!(bytes, b"recording");
+        assert!(archive.by_name("audio/link.wav").is_err());
+        assert_eq!(apply_full_backup_archive(&storage, archive, &audio), Err("BACKUP_AUDIO_DIRECTORY_UNSAFE".into()));
+        fs::remove_dir_all(dir).unwrap();
+    }
+
     #[test]
     fn missing_recording_directory_is_empty_but_other_scan_errors_fail_the_backup() {
         let (storage, dir) = temp_storage("audio_list");
@@ -2276,6 +2357,31 @@ mod tests {
         fs::remove_dir_all(dir).unwrap();
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn unreadable_recording_metadata_aborts_the_backup() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let (storage, dir) = temp_storage("unreadable_recording_metadata");
+        let audio = dir.join("audio");
+        fs::create_dir(&audio).unwrap();
+        fs::write(audio.join("recording.wav"), b"recording").unwrap();
+        fs::set_permissions(&audio, fs::Permissions::from_mode(0o400)).unwrap();
+        let entry = fs::read_dir(&audio).unwrap().next().unwrap().unwrap();
+        // A privileged runner may bypass directory search permissions.
+        if entry.metadata().is_err() {
+            let output = dir.join("backup.zip");
+            let scope = BackupScope { include_history: false, include_audio: true };
+            let result = write_backup_archive_in_dir(&storage, scope, &output, &audio, &mut |_| {});
+            fs::set_permissions(&audio, fs::Permissions::from_mode(0o700)).unwrap();
+            assert_eq!(result, Err("BACKUP_READ_RECORDINGS".into()));
+            assert!(!output.exists());
+            assert_no_backup_parts(&dir);
+        }
+        fs::set_permissions(&audio, fs::Permissions::from_mode(0o700)).unwrap();
+        fs::remove_dir_all(dir).unwrap();
+    }
+
     #[test]
     fn poisoned_database_lock_fails_backup_instead_of_recovering_silently() {
         let (storage, dir) = temp_storage("backup_lock");
@@ -2287,6 +2393,107 @@ mod tests {
         assert_eq!(write_config_file(&storage, &config_export_selection("full"), &output).unwrap_err(), "BACKUP_READ_DATABASE");
         assert!(!output.exists());
         assert_no_backup_parts(&dir);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn poisoned_database_lock_stops_restore_before_installing_recordings() {
+        let (storage, dir) = temp_storage("restore_lock");
+        let _ = std::panic::catch_unwind(|| {
+            let _guard = storage.db.lock().unwrap();
+            panic!("simulate interrupted database lock holder");
+        });
+        let audio = dir.join("audio");
+        let backup = test_backup(&[
+            ("backup.json", &backup_with_history(json!([]))),
+            ("audio/recording.wav", b"recording"),
+        ]);
+        let archive = zip::ZipArchive::new(Cursor::new(backup)).unwrap();
+        assert_eq!(apply_full_backup_archive(&storage, archive, &audio), Err("BACKUP_RESTORE_DB|lock".into()));
+        assert!(!audio.exists());
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn full_config_import_rolls_back_settings_and_both_collections_on_write_failure() {
+        let (storage, dir) = temp_storage("config_transaction");
+        for (key, value) in [
+            ("overlayWidth", json!("long")),
+            ("promptPresets", json!([{ "id": "old-preset" }])),
+            ("appPromptRules", json!([{ "id": "old-rule" }])),
+        ] {
+            storage.set(key, &value).unwrap();
+        }
+        let config = json!({
+            "appSettings": { "overlayWidth": "short" },
+            "promptPresets": [{ "id": "new-preset" }],
+            "appPromptRules": [{ "id": "duplicate" }, { "id": "duplicate" }],
+        });
+        assert!(apply_config_part(&storage, &config, CONFIG_EXCLUDE).is_err());
+        assert_eq!(storage.get("overlayWidth", None), json!("long"));
+        assert_eq!(storage.get("promptPresets", None)[0]["id"], "old-preset");
+        assert_eq!(storage.get("appPromptRules", None)[0]["id"], "old-rule");
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn recording_size_changes_abort_export_without_leaving_a_file() {
+        let (storage, dir) = temp_storage("recording_size_changes");
+        let audio = dir.join("audio");
+        fs::create_dir(&audio).unwrap();
+        let recording = audio.join("recording.wav");
+        let output = dir.join("backup.zip");
+        let scope = BackupScope { include_history: false, include_audio: true };
+        for new_bytes in [b"bigger".as_slice(), b"x".as_slice()] {
+            fs::write(&recording, b"wav").unwrap();
+            let mut wrote_audio = false;
+            let result = write_backup_archive_in_dir(&storage, scope, &output, &audio, &mut |progress| {
+                if progress.phase == "packingData" {
+                    fs::write(&recording, new_bytes).unwrap();
+                }
+                wrote_audio |= progress.phase == "packingAudio";
+            });
+            assert_eq!(result, Err("BACKUP_RECORDING_CHANGED".into()), "{new_bytes:?}");
+            if new_bytes.len() > 3 {
+                assert!(!wrote_audio, "Growing input must be rejected before writing excess data");
+            }
+            assert!(!output.exists());
+            assert_no_backup_parts(&dir);
+        }
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn a_nonregular_recording_after_listing_aborts_without_publishing() {
+        use std::ffi::CString;
+        use std::os::unix::{ffi::OsStrExt, fs::symlink};
+
+        let (storage, dir) = temp_storage("recording_replaced");
+        let audio = dir.join("audio");
+        fs::create_dir(&audio).unwrap();
+        fs::write(dir.join("sample"), b"wav").unwrap();
+        let recording = audio.join("recording.wav");
+        let output = dir.join("backup.zip");
+        let scope = BackupScope { include_history: false, include_audio: true };
+        for fifo in [false, true] {
+            fs::write(&recording, b"wav").unwrap();
+            let result = write_backup_archive_in_dir(&storage, scope, &output, &audio, &mut |progress| {
+                if progress.phase == "packingData" {
+                    fs::remove_file(&recording).unwrap();
+                    if fifo {
+                        let path = CString::new(recording.as_os_str().as_bytes()).unwrap();
+                        assert_eq!(unsafe { libc::mkfifo(path.as_ptr(), 0o600) }, 0);
+                    } else {
+                        symlink(dir.join("sample"), &recording).unwrap();
+                    }
+                }
+            });
+            assert_eq!(result, Err("BACKUP_READ_RECORDINGS".into()));
+            assert!(!output.exists());
+            assert_no_backup_parts(&dir);
+            fs::remove_file(&recording).unwrap();
+        }
         fs::remove_dir_all(dir).unwrap();
     }
 
@@ -2318,7 +2525,7 @@ mod tests {
         write_config_file(&storage, &config_export_selection("full"), &config).unwrap();
         let previous = fs::read(&config).unwrap();
         storage.set("overlayWidth", &json!("changed")).unwrap();
-        assert!(write_config_file(&storage, &config_export_selection("full"), &config).is_err());
+        assert_eq!(write_config_file(&storage, &config_export_selection("full"), &config), Err("BACKUP_EXPORT_EXISTS".into()));
         assert_eq!(fs::read(&config).unwrap(), previous);
         let zip = dir.join("backup.zip");
         let scope = BackupScope { include_history: false, include_audio: false };
@@ -2328,6 +2535,63 @@ mod tests {
         assert!(write_backup_archive_in_dir(&storage, scope, &zip, &dir, &mut |_| {}).is_err());
         assert_eq!(fs::read(&zip).unwrap(), previous);
         assert_no_backup_parts(&dir);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn unsupported_publication_renames_the_complete_file() {
+        let (_storage, dir) = temp_storage("unsupported_publication");
+        let source = dir.join("backup.part");
+        let output = dir.join("backup.zip");
+        #[cfg(target_os = "macos")]
+        let unsupported = [libc::ENOTSUP, libc::EOPNOTSUPP, libc::EINVAL].map(io::Error::from_raw_os_error);
+        #[cfg(not(target_os = "macos"))]
+        let unsupported = [io::ErrorKind::Unsupported, io::ErrorKind::InvalidInput].map(io::Error::from);
+        for error in unsupported {
+            fs::write(&source, b"complete backup").unwrap();
+            publish_with_rename_fallback(&source, &output, || Err(error)).unwrap();
+            assert_eq!(fs::read(&output).unwrap(), b"complete backup");
+            assert!(!source.exists());
+            fs::remove_file(&output).unwrap();
+        }
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn publication_fallback_preserves_an_existing_destination() {
+        let (_storage, dir) = temp_storage("fallback_collision");
+        let source = dir.join("backup.part");
+        let output = dir.join("backup.zip");
+        fs::write(&source, b"new backup").unwrap();
+        fs::write(&output, b"old backup").unwrap();
+        let unsupported = || Err(io::ErrorKind::Unsupported.into());
+        let error = publish_with_rename_fallback(&source, &output, unsupported).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::AlreadyExists);
+        assert_eq!(fs::read(&output).unwrap(), b"old backup");
+        assert_eq!(fs::read(&source).unwrap(), b"new backup");
+        #[cfg(unix)]
+        {
+            fs::remove_file(&output).unwrap();
+            std::os::unix::fs::symlink("missing-backup", &output).unwrap();
+            let error = publish_with_rename_fallback(&source, &output, unsupported).unwrap_err();
+            assert_eq!(error.kind(), io::ErrorKind::AlreadyExists);
+            assert_eq!(fs::read_link(&output).unwrap(), Path::new("missing-backup"));
+        }
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn publication_errors_other_than_unsupported_do_not_fall_back() {
+        let (_storage, dir) = temp_storage("publication_error");
+        let source = dir.join("backup.part");
+        let output = dir.join("backup.zip");
+        fs::write(&source, b"complete backup").unwrap();
+        for kind in [io::ErrorKind::AlreadyExists, io::ErrorKind::PermissionDenied] {
+            let error = publish_with_rename_fallback(&source, &output, || Err(kind.into())).unwrap_err();
+            assert_eq!(error.kind(), kind);
+            assert!(!output.exists());
+            assert_eq!(fs::read(&source).unwrap(), b"complete backup");
+        }
         fs::remove_dir_all(dir).unwrap();
     }
 

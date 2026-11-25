@@ -899,17 +899,33 @@ pub fn is_settings_key_excluded(key: &str, exclude: &[&str]) -> bool {
 
 pub(crate) struct BackupSnapshot<'a>(&'a Connection);
 
+fn log_backup_sqlite_error(operation: &str, error: &rusqlite::Error) {
+    if let rusqlite::Error::SqliteFailure(code, _) = error {
+        log::warn!("Backup database {operation}: {:?} ({})", code.code, code.extended_code);
+    } else {
+        let category = match error {
+            rusqlite::Error::InvalidColumnType(..) => "column type",
+            rusqlite::Error::FromSqlConversionFailure(..) => "value conversion",
+            rusqlite::Error::QueryReturnedNoRows => "missing row",
+            _ => "query error",
+        };
+        log::warn!("Backup database {operation}: {category}");
+    }
+}
+
 impl BackupSnapshot<'_> {
     pub(crate) fn settings(&self, exclude: &[&str]) -> Result<Value, String> {
-        let read_error = |_| "BACKUP_READ_SETTINGS".to_owned();
+        let read_error = |error| {
+            log_backup_sqlite_error("read settings", &error);
+            "BACKUP_READ_SETTINGS".to_owned()
+        };
         let mut stmt = self.0.prepare("SELECT key, value_json FROM app_settings").map_err(read_error)?;
         let mut rows = stmt.query([]).map_err(read_error)?;
         let mut settings = serde_json::Map::new();
         while let Some(row) = rows.next().map_err(read_error)? {
             let key: String = row.get(0).map_err(read_error)?;
             if !is_settings_key_excluded(&key, exclude) {
-                let raw: String = row.get(1).map_err(read_error)?;
-                if let Some(value) = Self::parse_setting(&key, &raw) {
+                if let Some(value) = Self::parse_setting(&key, row.get_ref(1).map_err(read_error)?) {
                     settings.insert(key, value);
                 }
             }
@@ -919,32 +935,42 @@ impl BackupSnapshot<'_> {
 
     // A missing setting has its normal null default. Malformed JSON is omitted.
     pub(crate) fn setting(&self, key: &str) -> Result<Option<Value>, String> {
-        let raw: Option<String> = self.0.query_row(
+        let value = self.0.query_row(
             "SELECT value_json FROM app_settings WHERE key = ?1",
             [key],
-            |row| row.get(0),
-        ).optional().map_err(|_| format!("BACKUP_READ_SETTINGS|{key}"))?;
-        Ok(match raw {
-            Some(raw) => Self::parse_setting(key, &raw),
-            None => Some(Value::Null),
-        })
+            |row| Ok(Self::parse_setting(key, row.get_ref(0)?)),
+        ).optional().map_err(|error| {
+            log_backup_sqlite_error("read setting", &error);
+            format!("BACKUP_READ_SETTINGS|{key}")
+        })?;
+        Ok(value.unwrap_or(Some(Value::Null)))
     }
 
-    fn parse_setting(key: &str, raw: &str) -> Option<Value> {
-        serde_json::from_str(raw).map_err(|_| {
-            log::warn!("Skipping malformed backup setting {key:?}");
-        }).ok()
+    fn parse_setting(key: &str, raw: rusqlite::types::ValueRef<'_>) -> Option<Value> {
+        if let rusqlite::types::ValueRef::Text(bytes) = raw {
+            if let Ok(value) = serde_json::from_slice(bytes) {
+                return Some(value);
+            }
+        }
+        log::warn!("Skipping malformed backup setting {key:?}");
+        None
     }
 
     pub(crate) fn collection(&self, key: &str) -> Result<Value, String> {
-        let read_error = |_| format!("BACKUP_READ_COLLECTION|{key}");
+        let read_error = |error| {
+            log_backup_sqlite_error("read collection", &error);
+            format!("BACKUP_READ_COLLECTION|{key}")
+        };
         let table = collection_table(key).ok_or_else(|| format!("BACKUP_READ_COLLECTION|{key}"))?;
         let mut stmt = self.0.prepare(&format!("SELECT raw_json FROM {table} ORDER BY list_order ASC"))
             .map_err(read_error)?;
         let mut rows = stmt.query([]).map_err(read_error)?;
         let mut items = Vec::new();
         loop {
-            let row_error = |_| format!("BACKUP_READ_COLLECTION|{key}|{}", items.len() + 1);
+            let row_error = |error| {
+                log_backup_sqlite_error("read collection row", &error);
+                format!("BACKUP_READ_COLLECTION|{key}|{}", items.len() + 1)
+            };
             let Some(row) = rows.next().map_err(row_error)? else { break };
             let raw: String = row.get(0).map_err(row_error)?;
             let item = serde_json::from_str(&raw).map_err(|_| {
@@ -962,9 +988,13 @@ impl Storage {
         read: impl FnOnce(&BackupSnapshot<'_>) -> Result<T, String>,
     ) -> Result<T, String> {
         let mut db = self.db.lock().map_err(|_| "BACKUP_READ_DATABASE")?;
-        let tx = db.transaction().map_err(|_| "BACKUP_READ_DATABASE")?;
+        let read_error = |error| {
+            log_backup_sqlite_error("snapshot transaction", &error);
+            "BACKUP_READ_DATABASE"
+        };
+        let tx = db.transaction().map_err(read_error)?;
         let result = read(&BackupSnapshot(&tx))?;
-        tx.commit().map_err(|_| "BACKUP_READ_DATABASE")?;
+        tx.commit().map_err(read_error)?;
         Ok(result)
     }
 
@@ -977,12 +1007,13 @@ impl Storage {
         app_prompt_rules: Option<&[Value]>,
     ) -> SqlResult<()> {
         let mut db = self.conn();
-        let tx = db.transaction()?;
+        let log_error = |error: &rusqlite::Error| log_backup_sqlite_error("import configuration", error);
+        let tx = db.transaction().inspect_err(log_error)?;
         Self::apply_backup_data_on(&tx, app_settings, exclude, &[
             ("promptPresets", prompt_presets),
             ("appPromptRules", app_prompt_rules),
-        ])?;
-        tx.commit()
+        ]).inspect_err(log_error)?;
+        tx.commit().inspect_err(log_error)
     }
 
     pub(crate) fn apply_restore_transaction(
@@ -993,19 +1024,23 @@ impl Storage {
         dry_run: bool,
     ) -> Result<(), String> {
         let mut db = self.db.lock().map_err(|_| "BACKUP_RESTORE_DB|lock")?;
-        let tx = db.transaction().map_err(|_| "BACKUP_RESTORE_DB|begin")?;
+        let restore_error = |stage| move |error| {
+            log_backup_sqlite_error(stage, &error);
+            format!("BACKUP_RESTORE_DB|{stage}")
+        };
+        let tx = db.transaction().map_err(restore_error("begin"))?;
         Self::apply_backup_data_on(&tx, app_settings, exclude, collections)
-            .map_err(|_| "BACKUP_RESTORE_DB|write")?;
+            .map_err(restore_error("write"))?;
         if dry_run {
             // Deferred foreign keys are otherwise checked only at commit.
             let violation = tx.query_row("PRAGMA foreign_key_check", [], |_| Ok(()))
-                .optional().map_err(|_| "BACKUP_RESTORE_DB|check")?;
+                .optional().map_err(restore_error("check"))?;
             if violation.is_some() {
                 return Err("BACKUP_RESTORE_DB|constraint".into());
             }
-            tx.rollback().map_err(|_| "BACKUP_RESTORE_DB|rollback")?;
+            tx.rollback().map_err(restore_error("rollback"))?;
         } else {
-            tx.commit().map_err(|_| "BACKUP_RESTORE_DB|commit")?;
+            tx.commit().map_err(restore_error("commit"))?;
         }
         Ok(())
     }
