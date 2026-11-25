@@ -1,6 +1,5 @@
 use serde::Deserialize;
 use std::fs;
-use std::io::Write;
 use tauri::Emitter;
 
 #[derive(Deserialize)]
@@ -88,12 +87,8 @@ pub fn save_export_bundle(payload: ExportBundlePayload) -> Result<Option<String>
 
     let file = fs::File::create(&path).map_err(|e| e.to_string())?;
     let mut zip = zip::ZipWriter::new(file);
-    let options = zip::write::FileOptions::default()
-        .compression_method(zip::CompressionMethod::Deflated);
-
     for item in &payload.files {
-        zip.start_file(&item.name, options).map_err(|e| e.to_string())?;
-        zip.write_all(item.content.as_bytes()).map_err(|e| e.to_string())?;
+        super::archive::write_deflated_entry(&mut zip, &item.name, item.content.as_bytes())?;
     }
 
     zip.finish().map_err(|e| e.to_string())?;
@@ -139,11 +134,6 @@ pub async fn save_full_export(
         let total = json_files.len() + audio_files.len();
         let file = fs::File::create(&out_path).map_err(|e| e.to_string())?;
         let mut zip = zip::ZipWriter::new(file);
-        let text_opts = zip::write::FileOptions::default()
-            .compression_method(zip::CompressionMethod::Deflated);
-        let audio_opts = zip::write::FileOptions::default()
-            .compression_method(zip::CompressionMethod::Stored); // 音频不压缩，速度快
-
         let mut current = 0usize;
 
         // 写入 JSON 文件
@@ -152,8 +142,7 @@ pub async fn save_full_export(
             let _ = app_handle.emit("export-progress", ExportProgress {
                 current, total, filename: item.name.clone(),
             });
-            zip.start_file(&item.name, text_opts).map_err(|e| e.to_string())?;
-            zip.write_all(item.content.as_bytes()).map_err(|e| e.to_string())?;
+            super::archive::write_deflated_entry(&mut zip, &item.name, item.content.as_bytes())?;
         }
 
         // 写入音频文件
@@ -166,9 +155,12 @@ pub async fn save_full_export(
                 current, total, filename: fname.clone(),
             });
             let zip_name = format!("audio/{}", fname);
-            zip.start_file(&zip_name, audio_opts).map_err(|e| e.to_string())?;
-            let bytes = fs::read(audio_path).map_err(|e| format!("Failed to read audio file {}: {}", fname, e))?;
-            zip.write_all(&bytes).map_err(|e| e.to_string())?;
+            let read_error = |error| format!("Failed to read audio file {}: {}", fname, error);
+            let mut source = fs::File::open(audio_path).map_err(read_error)?;
+            let length = source.metadata().map_err(read_error)?.len();
+            let options = super::archive::file_options(zip::CompressionMethod::Stored, length);
+            zip.start_file(&zip_name, options).map_err(|e| e.to_string())?;
+            std::io::copy(&mut source, &mut zip).map_err(|e| e.to_string())?;
         }
 
         zip.finish().map_err(|e| e.to_string())?;

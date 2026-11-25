@@ -1,7 +1,6 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, HashMap};
-use std::io::Write;
 use tauri::{AppHandle, Manager, State};
 use crate::storage::Storage;
 
@@ -392,6 +391,27 @@ mod raw_upload_tests {
         fs::remove_dir_all(dir).unwrap();
     }
 
+    #[test]
+    fn failed_diagnostics_write_does_not_publish_drop_finalized_zip() {
+        use std::fs;
+        let dir = std::env::temp_dir().join(format!("sayit-diag-test-{}", uuid::Uuid::new_v4()));
+        fs::create_dir(&dir).unwrap();
+        let output = dir.join("diagnostics.zip");
+        let partial = dir.join("diagnostics.zip.partial");
+        let err = super::publish_diagnostics_zip(&partial, &output, |path| {
+            let mut writer = zip::ZipWriter::new(fs::File::create(path).unwrap());
+            super::super::archive::write_deflated_entry(&mut writer, "manifest.json", b"{}").unwrap();
+            drop(writer);
+            let archive = zip::ZipArchive::new(fs::File::open(path).unwrap()).unwrap();
+            assert_eq!(archive.len(), 1);
+            Err("simulated write failure".into())
+        }).unwrap_err();
+        assert_eq!(err, "simulated write failure");
+        assert!(!partial.exists());
+        assert!(!output.exists());
+        fs::remove_dir_all(dir).unwrap();
+    }
+
 }
 
 fn build_diagnostics_zip(req: DiagnosticsZipRequest) -> Result<String, String> {
@@ -409,19 +429,22 @@ fn build_diagnostics_zip(req: DiagnosticsZipRequest) -> Result<String, String> {
     let zip_path = diag_dir.join(format!("{stem}.zip"));
     // [自訂] SCAN1-7（L-77）：先寫成暫存檔，完整寫完才改名成 .zip；中途出錯就刪掉暫存檔，不留半個包。
     let partial_path = diag_dir.join(format!("{stem}.zip.partial"));
-    match write_diagnostics_zip(&partial_path, &req) {
-        Ok(()) => {
-            if let Err(e) = std::fs::rename(&partial_path, &zip_path) {
-                remove_partial_zip(&partial_path);
-                return Err(e.to_string());
-            }
-            Ok(zip_path.to_string_lossy().to_string())
-        }
-        Err(e) => {
-            remove_partial_zip(&partial_path);
-            Err(e)
-        }
+    publish_diagnostics_zip(&partial_path, &zip_path, |path| write_diagnostics_zip(path, &req))?;
+    Ok(zip_path.to_string_lossy().to_string())
+}
+
+// [自訂] L-77：writer 即使在 Drop 中收尾，仍只有成功的暫存檔可以發布。
+fn publish_diagnostics_zip(
+    partial_path: &std::path::Path,
+    zip_path: &std::path::Path,
+    write_zip: impl FnOnce(&std::path::Path) -> Result<(), String>,
+) -> Result<(), String> {
+    let result = write_zip(partial_path)
+        .and_then(|()| std::fs::rename(partial_path, zip_path).map_err(|error| error.to_string()));
+    if result.is_err() {
+        remove_partial_zip(partial_path);
     }
+    result
 }
 
 /// [自訂] SCAN1-7：刪除暫存檔；刪不掉只記錄錯誤，不記包的內容。
@@ -436,8 +459,7 @@ fn remove_partial_zip(path: &std::path::Path) {
 fn write_diagnostics_zip(zip_path: &std::path::Path, req: &DiagnosticsZipRequest) -> Result<(), String> {
     let file = std::fs::File::create(zip_path).map_err(|e| e.to_string())?;
     let mut zip = zip::ZipWriter::new(file);
-    let options = zip::write::FileOptions::default()
-        .compression_method(zip::CompressionMethod::Deflated);
+    use super::archive::write_deflated_entry;
 
     // 1. manifest.json
     let manifest = serde_json::json!({
@@ -449,14 +471,12 @@ fn write_diagnostics_zip(zip_path: &std::path::Path, req: &DiagnosticsZipRequest
         "platform": "win32",
         "imageCount": req.images.len(),
     });
-    zip.start_file("manifest.json", options).map_err(|e| e.to_string())?;
-    zip.write_all(serde_json::to_string_pretty(&manifest).unwrap().as_bytes())
-        .map_err(|e| e.to_string())?;
+    let json = serde_json::to_string_pretty(&manifest).map_err(|error| error.to_string())?;
+    write_deflated_entry(&mut zip, "manifest.json", json.as_bytes())?;
 
     // 2. settings.json
-    zip.start_file("settings.json", options).map_err(|e| e.to_string())?;
-    zip.write_all(serde_json::to_string_pretty(&req.settings).unwrap().as_bytes())
-        .map_err(|e| e.to_string())?;
+    let json = serde_json::to_string_pretty(&req.settings).map_err(|error| error.to_string())?;
+    write_deflated_entry(&mut zip, "settings.json", json.as_bytes())?;
 
     // 3. 日志文件
     // [自訂] SCAN1-5（L-75）：原始日誌也依使用者選的問題時段過濾，和預覽一致；
@@ -473,8 +493,7 @@ fn write_diagnostics_zip(zip_path: &std::path::Path, req: &DiagnosticsZipRequest
                     continue;
                 }
                 let zip_name = format!("logs/{}", filename);
-                zip.start_file(&zip_name, options).map_err(|e| e.to_string())?;
-                zip.write_all(kept.as_bytes()).map_err(|e| e.to_string())?;
+                write_deflated_entry(&mut zip, &zip_name, kept.as_bytes())?;
             }
         }
     }
@@ -493,17 +512,15 @@ fn write_diagnostics_zip(zip_path: &std::path::Path, req: &DiagnosticsZipRequest
         } else {
             format!("images/{}", img.name)
         };
-        zip.start_file(&zip_name, options).map_err(|e| e.to_string())?;
-        zip.write_all(&img.data).map_err(|e| e.to_string())?;
+        write_deflated_entry(&mut zip, &zip_name, &img.data)?;
     }
 
     // 5. diagnostics preview (filtered by occurrence)
     let mut recent = RecentEntries::new(500);
     scan_log_entries(&log_d, cutoff.as_deref(), |entry| recent.push(entry));
     let timeline: Vec<_> = recent.entries.into_values().rev().collect();
-    zip.start_file("timeline.json", options).map_err(|e| e.to_string())?;
-    zip.write_all(serde_json::to_string_pretty(&timeline).unwrap().as_bytes())
-        .map_err(|e| e.to_string())?;
+    let json = serde_json::to_string_pretty(&timeline).map_err(|error| error.to_string())?;
+    write_deflated_entry(&mut zip, "timeline.json", json.as_bytes())?;
 
     zip.finish().map_err(|e| e.to_string())?;
 

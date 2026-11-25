@@ -935,15 +935,7 @@ pub fn write_backup_archive(
 
         let file = fs::File::create(&temp_path).map_err(|e| format!("Failed to create file: {}", e))?;
         let mut zip = zip::ZipWriter::new(file);
-        let text_opts = zip::write::FileOptions::default()
-            .compression_method(zip::CompressionMethod::Deflated);
-        let audio_opts = zip::write::FileOptions::default()
-            .compression_method(zip::CompressionMethod::Stored);
-
-        zip.start_file("backup.json", text_opts)
-            .map_err(|e| e.to_string())?;
-        zip.write_all(json_str.as_bytes())
-            .map_err(|e| e.to_string())?;
+        super::archive::write_deflated_entry(&mut zip, "backup.json", json_str.as_bytes())?;
 
         let mut processed_bytes = 0u64;
         let mut processed_files = 0u64;
@@ -951,10 +943,11 @@ pub fn write_backup_archive(
         let mut buffer = vec![0u8; 256 * 1024];
 
         for audio in &audio_files {
-            zip.start_file(format!("audio/{}", audio.name), audio_opts)
-                .map_err(|e| e.to_string())?;
             let mut source = fs::File::open(&audio.path)
                 .map_err(|e| format!("Failed to read audio file {}: {}", audio.name, e))?;
+            let options = super::archive::file_options(zip::CompressionMethod::Stored, audio.size);
+            zip.start_file(format!("audio/{}", audio.name), options)
+                .map_err(|e| e.to_string())?;
 
             loop {
                 let read = source
@@ -1360,15 +1353,48 @@ pub async fn import_full(in_path: String, app: AppHandle) -> Result<(), String> 
 /// 对缺失段是宽容的：只含配置的备份（WebDAV 默认档）不会带 `history` 字段，
 /// 此时**保留本机现有历史**而不是清空 —— 见 `build_full_value` 里为什么不写空数组。
 pub fn apply_full_backup(storage: &Storage, in_path: &str) -> Result<(), String> {
+    apply_full_backup_in_dir(storage, in_path, &audio_dir())
+}
+
+fn apply_full_backup_in_dir(storage: &Storage, in_path: &str, adir: &Path) -> Result<(), String> {
     let file = fs::File::open(in_path).map_err(|e| format!("Failed to open file: {}", e))?;
     let mut archive = zip::ZipArchive::new(file).map_err(|e| format!("Not a valid backup archive: {}", e))?;
+    // [自訂] SC-51：zip 的一致性檢查須明確呼叫。先拒絕標頭不一致或重複的條目，
+    // 此時尚未建立或寫入任何錄音檔，也尚未套用設定。
+    archive.validate_header_consistency().map_err(|e| format!("Invalid backup ZIP headers: {e}"))?;
+    let mut names = HashSet::new();
+    for index in 0..archive.len() {
+        let entry = archive.by_index_data(index).map_err(|e| e.to_string())?;
+        let name = entry.name().map_err(|e| e.to_string())?;
+        if entry.is_symlink() || !is_backup_entry_path_safe(&name) {
+            return Err("The archive contains a symbolic link or an unsafe entry path".to_string());
+        }
+        if entry.encrypted() {
+            return Err("Encrypted backup ZIP entries are unsupported".to_string());
+        }
+        if !matches!(entry.compression(), zip::CompressionMethod::Stored | zip::CompressionMethod::Deflated) {
+            return Err("Unsupported compression in backup ZIP".to_string());
+        }
+        // 不分大小寫的檔案系統上，兩個不同條目仍可能寫到同一檔。
+        if let Some(base) = archive_audio_basename(&name, entry.is_file()) {
+            if !names.insert(base.to_ascii_lowercase()) {
+                return Err("The archive contains conflicting recording names".to_string());
+            }
+        }
+    }
 
     // 1. 读取并校验 backup.json
     let mut json_str = String::new();
     {
         let mut entry = archive
             .by_name("backup.json")
-            .map_err(|_| "The archive is missing backup.json and may not be a SayItLocally full backup".to_string())?;
+            .map_err(|error| match error {
+                zip::result::ZipError::FileNotFound => "The archive is missing backup.json and may not be a SayItLocally full backup".to_string(),
+                _ => format!("Failed to read backup.json: {error}"),
+            })?;
+        if !entry.is_file() {
+            return Err("The archive's backup.json must be a regular file".to_string());
+        }
         entry.read_to_string(&mut json_str).map_err(|e| e.to_string())?;
     }
     let data: Value = serde_json::from_str(&json_str).map_err(|e| format!("Failed to parse backup.json: {}", e))?;
@@ -1377,27 +1403,19 @@ pub fn apply_full_backup(storage: &Storage, in_path: &str) -> Result<(), String>
     // [自訂] S71：匯入的錄音寫完前禁止清理。
     let _recordings = super::audio::lock_recordings();
     // 2. 释放音频文件到本机 audio 目录
-    let adir = audio_dir();
-    fs::create_dir_all(&adir).map_err(|e| format!("Failed to create audio directory: {}", e))?;
+    fs::create_dir_all(adir).map_err(|e| format!("Failed to create audio directory: {}", e))?;
+    if !fs::symlink_metadata(adir).map_err(|e| e.to_string())?.is_dir() {
+        return Err("The audio directory must not be a symbolic link".to_string());
+    }
     for i in 0..archive.len() {
         let mut entry = archive.by_index(i).map_err(|e| e.to_string())?;
-        let name = entry.name().to_string();
-        if let Some(rest) = name.strip_prefix("audio/") {
-            if rest.is_empty() || entry.is_dir() {
-                continue;
-            }
-            let base = basename(rest);
-            if !is_backup_audio_name(&base) {
-                log::warn!(
-                    "[backup] skipped an archive entry that is not a recording: {}",
-                    crate::providers::diag::truncate(&base, 80)
-                );
-                continue;
-            }
-            let mut buf = Vec::new();
-            entry.read_to_end(&mut buf).map_err(|e| e.to_string())?;
-            fs::write(adir.join(&base), &buf).map_err(|e| format!("Failed to write audio file {}: {}", base, e))?;
-        }
+        let name = entry.name().map_err(|e| e.to_string())?;
+        let Some(base) = archive_audio_basename(&name, entry.is_file()) else {
+            continue;
+        };
+        let destination = adir.join(base);
+        restore_audio_file(&mut entry, adir, &destination)
+            .map_err(|e| format!("Failed to restore audio file {}: {}", destination.file_name().unwrap_or_default().to_string_lossy(), e))?;
     }
 
     // 3. 应用配置部分（含 stats，不含本机专属设置）
@@ -1405,7 +1423,7 @@ pub fn apply_full_backup(storage: &Storage, in_path: &str) -> Result<(), String>
 
     // 4. 历史：重写音频路径后整表替换
     if let Some(history) = data.get("history").and_then(|v| v.as_array()) {
-        let rewritten: Vec<Value> = history.iter().map(|rec| rewrite_audio_path(rec, &adir)).collect();
+        let rewritten: Vec<Value> = history.iter().map(|rec| rewrite_audio_path(rec, adir)).collect();
         storage
             .set("history", &Value::Array(rewritten))
             .map_err(|e| format!("Failed to write history: {}", e))?;
@@ -1423,6 +1441,39 @@ pub fn apply_full_backup(storage: &Storage, in_path: &str) -> Result<(), String>
     Ok(())
 }
 
+// [自訂] SC-51：只還原 audio/ 下的單層錄音檔；巢狀條目不展平以免覆蓋同名檔。
+fn archive_audio_basename(name: &str, is_file: bool) -> Option<&str> {
+    let rest = name.strip_prefix("audio/")?;
+    (is_file && is_backup_audio_name(rest)).then_some(rest)
+}
+
+// [自訂] SC-51：先拒絕危險路徑，再套用任何錄音或資料庫內容。
+fn is_backup_entry_path_safe(name: &str) -> bool {
+    !name.starts_with('/')
+        && !name.contains('\\')
+        && !name.split('/').any(|part| part == "..")
+        && !matches!(name.as_bytes(), [b'a'..=b'z' | b'A'..=b'Z', b':', ..])
+}
+
+// [自訂] SC-51：解壓與 CRC 檢查完成後再更換錄音，避免半寫與跟隨既有連結。
+fn restore_audio_file(source: &mut impl Read, dir: &Path, destination: &Path) -> std::io::Result<()> {
+    match fs::symlink_metadata(destination) {
+        Ok(metadata) if !metadata.is_file() => return Err(std::io::Error::other("Recording destination is not a regular file")),
+        Ok(_) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error),
+    }
+    let temp = dir.join(format!(".sayit-restore-{}.tmp", uuid::Uuid::new_v4()));
+    let mut staged = fs::OpenOptions::new().write(true).create_new(true).open(&temp)?;
+    let copied = std::io::copy(source, &mut staged);
+    drop(staged);
+    let result = copied.and_then(|_| fs::rename(&temp, destination));
+    if result.is_err() {
+        let _ = fs::remove_file(&temp);
+    }
+    result
+}
+
 /// 导入完成后由前端调用，重启应用使内存中的设置/供应商状态全量重载。
 #[tauri::command]
 pub fn restart_app(app: tauri::AppHandle) {
@@ -1436,11 +1487,136 @@ pub fn restart_app(app: tauri::AppHandle) {
 mod tests {
     use super::*;
 
+    const LEGACY_BACKUP: &[u8] = include_bytes!("testdata/legacy-backup-0.6.6.zip");
+
     fn temp_storage(tag: &str) -> (Storage, PathBuf) {
         let dir = std::env::temp_dir().join(format!("sayit-backup-test-{}-{}", tag, uuid::Uuid::new_v4()));
         fs::create_dir_all(&dir).unwrap();
         let storage = Storage::new(dir.join("test.db")).unwrap();
         (storage, dir)
+    }
+
+    #[test]
+    fn restores_legacy_zip_0_6_6_recording_and_rewrites_history_path() {
+        let (storage, dir) = temp_storage("legacy_zip");
+        let path = dir.join("legacy.zip");
+        let audio = dir.join("audio");
+        fs::write(&path, LEGACY_BACKUP).unwrap();
+        apply_full_backup_in_dir(&storage, path.to_str().unwrap(), &audio).unwrap();
+
+        let recording = audio.join("deferE032a.wav");
+        let bytes = fs::read(&recording).unwrap();
+        assert_eq!(&bytes[..4], b"RIFF");
+        assert_eq!(bytes.len(), 46);
+        assert_eq!(fs::read_dir(&audio).unwrap().count(), 1);
+        let history = storage.get("history", None);
+        assert_eq!(history.pointer("/0/id").and_then(Value::as_str), Some("deferE032a"));
+        assert_eq!(history.pointer("/0/audioFilePath").and_then(Value::as_str), recording.to_str());
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn recording_entry_filter_requires_one_level_and_a_regular_audio_name() {
+        assert_eq!(archive_audio_basename("audio/example.wav", true), Some("example.wav"));
+        for name in [
+            "../example.wav", "/audio/example.wav", "audio/../example.wav",
+            "audio//example.wav", "audio/sub/example.wav", "audio/sub\\example.wav",
+            "audio/中文.txt", "audio/",
+        ] {
+            assert_eq!(archive_audio_basename(name, true), None, "{name}");
+        }
+        assert_eq!(archive_audio_basename("audio/example.wav", false), None);
+        for name in ["../example.wav", "/audio/example.wav", "audio/../example.wav", "audio/sub\\example.wav", "C:/example.wav"] {
+            assert!(!is_backup_entry_path_safe(name), "{name}");
+        }
+        assert!(is_backup_entry_path_safe("audio/中文.txt"));
+    }
+
+    #[test]
+    fn unreadable_archive_types_and_truncation_do_not_touch_history_or_audio() {
+        let (storage, dir) = temp_storage("unsupported_zip");
+        let backup = dir.join("backup.zip");
+        let audio = dir.join("audio");
+        let history = json!([{ "id": "existing", "timestamp": 1, "asrText": "local" }]);
+        storage.set("history", &history).unwrap();
+        let saved_history = storage.get("history", None);
+        let cases: [(&[u8], &str); 3] = [
+            (include_bytes!("testdata/encrypted-backup.zip"), "Encrypted backup"),
+            (include_bytes!("testdata/bzip2-backup.zip"), "Unsupported compression"),
+            (&LEGACY_BACKUP[..100], "Not a valid backup archive"),
+        ];
+        for (bytes, expected_error) in cases {
+            fs::write(&backup, bytes).unwrap();
+            let error = apply_full_backup_in_dir(&storage, backup.to_str().unwrap(), &audio).unwrap_err();
+            assert!(error.contains(expected_error), "{error}");
+            assert!(!audio.exists());
+            assert_eq!(storage.get("history", None), saved_history);
+        }
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn missing_backup_json_is_reported_before_creating_audio_directory() {
+        let (storage, dir) = temp_storage("missing_backup_json");
+        let backup = dir.join("backup.zip");
+        let audio = dir.join("audio");
+        let mut writer = zip::ZipWriter::new(fs::File::create(&backup).unwrap());
+        super::super::archive::write_deflated_entry(&mut writer, "note.txt", b"test").unwrap();
+        writer.finish().unwrap();
+        let error = apply_full_backup_in_dir(&storage, backup.to_str().unwrap(), &audio).unwrap_err();
+        assert!(error.contains("missing backup.json"));
+        assert!(!audio.exists());
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn archive_preflight_rejects_links_and_case_conflicts_without_overwriting_history() {
+        let (storage, dir) = temp_storage("conflicting_recordings");
+        let backup = dir.join("backup.zip");
+        let audio = dir.join("audio");
+        storage.set("history", &json!([{ "id": "existing", "timestamp": 1 }])).unwrap();
+        let saved_history = storage.get("history", None);
+        let json = br#"{"kind":"full","formatVersion":1,"history":[]}"#;
+        let mut writer = zip::ZipWriter::new(fs::File::create(&backup).unwrap());
+        super::super::archive::write_deflated_entry(&mut writer, "backup.json", json).unwrap();
+        let options = super::super::archive::file_options(zip::CompressionMethod::Stored, 4);
+        writer.add_symlink("audio/ignored.wav", "another.wav", options).unwrap();
+        writer.add_directory("audio/directory.wav/", options).unwrap();
+        writer.finish().unwrap();
+        let error = apply_full_backup_in_dir(&storage, backup.to_str().unwrap(), &audio).unwrap_err();
+        assert!(error.contains("symbolic link"), "{error}");
+        assert!(!audio.exists());
+        assert_eq!(storage.get("history", None), saved_history);
+
+        let mut writer = zip::ZipWriter::new(fs::File::create(&backup).unwrap());
+        super::super::archive::write_deflated_entry(&mut writer, "backup.json", json).unwrap();
+        for name in ["audio/Example.wav", "audio/example.wav"] {
+            writer.start_file(name, options).unwrap();
+            writer.write_all(b"test").unwrap();
+        }
+        writer.finish().unwrap();
+        let error = apply_full_backup_in_dir(&storage, backup.to_str().unwrap(), &audio).unwrap_err();
+        assert!(error.contains("conflicting recording names"), "{error}");
+        assert!(!audio.exists());
+        assert_eq!(storage.get("history", None), saved_history);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn preexisting_recording_link_cannot_write_outside_audio_directory() {
+        let (storage, dir) = temp_storage("external_recording_link");
+        let backup = dir.join("backup.zip");
+        let audio = dir.join("audio");
+        let target = dir.join("untouched.wav");
+        fs::create_dir(&audio).unwrap();
+        fs::write(&target, b"old").unwrap();
+        fs::write(&backup, LEGACY_BACKUP).unwrap();
+        std::os::unix::fs::symlink(&target, audio.join("deferE032a.wav")).unwrap();
+        let error = apply_full_backup_in_dir(&storage, backup.to_str().unwrap(), &audio).unwrap_err();
+        assert!(error.contains("not a regular file"), "{error}");
+        assert_eq!(fs::read(&target).unwrap(), b"old");
+        fs::remove_dir_all(dir).unwrap();
     }
 
     /// 不含历史时，`history` 字段必须**整个缺席**，不能是空数组。
