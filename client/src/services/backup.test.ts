@@ -12,6 +12,9 @@ describe('backup transfer errors', () => {
 
   it('localizes restore and file errors and preserves unrecognized details', () => {
     expect(describeBackupTransferError(new Error('BACKUP_RESTORE_DB|commit'))).toBe(t('backup.restoreDatabase'))
+    expect(describeBackupTransferError('BACKUP_VOLATILE_STORAGE')).toBe(t('backup.volatileStorage'))
+    expect(describeWebDavError('BACKUP_VOLATILE_STORAGE')).toBe(t('backup.volatileStorage'))
+    expect(t('backup.volatileStorage')).not.toBe('backup.volatileStorage')
     expect(describeBackupTransferError('BACKUP_EXPORT_EXISTS')).toBe(t('backup.fileExists'))
     expect(describeBackupTransferError('Unrecognized error')).toBe('Unrecognized error')
   })

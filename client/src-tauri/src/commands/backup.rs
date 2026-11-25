@@ -1451,7 +1451,17 @@ pub async fn import_config(
     expected_import_token: String,
     storage: State<'_, Storage>,
 ) -> Result<ConfigImportResult, String> {
-    let (data, file_fingerprint) = read_config_file(&in_path)?;
+    apply_config_import(storage.inner(), &in_path, &expected_import_token)
+}
+
+fn apply_config_import(
+    storage: &Storage,
+    in_path: &str,
+    expected_import_token: &str,
+) -> Result<ConfigImportResult, String> {
+    // [自訂] SC-55：記憶體庫在讀檔之前就拒絕，涵蓋 v1、完整與分項匯入。
+    storage.ensure_persistent()?;
+    let (data, file_fingerprint) = read_config_file(in_path)?;
     let version = check_kind_and_version(
         &data,
         "config",
@@ -1459,12 +1469,12 @@ pub async fn import_config(
     )?;
 
     if is_selected_config(&data) {
-        let actual_token = config_import_token(storage.inner(), &data, &file_fingerprint)?;
+        let actual_token = config_import_token(storage, &data, &file_fingerprint)?;
         if actual_token != expected_import_token {
             return Err("The configuration file or local settings changed; select the file again and reconfirm".to_string());
         }
 
-        let plan = build_selected_import_plan(storage.inner(), &data)?;
+        let plan = build_selected_import_plan(storage, &data)?;
         let changed_sections = plan
             .sections
             .iter()
@@ -1497,7 +1507,7 @@ pub async fn import_config(
     }
 
     // 完整配置导入排除 stats，避免覆盖本机使用统计。
-    apply_config_part(storage.inner(), &data, CONFIG_EXCLUDE)?;
+    apply_config_part(storage, &data, CONFIG_EXCLUDE)?;
     Ok(ConfigImportResult {
         changed_sections: vec!["fullConfig".to_string()],
         added: 0,
@@ -1523,6 +1533,8 @@ pub fn apply_full_backup(storage: &Storage, in_path: &str) -> Result<(), String>
 }
 
 fn apply_full_backup_in_dir(storage: &Storage, in_path: &str, adir: &Path) -> Result<(), String> {
+    // [自訂] SC-55：本機匯入與 WebDAV 還原共用；記憶體庫在開檔之前就拒絕。
+    storage.ensure_persistent()?;
     let file = fs::File::open(in_path).map_err(|e| format!("Failed to open file: {}", e))?;
     let archive = zip::ZipArchive::new(file).map_err(|e| format!("Not a valid backup archive: {}", e))?;
     apply_full_backup_archive(storage, archive, adir)
@@ -2455,6 +2467,110 @@ mod tests {
         assert_eq!(storage.get("overlayWidth", None), json!("long"));
         assert_eq!(storage.get("promptPresets", None)[0]["id"], "old-preset");
         assert_eq!(storage.get("appPromptRules", None)[0]["id"], "old-rule");
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    fn volatile_storage(dir: &Path) -> Storage {
+        // A directory at the database path makes the real startup fall back to memory.
+        let blocked = dir.join("blocked.db");
+        fs::create_dir_all(&blocked).unwrap();
+        let (storage, mode) = Storage::open_or_recover(blocked);
+        assert!(matches!(mode, Some(crate::storage::StorageRecovery::InMemory)));
+        storage.set("overlayWidth", &json!("long")).unwrap();
+        storage.set("history", &json!([{ "id": "kept" }])).unwrap();
+        storage
+    }
+
+    fn assert_volatile_storage_unchanged(storage: &Storage) {
+        assert_eq!(storage.get("overlayWidth", None), json!("long"));
+        assert_eq!(storage.get("history", None), json!([{ "id": "kept" }]));
+        assert_eq!(storage.get("customHotwordThemes", None), Value::Null);
+    }
+
+    #[test]
+    fn volatile_storage_rejects_a_full_restore_before_reading_or_writing_anything() {
+        let (disk, dir) = temp_storage("volatile_full");
+        let storage = volatile_storage(&dir);
+        let audio = dir.join("audio");
+        let path = dir.join("backup.zip");
+        let backup = test_backup(&[
+            ("backup.json", &backup_with_history(json!([{ "id": "new" }]))),
+            ("audio/new.wav", b"audio"),
+        ]);
+        fs::write(&path, backup).unwrap();
+        // A missing file gives the same answer, so nothing was opened first.
+        for source in [path.clone(), dir.join("missing.zip")] {
+            assert_eq!(
+                apply_full_backup_in_dir(&storage, source.to_str().unwrap(), &audio),
+                Err(crate::storage::VOLATILE_STORAGE_ERROR.into()),
+            );
+            assert_eq!(
+                apply_full_backup(&storage, source.to_str().unwrap()),
+                Err(crate::storage::VOLATILE_STORAGE_ERROR.into()),
+            );
+        }
+        assert!(!audio.exists());
+        assert_volatile_storage_unchanged(&storage);
+
+        apply_full_backup_in_dir(&disk, path.to_str().unwrap(), &audio).unwrap();
+        assert_eq!(disk.get("history", None)[0]["id"], "new");
+        assert!(audio.join("new.wav").is_file());
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn volatile_storage_rejects_every_configuration_import_before_reading_the_file() {
+        let (disk, dir) = temp_storage("volatile_config");
+        let storage = volatile_storage(&dir);
+        let full = json!({
+            "kind": "config", "formatVersion": 1,
+            "appSettings": { "overlayWidth": "short" },
+            "promptPresets": [], "appPromptRules": [],
+        });
+        let legacy = json!({
+            "kind": "config", "formatVersion": 1, "appSettings": { "overlayWidth": "short" },
+        });
+        let selected = json!({
+            "kind": "config", "formatVersion": 2, "scope": "selected",
+            "items": { "textReplacements": [{ "id": "r", "from": "a", "to": "b", "enabled": true }] },
+        });
+        for (name, config) in [("full.json", full), ("legacy.json", legacy), ("selected.json", selected)] {
+            let path = dir.join(name);
+            fs::write(&path, serde_json::to_vec(&config).unwrap()).unwrap();
+            let path = path.to_str().unwrap();
+            let (data, fingerprint) = read_config_file(path).unwrap();
+            // The token is valid, so only the storage check can refuse this import.
+            let token = config_import_token(&storage, &data, &fingerprint).unwrap();
+            assert_eq!(
+                apply_config_import(&storage, path, &token).err().as_deref(),
+                Some(crate::storage::VOLATILE_STORAGE_ERROR), "{name}",
+            );
+            let token = config_import_token(&disk, &data, &fingerprint).unwrap();
+            assert!(apply_config_import(&disk, path, &token).unwrap().requires_restart, "{name}");
+        }
+        assert_eq!(
+            apply_config_import(&storage, dir.join("missing.json").to_str().unwrap(), "").err().as_deref(),
+            Some(crate::storage::VOLATILE_STORAGE_ERROR),
+        );
+        assert_volatile_storage_unchanged(&storage);
+        assert!(storage.get("textReplacements", None).is_null());
+        assert_eq!(disk.get("overlayWidth", None), json!("short"));
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn a_replacement_disk_database_accepts_restores() {
+        let dir = std::env::temp_dir().join(format!("sayit-backup-replacement-{}", uuid::Uuid::new_v4()));
+        fs::create_dir(&dir).unwrap();
+        let db = dir.join("sayit.db");
+        fs::write(&db, b"damaged test database").unwrap();
+        let (storage, mode) = Storage::open_or_recover(db);
+        assert!(matches!(mode, Some(crate::storage::StorageRecovery::MovedAside { .. })));
+        let path = dir.join("backup.zip");
+        fs::write(&path, test_backup(&[("backup.json", &backup_with_history(json!([{ "id": "new" }])))])).unwrap();
+        apply_full_backup_in_dir(&storage, path.to_str().unwrap(), &dir.join("audio")).unwrap();
+        assert_eq!(storage.get("history", None)[0]["id"], "new");
+        drop(storage);
         fs::remove_dir_all(dir).unwrap();
     }
 

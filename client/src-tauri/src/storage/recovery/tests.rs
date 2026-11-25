@@ -49,6 +49,7 @@ impl Fixture {
         assert!(!recovery_move_pending(&self.dir));
         assert!(!recording_cleanup_protected(&self.dir));
         assert_eq!(storage.conn().path(), Some(""));
+        assert!(storage.is_volatile());
     }
 }
 
@@ -607,16 +608,16 @@ fn protection_survives_reopens_and_database_import_transactions_until_confirmed(
     for _ in 0..2 {
         let (storage, mode) = fixture.open();
         assert!(mode.is_none());
-        assert_eq!(crate::recording_retention_days(&storage, false, &fixture.dir), None);
+        assert_eq!(crate::recording_retention_days(&storage, &fixture.dir), None);
         let settings = json!({"audioRetentionDays": 30});
         storage.apply_config_transaction(settings.as_object().unwrap(), &[], None, None).unwrap();
         storage.apply_restore_transaction(settings.as_object().unwrap(), &[], &[], false).unwrap();
-        assert_eq!(crate::recording_retention_days(&storage, false, &fixture.dir), None);
+        assert_eq!(crate::recording_retention_days(&storage, &fixture.dir), None);
     }
     resume_recording_cleanup(&fixture.dir).unwrap();
     let (storage, mode) = fixture.open();
     assert!(mode.is_none());
-    assert_eq!(crate::recording_retention_days(&storage, false, &fixture.dir), Some(30));
+    assert_eq!(crate::recording_retention_days(&storage, &fixture.dir), Some(30));
 }
 
 #[test]
@@ -1044,4 +1045,39 @@ fn normal_open_enforces_foreign_keys() {
     let error = db.execute_batch("INSERT INTO test_child VALUES (1)").unwrap_err();
     assert!(matches!(error, rusqlite::Error::SqliteFailure(code, _)
         if code.extended_code == ffi::SQLITE_CONSTRAINT_FOREIGNKEY));
+}
+
+#[test]
+fn volatility_follows_the_opened_database_in_every_recovery_outcome() {
+    // Normal start and a replacement database are both on disk.
+    let fixture = Fixture::new();
+    let (storage, mode) = fixture.open();
+    assert!(mode.is_none() && !storage.is_volatile() && storage.ensure_persistent().is_ok());
+    drop(storage);
+    fs::write(&fixture.db, b"not a database").unwrap();
+    for suffix in COMPANION_SUFFIXES {
+        let _ = fs::remove_file(append_suffix(&fixture.db, suffix));
+    }
+    let (storage, mode) = fixture.open();
+    assert!(matches!(mode, Some(StorageRecovery::MovedAside { .. })), "{mode:?}");
+    assert!(!storage.is_volatile() && storage.ensure_persistent().is_ok());
+    drop(storage);
+
+    let fixture = Fixture::new();
+    fs::write(fixture.dir.join(INTENT), b"invalid plan").unwrap();
+    let (storage, mode) = fixture.open();
+    assert!(matches!(mode, Some(StorageRecovery::IncompleteMove)), "{mode:?}");
+    assert_eq!(storage.ensure_persistent().unwrap_err(), super::super::VOLATILE_STORAGE_ERROR);
+
+    let fixture = Fixture::new();
+    fs::create_dir(&fixture.db).unwrap();
+    let (storage, mode) = fixture.open();
+    assert!(matches!(mode, Some(StorageRecovery::InMemory)), "{mode:?}");
+    assert!(storage.is_volatile() && storage.ensure_persistent().is_err());
+
+    // MovedAsideInMemory shares this fallback with the two modes above.
+    let backup = fixture.dir.join("backup");
+    let (storage, mode) = failed("test", io::Error::other("test"), StorageRecovery::MovedAsideInMemory { backup });
+    assert!(matches!(mode, Some(StorageRecovery::MovedAsideInMemory { .. })));
+    assert!(storage.is_volatile() && storage.ensure_persistent().is_err());
 }

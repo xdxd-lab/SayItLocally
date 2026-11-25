@@ -53,8 +53,8 @@ fn browser_args_fingerprint(value: &str) -> String {
 }
 
 // [自訂] S71：啟動與執行中清理都讀目前設定，永遠保留錄音仍以 -1 表示。
-fn cleanup_retained_files(storage: &Storage, volatile_storage: bool) {
-    commands::audio::cleanup_retained_recordings(recording_retention_days(storage, volatile_storage, &commands::app_data_dir()));
+fn cleanup_retained_files(storage: &Storage) {
+    commands::audio::cleanup_retained_recordings(recording_retention_days(storage, &commands::app_data_dir()));
     if let Ok(days) = commands::system::log_retention_days(storage) {
         commands::system::cleanup_retained_logs(days);
     }
@@ -63,10 +63,9 @@ fn cleanup_retained_files(storage: &Storage, volatile_storage: bool) {
 // [自訂] L-72：記憶體庫及仍在保護期間的錄音不按保留天數刪除。
 fn recording_retention_days(
     storage: &Storage,
-    volatile_storage: bool,
     dir: &std::path::Path,
 ) -> Option<i64> {
-    if volatile_storage || storage::recovery::recording_cleanup_protected(dir) {
+    if storage.is_volatile() || storage::recovery::recording_cleanup_protected(dir) {
         return None;
     }
     match storage.retention_days("audioRetentionDays", 7) {
@@ -504,11 +503,6 @@ fn main() {
     let db_path = commands::app_data_dir().join("sayit.db");
 
     let (storage, storage_recovery) = Storage::open_or_recover(db_path);
-    let volatile_storage = matches!(&storage_recovery, Some(
-        storage::StorageRecovery::InMemory
-        | storage::StorageRecovery::IncompleteMove
-        | storage::StorageRecovery::MovedAsideInMemory { .. }
-    ));
     if let Some(recovery) = storage_recovery {
         notify_storage_recovery(recovery);
     }
@@ -633,12 +627,12 @@ fn main() {
         .manage(commands::update_notification::UpdateNotificationState::default())
         .setup(move |app| {
             // [自訂] SC-51：取得單一實例後才清理，以免後啟動的程序刪除進行中的還原暫存。
-            cleanup_retained_files(app.state::<Storage>().inner(), volatile_storage);
+            cleanup_retained_files(app.state::<Storage>().inner());
             // [自訂] S71：在背景清理，不依賴 WebView 計時器或 App 重啟。
             let retention_app = app.handle().clone();
             thread::spawn(move || loop {
                 thread::sleep(std::time::Duration::from_secs(15 * 60));
-                cleanup_retained_files(retention_app.state::<Storage>().inner(), volatile_storage);
+                cleanup_retained_files(retention_app.state::<Storage>().inner());
             });
             // [自訂] S45：清掉上次殘留的診斷包。
             commands::diagnostics::purge_stale_diagnostics_zips();
@@ -1005,13 +999,18 @@ fn main() {
 #[cfg(test)]
 #[test]
 fn recovery_session_preserves_recordings_even_with_a_fresh_database() {
-    let storage = Storage::new(std::path::PathBuf::from(":memory:")).unwrap();
     let dir = std::env::temp_dir().join(uuid::Uuid::new_v4().to_string());
-    assert_eq!(recording_retention_days(&storage, false, &dir), Some(7));
-    assert_eq!(recording_retention_days(&storage, true, &dir), None);
-    storage.set("audioRetentionDays", &serde_json::json!(30)).unwrap();
-    assert_eq!(recording_retention_days(&storage, false, &dir), Some(30));
-    assert_eq!(recording_retention_days(&storage, true, &dir), None);
+    let disk = Storage::new(dir.join("sayit.db")).unwrap();
+    let memory = Storage::new(std::path::PathBuf::from(":memory:")).unwrap();
+    assert_eq!(recording_retention_days(&disk, &dir), Some(7));
+    assert_eq!(recording_retention_days(&memory, &dir), None);
+    for storage in [&disk, &memory] {
+        storage.set("audioRetentionDays", &serde_json::json!(30)).unwrap();
+    }
+    assert_eq!(recording_retention_days(&disk, &dir), Some(30));
+    assert_eq!(recording_retention_days(&memory, &dir), None);
+    drop(disk);
+    std::fs::remove_dir_all(dir).unwrap();
 }
 
 #[cfg(test)]

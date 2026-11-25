@@ -745,6 +745,12 @@ async fn prune_old_backups(
 /// 完成后由前端调用 `restart_app`，与本地导入的行为一致。
 #[tauri::command]
 pub async fn webdav_restore(name: String, storage: State<'_, Storage>) -> Result<(), String> {
+    restore_from_server(&name, storage.inner()).await
+}
+
+/// [自訂] SC-55：連線、列目錄與下載之前的檢查。先確認不是記憶體庫，再看檔名與設定。
+fn prepare_restore(name: &str, storage: &Storage) -> Result<Target, String> {
+    storage.ensure_persistent()?;
     // 只接受我们自己的备份名，且不能带路径分隔符 —— 否则一个 `../` 就能让
     // 下载地址跑到目录之外去。
     if !name.starts_with(BACKUP_PREFIX)
@@ -754,7 +760,11 @@ pub async fn webdav_restore(name: String, storage: State<'_, Storage>) -> Result
     {
         return Err("WEBDAV_BAD_NAME".to_string());
     }
-    let target = Target::from_settings(storage.inner())?;
+    Target::from_settings(storage)
+}
+
+async fn restore_from_server(name: &str, storage: &Storage) -> Result<(), String> {
+    let target = prepare_restore(name, storage)?;
 
     // 先列一次目录拿到体积：下载超时必须按体积给，含音频的备份能有几个 GB，
     // 套用元数据请求那 30 秒会把正常下载掐断，而症状是「恢复总是失败」。
@@ -764,8 +774,8 @@ pub async fn webdav_restore(name: String, storage: State<'_, Storage>) -> Result
         .find(|entry| entry.name == name)
         .ok_or_else(|| "WEBDAV_VERIFY_MISSING".to_string())?;
 
-    let temp_path = std::env::temp_dir().join(&name);
-    let written = download_to_file(&target, &target.child(&name), &temp_path, expected.size).await;
+    let temp_path = std::env::temp_dir().join(name);
+    let written = download_to_file(&target, &target.child(name), &temp_path, expected.size).await;
     let written = match written {
         Ok(written) => written,
         Err(error) => {
@@ -774,7 +784,7 @@ pub async fn webdav_restore(name: String, storage: State<'_, Storage>) -> Result
         }
     };
 
-    let result = apply_full_backup(storage.inner(), &temp_path.to_string_lossy());
+    let result = apply_full_backup(storage, &temp_path.to_string_lossy());
     let _ = std::fs::remove_file(&temp_path);
     match &result {
         Ok(()) => log::info!("[webdav] restored from {} ({} bytes)", name, written),
@@ -844,6 +854,47 @@ mod tests {
         );
         assert_eq!(normalize_dir_url("   ").unwrap_err(), "WEBDAV_URL_EMPTY");
         assert_eq!(normalize_dir_url("https://").unwrap_err(), "WEBDAV_URL_EMPTY");
+    }
+
+    /// Runs the whole restore. Loopback stands in for the server, so a missing check
+    /// shows up as a connection instead of reaching any real host.
+    #[test]
+    fn volatile_storage_rejects_a_restore_before_connecting_or_creating_a_file() {
+        let server = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        server.set_nonblocking(true).unwrap();
+        let url = format!("https://{}/dav", server.local_addr().unwrap());
+        let name = format!("{BACKUP_PREFIX}{}.zip", uuid::Uuid::new_v4());
+        let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+
+        let storage = Storage::new(std::path::PathBuf::from(":memory:")).unwrap();
+        // Storage::set refuses these secrets, so write the rows an older version could have left.
+        let configure = |storage: &Storage| {
+            for (key, value) in [(KEY_URL, url.as_str()), (KEY_USERNAME, "user"), (KEY_PASSWORD, "password")] {
+                storage.db.lock().unwrap().execute(
+                    "INSERT OR REPLACE INTO app_settings (key, value_json, updated_at) VALUES (?1, ?2, 0)",
+                    rusqlite::params![key, serde_json::json!(value).to_string()],
+                ).unwrap();
+            }
+        };
+        configure(&storage);
+        for requested in [name.as_str(), "not-a-backup"] {
+            assert_eq!(
+                runtime.block_on(restore_from_server(requested, &storage)),
+                Err(crate::storage::VOLATILE_STORAGE_ERROR.into()),
+            );
+        }
+        assert_eq!(server.accept().unwrap_err().kind(), std::io::ErrorKind::WouldBlock);
+        assert!(!std::env::temp_dir().join(&name).exists());
+
+        // A disk database still reaches the existing name and settings checks.
+        let dir = std::env::temp_dir().join(format!("sayit-webdav-restore-{}", uuid::Uuid::new_v4()));
+        let disk = Storage::new(dir.join("test.db")).unwrap();
+        assert_eq!(prepare_restore("not-a-backup", &disk).err().as_deref(), Some("WEBDAV_BAD_NAME"));
+        assert_eq!(prepare_restore(&name, &disk).err().as_deref(), Some("WEBDAV_URL_EMPTY"));
+        configure(&disk);
+        assert!(prepare_restore(&name, &disk).is_ok());
+        drop(disk);
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]
