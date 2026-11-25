@@ -1,7 +1,12 @@
 use super::*;
 use rusqlite::{ffi, Connection};
 use serde_json::json;
-use std::{cell::Cell, time::Instant};
+use std::{
+    cell::Cell,
+    io::Read,
+    process::{Child, Command, Stdio},
+    time::Instant,
+};
 
 struct Fixture {
     dir: PathBuf,
@@ -411,6 +416,28 @@ fn invalid_plan_and_unexpected_members_never_reach_sqlite() {
 }
 
 #[test]
+fn plan_rejects_invalid_dates_and_noncanonical_ids_without_touching_the_database() {
+    for (field, invalid) in [
+        ("stamp", "20260230-153213"),
+        ("stamp", "../2026-153213"),
+        ("id", "../not-a-uuid"),
+        ("id", "AC3E64B2-BC86-4A43-900A-A67D5A9EE4A3"),
+    ] {
+        let fixture = Fixture::new();
+        fixture.write_broken_group();
+        let original = snapshot(&fixture.db);
+        let plan = MovePlan::start(&fixture.dir, &fixture.db, false).unwrap();
+        let mut malformed = serde_json::to_value(&plan).unwrap();
+        malformed[field] = json!(invalid);
+        fs::write(fixture.dir.join(INTENT), serde_json::to_vec(&malformed).unwrap()).unwrap();
+        let (_storage, mode) = fixture.open();
+        assert!(matches!(mode, Some(StorageRecovery::IncompleteMove)), "{field} {invalid}");
+        assert_eq!(snapshot(&fixture.db), original);
+        assert_eq!(snapshot(&plan.backup(&fixture.db)), [None, None, None, None]);
+    }
+}
+
+#[test]
 fn a_pending_plan_with_both_main_files_never_reinstalls_old_companions() {
     let fixture = Fixture::new();
     fixture.write_broken_group();
@@ -585,6 +612,239 @@ fn live_database_lease_refuses_exclusive_recovery_until_storage_drops() {
 }
 
 #[test]
+fn startup_lock_prevents_the_recovery_flow_from_opening_sqlite() {
+    let fixture = Fixture::new();
+    fixture.write_broken_group();
+    let original = snapshot(&fixture.db);
+    let startup = startup_lock(&fixture.dir).unwrap();
+    let (_storage, mode) = open_or_recover_with(
+        &fixture.db, Duration::ZERO,
+        |_| panic!("opened SQLite without the startup lock"),
+        || panic!("attempted recovery without the startup lock"),
+        move_exclusive,
+    );
+    assert!(matches!(mode, Some(StorageRecovery::InMemory)));
+    assert_eq!(snapshot(&fixture.db), original);
+    assert!(!recording_cleanup_protected(&fixture.dir));
+    drop(startup);
+}
+
+#[test]
+fn confirmed_corruption_cannot_move_files_while_another_app_holds_a_live_lease() {
+    let fixture = Fixture::new();
+    fixture.write_broken_group();
+    let original = snapshot(&fixture.db);
+    let live = open_lock(&fixture.dir, LIVE_LOCK).unwrap();
+    lock(&live, true).unwrap();
+    let confirmed = Cell::new(false);
+    let (_storage, mode) = open_or_recover_with(
+        &fixture.db, Duration::ZERO,
+        |_| Err(sqlite_error(ffi::SQLITE_NOTADB)),
+        || confirmed.set(true),
+        move_exclusive,
+    );
+    assert!(confirmed.get());
+    assert!(matches!(mode, Some(StorageRecovery::InMemory)));
+    assert_eq!(snapshot(&fixture.db), original);
+    assert!(!recording_cleanup_protected(&fixture.dir));
+    drop(live);
+}
+
+#[test]
+fn confirmed_corruption_cannot_move_a_group_changed_before_exclusive_locks() {
+    let fixture = Fixture::new();
+    fixture.write_broken_group();
+    let companion = append_suffix(&fixture.db, "-wal");
+    let changed = b"WAL grew since the confirmed corruption";
+    let (_storage, mode) = open_or_recover_with(
+        &fixture.db, Duration::ZERO,
+        |_| Err(sqlite_error(ffi::SQLITE_CORRUPT)),
+        || fs::write(&companion, changed).unwrap(),
+        move_exclusive,
+    );
+    assert!(matches!(mode, Some(StorageRecovery::InMemory)));
+    assert_eq!(fs::read(&companion).unwrap(), changed);
+    assert_eq!(fs::read(&fixture.db).unwrap(), b"old data ");
+    assert!(!recording_cleanup_protected(&fixture.dir));
+}
+
+#[test]
+fn leftover_files_in_the_active_group_block_replacement_database_creation() {
+    let fixture = Fixture::new();
+    fixture.write_broken_group();
+    let journal = append_suffix(&fixture.db, "-journal");
+    let (_storage, mode) = open_or_recover_with(
+        &fixture.db, Duration::ZERO,
+        |_| Err(sqlite_error(ffi::SQLITE_CORRUPT)),
+        || {},
+        |source, target| {
+            move_exclusive(source, target)?;
+            if source == fixture.db {
+                // These look like an interrupted first initialization and
+                // would be accepted by the ordinary disk opener.
+                fs::write(&fixture.db, [])?;
+                fs::write(&journal, [0; 512])?;
+            }
+            Ok(())
+        },
+    );
+    assert!(matches!(mode, Some(StorageRecovery::IncompleteMove)));
+    assert!(recovery_move_pending(&fixture.dir));
+    assert_eq!(fs::metadata(&fixture.db).unwrap().len(), 0);
+    assert_eq!(fs::read(&journal).unwrap(), [0; 512]);
+    let plan = MovePlan::load(&fixture.dir).unwrap().unwrap();
+    assert_eq!(fs::read(plan.backup(&fixture.db)).unwrap(), b"old data ");
+}
+
+#[test]
+fn files_reappearing_after_plan_completion_also_block_replacement_creation() {
+    let fixture = Fixture::new();
+    fixture.write_broken_group();
+    let _startup = startup_lock(&fixture.dir).unwrap();
+    let live = open_lock(&fixture.dir, LIVE_LOCK).unwrap();
+    lock(&live, false).unwrap();
+    let plan = MovePlan::start(&fixture.dir, &fixture.db, false).unwrap();
+    let backup = plan.finish(&fixture.dir, &fixture.db, move_exclusive).unwrap();
+    assert!(!recovery_move_pending(&fixture.dir));
+    let journal = append_suffix(&fixture.db, "-journal");
+    fs::write(&fixture.db, []).unwrap();
+    fs::write(&journal, [0; 512]).unwrap();
+    assert!(open_replacement(&fixture.db, Duration::ZERO, &live).is_err());
+    assert_eq!(fs::metadata(&fixture.db).unwrap().len(), 0);
+    assert_eq!(fs::read(&journal).unwrap(), [0; 512]);
+    assert_eq!(fs::read(backup).unwrap(), b"old data ");
+}
+
+struct SqliteChild(Child);
+
+impl SqliteChild {
+    fn start(fixture: &Fixture, test_name: &str) -> Self {
+        let child = Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", test_name, "--nocapture"])
+            .env("SAYIT_RECOVERY_TEST_CHILD_DB", &fixture.db)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .spawn().unwrap();
+        let mut child = Self(child);
+        let start = Instant::now();
+        while !fixture.dir.join("child-ready").exists() {
+            assert!(child.0.try_wait().unwrap().is_none(), "SQLite test child exited before opening");
+            assert!(start.elapsed() < Duration::from_secs(5), "SQLite test child did not become ready");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        child
+    }
+}
+
+impl Drop for SqliteChild {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
+
+fn park_with_open_connection(db: &Path) {
+    fs::write(db.with_file_name("child-ready"), []).unwrap();
+    let _ = std::io::stdin().read(&mut [0]);
+}
+
+#[test]
+fn confirmed_corruption_cannot_move_a_database_locked_by_another_sqlite_process() {
+    if let Some(path) = std::env::var_os("SAYIT_RECOVERY_TEST_CHILD_DB") {
+        let path = PathBuf::from(path);
+        let db = Connection::open(&path).unwrap();
+        db.execute_batch("BEGIN IMMEDIATE").unwrap();
+        park_with_open_connection(&path);
+        return;
+    }
+    let fixture = Fixture::new();
+    drop(fixture.journal_db());
+    let child = SqliteChild::start(&fixture, concat!(
+        module_path!(), "::confirmed_corruption_cannot_move_a_database_locked_by_another_sqlite_process"
+    ).strip_prefix(concat!(env!("CARGO_CRATE_NAME"), "::")).unwrap());
+    let original = snapshot(&fixture.db);
+    let confirmed = Cell::new(false);
+    let (_storage, mode) = open_or_recover_with(
+        &fixture.db, Duration::ZERO,
+        |_| Err(sqlite_error(ffi::SQLITE_CORRUPT)),
+        || confirmed.set(true),
+        move_exclusive,
+    );
+    assert!(confirmed.get());
+    assert!(matches!(mode, Some(StorageRecovery::InMemory)));
+    assert_eq!(snapshot(&fixture.db), original);
+    assert!(!recording_cleanup_protected(&fixture.dir));
+    drop(child);
+}
+
+#[test]
+fn committed_wal_data_survives_a_killed_writer() {
+    if let Some(path) = std::env::var_os("SAYIT_RECOVERY_TEST_CHILD_DB") {
+        let path = PathBuf::from(path);
+        let db = Connection::open(&path).unwrap();
+        db.execute_batch("PRAGMA journal_mode=WAL; PRAGMA wal_autocheckpoint=0;
+            UPDATE app_settings SET value_json = 'true' WHERE key = 'autoLaunch';").unwrap();
+        park_with_open_connection(&path);
+        return;
+    }
+    let fixture = Fixture::new();
+    drop(fixture.journal_db());
+    let child = SqliteChild::start(&fixture, concat!(
+        module_path!(), "::committed_wal_data_survives_a_killed_writer"
+    ).strip_prefix(concat!(env!("CARGO_CRATE_NAME"), "::")).unwrap());
+    let wal = append_suffix(&fixture.db, "-wal");
+    let committed = fs::read(&wal).unwrap();
+    assert!(!committed.is_empty());
+    drop(child);
+    assert_eq!(fs::read(wal).unwrap(), committed);
+    for _ in 0..2 {
+        let (storage, mode) = fixture.open();
+        assert!(mode.is_none(), "{mode:?}");
+        assert_eq!(storage.get("autoLaunch", None), json!(true));
+    }
+}
+
+#[test]
+fn killing_a_new_database_transaction_allows_normal_restart() {
+    if let Some(path) = std::env::var_os("SAYIT_RECOVERY_TEST_CHILD_DB") {
+        let path = PathBuf::from(path);
+        let db = Connection::open(&path).unwrap();
+        db.execute_batch("PRAGMA journal_mode=DELETE; PRAGMA synchronous=FULL;
+            BEGIN IMMEDIATE; CREATE TABLE interrupted_initialization (id INTEGER);").unwrap();
+        park_with_open_connection(&path);
+        return;
+    }
+    for replacement in [false, true] {
+        let fixture = Fixture::new();
+        let saved = if replacement {
+            fixture.write_broken_group();
+            let original = snapshot(&fixture.db);
+            let plan = MovePlan::start(&fixture.dir, &fixture.db, false).unwrap();
+            let backup = plan.finish(&fixture.dir, &fixture.db, move_exclusive).unwrap();
+            Some((backup, original))
+        } else {
+            None
+        };
+        let child = SqliteChild::start(&fixture, concat!(
+            module_path!(), "::killing_a_new_database_transaction_allows_normal_restart"
+        ).strip_prefix(concat!(env!("CARGO_CRATE_NAME"), "::")).unwrap());
+        assert_eq!(fs::metadata(&fixture.db).unwrap().len(), 0);
+        let journal = append_suffix(&fixture.db, "-journal");
+        assert!(journal.is_file());
+        drop(child);
+        assert!(journal.is_file());
+        let (storage, mode) = fixture.open();
+        assert!(mode.is_none(), "{mode:?}");
+        assert!(Storage::migration_exists(&storage.conn(), 2).unwrap());
+        assert!(!table_exists(&storage.conn(), "interrupted_initialization"));
+        if let Some((backup, original)) = saved {
+            assert_eq!(snapshot(&backup), original);
+        }
+        assert_eq!(recording_cleanup_protected(&fixture.dir), replacement);
+    }
+}
+
+#[test]
 fn exclusive_sqlite_file_lease_blocks_other_sqlite_connections_without_touching_the_group() {
     let fixture = Fixture::new();
     let db = fixture.journal_db();
@@ -684,22 +944,38 @@ fn version_one_marker_with_missing_table_is_not_silently_accepted() {
 
 #[test]
 fn concurrent_connections_check_versions_after_getting_the_write_lock() {
+    for _ in 0..40 {
+        let fixture = Fixture::new();
+        Connection::open(&fixture.db).unwrap().execute_batch(MIGRATION_TABLE).unwrap();
+        let barrier = std::sync::Barrier::new(2);
+        std::thread::scope(|scope| {
+            let run = || {
+                let mut db = Connection::open(&fixture.db).unwrap();
+                db.busy_timeout(Duration::from_secs(2)).unwrap();
+                barrier.wait();
+                Storage::initialize_schema(&mut db).unwrap();
+            };
+            let first = scope.spawn(run);
+            let second = scope.spawn(run);
+            first.join().unwrap();
+            second.join().unwrap();
+        });
+        let db = Connection::open(&fixture.db).unwrap();
+        let markers: i64 = db.query_row("SELECT count(*) FROM schema_migrations", [], |row| row.get(0)).unwrap();
+        assert_eq!(markers, 2);
+        assert!(has_audio_path(&db));
+    }
+}
+
+#[test]
+fn normal_open_enforces_foreign_keys() {
     let fixture = Fixture::new();
-    let barrier = std::sync::Barrier::new(2);
-    std::thread::scope(|scope| {
-        let run = || {
-            let mut db = Connection::open(&fixture.db).unwrap();
-            db.busy_timeout(Duration::from_secs(2)).unwrap();
-            barrier.wait();
-            Storage::initialize_schema(&mut db).unwrap();
-        };
-        let first = scope.spawn(run);
-        let second = scope.spawn(run);
-        first.join().unwrap();
-        second.join().unwrap();
-    });
-    let db = Connection::open(&fixture.db).unwrap();
-    let markers: i64 = db.query_row("SELECT count(*) FROM schema_migrations", [], |row| row.get(0)).unwrap();
-    assert_eq!(markers, 2);
-    assert!(has_audio_path(&db));
+    let (storage, mode) = fixture.open();
+    assert!(mode.is_none(), "{mode:?}");
+    let db = storage.conn();
+    db.execute_batch("CREATE TEMP TABLE test_parent(id INTEGER PRIMARY KEY);
+        CREATE TEMP TABLE test_child(parent INTEGER REFERENCES test_parent(id));").unwrap();
+    let error = db.execute_batch("INSERT INTO test_child VALUES (1)").unwrap_err();
+    assert!(matches!(error, rusqlite::Error::SqliteFailure(code, _)
+        if code.extended_code == ffi::SQLITE_CONSTRAINT_FOREIGNKEY));
 }

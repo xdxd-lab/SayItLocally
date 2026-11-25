@@ -225,6 +225,26 @@ mod tests {
         fs::remove_dir_all(dir).unwrap();
     }
 
+    #[test]
+    fn deletion_requires_the_startup_lock_and_no_pending_move() {
+        let dir = std::env::temp_dir().join(format!("sayit-corrupt-test-{}", uuid::Uuid::new_v4()));
+        fs::create_dir(&dir).unwrap();
+        let name = "sayit.db.corrupt-20261019-153213";
+        let copy = dir.join(name);
+        fs::write(&copy, b"original database copy").unwrap();
+        let lock = recovery::startup_lock(&dir).unwrap();
+        assert!(delete_copy(&dir, name).is_err());
+        assert_eq!(fs::read(&copy).unwrap(), b"original database copy");
+        drop(lock);
+        let pending = dir.join("sayit.db.recovery-pending");
+        fs::write(&pending, b"pending move").unwrap();
+        assert!(delete_copy(&dir, name).is_err());
+        assert_eq!(fs::read(&copy).unwrap(), b"original database copy");
+        fs::remove_file(pending).unwrap();
+        delete_copy(&dir, name).unwrap();
+        fs::remove_dir_all(dir).unwrap();
+    }
+
     #[cfg(unix)]
     #[test]
     fn ignores_symlinks_for_main_file_and_sidecars() {

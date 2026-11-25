@@ -504,6 +504,22 @@ fn failed(stage: &str, error: impl Into<OpenError>, reason: StorageRecovery) -> 
 }
 
 pub(super) fn open_or_recover(db: &Path, timeout: Duration) -> (Storage, Option<StorageRecovery>) {
+    open_or_recover_with(
+        db,
+        timeout,
+        |remaining| open_existing_or_empty(db, remaining),
+        || {},
+        move_exclusive,
+    )
+}
+
+fn open_or_recover_with(
+    db: &Path,
+    timeout: Duration,
+    open_disk: impl FnMut(Duration) -> Result<Storage, OpenError>,
+    before_move_locks: impl FnOnce(),
+    move_file: impl Fn(&Path, &Path) -> io::Result<()>,
+) -> (Storage, Option<StorageRecovery>) {
     let dir = db.parent().filter(|path| !path.as_os_str().is_empty()).unwrap_or(Path::new("."));
     if let Err(error) = fs::create_dir_all(dir) {
         return failed("create database directory", error, StorageRecovery::InMemory);
@@ -545,7 +561,7 @@ pub(super) fn open_or_recover(db: &Path, timeout: Duration) -> (Storage, Option<
             Err(error) => return failed("inspect database", error, StorageRecovery::InMemory),
         };
         if !orphaned {
-            match retry_open(timeout, |remaining| open_existing_or_empty(db, remaining)) {
+            match retry_open(timeout, open_disk) {
                 Ok(mut storage) => {
                     storage.recovery_lease = Some(live);
                     return (storage, None);
@@ -565,6 +581,7 @@ pub(super) fn open_or_recover(db: &Path, timeout: Duration) -> (Storage, Option<
             Ok(_) => return failed("database changed before recovery", io::Error::from(io::ErrorKind::WouldBlock), StorageRecovery::InMemory),
             Err(error) => return failed("inspect database for recovery", error, StorageRecovery::InMemory),
         };
+        before_move_locks();
         // Other live App connections retain a shared lease. SQLite's BUSY /
         // LOCKED results above also prohibit moving a database used externally.
         if let Err(error) = unlock(&live).and_then(|()| lock(&live, false)) {
@@ -585,27 +602,28 @@ pub(super) fn open_or_recover(db: &Path, timeout: Duration) -> (Storage, Option<
         }
     };
 
-    let backup = match plan.finish(dir, db, move_exclusive) {
+    let backup = match plan.finish(dir, db, move_file) {
         Ok(backup) => backup,
         Err(error) => return failed("move database recovery group", error, StorageRecovery::IncompleteMove),
     };
     drop(sqlite_guard);
-    let result = (|| {
-        unlock(&live)?;
-        lock(&live, true)?;
-        // Revalidate the namespace even on the fresh-database path.
-        if group_members(db)? != [false; 4] {
-            return Err(io::Error::new(io::ErrorKind::InvalidData, "Database files reappeared").into());
-        }
-        open_existing_or_empty(db, timeout)
-    })();
-    match result {
+    match open_replacement(db, timeout, &live) {
         Ok(mut storage) => {
             storage.recovery_lease = Some(live);
             (storage, Some(StorageRecovery::MovedAside { backup, orphaned: plan.orphaned }))
         }
         Err(error) => failed("open replacement database", error, StorageRecovery::MovedAsideInMemory { backup }),
     }
+}
+
+fn open_replacement(db: &Path, timeout: Duration, live: &File) -> Result<Storage, OpenError> {
+    unlock(live)?;
+    lock(live, true)?;
+    // Revalidate after the move is complete, immediately before SQLite opens.
+    if group_members(db)? != [false; 4] {
+        return Err(io::Error::new(io::ErrorKind::InvalidData, "Database files reappeared").into());
+    }
+    open_existing_or_empty(db, timeout)
 }
 
 #[cfg(test)]
