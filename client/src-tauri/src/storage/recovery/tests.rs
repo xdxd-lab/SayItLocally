@@ -57,7 +57,7 @@ fn snapshot(base: &Path) -> [Option<Vec<u8>>; 4] {
 }
 
 fn sqlite_error(code: i32) -> OpenError {
-    OpenError::ProbeSql(rusqlite::Error::SqliteFailure(ffi::Error::new(code), None), [None, None, None, None])
+    OpenError::Sql(rusqlite::Error::SqliteFailure(ffi::Error::new(code), None))
 }
 
 #[test]
@@ -72,10 +72,10 @@ fn only_two_consecutive_sqlite_corruption_results_authorize_a_move() {
     }
     for code in [ffi::SQLITE_CORRUPT, ffi::SQLITE_CORRUPT_INDEX, ffi::SQLITE_NOTADB] {
         assert!(sqlite_error(code).is_corruption(), "{code}");
-        let recoverable = retry_open(|| Err(sqlite_error(code)));
+        let recoverable = retry_open(Duration::ZERO, |_| Err(sqlite_error(code)));
         assert!(matches!(recoverable, Err((_, true))));
         let calls = Cell::new(0);
-        let result = retry_open(|| {
+        let result = retry_open(Duration::ZERO, |_| {
             calls.set(calls.get() + 1);
             if calls.get() == 1 {
                 return Err(sqlite_error(code));
@@ -86,7 +86,7 @@ fn only_two_consecutive_sqlite_corruption_results_authorize_a_move() {
         assert_eq!(calls.get(), 2);
         for sequence in [[code, ffi::SQLITE_BUSY], [ffi::SQLITE_BUSY, code]] {
             let mut sequence = sequence.into_iter();
-            assert!(matches!(retry_open(|| Err(sqlite_error(sequence.next().unwrap()))), Err((_, false))));
+            assert!(matches!(retry_open(Duration::ZERO, |_| Err(sqlite_error(sequence.next().unwrap()))), Err((_, false))));
         }
     }
 }
@@ -136,10 +136,18 @@ fn unreadable_database_and_unwritable_directory_preserve_originals() {
     }
     fs::set_permissions(&fixture.dir, fs::Permissions::from_mode(0o500)).unwrap();
     if fs::File::create_new(fixture.dir.join("permission-probe")).is_err() {
-        fixture.assert_volatile_unchanged(before.clone());
+        let (storage, mode) = fixture.open();
+        if mode.is_none() {
+            assert!(storage.conn().path().is_some_and(|path| !path.is_empty()));
+        } else {
+            assert!(matches!(mode, Some(StorageRecovery::InMemory)), "{mode:?}");
+            assert_eq!(snapshot(&fixture.db), before);
+        }
+        assert!(!recovery_move_pending(&fixture.dir));
+        assert!(!recording_cleanup_protected(&fixture.dir));
     }
     fs::set_permissions(&fixture.dir, fs::Permissions::from_mode(0o700)).unwrap();
-    assert_eq!(snapshot(&fixture.db), before);
+    assert!(fixture.db.is_file());
 }
 
 #[test]
@@ -168,8 +176,15 @@ fn database_and_sidecar_symlinks_stay_in_place() {
     use std::os::unix::fs::symlink;
     let fixture = Fixture::new();
     let target = fixture.dir.join("target");
-    fs::write(&target, b"ordinary file").unwrap();
+    let target_storage = Storage::new(target.clone()).unwrap();
+    target_storage.set("overlayWidth", &json!("long")).unwrap();
+    drop(target_storage);
     symlink(&target, &fixture.db).unwrap();
+    let (storage, mode) = fixture.open();
+    assert!(mode.is_none(), "{mode:?}");
+    assert_eq!(storage.get("overlayWidth", None), json!("long"));
+    drop(storage);
+    fs::write(&target, b"not a database").unwrap();
     let (_storage, mode) = fixture.open();
     assert!(matches!(mode, Some(StorageRecovery::InMemory)));
     assert_eq!(fs::read_link(&fixture.db).unwrap(), target);
@@ -181,7 +196,38 @@ fn database_and_sidecar_symlinks_stay_in_place() {
     assert!(matches!(mode, Some(StorageRecovery::InMemory)));
     assert!(fs::symlink_metadata(wal).unwrap().is_symlink());
     assert_eq!(fs::read(&fixture.db).unwrap(), b"bad database");
-    assert_eq!(fs::read(&target).unwrap(), b"ordinary file");
+    assert_eq!(fs::read(&target).unwrap(), b"not a database");
+}
+
+#[test]
+fn failed_initialization_does_not_checkpoint_or_unlink_a_preexisting_wal() {
+    let fixture = Fixture::new();
+    let db = fixture.journal_db();
+    db.pragma_update(None, "journal_mode", "WAL").unwrap();
+    db.set_db_config(rusqlite::config::DbConfig::SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE, true).unwrap();
+    db.execute_batch("ALTER TABLE history_records DROP COLUMN audio_file_path").unwrap();
+    drop(db);
+    let wal = append_suffix(&fixture.db, "-wal");
+    let before = fs::read(&wal).unwrap();
+    assert!(!before.is_empty());
+    let (_storage, mode) = fixture.open();
+    assert!(matches!(mode, Some(StorageRecovery::InMemory)), "{mode:?}");
+    assert_eq!(fs::read(&wal).unwrap(), before);
+}
+
+#[cfg(unix)]
+#[test]
+fn existing_wal_database_opens_without_written_startup_state_in_read_only_directory() {
+    use std::os::unix::fs::PermissionsExt;
+    let fixture = Fixture::new();
+    let db = fixture.journal_db();
+    db.pragma_update(None, "journal_mode", "WAL").unwrap();
+    db.execute_batch("UPDATE app_settings SET value_json = 'true' WHERE key = 'autoLaunch'").unwrap();
+    fs::set_permissions(&fixture.dir, fs::Permissions::from_mode(0o500)).unwrap();
+    let result = fixture.open();
+    fs::set_permissions(&fixture.dir, fs::Permissions::from_mode(0o700)).unwrap();
+    assert!(result.1.is_none(), "{:?}", result.1);
+    assert_eq!(result.0.get("autoLaunch", None), json!(true));
 }
 
 #[test]
@@ -202,7 +248,7 @@ fn sqlite_reports_a_damaged_btree_as_corrupt_and_preserves_it() {
     damaged[100] = 0;
     fs::write(&fixture.db, &damaged).unwrap();
     let error = open_existing_or_empty(&fixture.db, Duration::ZERO).err().unwrap();
-    assert!(matches!(error, OpenError::ProbeSql(rusqlite::Error::SqliteFailure(code, _), _)
+    assert!(matches!(error, OpenError::Sql(rusqlite::Error::SqliteFailure(code, _))
         if code.code == ErrorCode::DatabaseCorrupt));
     let (_storage, mode) = fixture.open();
     let Some(StorageRecovery::MovedAside { backup }) = mode else { panic!("{mode:?}") };
@@ -210,13 +256,16 @@ fn sqlite_reports_a_damaged_btree_as_corrupt_and_preserves_it() {
 }
 
 #[test]
-fn not_a_database_is_confirmed_and_all_companions_are_preserved_verbatim() {
+fn not_a_database_is_confirmed_and_existing_wal_bytes_are_preserved() {
     let fixture = Fixture::new();
     fixture.write_broken_group();
     let before = snapshot(&fixture.db);
     let (_storage, mode) = fixture.open();
     let Some(StorageRecovery::MovedAside { backup }) = mode else { panic!("{mode:?}") };
-    assert_eq!(snapshot(&backup), before);
+    // The pager can rebuild SHM or consume a rollback journal on its ordinary open.
+    let saved = snapshot(&backup);
+    assert_eq!(saved[0], before[0]);
+    assert_eq!(saved[3], before[3]);
     assert!(recording_cleanup_protected(&fixture.dir));
     assert!(!recovery_move_pending(&fixture.dir));
 }

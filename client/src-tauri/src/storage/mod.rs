@@ -56,7 +56,7 @@ pub struct Storage {
 
 impl Storage {
     pub fn open_or_recover(db_path: PathBuf) -> (Self, Option<StorageRecovery>) {
-        recovery::open_or_recover(&db_path, Duration::from_millis(750))
+        recovery::open_or_recover(&db_path, Duration::from_secs(5))
     }
 
     /// Use the connection even if an earlier holder panicked.
@@ -78,8 +78,8 @@ impl Storage {
         if db_path.as_os_str() == ":memory:" || cfg!(not(unix)) {
             return Ok(Cow::Borrowed(db_path));
         }
-        // The Unix VFS applies NOFOLLOW to ancestors too. Resolve the directory
-        // (e.g. macOS /var → /private/var), keeping the unopened database filename.
+        // Resolve the directory spelling without resolving the database filename.
+        // The recovery lease uses NOFOLLOW, including for ancestors on Unix.
         let parent = db_path.parent().filter(|path| !path.as_os_str().is_empty()).unwrap_or(Path::new("."));
         let name = db_path.file_name().ok_or_else(|| rusqlite::Error::InvalidPath(db_path.into()))?;
         let path = parent.canonicalize()
@@ -90,7 +90,7 @@ impl Storage {
     fn open_sqlite(db_path: &Path, create: bool, timeout: Duration) -> SqlResult<Self> {
         let disk = db_path.as_os_str() != ":memory:";
         let mut flags = OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX
-            | OpenFlags::SQLITE_OPEN_NOFOLLOW | OpenFlags::SQLITE_OPEN_EXRESCODE;
+            | OpenFlags::SQLITE_OPEN_EXRESCODE;
         if create {
             flags |= OpenFlags::SQLITE_OPEN_CREATE;
         }

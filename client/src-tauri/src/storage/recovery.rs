@@ -3,7 +3,7 @@ use rusqlite::ErrorCode;
 use serde::{Deserialize, Serialize};
 use std::{
     fs::{self, File, OpenOptions},
-    io::{self, Read, Write},
+    io::{self, Write},
     path::{Path, PathBuf},
     time::{Duration, Instant, SystemTime},
 };
@@ -18,7 +18,6 @@ const INTENT: &str = "sayit.db.recovery-pending";
 const RECORDING_HOLD: &str = "sayit.db.preserve-recordings";
 const STARTUP_LOCK: &str = "sayit.db.startup-lock";
 const LIVE_LOCK: &str = "sayit.db.live-lock";
-const CHECK_PREFIX: &str = ".sayit-db-check-";
 
 #[derive(Debug)]
 pub(crate) enum StorageRecovery {
@@ -31,7 +30,6 @@ pub(crate) enum StorageRecovery {
 #[derive(Debug)]
 enum OpenError {
     Sql(rusqlite::Error),
-    ProbeSql(rusqlite::Error, GroupStamp),
     Io(io::Error),
 }
 
@@ -49,17 +47,16 @@ impl From<io::Error> for OpenError {
 
 impl OpenError {
     fn is_corruption(&self) -> bool {
-        matches!(&self, Self::ProbeSql(rusqlite::Error::SqliteFailure(error, _), _)
+        matches!(&self, Self::Sql(rusqlite::Error::SqliteFailure(error, _))
             if matches!(error.code, ErrorCode::DatabaseCorrupt | ErrorCode::NotADatabase))
     }
 
     fn log(&self, stage: &str) {
         let reason = match self {
-            Self::Sql(rusqlite::Error::SqliteFailure(error, _))
-            | Self::ProbeSql(rusqlite::Error::SqliteFailure(error, _), _) => {
+            Self::Sql(rusqlite::Error::SqliteFailure(error, _)) => {
                 format!("SQLite {:?} ({})", error.code, error.extended_code)
             }
-            Self::Sql(_) | Self::ProbeSql(_, _) => "SQLite query/type error".into(),
+            Self::Sql(_) => "SQLite query/type error".into(),
             Self::Io(error) => format!("I/O {:?} ({:?})", error.kind(), error.raw_os_error()),
         };
         let line = format!("[storage] {stage}: {reason}");
@@ -74,8 +71,7 @@ fn append_suffix(path: &Path, suffix: &str) -> PathBuf {
     name.into()
 }
 
-// lstat first: symlinks (including dangling links), directories and special files
-// must never be passed to SQLite or moved into a backup group.
+// Recovery only moves regular files. Ordinary SQLite opens may follow the main link.
 fn regular_file(path: &Path) -> io::Result<bool> {
     match fs::symlink_metadata(path) {
         Ok(metadata) if metadata.is_file() => Ok(true),
@@ -104,8 +100,11 @@ fn file_options() -> OpenOptions {
 
 fn open_lock(dir: &Path, name: &str) -> io::Result<File> {
     let path = dir.join(name);
-    regular_file(&path)?;
-    let file = file_options().write(true).create(true).open(path)?;
+    let exists = regular_file(&path)?;
+    let file = match file_options().write(true).create(true).open(&path) {
+        Err(error) if exists && is_read_only_error(&error) => file_options().open(&path)?,
+        result => result?,
+    };
     if !file.metadata()?.is_file() {
         return Err(io::Error::new(io::ErrorKind::InvalidData, "Invalid database lock file"));
     }
@@ -390,106 +389,72 @@ fn group_stamp(db: &Path) -> io::Result<GroupStamp> {
     Ok(stamp)
 }
 
-fn open_existing_or_empty(db: &Path, timeout: Duration) -> Result<Storage, OpenError> {
-    let stamp = group_stamp(db)?;
-    let main = stamp[3].as_ref();
-    if stamp[..3].iter().any(Option::is_some) {
-        if main.is_none_or(|member| member.size == 0) {
-            return Err(io::Error::new(io::ErrorKind::InvalidData, "Database has orphaned companion files").into());
-        }
-        // SQLite may replay/delete a rollback journal or rebuild SHM before it
-        // reports an error. Let that happen on a private copy first.
-        let dir = db.parent().filter(|dir| !dir.as_os_str().is_empty()).unwrap_or(Path::new("."));
-        let check = CheckDirectory::create(dir)?;
-        let copy = check.0.join("sayit.db");
-        let deadline = Instant::now() + Duration::from_secs(2);
-        for (suffix, member) in MEMBERS.into_iter().zip(&stamp) {
-            // SHM is a transient WAL index, rebuilt from the copied WAL.
-            if member.is_some() && suffix != "-shm" {
-                copy_for_check(&append_suffix(db, suffix), &append_suffix(&copy, suffix), deadline)?;
+fn main_file_size(db: &Path) -> io::Result<Option<u64>> {
+    match fs::metadata(db) {
+        Ok(metadata) if metadata.is_file() => Ok(Some(metadata.len())),
+        Ok(_) => Err(io::ErrorKind::InvalidData.into()),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            match fs::symlink_metadata(db) {
+                Ok(_) => Err(error),
+                Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
+                Err(error) => Err(error),
             }
         }
-        if group_stamp(db)? != stamp {
-            return Err(io::Error::from(io::ErrorKind::WouldBlock).into());
-        }
-        drop(Storage::open_sqlite(&copy, false, timeout).map_err(|error| OpenError::ProbeSql(error, stamp))?);
-        // A discrepancy between the copy and live database cannot authorize a move.
-        return Ok(Storage::open_sqlite(db, false, timeout)?);
-    }
-    Storage::open_sqlite(db, main.is_none(), timeout).map_err(|error| OpenError::ProbeSql(error, stamp))
-}
-
-struct CheckDirectory(PathBuf);
-
-impl CheckDirectory {
-    fn create(dir: &Path) -> io::Result<Self> {
-        let path = dir.join(format!("{CHECK_PREFIX}{}", uuid::Uuid::new_v4()));
-        let mut builder = fs::DirBuilder::new();
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::DirBuilderExt;
-            builder.mode(0o700);
-        }
-        builder.create(&path)?;
-        Ok(Self(path))
+        Err(error) => Err(error),
     }
 }
 
-impl Drop for CheckDirectory {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
+fn open_existing_or_empty(db: &Path, timeout: Duration) -> Result<Storage, OpenError> {
+    let main = main_file_size(db)?;
+    let mut companions_present = false;
+    for suffix in COMPANION_SUFFIXES {
+        companions_present |= regular_file(&append_suffix(db, suffix))?;
     }
+    if companions_present && main.is_none_or(|size| size == 0) {
+        return Err(io::Error::new(io::ErrorKind::InvalidData, "Database has orphaned companion files").into());
+    }
+    Ok(Storage::open_sqlite(db, main.is_none(), timeout)?)
 }
 
-fn cleanup_abandoned_checks(dir: &Path) {
-    let Ok(entries) = fs::read_dir(dir) else { return };
-    for entry in entries.flatten() {
-        let name = entry.file_name();
-        let is_check = name.to_str().and_then(|name| name.strip_prefix(CHECK_PREFIX))
-            .is_some_and(|id| uuid::Uuid::parse_str(id).is_ok_and(|uuid| uuid.to_string() == id));
-        if is_check && entry.file_type().is_ok_and(|kind| kind.is_dir()) {
-            let _ = fs::remove_dir_all(entry.path());
-        }
-    }
+fn is_read_only_error(error: &io::Error) -> bool {
+    matches!(error.kind(), io::ErrorKind::PermissionDenied | io::ErrorKind::ReadOnlyFilesystem)
 }
 
-fn copy_for_check(source: &Path, target: &Path, deadline: Instant) -> io::Result<()> {
-    let mut source = file_options().open(source)?;
-    let before = source.metadata()?;
-    if !before.is_file() {
-        return Err(io::Error::new(io::ErrorKind::InvalidData, "Invalid database member"));
+fn open_without_recovery_on_read_only_dir(
+    dir: &Path,
+    db: &Path,
+    timeout: Duration,
+    error: io::Error,
+) -> (Storage, Option<StorageRecovery>) {
+    if is_read_only_error(&error) && !recovery_move_pending(dir)
+        && main_file_size(db).is_ok_and(|size| size.is_some_and(|size| size != 0))
+    {
+        return match open_existing_or_empty(db, timeout) {
+            Ok(storage) => (storage, None),
+            Err(error) => failed("open existing database without recovery lease", error, StorageRecovery::InMemory),
+        };
     }
-    let mut output = OpenOptions::new().write(true).create_new(true).open(target)?;
-    let mut buffer = [0u8; 65_536];
-    loop {
-        if Instant::now() >= deadline {
-            return Err(io::ErrorKind::TimedOut.into());
-        }
-        let count = source.read(&mut buffer)?;
-        if count == 0 {
-            break;
-        }
-        output.write_all(&buffer[..count])?;
-    }
-    let after = source.metadata()?;
-    if before.len() != after.len() || before.modified()? != after.modified()? {
-        return Err(io::ErrorKind::WouldBlock.into());
-    }
-    Ok(())
+    failed("acquire database startup or live lock", error, StorageRecovery::InMemory)
 }
 
 fn retry_open(
-    mut open: impl FnMut() -> Result<Storage, OpenError>,
+    timeout: Duration,
+    mut open: impl FnMut(Duration) -> Result<Storage, OpenError>,
 ) -> Result<Storage, (OpenError, bool)> {
-    let first = match open() {
+    let started = Instant::now();
+    let first = match open(timeout) {
         Ok(storage) => return Ok(storage),
         Err(error) => error,
     };
+    if !first.is_corruption() {
+        return Err((first, false));
+    }
     first.log("initial database open");
-    match open() {
+    std::thread::sleep(Duration::from_millis(75));
+    match open(timeout.saturating_sub(started.elapsed())) {
         Ok(storage) => Ok(storage),
         Err(second) => {
-            let confirmed = first.is_corruption() && second.is_corruption();
+            let confirmed = second.is_corruption();
             Err((second, confirmed))
         }
     }
@@ -513,16 +478,15 @@ pub(super) fn open_or_recover(db: &Path, timeout: Duration) -> (Storage, Option<
     }
     let _startup = match startup_lock(dir) {
         Ok(file) => file,
-        Err(error) => return failed("acquire database startup lock", error, StorageRecovery::InMemory),
+        Err(error) => return open_without_recovery_on_read_only_dir(dir, db, timeout, error),
     };
-    cleanup_abandoned_checks(dir);
     let plan = match MovePlan::load(dir) {
         Ok(plan) => plan,
         Err(error) => return failed("read database recovery plan", error, StorageRecovery::IncompleteMove),
     };
     let live = match open_lock(dir, LIVE_LOCK) {
         Ok(file) => file,
-        Err(error) => return failed("open database lease", error, StorageRecovery::InMemory),
+        Err(error) => return open_without_recovery_on_read_only_dir(dir, db, timeout, error),
     };
 
     let (plan, sqlite_guard) = if let Some(plan) = plan {
@@ -543,7 +507,7 @@ pub(super) fn open_or_recover(db: &Path, timeout: Duration) -> (Storage, Option<
         if let Err(error) = lock(&live, true) {
             return failed("acquire database lease", error, StorageRecovery::InMemory);
         }
-        let stamp = match retry_open(|| open_existing_or_empty(db, timeout)) {
+        let stamp = match retry_open(timeout, |remaining| open_existing_or_empty(db, remaining)) {
             Ok(mut storage) => {
                 storage.recovery_lease = Some(live);
                 return (storage, None);
@@ -551,10 +515,12 @@ pub(super) fn open_or_recover(db: &Path, timeout: Duration) -> (Storage, Option<
             Err((error, false)) => return failed("database unavailable", error, StorageRecovery::InMemory),
             Err((error, true)) => {
                 error.log("confirmed database corruption");
-                let OpenError::ProbeSql(_, stamp) = error else {
-                    return memory(StorageRecovery::InMemory);
-                };
-                stamp
+                // SQLite may have performed standard journal recovery on open.
+                // Compare the resulting group before and after taking move locks.
+                match group_stamp(db) {
+                    Ok(stamp) => stamp,
+                    Err(error) => return failed("inspect confirmed database for recovery", error, StorageRecovery::InMemory),
+                }
             }
         };
         // Other live App connections retain a shared lease. SQLite's BUSY /
