@@ -29,6 +29,12 @@ export type FriendlyErrorCode =
   | 'local_model_missing'
   | 'local_model_invalid'
   | 'local_model_read'
+  | 'model_dir_invalid'
+  | 'model_dir_not_directory'
+  | 'model_dir_permission'
+  | 'model_dir_overlap'
+  | 'model_dir_unwritable'
+  | 'model_dir_save'
   | 'download_network'
   | 'download_busy'
   | 'download_source_mismatch'
@@ -72,6 +78,12 @@ const FRIENDLY_ERROR_CODES = new Set<FriendlyErrorCode>([
   'local_model_missing',
   'local_model_invalid',
   'local_model_read',
+  'model_dir_invalid',
+  'model_dir_not_directory',
+  'model_dir_permission',
+  'model_dir_overlap',
+  'model_dir_unwritable',
+  'model_dir_save',
   'download_network',
   'download_busy',
   'download_source_mismatch',
@@ -272,6 +284,23 @@ export function describeProviderError(error: unknown): FriendlyError {
     }
   }
   return { code: 'connect_failed', message: t('err.connectFailed'), detail: text, action: 'retry' }
+}
+
+export function describeModelsDirError(error: unknown): { message: string; detail: string } {
+  const { code, text } = decodeError(error)
+  switch (code) {
+    case 'model_dir_invalid':
+    case 'model_dir_not_directory':
+    case 'model_dir_permission':
+    case 'model_dir_overlap':
+    case 'model_dir_unwritable':
+    case 'model_dir_save':
+      return { message: t(`local.${code}`), detail: text }
+    case 'download_busy':
+      return { message: t('local.dirBusy'), detail: text }
+    default:
+      return { message: t('local.dirOpFailed'), detail: text }
+  }
 }
 
 /** 模型下载类错误 */

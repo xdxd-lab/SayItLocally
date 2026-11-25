@@ -8,12 +8,11 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Modal } from '@/components/ui/modal'
 import { Tooltip } from '@/components/ui/tooltip'
-import { listMicrophones, normalizeSelectedMicId } from '@/services/audio'
+import type { MicEndpoint } from '@/services/audio'
 import { resolveMicPlan, type MicPlan } from '@/services/micRouting'
 import { refreshRecorderSettings } from '@/services/recorder'
 import { getPresetShortcuts, getSetting, setSetting } from '@/services/store'
 import { getDefault } from '@/services/defaults'
-import { drawBars, resetWaveform } from '@/services/waveform'
 import { Switch } from '@/components/ui/switch'
 import { Segmented } from '@/components/ui/segmented'
 import AppSection from './AppSection'
@@ -22,7 +21,7 @@ import CorruptDbCopiesSection from './CorruptDbCopiesSection'
 import { canConfirmHistoryClear, HISTORY_CLEAR_DELAY_MS } from './historyClearConfirmation'
 // [自訂] S18／S35 WebDAV 設定區塊已註解停用：import WebDavSection from './WebDavSection'
 import MicrophoneSection from './MicrophoneSection'
-import type { MicVolumeLevel } from './MicrophoneSection'
+import { mountSettingsMicrophone, type MicVolumeLevel, type SettingsMicrophone } from './settingsMicrophone'
 import { ComboShortcutInput, PTTShortcutInput } from './ShortcutInputs'
 import { pttShortcutConflictsWithAccelerator } from '@/lib/shortcutKeys'
 import { t, type LanguagePreference, type TranslationKey } from '@/i18n'
@@ -57,13 +56,14 @@ export default function GeneralSettingsPage() {
   const t = useT()
   const [languagePreference, setLanguagePreference] = useState<LanguagePreference>('auto')
   const [autoLaunch, setAutoLaunch] = useState(false)
-  const [mics, setMics] = useState<MediaDeviceInfo[]>([])
+  const [mics, setMics] = useState<MicEndpoint[]>([])
   const [selectedMic, setSelectedMic] = useState('')
   /** 跟随系统默认时录音实际会用哪个设备（系统默认是虚拟声卡时会换掉，见 micRouting.ts） */
   const [micPlan, setMicPlan] = useState<MicPlan | null>(null)
   const [testing, setTesting] = useState(false)
   const [volumeLevel, setVolumeLevel] = useState<MicVolumeLevel>('idle')
-  const [micError, setMicError] = useState('')
+  const [revealingNames, setRevealingNames] = useState(false)
+  const [micError, setMicError] = useState<TranslationKey | null>(null)
   const [muteSystemAudio, setMuteSystemAudio] = useState(false)
   const [protectClipboard, setProtectClipboard] = useState(true)
   // 兜底值统一从 defaults 取，不在这里写第二份字面量
@@ -100,7 +100,16 @@ export default function GeneralSettingsPage() {
   const [animate, setAnimate] = useState(false)
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
-  const animRef = useRef<number>(0)
+  const microphone = useRef<SettingsMicrophone | null>(null)
+  useEffect(() => mountSettingsMicrophone(microphone, {
+    onDevices: setMics,
+    onSelectedMic: setSelectedMic,
+    onTesting: setTesting,
+    onRevealing: setRevealingNames,
+    onVolume: setVolumeLevel,
+    onError: setMicError,
+    canvas: () => canvasRef.current,
+  }), [])
 
   useEffect(() => {
     let cancelled = false
@@ -136,22 +145,9 @@ export default function GeneralSettingsPage() {
       }))
     })()
     getLanguagePreference().then(setLanguagePreference).catch(() => { })
-    // 存量数据里有 `selectedMic = "default"`（老版本的下拉把 Chromium 的伪设备也列
-    // 出来，用户点了它）。伪设备已经不在设备列表里，不折成空串的话下拉找不到选中项、
-    // 显示成"没有选择麦克风"。折完写回一次，否则录音那侧读到的仍是旧值。
-    getSetting('selectedMic', '').then(async (raw) => {
-      if (cancelled) return
-      const normalized = normalizeSelectedMicId(raw)
-      setSelectedMic(normalized)
-      if (typeof raw === 'string' && raw !== normalized) {
-        await setSetting('selectedMic', normalized)
-        await refreshRecorderSettings()
-      }
-    }).catch(() => { })
     getSetting<string>('shortcutPTT').then((value) => setPttKey(value))
     getSetting('shortcutHandsFree', 'AltRight').then((value) => setHandsFreeKey(value as string))
     getSetting('shortcutToggleAi', '').then((value) => setAiToggleKey(value as string))
-    listMicrophones().then(setMics).catch(() => { })
     return () => { cancelled = true }
   }, [])
 
@@ -180,7 +176,11 @@ export default function GeneralSettingsPage() {
     void bridge.refreshNativeMenus().catch(() => { })
   }
   const toggleAutoLaunch = async () => { const next = !autoLaunch; setAutoLaunch(next); await bridge.setAutoLaunch(next) }
-  const handleMicChange = async (deviceId: string) => { setSelectedMic(deviceId); await setSetting('selectedMic', deviceId); await refreshRecorderSettings() }
+  const handleMicChange = async (deviceId: string) => {
+    if (!microphone.current) return
+    await microphone.current.select(deviceId)
+    await refreshRecorderSettings()
+  }
   const toggleMuteSystemAudio = async () => { const next = !muteSystemAudio; setMuteSystemAudio(next); await setSetting('muteSystemAudioWhileRecording', next); await refreshRecorderSettings() }
   const toggleProtectClipboard = async () => { const next = !protectClipboard; setProtectClipboard(next); await setSetting('protectClipboard', next); await refreshRecorderSettings() }
   // [自訂] S61：關閉後預設保留舊資料。清除必須再確認一次。
@@ -260,57 +260,9 @@ export default function GeneralSettingsPage() {
     return null
   }, [pttKey, aiToggleKey])
 
-  const drawWaveform = useCallback((analyser: AnalyserNode) => {
-    const canvas = canvasRef.current; if (!canvas) return
-    const context = canvas.getContext('2d'); if (!context) return
-    const draw = () => { drawBars(context, analyser, canvas.width, canvas.height); animRef.current = requestAnimationFrame(draw) }
-    draw()
-  }, [])
-
-  const testMic = async () => {
-    if (testing) return; setTesting(true); setVolumeLevel('idle'); setMicError('')
-    try {
-      // 跟随系统默认、而默认是虚拟声卡时，测的应该是录音真正会用的那个麦克风
-      const testDeviceId = selectedMic || (micPlan?.reason === 'virtual_avoided' ? micPlan.deviceId : '')
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: testDeviceId ? { deviceId: { exact: testDeviceId } } : true })
-      const context = new AudioContext(); const source = context.createMediaStreamSource(stream)
-      const analyser = context.createAnalyser(); analyser.fftSize = 256; analyser.smoothingTimeConstant = 0.7
-      source.connect(analyser); resetWaveform(); drawWaveform(analyser)
-
-      // 音量检测：每 500ms 采样一次，取 5 秒内的峰值 RMS 判断级别
-      const dataArray = new Float32Array(analyser.frequencyBinCount)
-      let peakRms = 0
-      let sawNonZeroSignal = false
-      const volumeCheckId = setInterval(() => {
-        analyser.getFloatTimeDomainData(dataArray)
-        let sum = 0
-        for (let i = 0; i < dataArray.length; i++) {
-          const v = dataArray[i]
-          sum += v * v
-          if (v !== 0) sawNonZeroSignal = true
-        }
-        const rms = Math.sqrt(sum / dataArray.length)
-        if (rms > peakRms) peakRms = rms
-        // 「没有声音」必须严格等于整段全 0；只要出现任何非零输入，就至少是声音偏低。
-        if (!sawNonZeroSignal) setVolumeLevel('silent')
-        else if (peakRms < 0.02) setVolumeLevel('low')
-        else setVolumeLevel('normal')
-      }, 500)
-
-      setTimeout(() => {
-        clearInterval(volumeCheckId)
-        cancelAnimationFrame(animRef.current)
-        stream.getTracks().forEach((t) => t.stop()); context.close(); setTesting(false)
-      }, 5000)
-    } catch (err) {
-      const msg = err instanceof DOMException && err.name === 'NotFoundError'
-        ? t('mic.error.notFound')
-        : err instanceof DOMException && err.name === 'NotAllowedError'
-          ? t('mic.error.denied')
-          : t('mic.error.failed')
-      setMicError(msg)
-      setTesting(false); setVolumeLevel('idle')
-    }
+  const testMic = () => {
+    const deviceId = selectedMic || (micPlan?.reason === 'virtual_avoided' ? micPlan.deviceId : '')
+    void microphone.current?.test(deviceId)
   }
 
   return (
@@ -387,7 +339,10 @@ export default function GeneralSettingsPage() {
           virtualDefaultNote={!selectedMic && micPlan?.reason === 'virtual_avoided'
             ? t('mic.virtualDefaultNote', { virtual: micPlan.avoidedName, device: micPlan.chosenName })
             : ''}
-          onCanvasRef={(node) => { canvasRef.current = node }} onMicChange={handleMicChange} onTestMic={testMic} errorMessage={micError} />
+          onCanvasRef={(node) => { canvasRef.current = node }}
+          onMicChange={handleMicChange} onTestMic={testMic}
+          onRevealNames={() => void microphone.current?.revealNames()} revealingNames={revealingNames}
+          errorMessage={micError ? t(micError) : ''} />
 
         <Card>
           <CardContent className="space-y-4 p-6">

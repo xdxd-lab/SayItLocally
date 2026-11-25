@@ -9,9 +9,10 @@
 // 原因与实测数字见 dev-docs/local-asr-ggml-migration.md。
 
 use serde::Serialize;
+use std::path::Path;
 use std::time::Instant;
 
-use super::downloader::{model_dir, models_dir};
+use super::downloader;
 use super::gguf_asr;
 
 /// 采样率固定 16 kHz —— 前端采集就重采样到这个值，引擎也只接受这个值。
@@ -244,105 +245,73 @@ pub fn set_local_model_idle_unload(idle_minutes: u64) -> Result<(), String> {
 
 // ── 上一代 ONNX 模型的回收 ──
 
-/// 上一代（sherpa-onnx 时期）用过的模型目录名。新引擎读不了这些文件，
-/// 留着只是白占几百 MB ~ 1 GB 磁盘，所以启动时清掉。
-///
-/// 用白名单而不是"扫描整个模型根目录"：模型根目录是用户可改的（可能指向
-/// 一个还放着别的东西的文件夹），绝不能在那儿做递归删除。
-const LEGACY_MODEL_IDS: &[&str] = &[
-    "sensevoice-small",
-    "qwen3-asr-0.6b",
-    "paraformer-zh",
-    "whisper-tiny",
-    "whisper-base",
-    "whisper-small",
-    "whisper-medium",
-    "funasr-nano",
-    "funasr-nano-int8",
-    "fire-red-asr2-ctc",
-    "fire-red-asr2-aed",
+// Filenames from the last ONNX catalog. Older layouts without a verified
+// manifest are left alone, even when they have a familiar directory name.
+const LEGACY_MODEL_FILES: &[(&str, &[&str])] = &[
+    ("sensevoice-small", &["model.int8.onnx", "tokens.txt"]),
+    ("qwen3-asr-0.6b", &["conv_frontend.onnx", "encoder.int8.onnx", "decoder.int8.onnx"]),
 ];
 
-/// 目录看起来确实是旧的 ONNX 模型吗？要求：目录存在、里面有 .onnx，
-/// 且**没有** .gguf（万一用户把新权重放进了同名目录，不能误删）。
-fn looks_like_legacy_onnx_model(dir: &std::path::Path) -> bool {
-    if !dir.is_dir() {
-        return false;
-    }
-    let mut has_onnx = false;
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return false;
-    };
-    for entry in entries.flatten() {
-        match entry
-            .path()
-            .extension()
-            .and_then(|s| s.to_str())
-            .map(|s| s.to_ascii_lowercase())
-        {
-            Some(ext) if ext == "gguf" => return false,
-            Some(ext) if ext == "onnx" => has_onnx = true,
-            _ => {}
+fn real_entry(path: &Path) -> Option<std::fs::Metadata> {
+    let entry = path.symlink_metadata().ok()?;
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        if entry.file_attributes() & 0x400 != 0 { // FILE_ATTRIBUTE_REPARSE_POINT
+            return None;
         }
     }
-    has_onnx
+    (!entry.file_type().is_symlink()).then_some(entry)
 }
 
-fn dir_size(dir: &std::path::Path) -> u64 {
-    let Ok(entries) = std::fs::read_dir(dir) else {
+fn remove_legacy_file(path: &Path) -> u64 {
+    let Some(entry) = real_entry(path).filter(std::fs::Metadata::is_file) else {
         return 0;
     };
-    entries
-        .flatten()
-        .map(|e| {
-            let p = e.path();
-            if p.is_dir() {
-                dir_size(&p)
-            } else {
-                std::fs::metadata(&p).map(|m| m.len()).unwrap_or(0)
-            }
-        })
-        .sum()
+    match std::fs::remove_file(path) {
+        Ok(()) => entry.len(),
+        Err(error) => {
+            log::warn!("Failed to remove legacy model file: {}", error);
+            0
+        }
+    }
 }
 
-/// 删掉旧引擎的模型目录，返回释放的字节数。
-///
-/// 换引擎后这些 ONNX 权重永远用不上了，所以直接回收，不再问用户
-/// （旧 silero_vad.onnx 也一起，新引擎不需要 VAD 模型）。
-pub fn reclaim_legacy_models() -> u64 {
-    let root = models_dir();
-    if !root.exists() {
+fn reclaim_legacy_models(default: &Path, is_custom: bool) -> u64 {
+    if is_custom || !real_entry(default).is_some_and(|entry| entry.is_dir()) {
         return 0;
     }
 
-    let mut freed = 0u64;
-    for id in LEGACY_MODEL_IDS {
-        let dir = model_dir(id);
-        if !looks_like_legacy_onnx_model(&dir) {
+    let mut freed = remove_legacy_file(&default.join("silero_vad.onnx"));
+    for &(id, files) in LEGACY_MODEL_FILES {
+        let dir = default.join(id);
+        if !real_entry(&dir).is_some_and(|entry| entry.is_dir()) {
             continue;
         }
-        let size = dir_size(&dir);
-        match std::fs::remove_dir_all(&dir) {
-            Ok(()) => {
-                freed += size;
-                log::info!(
-                    "Removed legacy engine model {} ({:.1} MB)",
-                    id,
-                    size as f64 / 1024.0 / 1024.0
-                );
+        let has_known_weights = files.iter().any(|file| {
+            file.ends_with(".onnx") && real_entry(&dir.join(file)).is_some_and(|entry| entry.is_file())
+        });
+        let Ok(entries) = std::fs::read_dir(&dir) else { continue };
+        // If an entry is unreadable, or this directory contains GGUF weights,
+        // leave the mixed layout alone.
+        if !has_known_weights || entries.into_iter().any(|entry| {
+            entry.map_or(true, |entry| entry.path().extension().is_some_and(|ext| ext.eq_ignore_ascii_case("gguf")))
+        }) {
+            continue;
+        }
+        if id == "qwen3-asr-0.6b" {
+            let tokenizer = dir.join("tokenizer");
+            if real_entry(&tokenizer).is_some_and(|entry| entry.is_dir()) {
+                for file in ["merges.txt", "vocab.json", "tokenizer_config.json"] {
+                    freed += remove_legacy_file(&tokenizer.join(file));
+                }
+                let _ = std::fs::remove_dir(tokenizer);
             }
-            Err(e) => log::warn!("Failed to remove legacy engine model {}: {}", id, e),
         }
-    }
-
-    // 旧的外置 ONNX VAD 权重：新实现使用静态内嵌权重，不再需要这个文件。
-    let vad = root.join("silero_vad.onnx");
-    if vad.is_file() {
-        let size = std::fs::metadata(&vad).map(|m| m.len()).unwrap_or(0);
-        if std::fs::remove_file(&vad).is_ok() {
-            freed += size;
-            log::info!("Removed legacy VAD weights silero_vad.onnx");
+        for file in files {
+            freed += remove_legacy_file(&dir.join(file));
         }
+        let _ = std::fs::remove_dir(dir);
     }
 
     if freed > 0 {
@@ -362,7 +331,8 @@ static RECLAIMED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::n
 /// 启动时在后台回收旧模型（几百 MB 的删除别卡启动路径）。
 pub fn spawn_legacy_reclaim() {
     std::thread::spawn(|| {
-        let freed = reclaim_legacy_models();
+        let Ok(_storage_lease) = downloader::acquire_model_storage() else { return };
+        let freed = reclaim_legacy_models(&downloader::default_models_dir(), downloader::has_custom_models_dir());
         RECLAIMED.store(freed, std::sync::atomic::Ordering::Relaxed);
     });
 }
@@ -372,26 +342,59 @@ mod tests {
     use super::*;
 
     #[test]
-    fn legacy_detection_requires_onnx_and_rejects_gguf() {
-        let tmp = std::env::temp_dir().join(format!("sayit-legacy-test-{}", std::process::id()));
-        let onnx_dir = tmp.join("old");
-        let gguf_dir = tmp.join("new");
-        let mixed_dir = tmp.join("mixed");
-        for d in [&onnx_dir, &gguf_dir, &mixed_dir] {
-            std::fs::create_dir_all(d).unwrap();
+    fn legacy_reclaim_preserves_custom_and_unknown_files() {
+        use std::fs;
+        let root = std::env::temp_dir().join(format!("sayit-legacy-test-{}", uuid::Uuid::new_v4()));
+        for dir in ["whisper-tiny", "sensevoice-small/nested", "qwen3-asr-0.6b"] {
+            fs::create_dir_all(root.join(dir)).unwrap();
         }
-        std::fs::write(onnx_dir.join("model.int8.onnx"), b"x").unwrap();
-        std::fs::write(gguf_dir.join("m-Q8_0.gguf"), b"x").unwrap();
-        // 同名目录里既有旧 onnx 又有新 gguf 时，必须判为"不是旧模型"，不能删
-        std::fs::write(mixed_dir.join("model.int8.onnx"), b"x").unwrap();
-        std::fs::write(mixed_dir.join("m-Q8_0.gguf"), b"x").unwrap();
+        let preserved = [
+            "whisper-tiny/x.onnx",
+            "whisper-tiny/mine.txt",
+            "sensevoice-small/mine.txt",
+            "sensevoice-small/nested/model.int8.onnx",
+            "qwen3-asr-0.6b/encoder.int8.onnx",
+            "qwen3-asr-0.6b/new.GGUF",
+        ];
+        let legacy = ["silero_vad.onnx", "sensevoice-small/model.int8.onnx", "sensevoice-small/tokens.txt"];
+        for file in preserved.iter().chain(&legacy) {
+            fs::write(root.join(file), b"keep").unwrap();
+        }
+        // The root can be the very same path explicitly saved as a custom setting.
+        assert_eq!(reclaim_legacy_models(&root, true), 0);
+        for file in preserved.iter().chain(&legacy) {
+            assert_eq!(fs::read(root.join(file)).unwrap(), b"keep");
+        }
+        assert_eq!(reclaim_legacy_models(&root, false), 12);
+        for file in preserved {
+            assert_eq!(fs::read(root.join(file)).unwrap(), b"keep");
+        }
+        for file in legacy {
+            assert!(!root.join(file).exists());
+        }
+        fs::remove_dir_all(root).unwrap();
+    }
 
-        assert!(looks_like_legacy_onnx_model(&onnx_dir));
-        assert!(!looks_like_legacy_onnx_model(&gguf_dir));
-        assert!(!looks_like_legacy_onnx_model(&mixed_dir));
-        assert!(!looks_like_legacy_onnx_model(&tmp.join("does-not-exist")));
-
-        std::fs::remove_dir_all(&tmp).ok();
+    #[cfg(unix)]
+    #[test]
+    fn legacy_reclaim_never_follows_root_or_model_directory_links() {
+        use std::{fs, os::unix::fs::symlink};
+        let base = std::env::temp_dir().join(format!("sayit-legacy-links-{}", uuid::Uuid::new_v4()));
+        let target = base.join("target");
+        let default = base.join("models");
+        fs::create_dir_all(target.join("sensevoice-small")).unwrap();
+        fs::write(target.join("silero_vad.onnx"), b"vad").unwrap();
+        fs::write(target.join("sensevoice-small/model.int8.onnx"), b"model").unwrap();
+        symlink(&target, &default).unwrap();
+        assert_eq!(reclaim_legacy_models(&default, false), 0);
+        fs::remove_file(&default).unwrap();
+        fs::create_dir(&default).unwrap();
+        symlink(target.join("sensevoice-small"), default.join("sensevoice-small")).unwrap();
+        symlink(target.join("silero_vad.onnx"), default.join("silero_vad.onnx")).unwrap();
+        assert_eq!(reclaim_legacy_models(&default, false), 0);
+        assert_eq!(fs::read(default.join("silero_vad.onnx")).unwrap(), b"vad");
+        assert_eq!(fs::read(default.join("sensevoice-small/model.int8.onnx")).unwrap(), b"model");
+        fs::remove_dir_all(base).unwrap();
     }
 
     fn run_local_transcribe(audio_b64: String, model_id: &str) -> Result<LocalAsrResult, String> {

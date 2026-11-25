@@ -355,109 +355,296 @@ pub fn get_models_dir() -> ModelsDirInfo {
     }
 }
 
-/// 递归复制目录/文件（跨盘 rename 失败时的兜底）。
-fn copy_path_recursive(src: &Path, dst: &Path) -> Result<(), String> {
-    if src.is_dir() {
-        std::fs::create_dir_all(dst).map_err(|e| format!("Failed to create directory: {}", e))?;
-        for entry in std::fs::read_dir(src).map_err(|e| format!("Failed to read directory: {}", e))? {
-            let entry = entry.map_err(|e| format!("Failed to read directory entry: {}", e))?;
-            copy_path_recursive(&entry.path(), &dst.join(entry.file_name()))?;
-        }
-    } else {
-        std::fs::copy(src, dst).map_err(|e| format!("Failed to copy file: {}", e))?;
+fn resolve_models_path(path: &Path, allow_unresolved: bool) -> std::io::Result<(PathBuf, bool)> {
+    use std::io::{Error, ErrorKind};
+    use std::path::Component;
+
+    if !path.is_absolute() {
+        return Err(Error::new(ErrorKind::InvalidInput, "Choose an absolute directory path"));
     }
-    Ok(())
+
+    let mut existing = PathBuf::new();
+    let mut missing = PathBuf::new();
+    let mut unresolved = false;
+    for part in path.components() {
+        match part {
+            Component::ParentDir => {
+                if !missing.pop() {
+                    existing.pop();
+                }
+            }
+            Component::Normal(name) if missing.as_os_str().is_empty() => {
+                let next = existing.join(name);
+                let resolved = match next.symlink_metadata() {
+                    Err(error) if error.kind() == ErrorKind::NotFound => {
+                        missing.push(name);
+                        continue;
+                    }
+                    metadata => metadata.and_then(|_| {
+                        let resolved = next.canonicalize()?;
+                        if !resolved.metadata()?.is_dir() {
+                            return Err(Error::new(ErrorKind::NotADirectory, "An existing path is not a directory"));
+                        }
+                        Ok(resolved)
+                    }),
+                };
+                match resolved {
+                    Ok(path) => existing = path,
+                    Err(_) if allow_unresolved => {
+                        unresolved = true;
+                        missing.push(name);
+                    }
+                    Err(error) => return Err(error),
+                }
+            }
+            Component::Normal(name) => missing.push(name),
+            Component::RootDir => {
+                existing.push(part);
+                match existing.canonicalize() {
+                    Ok(root) => existing = root,
+                    Err(_) if allow_unresolved => unresolved = true,
+                    Err(error) => return Err(error),
+                }
+            }
+            _ => existing.push(part),
+        }
+    }
+
+    if !missing.as_os_str().is_empty() {
+        existing.push(missing);
+    }
+    Ok((existing, unresolved))
 }
 
-/// 把旧模型根目录下的每个条目移动到新根目录。
-/// 优先 rename（同盘瞬时）；跨盘失败则递归复制后删除源。
-/// 目标已存在同名条目则跳过（不覆盖新目录已有内容）。
-fn move_dir_contents(from: &Path, to: &Path) -> Result<(), String> {
-    for entry in std::fs::read_dir(from).map_err(|e| format!("Failed to read old directory: {}", e))? {
-        let entry = entry.map_err(|e| format!("Failed to read directory entry: {}", e))?;
-        let src = entry.path();
-        let dst = to.join(entry.file_name());
-        if dst.exists() {
-            continue;
-        }
-        if std::fs::rename(&src, &dst).is_ok() {
-            continue;
-        }
-        // 跨盘：递归复制后删除源
-        copy_path_recursive(&src, &dst)?;
-        if src.is_dir() {
-            let _ = std::fs::remove_dir_all(&src);
+fn model_dir_path_error(error: std::io::Error) -> String {
+    use std::io::ErrorKind;
+    let code = match error.kind() {
+        ErrorKind::InvalidInput => "model_dir_invalid",
+        ErrorKind::PermissionDenied => "model_dir_permission",
+        _ => "model_dir_not_directory",
+    };
+    error_protocol::encode(code, error.to_string())
+}
+
+fn lexical_models_path(path: &Path) -> PathBuf {
+    use std::path::Component;
+    let mut normalized = PathBuf::new();
+    for part in path.components() {
+        if part == Component::ParentDir {
+            normalized.pop();
         } else {
-            let _ = std::fs::remove_file(&src);
+            normalized.push(part);
         }
     }
-    Ok(())
+    normalized
 }
 
-/// 设置模型存储位置。
-/// - `dir`：新目录（绝对路径）；传 None 或空串 = 恢复默认路径。
-/// - `move_existing`：为 true 时把旧目录下已下载的模型一并移动到新目录。
-///
-/// 会校验新目录可创建且可写；随后更新进程内生效路径并持久化到设置，
-/// 使重启后仍生效（main.rs 启动时会读取 `localAsr.modelsDir`）。
+#[cfg(target_os = "macos")]
+fn case_insensitive_path(path: &Path) -> bool {
+    use std::os::unix::ffi::OsStrExt;
+    let existing = path.ancestors().find(|part| part.is_dir()).unwrap_or(Path::new("/"));
+    let Ok(name) = std::ffi::CString::new(existing.as_os_str().as_bytes()) else {
+        return true;
+    };
+    // SAFETY: name points to a NUL-terminated absolute path for the duration of the call.
+    unsafe { libc::pathconf(name.as_ptr(), libc::_PC_CASE_SENSITIVE) != 1 }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn case_insensitive_path(_: &Path) -> bool {
+    cfg!(windows)
+}
+
+fn lexical_path_starts_with(path: &Path, root: &Path, insensitive: bool) -> bool {
+    path.starts_with(root) || (insensitive && path.components().count() >= root.components().count()
+        && path.components().zip(root.components()).all(|(actual, expected)| {
+            actual == expected || actual.as_os_str().to_str().zip(expected.as_os_str().to_str())
+                .is_some_and(|(a, b)| a.to_lowercase() == b.to_lowercase())
+        }))
+}
+
+fn models_path_starts_with(path: &Path, root: &Path, insensitive: bool) -> bool {
+    if lexical_path_starts_with(path, root, insensitive) {
+        return true;
+    }
+
+    // A macOS firmlink can put equivalent directory entries at different
+    // depths. Compare the suffixes after matching actual directory identities.
+    #[cfg(unix)]
+    for root_ancestor in root.ancestors() {
+        if !root_ancestor.is_dir() {
+            continue;
+        }
+        let root_suffix = root.strip_prefix(root_ancestor).expect("root ancestor");
+        for ancestor in path.ancestors() {
+            if same_directory(ancestor, root_ancestor)
+                && lexical_path_starts_with(
+                    path.strip_prefix(ancestor).expect("path ancestor"), root_suffix, insensitive,
+                )
+            {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+#[cfg(unix)]
+fn same_directory(a: &Path, b: &Path) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    a.metadata().ok().zip(b.metadata().ok()).is_some_and(|(a, b)| {
+        a.is_dir() && b.is_dir() && (a.dev(), a.ino()) == (b.dev(), b.ino())
+    })
+}
+
+fn same_models_path(a: &Path, b: &Path, insensitive: bool) -> bool {
+    models_path_starts_with(a, b, insensitive) && models_path_starts_with(b, a, insensitive)
+}
+
+fn probe_models_dir(dir: &Path, name: &str) -> std::io::Result<()> {
+    let path = dir.join(name);
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        // FILE_FLAG_DELETE_ON_CLOSE removes the file owned by this handle.
+        options.share_mode(0).custom_flags(0x0400_0000);
+    }
+    use std::io::Write;
+    let mut file = options.open(&path)?;
+    let write = file.write_all(b"ok");
+    #[cfg(windows)]
+    drop(file);
+    #[cfg(not(windows))]
+    {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::MetadataExt;
+            let created = file.metadata()?;
+            let entry = path.symlink_metadata()?;
+            if (created.dev(), created.ino()) != (entry.dev(), entry.ino()) {
+                return Err(std::io::Error::other("The write probe was replaced"));
+            }
+        }
+        std::fs::remove_file(path)?;
+    }
+    write
+}
+
+fn switch_models_dir(
+    requested: Option<&Path>,
+    current: &Path,
+    default: &Path,
+    persist: impl FnOnce(Option<&Path>) -> Result<(), String>,
+    activate: impl FnOnce(Option<PathBuf>),
+) -> Result<PathBuf, String> {
+    let requested_path = requested.unwrap_or(default);
+    let (target, _) = resolve_models_path(requested_path, false).map_err(model_dir_path_error)?;
+    let mut custom = requested.map(|_| target.as_path());
+    if requested.is_some() {
+        let insensitive = case_insensitive_path(&target);
+        for (root, is_default) in [(current, false), (default, true)] {
+            // Older settings allowed relative paths. Use their original base
+            // when available, but a broken old setting must not block a switch.
+            let absolute = if root.is_absolute() {
+                root.to_path_buf()
+            } else if let Ok(cwd) = std::env::current_dir() {
+                cwd.join(root)
+            } else {
+                continue;
+            };
+            let (reference, unresolved) =
+                resolve_models_path(&absolute, true).map_err(model_dir_path_error)?;
+            if !unresolved && same_models_path(&target, &reference, insensitive) {
+                if !is_default {
+                    return Ok(current.to_path_buf());
+                }
+                custom = None;
+                continue;
+            }
+            let overlaps = |path: &Path, root: &Path| {
+                models_path_starts_with(path, root, insensitive)
+                    || models_path_starts_with(root, path, insensitive)
+            };
+            if overlaps(&target, &reference)
+                || (unresolved && overlaps(&lexical_models_path(requested_path), &lexical_models_path(&absolute)))
+            {
+                return Err(error_protocol::encode("model_dir_overlap", "Choose a separate model directory"));
+            }
+        }
+        if let Some(app_dir) = default.parent() {
+            let (app_dir, _) = resolve_models_path(app_dir, true).map_err(model_dir_path_error)?;
+            if same_models_path(&target, &app_dir, insensitive) {
+                return Err(error_protocol::encode("model_dir_overlap", "The app data folder cannot be used as the model directory"));
+            }
+        }
+    }
+
+    let probe_name = format!(".sayit_write_test-{}", uuid::Uuid::new_v4());
+    std::fs::create_dir_all(&target)
+        .and_then(|()| probe_models_dir(&target, &probe_name))
+        .map_err(|error| {
+            if error.kind() == std::io::ErrorKind::PermissionDenied {
+                model_dir_path_error(error)
+            } else {
+                error_protocol::encode("model_dir_unwritable", error.to_string())
+            }
+        })?;
+
+    persist(custom)?;
+    activate(custom.map(Path::to_path_buf));
+    Ok(custom.unwrap_or(default).to_path_buf())
+}
+
+#[derive(serde::Deserialize)]
+struct ModelsDirRequest {
+    dir: Option<String>,
+}
+
+impl ModelsDirRequest {
+    fn path(&self) -> Option<&Path> {
+        self.dir.as_deref().map(str::trim).filter(|value| !value.is_empty()).map(Path::new)
+    }
+}
+
+fn apply_models_dir_request(
+    request: ModelsDirRequest,
+    storage: &Storage,
+    current: impl FnOnce() -> PathBuf,
+    default: &Path,
+    activate: impl FnOnce(Option<PathBuf>),
+) -> Result<PathBuf, String> {
+    let _storage_lease = downloader::acquire_model_storage()?;
+    switch_models_dir(request.path(), &current(), default, |custom| {
+        storage.set("localAsr.modelsDir", &serde_json::json!(custom.unwrap_or(Path::new(""))))
+            .map_err(|error| error_protocol::encode("model_dir_save", error.to_string()))
+    }, activate)
+}
+
+/// Change the effective directory only after the new setting has been saved.
+/// Older callers can still send moveExisting. It is ignored.
 #[tauri::command]
 pub async fn set_models_dir(
-    storage: tauri::State<'_, Storage>,
-    dir: Option<String>,
-    move_existing: bool,
+    app: AppHandle,
+    request: tauri::ipc::Request<'_>,
 ) -> Result<String, String> {
-    let trimmed = dir
-        .as_deref()
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty());
-
-    let old_dir = downloader::models_dir();
-    let new_dir = match &trimmed {
-        Some(d) => std::path::PathBuf::from(d),
-        None => downloader::default_models_dir(),
+    use tauri::Manager;
+    let tauri::ipc::InvokeBody::Json(payload) = request.body() else {
+        return Err(error_protocol::encode("model_dir_invalid", "Expected a JSON directory request"));
     };
-
-    // 迁移、切换生效路径和持久化必须作为一个整体与下载/删除互斥。
-    let _storage_lease = if new_dir != old_dir {
-        Some(downloader::acquire_model_storage()?)
-    } else {
-        None
-    };
-
-    // 目标与当前一致：仅确保持久化的设置与之同步，不做迁移。
-    if new_dir != old_dir {
-        let old_for_task = old_dir.clone();
-        let new_for_task = new_dir.clone();
-        // fs 操作（可能是跨盘大文件复制）放到阻塞线程池，避免占用异步运行时线程。
-        tokio::task::spawn_blocking(move || -> Result<(), String> {
-            std::fs::create_dir_all(&new_for_task)
-                .map_err(|e| format!("Failed to create directory: {}", e))?;
-            // 可写性探测
-            let probe = new_for_task.join(".sayit_write_test");
-            std::fs::write(&probe, b"ok").map_err(|e| format!("Directory is not writable: {}", e))?;
-            let _ = std::fs::remove_file(&probe);
-            if move_existing && old_for_task.exists() {
-                move_dir_contents(&old_for_task, &new_for_task)?;
-            }
-            Ok(())
-        })
-        .await
-        .map_err(|e| format!("Model migration task failed: {}", e))??;
-    }
-
-    // 更新进程内生效路径：自定义 → Some，恢复默认 → None
-    downloader::set_custom_models_dir(trimmed.as_ref().map(|_| new_dir.clone()));
-
-    // 持久化（重启后由 main.rs 读回）。恢复默认时存空串。
-    let value = match &trimmed {
-        Some(d) => serde_json::json!(d),
-        None => serde_json::json!(""),
-    };
-    storage
-        .set("localAsr.modelsDir", &value)
-        .map_err(|e| format!("Failed to save setting: {}", e))?;
-
-    Ok(new_dir.to_string_lossy().to_string())
+    let request = <ModelsDirRequest as serde::Deserialize>::deserialize(payload)
+        .map_err(|error| error_protocol::encode("model_dir_invalid", error.to_string()))?;
+    tokio::task::spawn_blocking(move || {
+        let storage = app.state::<Storage>();
+        let result = apply_models_dir_request(
+            request, &storage, downloader::models_dir, &downloader::default_models_dir(),
+            downloader::set_custom_models_dir,
+        )?;
+        Ok(result.to_string_lossy().into_owned())
+    })
+    .await
+    .map_err(|error| error_protocol::encode("model_dir_save", error.to_string()))?
 }
 
 /// 打开指定模型的存储目录（不存在则创建）
@@ -528,6 +715,316 @@ mod tests {
         fn drop(&mut self) {
             let _ = fs::remove_dir_all(&self.dir);
         }
+    }
+
+    #[test]
+    fn model_directory_switch_ignores_old_move_flag_and_preserves_all_files() {
+        let fixture = ModelFixture::new();
+        let current = fixture.dir.join("old");
+        let default = fixture.dir.join("app/models");
+        let target = fixture.dir.join("new");
+        fs::create_dir(&current).unwrap();
+        fs::create_dir(&target).unwrap();
+        fs::write(current.join(MODEL_FILE), b"weights").unwrap();
+        fs::write(current.join("notes.txt"), b"keep").unwrap();
+        fs::write(target.join("already-here"), b"untouched").unwrap();
+        fs::write(target.join(".sayit_write_test"), b"existing probe").unwrap();
+        let request: ModelsDirRequest = serde_json::from_value(serde_json::json!({
+            "dir": target, "moveExisting": true
+        })).unwrap();
+
+        let chosen = switch_models_dir(request.path(), &current, &default, |value| {
+            assert_eq!(value, Some(target.canonicalize().unwrap().as_path()));
+            Ok(())
+        }, |value| assert_eq!(value, Some(target.canonicalize().unwrap()))).unwrap();
+
+        let mut entries: Vec<_> = fs::read_dir(&current).unwrap()
+            .map(|entry| entry.unwrap().file_name()).collect();
+        entries.sort();
+        assert_eq!(entries, ["notes.txt", MODEL_FILE]);
+        assert_eq!(fs::read(current.join(MODEL_FILE)).unwrap(), b"weights");
+        assert_eq!(fs::read(current.join("notes.txt")).unwrap(), b"keep");
+        assert_eq!(fs::read_dir(&target).unwrap().count(), 2);
+        assert_eq!(fs::read(target.join(".sayit_write_test")).unwrap(), b"existing probe");
+        assert_eq!(fs::read(target.join("already-here")).unwrap(), b"untouched");
+        assert!(!chosen.as_os_str().to_string_lossy().ends_with(std::path::MAIN_SEPARATOR));
+        assert_eq!(chosen, target.canonicalize().unwrap());
+    }
+
+    #[test]
+    fn model_directory_rejects_overlaps_and_invalid_paths_before_writing() {
+        let fixture = ModelFixture::new();
+        let current = fixture.dir.join("Current");
+        let app = fixture.dir.join("app");
+        let default = app.join("Models");
+        let file = fixture.dir.join("file");
+        fs::create_dir(&current).unwrap();
+        fs::create_dir_all(&default).unwrap();
+        fs::write(&file, b"keep").unwrap();
+
+        let select = |path: &Path| switch_models_dir(
+            Some(path), &current, &default,
+            |_| panic!("invalid choice changed the setting"),
+            |_| panic!("invalid choice changed the effective path"),
+        );
+        for target in [
+            fixture.dir.clone(), app, current.join("not-created/deeper"),
+            default.join("not-created/deeper"), current.join("../app/Models/not-created"),
+        ] {
+            assert!(select(&target).unwrap_err().starts_with("sayit_error:model_dir_overlap:"), "{target:?}");
+        }
+        assert!(select(Path::new("relative")).unwrap_err().starts_with("sayit_error:model_dir_invalid:"));
+        for target in [file.clone(), file.join("nested")] {
+            assert!(select(&target).unwrap_err().starts_with("sayit_error:model_dir_not_directory:"), "{target:?}");
+        }
+        if current.with_file_name("current").is_dir() {
+            let alias = current.with_file_name("current");
+            assert_eq!(select(&alias).unwrap(), current);
+            assert!(select(&alias.join("not-created")).unwrap_err().starts_with("sayit_error:model_dir_overlap:"));
+        }
+        assert!(models_path_starts_with(Path::new("/App/Models/New"), Path::new("/app/models"), true));
+        assert!(!models_path_starts_with(Path::new("/App/Models2/New"), Path::new("/app/models"), true));
+        assert_eq!(fs::read_dir(&current).unwrap().count(), 0);
+        assert_eq!(fs::read_dir(&default).unwrap().count(), 0);
+        assert_eq!(fs::read(file).unwrap(), b"keep");
+
+        let separate = fixture.dir.join("new/nested");
+        assert!(switch_models_dir(Some(&separate), &current, &default, |_| Ok(()), |_| {}).is_ok());
+        assert!(separate.is_dir());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn model_directory_follows_aliases_and_parent_components_in_filesystem_order() {
+        let fixture = ModelFixture::new();
+        let current = fixture.dir.join("original/models");
+        let default = fixture.dir.join("default");
+        let alias = fixture.dir.join("alias");
+        fs::create_dir_all(&current).unwrap();
+        std::os::unix::fs::symlink(&current, &alias).unwrap();
+        let choose = |path: &Path| switch_models_dir(
+            Some(path), &current, &default,
+            |_| panic!("alias must not change the setting"),
+            |_| panic!("alias must not change the effective path"),
+        );
+        assert_eq!(choose(&alias).unwrap(), current);
+        for path in [alias.join("child"), alias.join("..")] {
+            assert!(choose(&path).unwrap_err().starts_with("sayit_error:model_dir_overlap:"));
+        }
+        assert_eq!(choose(&current.join("missing/..")).unwrap(), current);
+        assert!(!current.join("missing").exists());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn drive_root_uses_the_same_prefix_as_its_resolved_children() {
+        let fixture = ModelFixture::new();
+        let root: PathBuf = fixture.dir.components().take(2).collect();
+        let resolved = resolve_models_path(&fixture.dir, false).unwrap().0;
+        let resolved_root = resolve_models_path(&root, false).unwrap().0;
+        assert!(models_path_starts_with(&resolved, &resolved_root, true));
+    }
+
+    #[test]
+    fn model_directory_restores_default_despite_legacy_overlap() {
+        let fixture = ModelFixture::new();
+        let default = fixture.dir.join("app/models");
+        let current = default.join("nested");
+        fs::create_dir_all(&current).unwrap();
+        fs::write(current.join(MODEL_FILE), b"weights").unwrap();
+        fs::write(current.join("notes.txt"), b"keep").unwrap();
+        let result = switch_models_dir(None, &current, &default, |value| {
+            assert_eq!(value, None);
+            Ok(())
+        }, |value| assert_eq!(value, None)).unwrap();
+        assert_eq!(result, default);
+        assert_eq!(fs::read_dir(&default).unwrap().count(), 1);
+        assert_eq!(fs::read(current.join(MODEL_FILE)).unwrap(), b"weights");
+        assert_eq!(fs::read(current.join("notes.txt")).unwrap(), b"keep");
+    }
+
+    #[test]
+    fn model_directory_probe_leaves_existing_files_and_excludes_collisions() {
+        let fixture = ModelFixture::new();
+        let dir = &fixture.dir;
+        fs::write(dir.join(".sayit_write_test"), b"legacy").unwrap();
+        let expected_name = ".sayit_write_test-collision";
+        fs::write(dir.join(expected_name), b"keep").unwrap();
+        assert_eq!(probe_models_dir(dir, expected_name).unwrap_err().kind(), std::io::ErrorKind::AlreadyExists);
+        probe_models_dir(dir, ".sayit_write_test-current").unwrap();
+        assert_eq!(fs::read(dir.join(".sayit_write_test")).unwrap(), b"legacy");
+        assert_eq!(fs::read(dir.join(expected_name)).unwrap(), b"keep");
+        assert_eq!(fs::read_dir(dir).unwrap().count(), 2);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn model_directory_probe_never_follows_existing_links() {
+        let fixture = ModelFixture::new();
+        let dir = &fixture.dir;
+        let referent = dir.join("referent");
+        fs::write(&referent, b"keep").unwrap();
+        for (name, target) in [
+            (".sayit_write_test", referent.clone()),
+            (".sayit_write_test-linked", referent.clone()),
+            (".sayit_write_test-dangling", dir.join("missing-target")),
+        ] {
+            let link = dir.join(name);
+            std::os::unix::fs::symlink(&target, &link).unwrap();
+            assert!(probe_models_dir(dir, name).is_err());
+            assert_eq!(fs::read_link(link).unwrap(), target);
+        }
+        assert_eq!(fs::read(referent).unwrap(), b"keep");
+        assert!(!dir.join("missing-target").exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn model_directory_readonly_destination_leaves_setting_untouched() {
+        use std::os::unix::fs::PermissionsExt;
+        let fixture = ModelFixture::new();
+        let target = fixture.dir.join("readonly");
+        fs::create_dir(&target).unwrap();
+        fs::set_permissions(&target, fs::Permissions::from_mode(0o500)).unwrap();
+        let result = switch_models_dir(
+            Some(&target), &fixture.dir.join("old"), &fixture.dir.join("default"),
+            |_| panic!("read-only directory changed the setting"),
+            |_| panic!("read-only directory changed the effective path"),
+        );
+        fs::set_permissions(&target, fs::Permissions::from_mode(0o700)).unwrap();
+        assert!(result.unwrap_err().starts_with("sayit_error:model_dir_permission:"));
+        assert_eq!(fs::read_dir(target).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn model_directory_checks_case_before_default_root_exists() {
+        let fixture = ModelFixture::new();
+        let current = fixture.dir.join("existing");
+        let app = fixture.dir.join("CaseProbe");
+        fs::create_dir(&app).unwrap();
+        let default = app.join("models");
+        let target = app.join("Models/child");
+        // Detect the test volume independently of the implementation under test.
+        let insensitive = fixture.dir.join("caseprobe").is_dir();
+        let result = switch_models_dir(Some(&target), &current, &default, |_| Ok(()), |_| {});
+        if insensitive {
+            assert!(result.unwrap_err().starts_with("sayit_error:model_dir_overlap:"));
+            assert!(!default.exists());
+        } else {
+            assert!(result.is_ok());
+            assert!(target.is_dir());
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn model_directory_checks_data_volume_aliases_at_different_depths() {
+        let fixture = ModelFixture::new();
+        let ordinary = fixture.dir.canonicalize().unwrap();
+        let data = Path::new("/System/Volumes/Data").join(ordinary.strip_prefix("/").unwrap());
+        if !same_directory(&ordinary, &data) {
+            return; // The test volume does not have the macOS Data alias.
+        }
+        let alias = resolve_models_path(&data, false).unwrap().0;
+        let current = ordinary.join("models");
+        let default = ordinary.join("default");
+        assert!(same_models_path(&ordinary, &alias, false));
+        for target in [alias, data.join("models/not-created")] {
+            let error = switch_models_dir(Some(&target), &current, &default,
+                |_| panic!("alias overlaps the old directory"),
+                |_| panic!("alias overlaps the old directory"),
+            ).unwrap_err();
+            assert!(error.starts_with("sayit_error:model_dir_overlap:"));
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn model_directory_recovers_from_broken_references_and_classifies_errors() {
+        use std::os::unix::fs::{symlink, PermissionsExt};
+        let fixture = ModelFixture::new();
+        let base = &fixture.dir;
+        let parent = base.join("parent");
+        let alias = base.join("alias");
+        fs::create_dir(&parent).unwrap();
+        symlink(&parent, &alias).unwrap();
+        let dangling = parent.join("dangling");
+        let file = parent.join("file");
+        let denied = parent.join("denied");
+        let missing = parent.join("missing/models");
+        symlink(parent.join("unmounted"), &dangling).unwrap();
+        fs::write(&file, b"keep").unwrap();
+        fs::create_dir(&denied).unwrap();
+        fs::set_permissions(&denied, fs::Permissions::from_mode(0o000)).unwrap();
+
+        for (i, broken) in [&dangling, &file, &denied.join("models"), &missing].into_iter().enumerate() {
+            let target = base.join(format!("new-{i}"));
+            let original_path = alias.join(broken.strip_prefix(&parent).unwrap());
+            // Missing, inaccessible, and invalid old paths all allow unrelated choices.
+            assert!(switch_models_dir(Some(&target), &original_path, &base.join("default"), |_| Ok(()), |_| {}).is_ok());
+            assert!(switch_models_dir(Some(&target), &base.join("old"), &original_path, |_| Ok(()), |_| {}).is_ok());
+            let overlap = switch_models_dir(Some(&parent), &original_path, &base.join("default"),
+                |_| panic!("must check the resolved ancestor"), |_| panic!("must check the resolved ancestor"));
+            assert!(overlap.unwrap_err().starts_with("sayit_error:model_dir_overlap:"));
+            assert!(switch_models_dir(None, &original_path, &base.join("default"), |_| Ok(()), |_| {}).is_ok());
+        }
+        for (path, code) in [
+            (&dangling, "model_dir_not_directory"),
+            (&file, "model_dir_not_directory"),
+            (&denied.join("models"), "model_dir_permission"),
+        ] {
+            for requested in [None, Some(path.as_path())] {
+                let result = switch_models_dir(requested, &base.join("old"), path,
+                    |_| panic!("broken target must not be persisted"),
+                    |_| panic!("broken target must not be activated"));
+                assert!(result.unwrap_err().starts_with(&format!("sayit_error:{code}:")));
+            }
+        }
+        fs::set_permissions(denied, fs::Permissions::from_mode(0o700)).unwrap();
+    }
+
+    #[test]
+    fn model_directory_request_respects_download_lease_before_reading_current_path() {
+        let _guard = downloader::TEST_MODEL_LEASES.lock().unwrap();
+        let fixture = ModelFixture::new();
+        let storage = Storage::new(fixture.dir.join("test.db")).unwrap();
+        let target = fixture.dir.join("new");
+        let _download = downloader::acquire_model_path(&fixture.dir.join("download")).unwrap();
+        let result = apply_models_dir_request(
+            ModelsDirRequest { dir: Some(target.to_string_lossy().into_owned()) },
+            &storage, || panic!("blocked requests do not read the current path"),
+            &fixture.dir.join("default"), |_| panic!("blocked requests do not activate"),
+        );
+        assert!(result.unwrap_err().starts_with("sayit_error:download_busy:"));
+        assert!(!target.exists());
+    }
+
+    #[test]
+    fn model_directory_sqlite_failure_leaves_saved_and_effective_values_untouched() {
+        let _guard = downloader::TEST_MODEL_LEASES.lock().unwrap();
+        let fixture = ModelFixture::new();
+        let db_path = fixture.dir.join("test.db");
+        let storage = Storage::new(db_path.clone()).unwrap();
+        let current = fixture.dir.join("old");
+        let stored = serde_json::json!(current);
+        storage.set("localAsr.modelsDir", &stored).unwrap();
+        let db = rusqlite::Connection::open(db_path).unwrap();
+        db.execute_batch("CREATE TRIGGER prevent_model_change BEFORE UPDATE ON app_settings
+            WHEN NEW.key = 'localAsr.modelsDir' BEGIN SELECT RAISE(ABORT, 'test'); END;").unwrap();
+
+        let target = fixture.dir.join("new");
+        let effective = std::cell::RefCell::new(current.clone());
+        let result = apply_models_dir_request(
+            ModelsDirRequest { dir: Some(target.to_string_lossy().into_owned()) },
+            &storage, || current.clone(), &fixture.dir.join("default"),
+            |value| { *effective.borrow_mut() = value.unwrap(); },
+        );
+        let error = result.unwrap_err();
+        assert!(error.starts_with("sayit_error:model_dir_save:"));
+        assert!(error.contains("test"));
+        assert_eq!(storage.get("localAsr.modelsDir", None), stored);
+        assert_eq!(*effective.borrow(), current);
+        assert_eq!(fs::read_dir(&target).unwrap().count(), 0);
     }
 
     #[test]

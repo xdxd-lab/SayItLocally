@@ -738,9 +738,13 @@ struct SqliteChild(Child);
 
 impl SqliteChild {
     fn start(fixture: &Fixture, test_name: &str) -> Self {
+        Self::start_on(fixture, &fixture.db, test_name)
+    }
+
+    fn start_on(fixture: &Fixture, path: &Path, test_name: &str) -> Self {
         let child = Command::new(std::env::current_exe().unwrap())
             .args(["--exact", test_name, "--nocapture"])
-            .env("SAYIT_RECOVERY_TEST_CHILD_DB", &fixture.db)
+            .env("SAYIT_RECOVERY_TEST_CHILD_DB", path)
             .stdin(Stdio::piped())
             .stdout(Stdio::null())
             .spawn().unwrap();
@@ -794,6 +798,49 @@ fn confirmed_corruption_cannot_move_a_database_locked_by_another_sqlite_process(
     assert_eq!(snapshot(&fixture.db), original);
     assert!(!recording_cleanup_protected(&fixture.dir));
     drop(child);
+}
+
+#[test]
+fn pending_move_respects_sqlite_locks_on_the_original_and_archived_main() {
+    if let Some(path) = std::env::var_os("SAYIT_RECOVERY_TEST_CHILD_DB") {
+        let path = PathBuf::from(path);
+        let db = Connection::open(&path).unwrap();
+        db.execute_batch("BEGIN IMMEDIATE").unwrap();
+        park_with_open_connection(&path);
+        return;
+    }
+    for main_already_moved in [false, true] {
+        let fixture = Fixture::new();
+        drop(fixture.journal_db());
+        let plan = fixture.start_move(false).unwrap();
+        let backup = plan.backup(&fixture.db);
+        let main = if main_already_moved {
+            move_exclusive(&fixture.db, &backup).unwrap();
+            &backup
+        } else {
+            &fixture.db
+        };
+
+        let child = SqliteChild::start_on(&fixture, main, concat!(
+            module_path!(), "::pending_move_respects_sqlite_locks_on_the_original_and_archived_main"
+        ).strip_prefix(concat!(env!("CARGO_CRATE_NAME"), "::")).unwrap());
+        let originals = snapshot(&fixture.db);
+        let archived = snapshot(&backup);
+        let intent = fs::read(fixture.dir.join(INTENT)).unwrap();
+        let (storage, mode) = fixture.open();
+        assert!(matches!(mode, Some(StorageRecovery::IncompleteMove)), "{mode:?}");
+        assert_eq!(snapshot(&fixture.db), originals);
+        assert_eq!(snapshot(&backup), archived);
+        assert_eq!(fs::read(fixture.dir.join(INTENT)).unwrap(), intent);
+        assert!(recording_cleanup_protected(&fixture.dir));
+        drop(storage);
+        drop(child);
+
+        let (_storage, resumed) = fixture.open();
+        assert!(matches!(resumed, Some(StorageRecovery::MovedAside { backup: saved, .. }) if saved == backup));
+        assert_eq!(snapshot(&backup)[3], originals[3].clone().or(archived[3].clone()));
+        assert!(!recovery_move_pending(&fixture.dir));
+    }
 }
 
 #[test]

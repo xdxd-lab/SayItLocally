@@ -91,13 +91,11 @@ describe('microphone device list', () => {
     expect(realInputEndpoints(devices).map((d) => d.deviceId)).toEqual(['b'])
   })
 
-  it('still opens a temporary stream when labels are missing, judging by the raw list', async () => {
-    // 「拿不到名字」这个信号必须在过滤之前判：伪设备也算数。先过滤会把
-    // "只剩一条无名项"这种情况判成"有两条，不用申请权限"。
-    const getUserMedia = stubEnumerate([device('', '')])
+  it('never requests microphone access when names are missing', async () => {
+    const unavailable = device('', '')
+    const getUserMedia = stubEnumerate([unavailable])
 
-    await listMicrophones()
-
-    expect(getUserMedia).toHaveBeenCalledTimes(1)
+    expect(await listMicrophones()).toEqual([unavailable])
+    expect(getUserMedia).not.toHaveBeenCalled()
   })
 })

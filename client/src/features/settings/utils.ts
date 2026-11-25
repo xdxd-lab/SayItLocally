@@ -1,4 +1,4 @@
-import { matchRealEndpoint, realInputEndpoints, stripUsbIds } from '@/services/audio'
+import { isPseudoInputDevice, matchRealEndpoint, realInputEndpoints, stripUsbIds } from '@/services/audio'
 import type { MicEndpoint } from '@/services/audio'
 
 export type { OverlayWaveTheme } from '@/lib/overlayWaveColors'
@@ -74,7 +74,8 @@ export function buildMicOptions(
     )),
   ]
   if (selectedMic && !options.some((option) => option.value === selectedMic)) {
-    options.push(withTitle(selectedMic, labels.unavailable))
+    const connected = devices.some((device) => device.deviceId === selectedMic && !isPseudoInputDevice(device.deviceId))
+    options.push(withTitle(selectedMic, connected ? labels.unnamed(selectedMic.slice(0, 8)) : labels.unavailable))
   }
   return options
 }

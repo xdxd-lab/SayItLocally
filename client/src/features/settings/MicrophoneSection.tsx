@@ -5,8 +5,9 @@ import { Select } from '@/components/ui/select'
 import { buildMicOptions } from './utils'
 import type { TranslationKey } from '@/i18n'
 import { useT } from '@/i18n/useT'
+import { isPseudoInputDevice, type MicEndpoint } from '@/services/audio'
 
-export type MicVolumeLevel = 'idle' | 'silent' | 'low' | 'normal'
+import type { MicVolumeLevel } from './settingsMicrophone'
 
 /** 存 key 而不是文案：这是模块级常量，只求值一次，存好的中文串切语言时不会变。 */
 const VOLUME_CONFIG: Record<MicVolumeLevel, { labelKey: TranslationKey | null; color: string; descKey: TranslationKey | null }> = {
@@ -25,11 +26,13 @@ export default function MicrophoneSection({
   onCanvasRef,
   onMicChange,
   onTestMic,
+  onRevealNames,
+  revealingNames,
   virtualDefaultNote,
 }: {
   /** 系统默认是虚拟声卡、录音会改用别的麦克风时的说明；空串不显示 */
   virtualDefaultNote?: string
-  mics: MediaDeviceInfo[]
+  mics: MicEndpoint[]
   selectedMic: string
   testing: boolean
   volumeLevel: MicVolumeLevel
@@ -37,8 +40,11 @@ export default function MicrophoneSection({
   onCanvasRef: (node: HTMLCanvasElement | null) => void
   onMicChange: (deviceId: string) => void
   onTestMic: () => void
+  onRevealNames: () => void
+  revealingNames: boolean
 }) {
   const t = useT()
+  const hasNames = mics.some((device) => !isPseudoInputDevice(device.deviceId) && device.label.trim())
   const micOptions = useMemo(() => buildMicOptions(mics, selectedMic, {
     systemDefault: t('mic.systemDefault'),
     systemDefaultWith: (deviceName) => t('mic.systemDefaultWith', { device: deviceName }),
@@ -62,10 +68,16 @@ export default function MicrophoneSection({
                 options={micOptions}
                 className="sm:flex-1"
               />
-              <Button variant="outline" size="sm" onClick={onTestMic} disabled={testing} className="h-9 shrink-0 px-4">
+              <Button variant="outline" size="sm" onClick={onTestMic} disabled={testing || revealingNames} className="h-9 shrink-0 px-4">
                 {testing ? t('mic.testing') : t('mic.test')}
               </Button>
             </div>
+            {!hasNames && (
+              <Button variant="outline" size="sm" onClick={onRevealNames}
+                disabled={testing || revealingNames} className="mt-2">
+                {t('mic.showNames')}
+              </Button>
+            )}
             {virtualDefaultNote && (
               <p className="mt-2 text-xs text-muted-foreground">{virtualDefaultNote}</p>
             )}
