@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use std::collections::HashSet;
 use std::fs;
-use std::io::{Read, Write};
+use std::io::{Read, Seek, Write};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -806,12 +806,11 @@ fn emit_export_progress(app: &AppHandle, progress: BackupExportProgress) {
     let _ = app.emit("backup-export-progress", progress);
 }
 
-fn collect_audio_export_files(include_audio: bool) -> Vec<AudioExportFile> {
+fn collect_audio_export_files(include_audio: bool, adir: &Path) -> Vec<AudioExportFile> {
     let mut files = Vec::new();
     if !include_audio {
         return files;
     }
-    let adir = audio_dir();
     if let Ok(entries) = fs::read_dir(adir) {
         for entry in entries.flatten() {
             let path = entry.path();
@@ -822,7 +821,8 @@ fn collect_audio_export_files(include_audio: bool) -> Vec<AudioExportFile> {
                 continue;
             }
             let name = entry.file_name().to_string_lossy().to_string();
-            if !name.is_empty() {
+            // [自訂] SC-51：未還原完成的錄音不可進入本機或 WebDAV 備份。
+            if !name.is_empty() && !super::audio::is_restore_staging_name(&name) {
                 files.push(AudioExportFile {
                     path,
                     name,
@@ -902,7 +902,7 @@ pub fn write_backup_archive(
     let temp_path = PathBuf::from(format!("{}.part", output.to_string_lossy()));
     // [自訂] S71：收集與讀取備份錄音期間禁止清理。
     let _recordings = scope.include_audio.then(super::audio::lock_recordings);
-    let audio_files = collect_audio_export_files(scope.include_audio);
+    let audio_files = collect_audio_export_files(scope.include_audio, &audio_dir());
     let total_files = audio_files.len() as u64;
     let total_bytes = audio_files.iter().map(|file| file.size).sum::<u64>();
 
@@ -1358,11 +1358,20 @@ pub fn apply_full_backup(storage: &Storage, in_path: &str) -> Result<(), String>
 
 fn apply_full_backup_in_dir(storage: &Storage, in_path: &str, adir: &Path) -> Result<(), String> {
     let file = fs::File::open(in_path).map_err(|e| format!("Failed to open file: {}", e))?;
-    let mut archive = zip::ZipArchive::new(file).map_err(|e| format!("Not a valid backup archive: {}", e))?;
+    let archive = zip::ZipArchive::new(file).map_err(|e| format!("Not a valid backup archive: {}", e))?;
+    apply_full_backup_archive(storage, archive, adir)
+}
+
+fn apply_full_backup_archive(
+    storage: &Storage,
+    mut archive: zip::ZipArchive<impl Read + Seek>,
+    adir: &Path,
+) -> Result<(), String> {
     // [自訂] SC-51：zip 的一致性檢查須明確呼叫。先拒絕標頭不一致或重複的條目，
     // 此時尚未建立或寫入任何錄音檔，也尚未套用設定。
     archive.validate_header_consistency().map_err(|e| format!("Invalid backup ZIP headers: {e}"))?;
     let mut names = HashSet::new();
+    let mut recordings = Vec::new();
     for index in 0..archive.len() {
         let entry = archive.by_index_data(index).map_err(|e| e.to_string())?;
         let name = entry.name().map_err(|e| e.to_string())?;
@@ -1380,6 +1389,7 @@ fn apply_full_backup_in_dir(storage: &Storage, in_path: &str, adir: &Path) -> Re
             if !names.insert(base.to_ascii_lowercase()) {
                 return Err("The archive contains conflicting recording names".to_string());
             }
+            recordings.push((index, base.to_owned()));
         }
     }
 
@@ -1388,10 +1398,7 @@ fn apply_full_backup_in_dir(storage: &Storage, in_path: &str, adir: &Path) -> Re
     {
         let mut entry = archive
             .by_name("backup.json")
-            .map_err(|error| match error {
-                zip::result::ZipError::FileNotFound => "The archive is missing backup.json and may not be a SayItLocally full backup".to_string(),
-                _ => format!("Failed to read backup.json: {error}"),
-            })?;
+            .map_err(backup_json_entry_error)?;
         if !entry.is_file() {
             return Err("The archive's backup.json must be a regular file".to_string());
         }
@@ -1400,22 +1407,21 @@ fn apply_full_backup_in_dir(storage: &Storage, in_path: &str, adir: &Path) -> Re
     let data: Value = serde_json::from_str(&json_str).map_err(|e| format!("Failed to parse backup.json: {}", e))?;
     check_kind_and_version(&data, "full", FORMAT_VERSION)?;
 
-    // [自訂] S71：匯入的錄音寫完前禁止清理。
-    let _recordings = super::audio::lock_recordings();
-    // 2. 释放音频文件到本机 audio 目录
-    fs::create_dir_all(adir).map_err(|e| format!("Failed to create audio directory: {}", e))?;
-    if !fs::symlink_metadata(adir).map_err(|e| e.to_string())?.is_dir() {
-        return Err("The audio directory must not be a symbolic link".to_string());
-    }
-    for i in 0..archive.len() {
-        let mut entry = archive.by_index(i).map_err(|e| e.to_string())?;
-        let name = entry.name().map_err(|e| e.to_string())?;
-        let Some(base) = archive_audio_basename(&name, entry.is_file()) else {
-            continue;
-        };
-        let destination = adir.join(base);
-        restore_audio_file(&mut entry, adir, &destination)
-            .map_err(|e| format!("Failed to restore audio file {}: {}", destination.file_name().unwrap_or_default().to_string_lossy(), e))?;
+    // [自訂] SC-51：只有含錄音的備份才需要安全的錄音目錄。
+    let recordings_guard = (!recordings.is_empty()).then(super::audio::lock_recordings_for_restore);
+    if let Some(guard) = &recordings_guard {
+        check_recording_restore_path(adir, true)?;
+        for (_, name) in &recordings {
+            check_recording_restore_path(&adir.join(name), false)?;
+        }
+        fs::create_dir_all(adir).map_err(|e| format!("Failed to create audio directory: {e}"))?;
+        super::audio::cleanup_restore_staging(adir, guard);
+        for (index, name) in recordings {
+            let mut entry = archive.by_index(index).map_err(|e| e.to_string())?;
+            let destination = adir.join(&name);
+            restore_audio_file(&mut entry, adir, &destination)
+                .map_err(|e| format!("Failed to restore audio file {name}: {e}"))?;
+        }
     }
 
     // 3. 应用配置部分（含 stats，不含本机专属设置）
@@ -1441,6 +1447,24 @@ fn apply_full_backup_in_dir(storage: &Storage, in_path: &str, adir: &Path) -> Re
     Ok(())
 }
 
+fn backup_json_entry_error(error: zip::result::ZipError) -> String {
+    match error {
+        zip::result::ZipError::FileNotFound => "The archive is missing backup.json and may not be a SayItLocally full backup".to_string(),
+        _ => format!("Failed to read backup.json: {error}"),
+    }
+}
+
+// [自訂] SC-51：先檢查整批目的地，避免後段的目錄或連結造成半套還原。
+fn check_recording_restore_path(path: &Path, is_directory: bool) -> Result<(), String> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) if is_directory && !metadata.is_dir() => Err("BACKUP_AUDIO_DIRECTORY_UNSAFE".into()),
+        Ok(metadata) if !is_directory && !metadata.is_file() => Err("BACKUP_AUDIO_DESTINATION_UNSAFE".into()),
+        Ok(_) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error.to_string()),
+    }
+}
+
 // [自訂] SC-51：只還原 audio/ 下的單層錄音檔；巢狀條目不展平以免覆蓋同名檔。
 fn archive_audio_basename(name: &str, is_file: bool) -> Option<&str> {
     let rest = name.strip_prefix("audio/")?;
@@ -1463,7 +1487,7 @@ fn restore_audio_file(source: &mut impl Read, dir: &Path, destination: &Path) ->
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
         Err(error) => return Err(error),
     }
-    let temp = dir.join(format!(".sayit-restore-{}.tmp", uuid::Uuid::new_v4()));
+    let temp = super::audio::restore_staging_path(dir);
     let mut staged = fs::OpenOptions::new().write(true).create_new(true).open(&temp)?;
     let copied = std::io::copy(source, &mut staged);
     drop(staged);
@@ -1486,6 +1510,7 @@ pub fn restart_app(app: tauri::AppHandle) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::{self, Cursor, SeekFrom};
 
     const LEGACY_BACKUP: &[u8] = include_bytes!("testdata/legacy-backup-0.6.6.zip");
 
@@ -1494,6 +1519,152 @@ mod tests {
         fs::create_dir_all(&dir).unwrap();
         let storage = Storage::new(dir.join("test.db")).unwrap();
         (storage, dir)
+    }
+
+    fn test_backup(entries: &[(&str, &[u8])]) -> Vec<u8> {
+        let mut writer = zip::ZipWriter::new(Cursor::new(Vec::new()));
+        for (name, bytes) in entries {
+            super::super::archive::write_deflated_entry(&mut writer, name, bytes).unwrap();
+        }
+        writer.finish().unwrap().into_inner()
+    }
+
+    fn backup_with_history(history: Value) -> Vec<u8> {
+        serde_json::to_vec(&json!({
+            "kind": "full",
+            "formatVersion": 1,
+            "history": history,
+            "appSettings": { "overlayWidth": "short" }
+        })).unwrap()
+    }
+
+    #[test]
+    fn header_validation_failure_precedes_audio_and_history_writes() {
+        use std::cell::Cell;
+
+        struct FaultOnNextSeek<'a> {
+            cursor: Cursor<&'a [u8]>,
+            armed: &'a Cell<bool>,
+        }
+        impl Read for FaultOnNextSeek<'_> {
+            fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+                self.cursor.read(buffer)
+            }
+        }
+        impl Seek for FaultOnNextSeek<'_> {
+            fn seek(&mut self, position: SeekFrom) -> io::Result<u64> {
+                if self.armed.replace(false) {
+                    return Err(io::Error::other("simulated validation I/O failure"));
+                }
+                self.cursor.seek(position)
+            }
+        }
+
+        let (storage, dir) = temp_storage("header_validation");
+        let audio = dir.join("audio");
+        storage.set("history", &json!([{ "id": "existing", "timestamp": 1 }])).unwrap();
+        let original_history = storage.get("history", None);
+        let armed = Cell::new(false);
+        let reader = FaultOnNextSeek { cursor: Cursor::new(LEGACY_BACKUP), armed: &armed };
+        let archive = zip::ZipArchive::new(reader).unwrap();
+        armed.set(true);
+        let error = apply_full_backup_archive(&storage, archive, &audio).unwrap_err();
+        assert!(error.starts_with("Invalid backup ZIP headers:"), "{error}");
+        assert!(!audio.exists());
+        assert_eq!(storage.get("history", None), original_history);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn archive_path_preflight_rejects_nonportable_note_before_writes() {
+        let (storage, dir) = temp_storage("path_preflight");
+        let audio = dir.join("audio");
+        storage.set("history", &json!([{ "id": "existing", "timestamp": 1 }])).unwrap();
+        let original_history = storage.get("history", None);
+        let json = backup_with_history(json!([]));
+        let bytes = test_backup(&[
+            ("backup.json", &json),
+            ("audio/example.wav", b"recording"),
+            ("notes\\readme.txt", b"note"),
+        ]);
+        let archive = zip::ZipArchive::new(Cursor::new(bytes)).unwrap();
+        let error = apply_full_backup_archive(&storage, archive, &audio).unwrap_err();
+        assert!(error.contains("unsafe entry path"), "{error}");
+        assert!(!audio.exists());
+        assert_eq!(storage.get("history", None), original_history);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn backup_json_io_error_is_distinct_from_missing_entry() {
+        use zip::result::ZipError;
+        let missing = backup_json_entry_error(ZipError::FileNotFound);
+        let unreadable = backup_json_entry_error(ZipError::Io(io::Error::other("test read failure")));
+        assert!(missing.contains("missing backup.json"));
+        assert!(unreadable.starts_with("Failed to read backup.json:"));
+        assert!(unreadable.contains("test read failure"));
+    }
+
+    #[test]
+    fn failed_recording_read_leaves_existing_audio_unchanged_and_removes_staging() {
+        struct InterruptedRead(bool);
+        impl Read for InterruptedRead {
+            fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+                if self.0 {
+                    return Err(io::Error::new(io::ErrorKind::InvalidData, "simulated CRC error"));
+                }
+                self.0 = true;
+                buffer[..3].copy_from_slice(b"new");
+                Ok(3)
+            }
+        }
+
+        let dir = std::env::temp_dir().join(format!("sayit-restore-test-{}", uuid::Uuid::new_v4()));
+        fs::create_dir(&dir).unwrap();
+        let recording = dir.join("example.wav");
+        fs::write(&recording, b"old").unwrap();
+        let error = restore_audio_file(&mut InterruptedRead(false), &dir, &recording).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+        assert_eq!(fs::read(&recording).unwrap(), b"old");
+        assert_eq!(fs::read_dir(&dir).unwrap().count(), 1);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn backup_without_recordings_restores_settings_and_history_without_touching_audio_link() {
+        let (storage, dir) = temp_storage("config_zip_link");
+        let audio = dir.join("audio");
+        let target = dir.join("other");
+        fs::create_dir(&target).unwrap();
+        std::os::unix::fs::symlink(&target, &audio).unwrap();
+        let json = backup_with_history(json!([{ "id": "restored", "timestamp": 1 }]));
+        let zip = test_backup(&[("backup.json", &json), ("audio/notes.txt", b"note")]);
+        let archive = zip::ZipArchive::new(Cursor::new(zip)).unwrap();
+        apply_full_backup_archive(&storage, archive, &audio).unwrap();
+        assert_eq!(storage.get("overlayWidth", None), json!("short"));
+        assert_eq!(storage.get("history", None).pointer("/0/id"), Some(&json!("restored")));
+        assert_eq!(fs::read_link(&audio).unwrap(), target);
+        assert_eq!(fs::read_dir(&target).unwrap().count(), 0);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn backup_with_recordings_rejects_audio_directory_link_before_writes() {
+        let (storage, dir) = temp_storage("audio_zip_link");
+        let audio = dir.join("audio");
+        let target = dir.join("other");
+        fs::create_dir(&target).unwrap();
+        std::os::unix::fs::symlink(&target, &audio).unwrap();
+        storage.set("history", &json!([{ "id": "existing", "timestamp": 1 }])).unwrap();
+        let original_history = storage.get("history", None);
+        let archive = zip::ZipArchive::new(Cursor::new(LEGACY_BACKUP)).unwrap();
+        let error = apply_full_backup_archive(&storage, archive, &audio).unwrap_err();
+        assert_eq!(error, "BACKUP_AUDIO_DIRECTORY_UNSAFE");
+        assert_eq!(storage.get("history", None), original_history);
+        assert_eq!(fs::read_dir(&target).unwrap().count(), 0);
+        fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]
@@ -1611,11 +1782,55 @@ mod tests {
         let target = dir.join("untouched.wav");
         fs::create_dir(&audio).unwrap();
         fs::write(&target, b"old").unwrap();
-        fs::write(&backup, LEGACY_BACKUP).unwrap();
-        std::os::unix::fs::symlink(&target, audio.join("deferE032a.wav")).unwrap();
+        storage.set("history", &json!([{ "id": "existing", "timestamp": 1 }])).unwrap();
+        let history_before = storage.get("history", None);
+        let json = backup_with_history(json!([]));
+        let bytes = test_backup(&[
+            ("backup.json", &json),
+            ("audio/first.wav", b"new"),
+            ("audio/blocked.wav", b"new"),
+        ]);
+        fs::write(&backup, bytes).unwrap();
+        let earlier = audio.join("first.wav");
+        let blocked = audio.join("blocked.wav");
+        std::os::unix::fs::symlink(&target, &blocked).unwrap();
         let error = apply_full_backup_in_dir(&storage, backup.to_str().unwrap(), &audio).unwrap_err();
-        assert!(error.contains("not a regular file"), "{error}");
+        assert_eq!(error, "BACKUP_AUDIO_DESTINATION_UNSAFE");
+        assert!(!earlier.exists());
         assert_eq!(fs::read(&target).unwrap(), b"old");
+        assert_eq!(storage.get("history", None), history_before);
+        fs::remove_file(&blocked).unwrap();
+        fs::create_dir(&blocked).unwrap();
+        let error = apply_full_backup_in_dir(&storage, backup.to_str().unwrap(), &audio).unwrap_err();
+        assert_eq!(error, "BACKUP_AUDIO_DESTINATION_UNSAFE");
+        assert!(!earlier.exists());
+        assert_eq!(storage.get("history", None), history_before);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn backup_stores_recordings_without_packaging_restore_staging() {
+        let (storage, dir) = temp_storage("export_zip");
+        let output = dir.join("backup.zip");
+        let audio = audio_dir();
+        fs::create_dir_all(&audio).unwrap();
+        let suffix = uuid::Uuid::new_v4();
+        let recording = audio.join(format!("archive-test-{suffix}.wav"));
+        let stage = super::super::audio::restore_staging_path(&audio);
+        fs::write(&recording, b"recording").unwrap();
+        fs::write(&stage, b"interrupted").unwrap();
+        assert!(!collect_audio_export_files(true, &audio).iter().any(|file| file.path == stage));
+        assert!(!super::super::audio::retained_recordings().unwrap().contains(&stage));
+
+        let scope = BackupScope { include_history: false, include_audio: true };
+        write_backup_archive(&storage, scope, &output, &mut |_| {}).unwrap();
+        let mut archive = zip::ZipArchive::new(fs::File::open(&output).unwrap()).unwrap();
+        let recording_name = format!("audio/{}", recording.file_name().unwrap().to_str().unwrap());
+        let stage_name = format!("audio/{}", stage.file_name().unwrap().to_str().unwrap());
+        assert!(archive.by_name(&stage_name).is_err());
+        assert_eq!(archive.by_name(&recording_name).unwrap().compression(), zip::CompressionMethod::Stored);
+        fs::remove_file(&recording).unwrap();
+        fs::remove_file(&stage).unwrap();
         fs::remove_dir_all(dir).unwrap();
     }
 
@@ -1785,7 +2000,7 @@ mod tests {
     /// 不含音频时不去扫 audio 目录，也就不会把别的备份的录音塞进来。
     #[test]
     fn audio_files_are_only_collected_when_requested() {
-        assert!(collect_audio_export_files(false).is_empty());
+        assert!(collect_audio_export_files(false, &audio_dir()).is_empty());
     }
 
     #[test]

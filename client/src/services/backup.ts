@@ -10,6 +10,18 @@ import { open } from '@tauri-apps/plugin-dialog'
 import type { TextReplacementRule } from './textReplacement'
 import { t } from '@/i18n'
 
+export function describeBackupRestoreError(error: unknown): string {
+  const raw = error instanceof Error ? error.message : String(error)
+  switch (raw) {
+    case 'BACKUP_AUDIO_DIRECTORY_UNSAFE':
+      return t('backup.audioDirectoryUnsafe')
+    case 'BACKUP_AUDIO_DESTINATION_UNSAFE':
+      return t('backup.audioDestinationUnsafe')
+    default:
+      return raw
+  }
+}
+
 export interface ExportResult {
   canceled: boolean
   filePath: string | null

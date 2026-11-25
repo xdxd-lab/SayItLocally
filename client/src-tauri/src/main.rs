@@ -54,9 +54,7 @@ fn browser_args_fingerprint(value: &str) -> String {
 
 // [自訂] S71：啟動與執行中清理都讀目前設定，永遠保留錄音仍以 -1 表示。
 fn cleanup_retained_files(storage: &Storage, recovery_session: bool) {
-    if let Some(days) = recording_retention_days(storage, recovery_session) {
-        commands::audio::cleanup_expired_recordings(days);
-    }
+    commands::audio::cleanup_retained_recordings(recording_retention_days(storage, recovery_session));
     if let Ok(days) = commands::system::log_retention_days(storage) {
         commands::system::cleanup_retained_logs(days);
     }
@@ -503,8 +501,6 @@ fn main() {
     //     eprintln!("Warning: Electron data migration failed: {}", e);
     // }
 
-    cleanup_retained_files(&storage, recovery_session);
-
     // Read PTT setting before moving storage into managed state
     let ptt_setting_val = storage.get("shortcutPTT", None);
     let ptt_str = ptt_setting_val.as_str().unwrap_or(defaults::SHORTCUT_PTT).to_string();
@@ -606,6 +602,8 @@ fn main() {
         .manage(context_detector)
         .manage(commands::update_notification::UpdateNotificationState::default())
         .setup(move |app| {
+            // [自訂] SC-51：取得單一實例後才清理，以免後啟動的程序刪除進行中的還原暫存。
+            cleanup_retained_files(app.state::<Storage>().inner(), recovery_session);
             // [自訂] S71：在背景清理，不依賴 WebView 計時器或 App 重啟。
             let retention_app = app.handle().clone();
             thread::spawn(move || loop {

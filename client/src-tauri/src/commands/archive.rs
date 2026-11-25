@@ -7,7 +7,11 @@ pub(super) fn file_options(method: CompressionMethod, size: u64) -> SimpleFileOp
         .compression_method(method)
         .unix_permissions(0o644)
         .last_modified_time(DateTime::DEFAULT)
-        .large_file(size >= u32::MAX as u64)
+        .large_file(requires_zip64(size))
+}
+
+fn requires_zip64(size: u64) -> bool {
+    size >= u32::MAX as u64
 }
 
 pub(super) fn write_deflated_entry<W: Write + Seek>(
@@ -25,6 +29,14 @@ pub(super) fn write_deflated_entry<W: Write + Seek>(
 mod tests {
     use super::*;
     use std::io::{Cursor, Read};
+
+    #[test]
+    fn zip64_starts_at_the_reserved_32_bit_size_value() {
+        let limit = u32::MAX as u64;
+        assert!(!requires_zip64(limit - 1));
+        assert!(requires_zip64(limit));
+        assert!(requires_zip64(limit + 1));
+    }
 
     #[test]
     fn written_entries_keep_names_methods_modes_and_fixed_timestamp() {

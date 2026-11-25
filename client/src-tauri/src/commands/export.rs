@@ -1,5 +1,7 @@
 use serde::Deserialize;
 use std::fs;
+use std::io::{Seek, Write};
+use std::path::Path;
 use tauri::Emitter;
 
 #[derive(Deserialize)]
@@ -154,13 +156,7 @@ pub async fn save_full_export(
             let _ = app_handle.emit("export-progress", ExportProgress {
                 current, total, filename: fname.clone(),
             });
-            let zip_name = format!("audio/{}", fname);
-            let read_error = |error| format!("Failed to read audio file {}: {}", fname, error);
-            let mut source = fs::File::open(audio_path).map_err(read_error)?;
-            let length = source.metadata().map_err(read_error)?.len();
-            let options = super::archive::file_options(zip::CompressionMethod::Stored, length);
-            zip.start_file(&zip_name, options).map_err(|e| e.to_string())?;
-            std::io::copy(&mut source, &mut zip).map_err(|e| e.to_string())?;
+            write_export_recording(&mut zip, &fname, audio_path)?;
         }
 
         zip.finish().map_err(|e| e.to_string())?;
@@ -171,4 +167,39 @@ pub async fn save_full_export(
     })
     .await
     .map_err(|e| format!("Export task failed: {}", e))?
+}
+
+fn write_export_recording<W: Write + Seek>(
+    zip: &mut zip::ZipWriter<W>,
+    name: &str,
+    path: &Path,
+) -> Result<(), String> {
+    let read_error = |error| format!("Failed to read audio file {name}: {error}");
+    let mut source = fs::File::open(path).map_err(read_error)?;
+    let length = source.metadata().map_err(read_error)?.len();
+    let options = super::archive::file_options(zip::CompressionMethod::Stored, length);
+    zip.start_file(format!("audio/{name}"), options).map_err(|e| e.to_string())?;
+    std::io::copy(&mut source, zip).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::{Cursor, Read};
+
+    #[test]
+    fn full_export_recording_keeps_the_audio_name_and_stored_method() {
+        let source = std::env::temp_dir().join(format!("sayit-export-test-{}.wav", uuid::Uuid::new_v4()));
+        fs::write(&source, b"recording").unwrap();
+        let mut writer = zip::ZipWriter::new(Cursor::new(Vec::new()));
+        write_export_recording(&mut writer, "example.wav", &source).unwrap();
+        let mut archive = zip::ZipArchive::new(writer.finish().unwrap()).unwrap();
+        let mut recording = archive.by_name("audio/example.wav").unwrap();
+        assert_eq!(recording.compression(), zip::CompressionMethod::Stored);
+        let mut bytes = Vec::new();
+        recording.read_to_end(&mut bytes).unwrap();
+        assert_eq!(bytes, b"recording");
+        fs::remove_file(source).unwrap();
+    }
 }

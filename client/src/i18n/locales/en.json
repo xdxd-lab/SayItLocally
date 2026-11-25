@@ -1005,6 +1005,8 @@
   "backup.unknownError": "unknown error",
   "backup.exportFailed": "Export failed: {message}",
   "backup.importFailed": "Import failed: {message}",
+  "backup.audioDirectoryUnsafe": "The audio folder is a symbolic link or another non-folder item. Move it aside and use a normal audio folder, then retry.",
+  "backup.audioDestinationUnsafe": "A recording destination is a symbolic link, a folder, or another non-file item. Move the conflicting item out of the audio folder, then retry.",
   "backup.configTitle": "Settings",
   "backup.configDesc": "Export everything, or just your hotwords, text replacements or cleanup presets",
   "backup.exporting": "Exporting",

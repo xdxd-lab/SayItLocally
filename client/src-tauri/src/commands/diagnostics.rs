@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use tauri::{AppHandle, Manager, State};
 use crate::storage::Storage;
 
@@ -412,6 +412,40 @@ mod raw_upload_tests {
         fs::remove_dir_all(dir).unwrap();
     }
 
+    #[test]
+    fn diagnostics_keeps_all_screenshots_and_preserves_nonconflicting_names() {
+        use std::fs;
+        use std::io::Read;
+        let names = ["Screen.png", "screen.png", "screen-2.png", "Screen.png", "Screenshot-6.png", ""];
+        let images = names.iter().enumerate().map(|(index, name)| DiagImage {
+            name: (*name).into(),
+            mime_type: "image/png".into(),
+            size: 1,
+            data: vec![index as u8],
+        }).collect();
+        let req = super::DiagnosticsZipRequest {
+            description: String::new(),
+            issue_type: String::new(),
+            settings: serde_json::json!({}),
+            issue_occurrence: String::new(),
+            images,
+        };
+        let path = super::build_diagnostics_zip(req).unwrap();
+        let mut zip = zip::ZipArchive::new(fs::File::open(&path).unwrap()).unwrap();
+        let expected = ["Screen.png", "screen-3.png", "screen-2.png", "Screen-4.png", "Screenshot-6.png", "screenshot-6-2.png"];
+        for (index, name) in expected.iter().enumerate() {
+            let mut file = zip.by_name(&format!("images/{name}")).unwrap();
+            let mut data = Vec::new();
+            file.read_to_end(&mut data).unwrap();
+            assert_eq!(data, [index as u8]);
+        }
+        assert!(zip.by_name("manifest.json").is_ok());
+        assert!(zip.by_name("settings.json").is_ok());
+        assert!(zip.by_name("timeline.json").is_ok());
+        drop(zip);
+        fs::remove_file(path).unwrap();
+    }
+
 }
 
 fn build_diagnostics_zip(req: DiagnosticsZipRequest) -> Result<String, String> {
@@ -499,7 +533,7 @@ fn write_diagnostics_zip(zip_path: &std::path::Path, req: &DiagnosticsZipRequest
     }
 
     // 4. 截图
-    for (i, img) in req.images.iter().enumerate() {
+    let image_names = req.images.iter().enumerate().map(|(i, img)| {
         let ext = match img.mime_type.as_str() {
             "image/png" => "png",
             "image/jpeg" | "image/jpg" => "jpg",
@@ -507,11 +541,17 @@ fn write_diagnostics_zip(zip_path: &std::path::Path, req: &DiagnosticsZipRequest
             "image/webp" => "webp",
             _ => "bin",
         };
-        let zip_name = if img.name.is_empty() {
-            format!("images/screenshot-{}.{}", i + 1, ext)
+        if img.name.is_empty() {
+            format!("screenshot-{}.{}", i + 1, ext)
         } else {
-            format!("images/{}", img.name)
-        };
+            img.name.clone()
+        }
+    }).collect::<Vec<_>>();
+    let reserved: HashSet<_> = image_names.iter().map(|name| name.to_lowercase()).collect();
+    let mut used = HashSet::new();
+    for (name, img) in image_names.into_iter().zip(&req.images) {
+        let name = unique_image_name(name, &reserved, &mut used);
+        let zip_name = format!("images/{name}");
         write_deflated_entry(&mut zip, &zip_name, &img.data)?;
     }
 
@@ -525,6 +565,27 @@ fn write_diagnostics_zip(zip_path: &std::path::Path, req: &DiagnosticsZipRequest
     zip.finish().map_err(|e| e.to_string())?;
 
     Ok(())
+}
+
+// [自訂] SC-51：只替撞名的截圖加序號，保留其他截圖原本的檔名。
+fn unique_image_name(name: String, reserved: &HashSet<String>, used: &mut HashSet<String>) -> String {
+    if used.insert(name.to_lowercase()) {
+        return name;
+    }
+    let stem_and_ext = std::path::Path::new(&name).extension().and_then(|ext| ext.to_str())
+        .and_then(|ext| Some((name.strip_suffix(ext)?.strip_suffix('.')?, ext)));
+    let mut suffix = 2usize;
+    loop {
+        let candidate = match stem_and_ext {
+            Some((stem, ext)) => format!("{stem}-{suffix}.{ext}"),
+            None => format!("{name}-{suffix}"),
+        };
+        let key = candidate.to_lowercase();
+        if !reserved.contains(&key) && used.insert(key) {
+            return candidate;
+        }
+        suffix += 1;
+    }
 }
 
 /// REV1：取出行首 `[時間戳]`（允許多個前導 `[`）；不是數字開頭就視為沒有時間戳。

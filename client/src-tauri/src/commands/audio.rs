@@ -1,6 +1,6 @@
 use base64::{engine::general_purpose::STANDARD, Engine};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{LazyLock, Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard, TryLockError};
 
 // [自訂] S61 / S71：播放、寫入、備份與清理使用相同的檔案鎖。
@@ -15,6 +15,11 @@ pub(crate) fn lock_recordings() -> RwLockReadGuard<'static, ()> {
 
 pub(super) fn lock_recordings_for_deletion() -> Result<RwLockWriteGuard<'static, ()>, String> {
     RECORDING_FILES.try_write().map_err(|_| "Recordings are in use".into())
+}
+
+// [自訂] SC-51：還原與清理互斥，不能清除另一輪還原正在寫入的暫存檔。
+pub(super) fn lock_recordings_for_restore() -> RwLockWriteGuard<'static, ()> {
+    wait_for_recording_deletion(&RECORDING_FILES)
 }
 
 // [自訂] S71：播放器把檔案讀入記憶體後，仍在播放期間保護原錄音。
@@ -237,7 +242,7 @@ fn wait_for_recording_deletion(lock: &RwLock<()>) -> RwLockWriteGuard<'_, ()> {
 }
 
 // [自訂] S61 / S71：只列舉錄音根目錄的普通 WAV，不跟隨符號連結。
-fn recording_paths(dir: &std::path::Path) -> std::io::Result<Vec<PathBuf>> {
+fn recording_paths(dir: &Path) -> std::io::Result<Vec<PathBuf>> {
     match fs::symlink_metadata(dir) {
         Ok(info) if info.is_dir() => {}
         Ok(_) => return Err(std::io::Error::other("Recording directory is not a regular directory")),
@@ -269,19 +274,46 @@ pub(super) fn remove_recording(path: &std::path::Path) -> Result<(), String> {
     }
 }
 
-pub(crate) fn cleanup_expired_recordings(days: i64) {
-    let Some(age) = u64::try_from(days).ok().and_then(|days| days.checked_mul(86_400)) else {
-        return;
-    };
-    let Some(cutoff) = std::time::SystemTime::now().checked_sub(std::time::Duration::from_secs(age)) else {
-        return;
-    };
+pub(crate) fn cleanup_retained_recordings(days: Option<i64>) {
+    let cutoff = days
+        .and_then(|days| u64::try_from(days).ok())
+        .and_then(|days| days.checked_mul(86_400))
+        .and_then(|age| std::time::SystemTime::now().checked_sub(std::time::Duration::from_secs(age)));
     // 清理不等正在讀寫、複製或打包的錄音，下次排程再試。
     cleanup_recordings_in(&audio_dir(), cutoff, &RECORDING_FILES);
 }
 
-fn cleanup_recordings_in(dir: &std::path::Path, cutoff: std::time::SystemTime, guard: &RwLock<()>) {
-    let Ok(_files) = guard.try_write() else { return };
+const RESTORE_STAGING_PREFIX: &str = ".sayit-restore-";
+
+pub(super) fn restore_staging_path(dir: &Path) -> PathBuf {
+    dir.join(format!("{RESTORE_STAGING_PREFIX}{}.tmp", uuid::Uuid::new_v4()))
+}
+
+pub(super) fn is_restore_staging_name(name: &str) -> bool {
+    name.strip_prefix(RESTORE_STAGING_PREFIX)
+        .and_then(|name| name.strip_suffix(".tmp"))
+        .is_some_and(|id| id.len() == 36 && uuid::Uuid::parse_str(id).is_ok())
+}
+
+// [自訂] SC-51：中斷的還原暫存不受已完成錄音的保留期限管制。
+pub(super) fn cleanup_restore_staging(dir: &Path, _files: &RwLockWriteGuard<'_, ()>) {
+    if !fs::symlink_metadata(dir).is_ok_and(|metadata| metadata.is_dir()) {
+        return;
+    }
+    let Ok(entries) = fs::read_dir(dir) else { return };
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let is_restore_temp = name.to_str().is_some_and(is_restore_staging_name);
+        if is_restore_temp && entry.file_type().is_ok_and(|kind| kind.is_file()) {
+            let _ = fs::remove_file(entry.path());
+        }
+    }
+}
+
+fn cleanup_recordings_in(dir: &Path, cutoff: Option<std::time::SystemTime>, guard: &RwLock<()>) {
+    let Ok(files) = guard.try_write() else { return };
+    cleanup_restore_staging(dir, &files);
+    let Some(cutoff) = cutoff else { return };
     if let Ok(paths) = recording_paths(dir) {
         for path in paths {
             if fs::symlink_metadata(&path).and_then(|m| m.modified()).is_ok_and(|mtime| mtime < cutoff) {
@@ -295,6 +327,35 @@ fn cleanup_recordings_in(dir: &std::path::Path, cutoff: std::time::SystemTime, g
 mod retention_tests {
     use super::*;
     use std::time::{Duration, SystemTime};
+
+    #[cfg(unix)]
+    #[test]
+    fn interrupted_restore_cleanup_requires_write_lock_and_only_unlinks_stale_regular_files() {
+        let dir = std::env::temp_dir().join(format!("sayit-restore-test-{}", uuid::Uuid::new_v4()));
+        fs::create_dir(&dir).unwrap();
+        let staged = restore_staging_path(&dir);
+        let malformed = dir.join(".sayit-restore-not-a-uuid.tmp");
+        let link = restore_staging_path(&dir);
+        let folder = restore_staging_path(&dir);
+        let wav = dir.join("recording.wav");
+        for path in [&staged, &malformed, &wav] {
+            fs::write(path, b"recording").unwrap();
+        }
+        std::os::unix::fs::symlink(&wav, &link).unwrap();
+        fs::create_dir(&folder).unwrap();
+        let lock = RwLock::new(());
+        let restore_in_progress = lock.write().unwrap();
+        cleanup_recordings_in(&dir, None, &lock);
+        assert!(staged.exists());
+        drop(restore_in_progress);
+        cleanup_recordings_in(&dir, None, &lock);
+        assert!(!staged.exists());
+        assert!(malformed.is_file());
+        assert!(folder.is_dir());
+        assert_eq!(fs::read_link(link).unwrap(), wav);
+        assert!(wav.is_file());
+        fs::remove_dir_all(dir).unwrap();
+    }
 
     #[test]
     fn waiting_delete_does_not_queue_a_writer_ahead_of_new_readers() {
@@ -343,7 +404,7 @@ mod retention_tests {
         let cutoff = now - Duration::from_secs(1800);
         let guard = RwLock::new(());
         let playback = guard.read().unwrap();
-        cleanup_recordings_in(&dir, cutoff, &guard);
+        cleanup_recordings_in(&dir, Some(cutoff), &guard);
         assert!(expired.exists());
         drop(playback);
         let token = uuid::Uuid::new_v4().to_string();
@@ -351,10 +412,10 @@ mod retention_tests {
             expired.canonicalize().unwrap(),
             std::time::Instant::now(),
         ));
-        cleanup_recordings_in(&dir, cutoff, &guard);
+        cleanup_recordings_in(&dir, Some(cutoff), &guard);
         assert!(expired.exists());
         release_playing_recording(token);
-        cleanup_recordings_in(&dir, cutoff, &guard);
+        cleanup_recordings_in(&dir, Some(cutoff), &guard);
         assert!(!expired.exists());
         assert!(recent.exists());
         assert!(model.exists());
