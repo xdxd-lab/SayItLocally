@@ -810,7 +810,12 @@ fn collect_audio_export_files(include_audio: bool, adir: &Path) -> Result<Vec<Au
     // Backups may read a linked audio directory; the entries below must be regular files.
     let entries = match fs::read_dir(adir) {
         Ok(entries) => entries,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return match fs::symlink_metadata(adir) {
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
+                _ => Err(directory_error(error)),
+            };
+        }
         Err(error) => return Err(directory_error(error)),
     };
     let mut files = Vec::new();
@@ -2331,6 +2336,23 @@ mod tests {
             assert!(!output.exists());
             assert_no_backup_parts(&dir);
         }
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn unavailable_linked_audio_directory_aborts_recording_backup() {
+        let (storage, dir) = temp_storage("dangling_audio");
+        let audio = dir.join("audio");
+        std::os::unix::fs::symlink(dir.join("unavailable"), &audio).unwrap();
+        let output = dir.join("backup.zip");
+        let scope = BackupScope { include_history: false, include_audio: true };
+        assert_eq!(
+            write_backup_archive_in_dir(&storage, scope, &output, &audio, &mut |_| {}),
+            Err("BACKUP_READ_RECORDINGS".into()),
+        );
+        assert!(!output.exists());
+        assert_no_backup_parts(&dir);
         fs::remove_dir_all(dir).unwrap();
     }
 
