@@ -18,6 +18,9 @@ const INTENT: &str = "sayit.db.recovery-pending";
 const RECORDING_HOLD: &str = "sayit.db.preserve-recordings";
 const STARTUP_LOCK: &str = "sayit.db.startup-lock";
 const LIVE_LOCK: &str = "sayit.db.live-lock";
+pub(crate) const MANUAL_RECOVERY_FILES: &[&str] =
+    &["sayit.db", "sayit.db-wal", "sayit.db-shm", "sayit.db-journal", INTENT];
+pub(crate) const RECORDING_HOLD_FILE: &str = RECORDING_HOLD;
 
 #[derive(Debug)]
 pub(crate) enum StorageRecovery {

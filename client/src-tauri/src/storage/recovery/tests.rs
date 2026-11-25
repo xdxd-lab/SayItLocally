@@ -430,6 +430,99 @@ fn a_pending_plan_with_both_main_files_never_reinstalls_old_companions() {
 }
 
 #[test]
+fn isolating_the_files_named_in_the_dialog_allows_a_safe_restart() {
+    for scenario in ["malformed plan", "missing member", "both mains", "blocked hold", "busy live lock"] {
+        let fixture = Fixture::new();
+        let backup_dir = Fixture::new();
+        let isolation_dir = Fixture::new();
+        let audio = fixture.dir.join("example.wav");
+        fs::write(&audio, b"existing recording").unwrap();
+        fixture.write_broken_group();
+        let mut blocker = None;
+        let mut recovery_backup = None;
+        match scenario {
+            "malformed plan" => fs::write(fixture.dir.join(INTENT), b"invalid plan").unwrap(),
+            "missing member" | "both mains" | "busy live lock" => {
+                let plan = MovePlan::start(&fixture.dir, &fixture.db, false).unwrap();
+                let backup = plan.backup(&fixture.db);
+                move_exclusive(&fixture.db, &backup).unwrap();
+                if scenario == "missing member" {
+                    fs::remove_file(append_suffix(&fixture.db, "-shm")).unwrap();
+                } else if scenario == "both mains" {
+                    fs::write(&fixture.db, b"replacement from older app").unwrap();
+                } else {
+                    let lease = open_lock(&fixture.dir, LIVE_LOCK).unwrap();
+                    lock(&lease, true).unwrap();
+                    blocker = Some(lease);
+                }
+                recovery_backup = Some(backup);
+            }
+            "blocked hold" => fs::create_dir(fixture.dir.join(RECORDING_HOLD)).unwrap(),
+            _ => unreachable!(),
+        }
+        let (storage, mode) = fixture.open();
+        assert!(matches!(mode, Some(StorageRecovery::IncompleteMove)), "{scenario}: {mode:?}");
+        drop(storage);
+        drop(blocker);
+
+        // Simulate copying the complete fixture, then moving the exact
+        // active names printed by the dialog. Leave previous copies in place.
+        for entry in fs::read_dir(&fixture.dir).unwrap() {
+            let entry = entry.unwrap();
+            let destination = backup_dir.dir.join(entry.file_name());
+            if entry.file_type().unwrap().is_dir() {
+                fs::create_dir(destination).unwrap();
+            } else {
+                fs::copy(entry.path(), destination).unwrap();
+            }
+        }
+        for name in MANUAL_RECOVERY_FILES {
+            let source = fixture.dir.join(name);
+            if source.exists() {
+                let isolated = isolation_dir.dir.join(name);
+                fs::rename(&source, &isolated).unwrap();
+                assert_eq!(fs::read(isolated).unwrap(), fs::read(backup_dir.dir.join(name)).unwrap());
+            }
+            assert!(!source.exists());
+        }
+        let hold = fixture.dir.join(RECORDING_HOLD_FILE);
+        if !hold.exists() {
+            fs::write(hold, []).unwrap();
+        }
+        let (storage, mode) = fixture.open();
+        assert!(mode.is_none(), "{scenario}: {mode:?}");
+        assert!(Storage::migration_exists(&storage.conn(), 2).unwrap());
+        assert!(recording_cleanup_protected(&fixture.dir));
+        assert_eq!(fs::read(audio).unwrap(), b"existing recording");
+        if let Some(backup) = recovery_backup {
+            assert_eq!(fs::read(&backup).unwrap(), fs::read(backup_dir.dir.join(backup.file_name().unwrap())).unwrap());
+        }
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn isolating_a_linked_plan_never_moves_its_target() {
+    let fixture = Fixture::new();
+    let outside = Fixture::new();
+    let isolated = Fixture::new();
+    fs::write(&outside.db, b"keep this file").unwrap();
+    std::os::unix::fs::symlink(&outside.db, fixture.dir.join(INTENT)).unwrap();
+    let (storage, mode) = fixture.open();
+    assert!(matches!(mode, Some(StorageRecovery::IncompleteMove)));
+    drop(storage);
+
+    let saved = isolated.dir.join(INTENT);
+    fs::rename(fixture.dir.join(INTENT), &saved).unwrap();
+    fs::write(fixture.dir.join(RECORDING_HOLD_FILE), []).unwrap();
+    let (_storage, mode) = fixture.open();
+    assert!(mode.is_none(), "{mode:?}");
+    assert_eq!(fs::read_link(saved).unwrap(), outside.db);
+    assert_eq!(fs::read(&outside.db).unwrap(), b"keep this file");
+    assert!(recording_cleanup_protected(&fixture.dir));
+}
+
+#[test]
 fn same_second_backup_names_are_distinct_and_moves_never_overwrite() {
     let fixture = Fixture::new();
     fixture.write_broken_group();

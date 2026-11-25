@@ -106,10 +106,15 @@ fn notify_storage_recovery(recovery: storage::StorageRecovery) {
         } else {
             format!("SayItLocally kept the original database files but could not open a replacement. Copy name:\n{}\n\nSettings and history will not be saved after you quit. Automatic recording cleanup is paused.", backup.display())
         },
-        storage::StorageRecovery::IncompleteMove => if zh {
-            "SayItLocally 未完成数据库文件搬移。为保护原文件，本次使用内存，设置和历史记录退出后不会保存。可在设置中查看已搬移的副本。".to_string()
-        } else {
-            "SayItLocally could not finish moving the database files. To protect the originals, this session uses memory. Settings and history will not be saved after you quit. You can view any copies that were moved in Settings.".to_string()
+        storage::StorageRecovery::IncompleteMove => {
+            let dir = commands::app_data_dir();
+            let current_files = storage::recovery::MANUAL_RECOVERY_FILES.join("\n");
+            let hold = storage::recovery::RECORDING_HOLD_FILE;
+            if zh {
+                format!("SayItLocally 未完成数据库恢复。原数据库文件未被删除，有些可能已经移入副本。本次使用内存，退出后不会保存本次的设置和历史记录。\n\n数据文件夹：\n{}\n\n1. 退出所有正在运行的 SayItLocally。\n2. 将整个数据文件夹（包括录音和数据库副本）备份到另一个位置。\n3. 把下列仍在原数据文件夹中的项目全部移到同一个新的本地文件夹，保留原文件名。请将已生成的数据库副本留在原处。\n{current_files}\n4. 保留原数据文件夹里的 {hold}。如果没有这个文件，请在原数据文件夹中新建一个同名空白文件（不要加 .txt），以暂停清理旧录音。\n5. 确认第 3 步列出的项目都已移走，再重开 App。App 会建立新数据库，旧数据仍在备份中。如果无法备份、移动文件或写入原文件夹，请先解决访问权限或磁盘空间问题。", dir.display())
+            } else {
+                format!("SayItLocally could not finish database recovery. No original database files were deleted. Some may already be in a recovery copy. This session uses memory, so its settings and history will be lost when you quit.\n\nData folder:\n{}\n\n1. Quit all running instances of SayItLocally.\n2. Back up the entire data folder, including recordings and database copies, to another location.\n3. Move every item listed below that is still in the original data folder into the same new local folder. Keep their names and leave any existing database copies in place.\n{current_files}\n4. Keep {hold} in the original data folder. If it is missing, create an empty file with that exact name (no .txt extension) there to pause cleanup of old recordings.\n5. Verify that none of the items in step 3 remain in the original data folder, then reopen the app. The app will create a fresh database. The backup still contains your old files. If you cannot back up, move, or write files, resolve folder access or disk space first.", dir.display())
+            }
         },
         storage::StorageRecovery::InMemory => if zh {
             "SayItLocally 无法使用本地数据库，可能是其他程序正在使用、没有权限或磁盘已满。应用未搬移原文件。\n\n本次使用内存，设置和历史记录退出后不会保存。".to_string()
