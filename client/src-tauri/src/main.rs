@@ -859,6 +859,7 @@ fn main() {
             commands::export::save_full_export,
             // Backup / Restore (配置与全部数据的导入导出)
             commands::backup::get_backup_directory,
+            commands::backup::inspect_config_export,
             commands::backup::export_config,
             commands::backup::export_full,
             commands::backup::inspect_config_import,

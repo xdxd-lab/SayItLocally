@@ -615,8 +615,10 @@ impl Storage {
     }
 
     fn replace_collection(&self, key: &str, items: &[Value]) -> SqlResult<()> {
-        let db = self.conn();
-        Self::replace_collection_on(&db, key, items)
+        let mut db = self.conn();
+        let tx = db.transaction()?;
+        Self::replace_collection_on(&tx, key, items)?;
+        tx.commit()
     }
 
     // ─── Stats helpers ───
@@ -895,27 +897,75 @@ pub fn is_settings_key_excluded(key: &str, exclude: &[&str]) -> bool {
     })
 }
 
-impl Storage {
-    /// 导出 app_settings 为 { key: value } 对象；exclude 中的 key 会被跳过。
-    pub fn export_app_settings(&self, exclude: &[&str]) -> Value {
-        let db = self.conn();
-        let mut map = serde_json::Map::new();
-        if let Ok(mut stmt) = db.prepare("SELECT key, value_json FROM app_settings") {
-            let rows = stmt.query_map([], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-            });
-            if let Ok(rows) = rows {
-                for row in rows.flatten() {
-                    let (key, value_json) = row;
-                    if is_settings_key_excluded(&key, exclude) { // [自訂] S35：支援前綴比對
-                        continue;
-                    }
-                    let val: Value = serde_json::from_str(&value_json).unwrap_or(Value::Null);
-                    map.insert(key, val);
+pub(crate) struct BackupSnapshot<'a>(&'a Connection);
+
+impl BackupSnapshot<'_> {
+    pub(crate) fn settings(&self, exclude: &[&str]) -> Result<Value, String> {
+        let read_error = |_| "BACKUP_READ_SETTINGS".to_owned();
+        let mut stmt = self.0.prepare("SELECT key, value_json FROM app_settings").map_err(read_error)?;
+        let mut rows = stmt.query([]).map_err(read_error)?;
+        let mut settings = serde_json::Map::new();
+        while let Some(row) = rows.next().map_err(read_error)? {
+            let key: String = row.get(0).map_err(read_error)?;
+            if !is_settings_key_excluded(&key, exclude) {
+                let raw: String = row.get(1).map_err(read_error)?;
+                if let Some(value) = Self::parse_setting(&key, &raw) {
+                    settings.insert(key, value);
                 }
             }
         }
-        Value::Object(map)
+        Ok(Value::Object(settings))
+    }
+
+    // A missing setting has its normal null default. Malformed JSON is omitted.
+    pub(crate) fn setting(&self, key: &str) -> Result<Option<Value>, String> {
+        let raw: Option<String> = self.0.query_row(
+            "SELECT value_json FROM app_settings WHERE key = ?1",
+            [key],
+            |row| row.get(0),
+        ).optional().map_err(|_| format!("BACKUP_READ_SETTINGS|{key}"))?;
+        Ok(match raw {
+            Some(raw) => Self::parse_setting(key, &raw),
+            None => Some(Value::Null),
+        })
+    }
+
+    fn parse_setting(key: &str, raw: &str) -> Option<Value> {
+        serde_json::from_str(raw).map_err(|_| {
+            log::warn!("Skipping malformed backup setting {key:?}");
+        }).ok()
+    }
+
+    pub(crate) fn collection(&self, key: &str) -> Result<Value, String> {
+        let read_error = |_| format!("BACKUP_READ_COLLECTION|{key}");
+        let table = collection_table(key).ok_or_else(|| format!("BACKUP_READ_COLLECTION|{key}"))?;
+        let mut stmt = self.0.prepare(&format!("SELECT raw_json FROM {table} ORDER BY list_order ASC"))
+            .map_err(read_error)?;
+        let mut rows = stmt.query([]).map_err(read_error)?;
+        let mut items = Vec::new();
+        loop {
+            let row_error = |_| format!("BACKUP_READ_COLLECTION|{key}|{}", items.len() + 1);
+            let Some(row) = rows.next().map_err(row_error)? else { break };
+            let raw: String = row.get(0).map_err(row_error)?;
+            let item = serde_json::from_str(&raw).map_err(|_| {
+                format!("BACKUP_READ_COLLECTION|{key}|{}", items.len() + 1)
+            })?;
+            items.push(item);
+        }
+        Ok(Value::Array(items))
+    }
+}
+
+impl Storage {
+    pub(crate) fn with_backup_snapshot<T>(
+        &self,
+        read: impl FnOnce(&BackupSnapshot<'_>) -> Result<T, String>,
+    ) -> Result<T, String> {
+        let mut db = self.db.lock().map_err(|_| "BACKUP_READ_DATABASE")?;
+        let tx = db.transaction().map_err(|_| "BACKUP_READ_DATABASE")?;
+        let result = read(&BackupSnapshot(&tx))?;
+        tx.commit().map_err(|_| "BACKUP_READ_DATABASE")?;
+        Ok(result)
     }
 
     /// 原子应用一组配置：设置 key 与可选集合要么全部成功，要么全部回滚。
@@ -928,6 +978,44 @@ impl Storage {
     ) -> SqlResult<()> {
         let mut db = self.conn();
         let tx = db.transaction()?;
+        Self::apply_backup_data_on(&tx, app_settings, exclude, &[
+            ("promptPresets", prompt_presets),
+            ("appPromptRules", app_prompt_rules),
+        ])?;
+        tx.commit()
+    }
+
+    pub(crate) fn apply_restore_transaction(
+        &self,
+        app_settings: &serde_json::Map<String, Value>,
+        exclude: &[&str],
+        collections: &[(&str, Option<&[Value]>)],
+        dry_run: bool,
+    ) -> Result<(), String> {
+        let mut db = self.db.lock().map_err(|_| "BACKUP_RESTORE_DB|lock")?;
+        let tx = db.transaction().map_err(|_| "BACKUP_RESTORE_DB|begin")?;
+        Self::apply_backup_data_on(&tx, app_settings, exclude, collections)
+            .map_err(|_| "BACKUP_RESTORE_DB|write")?;
+        if dry_run {
+            // Deferred foreign keys are otherwise checked only at commit.
+            let violation = tx.query_row("PRAGMA foreign_key_check", [], |_| Ok(()))
+                .optional().map_err(|_| "BACKUP_RESTORE_DB|check")?;
+            if violation.is_some() {
+                return Err("BACKUP_RESTORE_DB|constraint".into());
+            }
+            tx.rollback().map_err(|_| "BACKUP_RESTORE_DB|rollback")?;
+        } else {
+            tx.commit().map_err(|_| "BACKUP_RESTORE_DB|commit")?;
+        }
+        Ok(())
+    }
+
+    fn apply_backup_data_on(
+        db: &Connection,
+        app_settings: &serde_json::Map<String, Value>,
+        exclude: &[&str],
+        collections: &[(&str, Option<&[Value]>)],
+    ) -> SqlResult<()> {
         let now = chrono::Utc::now().timestamp_millis();
 
         for (key, value) in app_settings {
@@ -936,21 +1024,19 @@ impl Storage {
             }
             let value = &sanitize_setting_value(key, value); // [自訂] #20：不保存金鑰／密碼
             let json_str = serde_json::to_string(value).unwrap_or_else(|_| "null".to_string());
-            tx.execute(
+            db.execute(
                 "INSERT INTO app_settings (key, value_json, updated_at) VALUES (?1, ?2, ?3)
                  ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at",
                 params![key, json_str, now],
             )?;
         }
 
-        if let Some(items) = prompt_presets {
-            Self::replace_collection_on(&tx, "promptPresets", items)?;
+        for (key, items) in collections {
+            if let Some(items) = items {
+                Self::replace_collection_on(db, key, items)?;
+            }
         }
-        if let Some(items) = app_prompt_rules {
-            Self::replace_collection_on(&tx, "appPromptRules", items)?;
-        }
-
-        tx.commit()
+        Ok(())
     }
 }
 

@@ -13,6 +13,10 @@ pub(crate) fn lock_recordings() -> RwLockReadGuard<'static, ()> {
     RECORDING_FILES.read().unwrap_or_else(|e| e.into_inner())
 }
 
+pub(super) fn lock_recordings_for_backup() -> Result<RwLockReadGuard<'static, ()>, String> {
+    RECORDING_FILES.read().map_err(|_| "BACKUP_READ_RECORDINGS".into())
+}
+
 pub(super) fn lock_recordings_for_deletion() -> Result<RwLockWriteGuard<'static, ()>, String> {
     RECORDING_FILES.try_write().map_err(|_| "Recordings are in use".into())
 }
@@ -327,6 +331,14 @@ fn cleanup_recordings_in(dir: &Path, cutoff: Option<std::time::SystemTime>, guar
 mod retention_tests {
     use super::*;
     use std::time::{Duration, SystemTime};
+
+    #[test]
+    fn restore_staging_name_requires_a_36_character_hyphenated_uuid() {
+        let id = uuid::Uuid::new_v4();
+        assert!(is_restore_staging_name(&format!(".sayit-restore-{id}.tmp")));
+        assert!(!is_restore_staging_name(&format!(".sayit-restore-{}.tmp", id.simple())));
+        assert!(!is_restore_staging_name(&format!(".sayit-restore-{}.tmp", id.braced())));
+    }
 
     #[cfg(unix)]
     #[test]

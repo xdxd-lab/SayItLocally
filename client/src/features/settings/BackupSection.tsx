@@ -12,7 +12,7 @@ import {
 } from './ConfigTransferDialogs'
 import {
   exportConfigFile,
-  describeBackupRestoreError,
+  describeBackupTransferError,
   exportFullFile,
   inspectConfigImport,
   pickImportFile,
@@ -139,7 +139,7 @@ export default function BackupSection() {
   const isBusy = busyAction !== null
   const fullExportRunning = fullProgress?.status === 'running'
   const fullProgressError = useMemo(
-    () => fullProgress?.status === 'failed' ? fullProgress.error || t('backup.unknownError') : '',
+    () => fullProgress?.status === 'failed' ? describeBackupTransferError(fullProgress.error || t('backup.unknownError')) : '',
     [fullProgress, t],
   )
 
@@ -155,7 +155,7 @@ export default function BackupSection() {
       const result = await exportConfigFile(selection)
       if (result.filePath) setConfigPath(result.filePath)
     } catch (error) {
-      setActionError(t('backup.exportFailed', { message: String(error) }))
+      setActionError(t('backup.exportFailed', { message: describeBackupTransferError(error) }))
     } finally {
       setBusyAction(null)
     }
@@ -169,7 +169,7 @@ export default function BackupSection() {
       const result = await exportFullFile()
       if (result.filePath) setFullPath(result.filePath)
     } catch (error) {
-      setActionError(t('backup.exportFailed', { message: String(error) }))
+      setActionError(t('backup.exportFailed', { message: describeBackupTransferError(error) }))
     } finally {
       setBusyAction(null)
     }
@@ -211,7 +211,7 @@ export default function BackupSection() {
       // 略作停留让用户看到提示，再自动重启使更改生效
       setTimeout(() => { void restartApp() }, 1500)
     } catch (error) {
-      setActionError(t('backup.importFailed', { message: describeBackupRestoreError(error) }))
+      setActionError(t('backup.importFailed', { message: describeBackupTransferError(error) }))
       setBusyAction(null)
     }
   }

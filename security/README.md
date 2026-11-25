@@ -103,3 +103,10 @@ SC-44 記錄的平行下載卡在不可讀組裝檔的情況已修正（SC-49）
 - 與上游比較：`git diff 4fdeae9 -- client/`
 - 建置後確認介面沒有外部網址：在 `client/dist` 搜尋 `fonts.googleapis`、`/api/notice`、`desktop-updates`、`api.deepseek.com`、`hf-mirror`（2026-11-20 00:03 檢查結果皆為 0 處）
 - 確認執行檔內嵌的 CSP：`strings client/src-tauri/target/release/sayitlocally | grep connect-src`
+
+
+## 外部稽核與後續修正
+
+- 最後更新（補記，UTC+08:00）為 2026-11-25 21:44:59。
+- REV13 複看 `e95823d` 通過，0 項必修。PR #16 於 2026-11-25 21:08:32 合併為 `7f8bfb7`。Dependabot 自 51 降至 47 項。
+- L-96 記錄外部稽核複查與後續工作。F1 強化備份與完整還原（SC-52，待覆核及實機驗證），F2、F3 分別追蹤資料庫復原和模型目錄搬移。實機流量待驗證。

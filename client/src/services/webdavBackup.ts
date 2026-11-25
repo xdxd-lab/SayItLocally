@@ -10,7 +10,7 @@
 import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { t, type TranslationKey } from '@/i18n'
-import { describeBackupRestoreError } from './backup'
+import { describeBackupTransferError } from './backup'
 
 /** 坚果云的 WebDAV 根地址。 */
 export const JIANGUOYUN_DAV_BASE = 'https://dav.jianguoyun.com/dav'
@@ -102,7 +102,7 @@ export function describeWebDavError(error: unknown): string {
   const key = ERROR_KEYS[code]
   if (key) return t(key)
   const host = unreachableHost(code)
-  return host ? t('webdav.error.unreachable', { host }) : describeBackupRestoreError(raw)
+  return host ? t('webdav.error.unreachable', { host }) : describeBackupTransferError(raw)
 }
 
 /**

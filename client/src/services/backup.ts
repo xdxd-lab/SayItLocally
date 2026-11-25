@@ -7,16 +7,40 @@
 import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { open } from '@tauri-apps/plugin-dialog'
+import type { PromptPreset } from './store'
 import type { TextReplacementRule } from './textReplacement'
 import { t } from '@/i18n'
 
-export function describeBackupRestoreError(error: unknown): string {
+export function describeBackupTransferError(error: unknown): string {
   const raw = error instanceof Error ? error.message : String(error)
-  switch (raw) {
+  const [code, category, row] = raw.split('|')
+  switch (code) {
     case 'BACKUP_AUDIO_DIRECTORY_UNSAFE':
       return t('backup.audioDirectoryUnsafe')
     case 'BACKUP_AUDIO_DESTINATION_UNSAFE':
       return t('backup.audioDestinationUnsafe')
+    case 'BACKUP_READ_DATABASE':
+      return t('backup.readDatabase')
+    case 'BACKUP_READ_SETTINGS':
+      return category ? t('backup.readSetting', { key: category }) : t('backup.readSettings')
+    case 'BACKUP_READ_COLLECTION':
+      return row
+        ? t('backup.readCollectionRow', { category, row })
+        : t('backup.readCollection', { category })
+    case 'BACKUP_READ_RECORDINGS':
+      return t('backup.readRecordings')
+    case 'BACKUP_RECORDING_NAME_CONFLICT':
+      return t('backup.recordingNameConflict')
+    case 'BACKUP_RECORDING_CHANGED':
+      return t('backup.recordingChanged')
+    case 'BACKUP_EXPORT_IO':
+      return t('backup.writeFile')
+    case 'BACKUP_EXPORT_EXISTS':
+      return t('backup.fileExists')
+    case 'BACKUP_RESTORE_DB':
+      return t('backup.restoreDatabase')
+    case 'BACKUP_NOTHING_SELECTED':
+      return t('configTransfer.nothingSelected')
     default:
       return raw
   }
@@ -33,9 +57,19 @@ export type ConfigExportSelection =
     mode: 'selected'
     hotwordGroupIds: string[]
     includeTextReplacements: boolean
-    textReplacements?: TextReplacementRule[]
+    defaultTextReplacements?: TextReplacementRule[]
     promptPresetIds: string[]
   }
+
+export interface ConfigExportChoices {
+  hotwordThemes: unknown
+  textReplacements?: TextReplacementRule[] | null
+  promptPresets: PromptPreset[]
+}
+
+export function inspectConfigExport(): Promise<ConfigExportChoices> {
+  return invoke('inspect_config_export')
+}
 
 export interface ConfigImportSectionPreview {
   kind: string
