@@ -23,10 +23,10 @@ import {
   X,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { type ConfigExportSelection, type ConfigImportPreview } from '@/services/backup'
-import { CUSTOM_THEMES_KEY, normalizeCustomThemes, type CustomTheme } from '@/services/hotwords/model'
-import { getPromptPresets, getSetting, type PromptPreset } from '@/services/store'
-import { getTextReplacements, type TextReplacementRule } from '@/services/textReplacement'
+import { describeBackupTransferError, inspectConfigExport, type ConfigExportSelection, type ConfigImportPreview } from '@/services/backup'
+import { normalizeCustomThemes, type CustomTheme } from '@/services/hotwords/model'
+import { BUILTIN_PRESETS, type PromptPreset } from '@/services/store'
+import { BUILTIN_REPLACEMENTS, type TextReplacementRule } from '@/services/textReplacement'
 import { useT } from '@/i18n/useT'
 import { useBackdropDismiss } from '@/hooks/useBackdropDismiss'
 import { promptPresetDisplayName } from '@/i18n/displayNames'
@@ -305,11 +305,18 @@ export function ConfigExportDialog({
 
   useEffect(() => {
     let active = true
-    void Promise.all([getSetting<unknown>(CUSTOM_THEMES_KEY, []), getTextReplacements(), getPromptPresets()])
-      .then(([rawThemes, loadedReplacements, loadedPresets]) => {
+    void inspectConfigExport()
+      .then(({ hotwordThemes, textReplacements, promptPresets }) => {
         if (!active) return
-        const customThemes = normalizeCustomThemes(rawThemes)
-        const customPresets = loadedPresets.filter((preset) => !preset.builtin)
+        const customThemes = normalizeCustomThemes(hotwordThemes)
+        const builtinIds = new Set(BUILTIN_PRESETS.map((preset) => preset.id))
+        const customPresets = promptPresets.filter((preset) =>
+          typeof preset?.id === 'string' && !preset.builtin && !builtinIds.has(preset.id),
+        )
+        // A missing/empty value uses the built-in rules. Malformed JSON is omitted by the backend.
+        const loadedReplacements = textReplacements === null || (Array.isArray(textReplacements) && !textReplacements.length)
+          ? BUILTIN_REPLACEMENTS
+          : Array.isArray(textReplacements) ? textReplacements : []
         setThemes(customThemes)
         setReplacements(loadedReplacements)
         setIncludeReplacements(loadedReplacements.length > 0)
@@ -318,7 +325,7 @@ export function ConfigExportDialog({
         setSelectedPresetIds(customPresets.map((preset) => preset.id))
       })
       .catch((error) => {
-        if (active) setLoadError(t('configTransfer.readFailed', { message: String(error) }))
+        if (active) setLoadError(t('configTransfer.readFailed', { message: describeBackupTransferError(error) }))
       })
       .finally(() => {
         if (active) setLoading(false)
@@ -342,7 +349,7 @@ export function ConfigExportDialog({
       mode: 'selected',
       hotwordGroupIds: selectedThemeIds,
       includeTextReplacements: includeReplacements,
-      textReplacements: includeReplacements ? replacements : undefined,
+      defaultTextReplacements: includeReplacements ? BUILTIN_REPLACEMENTS : undefined,
       promptPresetIds: selectedPresetIds,
     })
   }

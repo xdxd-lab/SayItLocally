@@ -2,7 +2,7 @@
 //
 // 设计要点：
 // - 导入走活动数据库的正常写入通道（app_settings upsert + 集合表整表替换），
-//   不替换 sqlite 文件、不涉及文件锁，导入完成后由前端触发重启使内存状态重载。
+//   完整还原先试写数据库，再安装录音并提交交易。导入后由前端触发重启使内存状态重载。
 // - 语义为「覆盖」：集合表整表替换；app_settings 逐 key 覆盖（不删除未出现的 key）。
 // - 「配置」不含使用统计 stats，避免覆盖本机计数；「全部」包含 stats。
 //   [自訂] S35／S36：本 fork 的「全部」也不含 stats，且兩檔都排除金鑰、密碼、使用統計與隱私開關（見 MACHINE_LOCAL_KEYS）。
@@ -58,6 +58,7 @@ const MACHINE_LOCAL_KEYS: &[&str] = &[
     "workMode",
     "autoLaunch*",
     "localAsr.downloadSource",
+    "localAsr.modelsDir",
     // [自訂] SCAN1-4（L-74）：麥克風裝置名稱與裝置 ID 只留在本機（名稱可能含姓名），不匯出也不匯入。
     "micLastGoodDevice",
     "selectedMic",
@@ -93,6 +94,7 @@ const CONFIG_EXCLUDE: &[&str] = &[
     "workMode",
     "autoLaunch*",
     "localAsr.downloadSource",
+    "localAsr.modelsDir",
     // [自訂] SCAN1-4（L-74）：麥克風裝置名稱與裝置 ID 只留在本機（名稱可能含姓名），不匯出也不匯入。
     "micLastGoodDevice",
     "selectedMic",
@@ -109,7 +111,7 @@ pub struct ConfigExportSelection {
     #[serde(default)]
     include_text_replacements: bool,
     #[serde(default)]
-    text_replacements: Option<Vec<Value>>,
+    default_text_replacements: Option<Vec<Value>>,
     #[serde(default)]
     prompt_preset_ids: Vec<String>,
 }
@@ -206,16 +208,16 @@ fn basename(path: &str) -> String {
         .to_string()
 }
 
-fn build_config_value(storage: &Storage) -> Value {
-    json!({
+fn build_config_value(storage: &Storage) -> Result<Value, String> {
+    storage.with_backup_snapshot(|snapshot| Ok(json!({
         "kind": "config",
         "formatVersion": FORMAT_VERSION,
         "appVersion": app_version(),
         "exportedAt": chrono::Utc::now().to_rfc3339(),
-        "appSettings": storage.export_app_settings(CONFIG_EXCLUDE),
-        "promptPresets": storage.get("promptPresets", None),
-        "appPromptRules": storage.get("appPromptRules", None),
-    })
+        "appSettings": snapshot.settings(CONFIG_EXCLUDE)?,
+        "promptPresets": snapshot.collection("promptPresets")?,
+        "appPromptRules": snapshot.collection("appPromptRules")?,
+    })))
 }
 
 fn normalized_strings(value: Option<&Value>) -> Vec<String> {
@@ -246,104 +248,106 @@ fn build_selected_config_value(
         .iter()
         .map(String::as_str)
         .collect();
-    let mut items = Map::new();
+    storage.with_backup_snapshot(|snapshot| {
+        let mut items = Map::new();
 
-    if !selected_hotword_ids.is_empty() {
-        let themes_value = storage.get("customHotwordThemes", None);
-        let active_value = storage.get("customThemeActive", None);
-        let active_map = active_value.as_object();
-        let groups = themes_value
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter_map(Value::as_object)
-            .filter(|theme| {
-                theme
-                    .get("id")
-                    .and_then(Value::as_str)
-                    .is_some_and(|id| selected_hotword_ids.contains(id))
-            })
-            .filter_map(|theme| {
-                let id = theme.get("id")?.as_str()?;
-                let name = theme.get("name")?.as_str()?.trim();
-                if name.is_empty() {
-                    return None;
-                }
-                Some(json!({
-                    "name": name,
-                    "words": normalized_strings(theme.get("words")),
-                    "enabled": active_map
-                        .and_then(|map| map.get(id))
-                        .and_then(Value::as_bool)
-                        .unwrap_or(false),
-                }))
-            })
-            .collect::<Vec<_>>();
-        items.insert("hotwordGroups".to_string(), Value::Array(groups));
-    }
+        if !selected_hotword_ids.is_empty() {
+            let themes_value = snapshot.setting("customHotwordThemes")?.unwrap_or(Value::Null);
+            let active_value = snapshot.setting("customThemeActive")?.unwrap_or(Value::Null);
+            let active_map = active_value.as_object();
+            let groups = themes_value
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(Value::as_object)
+                .filter(|theme| {
+                    theme
+                        .get("id")
+                        .and_then(Value::as_str)
+                        .is_some_and(|id| selected_hotword_ids.contains(id))
+                })
+                .filter_map(|theme| {
+                    let id = theme.get("id")?.as_str()?;
+                    let name = theme.get("name")?.as_str()?.trim();
+                    if name.is_empty() {
+                        return None;
+                    }
+                    Some(json!({
+                        "name": name,
+                        "words": normalized_strings(theme.get("words")),
+                        "enabled": active_map
+                            .and_then(|map| map.get(id))
+                            .and_then(Value::as_bool)
+                            .unwrap_or(false),
+                    }))
+                })
+                .collect::<Vec<_>>();
+            items.insert("hotwordGroups".to_string(), Value::Array(groups));
+        }
 
-    if selection.include_text_replacements {
-        let source_rules = selection.text_replacements.clone().unwrap_or_else(|| {
-            storage
-                .get("textReplacements", None)
+        if selection.include_text_replacements {
+            if let Some(value) = snapshot.setting("textReplacements")? {
+                let defaults = selection.default_text_replacements.as_deref().unwrap_or_default();
+                let rules = match &value {
+                    Value::Null => defaults,
+                    Value::Array(rules) if rules.is_empty() => defaults,
+                    Value::Array(rules) => rules,
+                    _ => &[],
+                };
+                let rules = rules.iter()
+                    .filter_map(|rule| {
+                        let obj = rule.as_object()?;
+                        let from = obj.get("from")?.as_str()?.trim();
+                        if from.is_empty() {
+                            return None;
+                        }
+                        Some(json!({
+                            "from": from,
+                            "to": obj.get("to").and_then(Value::as_str).unwrap_or(""),
+                            "enabled": obj.get("enabled").and_then(Value::as_bool).unwrap_or(true),
+                        }))
+                    })
+                    .collect::<Vec<_>>();
+                items.insert("textReplacements".to_string(), Value::Array(rules));
+            }
+        }
+
+        if !selected_preset_ids.is_empty() {
+            let presets = snapshot.collection("promptPresets")?
                 .as_array()
                 .cloned()
                 .unwrap_or_default()
-        });
-        let rules = source_rules
-            .into_iter()
-            .filter_map(|rule| {
-                let obj = rule.as_object()?;
-                let from = obj.get("from")?.as_str()?.trim();
-                if from.is_empty() {
-                    return None;
-                }
-                Some(json!({
-                    "from": from,
-                    "to": obj.get("to").and_then(Value::as_str).unwrap_or(""),
-                    "enabled": obj.get("enabled").and_then(Value::as_bool).unwrap_or(true),
-                }))
-            })
-            .collect::<Vec<_>>();
-        items.insert("textReplacements".to_string(), Value::Array(rules));
-    }
+                .into_iter()
+                .filter_map(|preset| {
+                    let obj = preset.as_object()?;
+                    let id = obj.get("id")?.as_str()?;
+                    if !selected_preset_ids.contains(id) || BUILTIN_PRESET_IDS.contains(&id) {
+                        return None;
+                    }
+                    let name = obj.get("name")?.as_str()?.trim();
+                    let system_prompt = obj.get("systemPrompt")?.as_str()?.trim();
+                    if name.is_empty() || system_prompt.is_empty() {
+                        return None;
+                    }
+                    Some(json!({ "name": name, "systemPrompt": system_prompt }))
+                })
+                .collect::<Vec<_>>();
+            items.insert("promptPresets".to_string(), Value::Array(presets));
+        }
 
-    if !selected_preset_ids.is_empty() {
-        let presets = storage
-            .get("promptPresets", None)
-            .as_array()
-            .cloned()
-            .unwrap_or_default()
-            .into_iter()
-            .filter_map(|preset| {
-                let obj = preset.as_object()?;
-                let id = obj.get("id")?.as_str()?;
-                if !selected_preset_ids.contains(id) || BUILTIN_PRESET_IDS.contains(&id) {
-                    return None;
-                }
-                let name = obj.get("name")?.as_str()?.trim();
-                let system_prompt = obj.get("systemPrompt")?.as_str()?.trim();
-                if name.is_empty() || system_prompt.is_empty() {
-                    return None;
-                }
-                Some(json!({ "name": name, "systemPrompt": system_prompt }))
-            })
-            .collect::<Vec<_>>();
-        items.insert("promptPresets".to_string(), Value::Array(presets));
-    }
+        if items.is_empty() {
+            return Err("BACKUP_NOTHING_SELECTED".into());
+        }
 
-    if items.is_empty() {
-        return Err("Select at least one configuration item to export".to_string());
-    }
-
-    Ok(json!({
-        "kind": "config",
-        "formatVersion": SELECTED_CONFIG_FORMAT_VERSION,
-        "scope": "selected",
-        "appVersion": app_version(),
-        "exportedAt": chrono::Utc::now().to_rfc3339(),
-        "items": Value::Object(items),
-    }))
+        Ok(json!({
+            "kind": "config",
+            "formatVersion": SELECTED_CONFIG_FORMAT_VERSION,
+            "scope": "selected",
+            "appVersion": app_version(),
+            "exportedAt": chrono::Utc::now().to_rfc3339(),
+            "items": Value::Object(items),
+        }))
+    })
 }
 
 /// 组装 `backup.json`。
@@ -351,37 +355,29 @@ fn build_selected_config_value(
 /// 不含历史时**整个字段都不写**（而不是写一个空数组）：`import_full` 对缺失段是
 /// `if let Some(...)`，字段缺席就跳过、保留本机现有历史；写成空数组反而会把本机
 /// 历史整表清空。「只备份配置」这一档能安全恢复，全靠这个区别。
-fn build_full_value(storage: &Storage, scope: BackupScope) -> Value {
-    let mut payload = json!({
-        "kind": "full",
-        "formatVersion": FORMAT_VERSION,
-        "appVersion": app_version(),
-        "exportedAt": chrono::Utc::now().to_rfc3339(),
-        // 备份包自报装了什么，供恢复前预览与排查「为什么恢复完没有历史」。
-        "scope": {
-            "includeHistory": scope.include_history,
-            "includeAudio": scope.include_audio,
-        },
-        "appSettings": storage.export_app_settings(MACHINE_LOCAL_KEYS),
-        "promptPresets": storage.get("promptPresets", None),
-        "appPromptRules": storage.get("appPromptRules", None),
-    });
+fn build_full_value(storage: &Storage, scope: BackupScope) -> Result<Value, String> {
+    storage.with_backup_snapshot(|snapshot| {
+        let mut payload = json!({
+            "kind": "full",
+            "formatVersion": FORMAT_VERSION,
+            "appVersion": app_version(),
+            "exportedAt": chrono::Utc::now().to_rfc3339(),
+            "scope": {
+                "includeHistory": scope.include_history,
+                "includeAudio": scope.include_audio,
+            },
+            "appSettings": snapshot.settings(MACHINE_LOCAL_KEYS)?,
+            "promptPresets": snapshot.collection("promptPresets")?,
+            "appPromptRules": snapshot.collection("appPromptRules")?,
+        });
 
-    if scope.include_history {
-        if let Some(object) = payload.as_object_mut() {
-            object.insert("history".to_string(), storage.get("history", None));
-            object.insert(
-                "manualCorrections".to_string(),
-                storage.get("manualCorrections", None),
-            );
-            object.insert(
-                "feedbackQueue".to_string(),
-                storage.get("feedbackQueue", None),
-            );
+        if scope.include_history {
+            for key in ["history", "manualCorrections", "feedbackQueue"] {
+                payload[key] = snapshot.collection(key)?;
+            }
         }
-    }
-
-    payload
+        Ok(payload)
+    })
 }
 
 fn check_kind_and_version(data: &Value, expected_kind: &str, max_version: i64) -> Result<i64, String> {
@@ -806,33 +802,62 @@ fn emit_export_progress(app: &AppHandle, progress: BackupExportProgress) {
     let _ = app.emit("backup-export-progress", progress);
 }
 
-fn collect_audio_export_files(include_audio: bool, adir: &Path) -> Vec<AudioExportFile> {
-    let mut files = Vec::new();
+fn collect_audio_export_files(include_audio: bool, adir: &Path) -> Result<Vec<AudioExportFile>, String> {
     if !include_audio {
-        return files;
+        return Ok(Vec::new());
     }
-    if let Ok(entries) = fs::read_dir(adir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            let Ok(metadata) = entry.metadata() else {
-                continue;
-            };
-            if !metadata.is_file() {
-                continue;
+    let directory_error = |_| "BACKUP_READ_RECORDINGS".to_owned();
+    // Backups may read a linked audio directory; the entries below must be regular files.
+    let entries = match fs::read_dir(adir) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) => return Err(directory_error(error)),
+    };
+    let mut files = Vec::new();
+    let mut skipped = 0;
+    let mut names = HashSet::new();
+    for entry in entries {
+        let entry = entry.map_err(directory_error)?;
+        let metadata = entry.metadata().map_err(directory_error)?; // Does not follow links.
+        let name = entry.file_name();
+        if let Some(name) = name.to_str().filter(|name| metadata.is_file() && is_backup_audio_name(name)) {
+            if !names.insert(name.to_ascii_lowercase()) {
+                return Err("BACKUP_RECORDING_NAME_CONFLICT".into());
             }
-            let name = entry.file_name().to_string_lossy().to_string();
-            // [自訂] SC-51：未還原完成的錄音不可進入本機或 WebDAV 備份。
-            if !name.is_empty() && !super::audio::is_restore_staging_name(&name) {
-                files.push(AudioExportFile {
-                    path,
-                    name,
-                    size: metadata.len(),
-                });
-            }
+            files.push(AudioExportFile { path: entry.path(), name: name.to_owned(), size: metadata.len() });
+        } else {
+            skipped += 1;
         }
     }
+    if skipped > 0 {
+        log::info!("Skipped {skipped} non-recording entries in backup");
+    }
     files.sort_by(|a, b| a.name.cmp(&b.name));
-    files
+    Ok(files)
+}
+
+fn open_backup_recording(path: &Path) -> std::io::Result<fs::File> {
+    let mut options = fs::OpenOptions::new();
+    options.read(true);
+    #[cfg(target_os = "macos")]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
+        options.custom_flags(FILE_FLAG_OPEN_REPARSE_POINT);
+    }
+    if !fs::symlink_metadata(path)?.is_file() {
+        return Err(std::io::Error::other("expected a regular recording"));
+    }
+    let file = options.open(path)?;
+    if !file.metadata()?.is_file() {
+        return Err(std::io::Error::other("expected a regular recording"));
+    }
+    Ok(file)
 }
 
 fn audio_progress_percent(processed_bytes: u64, total_bytes: u64) -> f64 {
@@ -850,25 +875,162 @@ pub fn get_backup_directory() -> Result<String, String> {
     Ok(directory.to_string_lossy().to_string())
 }
 
+fn read_config_export_choices(storage: &Storage) -> Result<Value, String> {
+    storage.with_backup_snapshot(|snapshot| {
+        let mut choices = json!({
+            "hotwordThemes": snapshot.setting("customHotwordThemes")?,
+            "promptPresets": snapshot.collection("promptPresets")?,
+        });
+        if let Some(replacements) = snapshot.setting("textReplacements")? {
+            choices["textReplacements"] = replacements;
+        }
+        Ok(choices)
+    })
+}
+
+#[tauri::command]
+pub async fn inspect_config_export(storage: State<'_, Storage>) -> Result<Value, String> {
+    read_config_export_choices(storage.inner())
+}
+
 #[tauri::command]
 pub async fn export_config(
     selection: ConfigExportSelection,
     storage: State<'_, Storage>,
 ) -> Result<String, String> {
     let out_path = timestamped_backup_path("sayit-config", "json");
-    if let Some(parent) = out_path.parent() {
-        fs::create_dir_all(parent).map_err(|e| format!("Failed to create backup directory: {}", e))?;
-    }
-    let payload = match selection.mode.as_str() {
-        "full" => build_config_value(storage.inner()),
-        "selected" => build_selected_config_value(storage.inner(), &selection)?,
-        _ => return Err("Unsupported configuration export mode".to_string()),
-    };
-    let content = serde_json::to_string_pretty(&payload).map_err(|e| e.to_string())?;
-    fs::write(&out_path, content).map_err(|e| format!("Failed to write file: {}", e))?;
+    write_config_file(storage.inner(), &selection, &out_path)?;
     let path = out_path.to_string_lossy().to_string();
     log::info!("Config backup exported to {}", path);
     Ok(path)
+}
+
+fn write_config_file(storage: &Storage, selection: &ConfigExportSelection, output: &Path) -> Result<(), String> {
+    let payload = match selection.mode.as_str() {
+        "full" => build_config_value(storage)?,
+        "selected" => build_selected_config_value(storage, selection)?,
+        _ => return Err("Unsupported configuration export mode".into()),
+    };
+    let content = serde_json::to_string_pretty(&payload).map_err(|e| e.to_string())?;
+    publish_backup(output, |mut file| {
+        file.write_all(content.as_bytes()).map_err(|error| error.to_string())?;
+        Ok(file)
+    })
+}
+
+// Publish only the completed file. Only remove the temporary file we created.
+fn publish_backup(
+    output: &Path,
+    write: impl FnOnce(fs::File) -> Result<fs::File, String>,
+) -> Result<(), String> {
+    use std::io::ErrorKind;
+
+    let export_io_error = |error: std::io::Error| {
+        log::warn!("Backup file I/O failed: {error}");
+        "BACKUP_EXPORT_IO".to_owned()
+    };
+    let parent = output.parent().filter(|path| !path.as_os_str().is_empty()).unwrap_or(Path::new("."));
+    fs::create_dir_all(parent).map_err(export_io_error)?;
+    let temp = parent.join(format!("sayit-backup-{}.part", uuid::Uuid::new_v4()));
+    let file = fs::OpenOptions::new().write(true).create_new(true).open(&temp)
+        .map_err(export_io_error)?;
+    let result = write(file).map_err(|error| {
+        if error.starts_with("BACKUP_") {
+            error
+        } else {
+            log::warn!("Backup serialization failed: {error}");
+            "BACKUP_EXPORT_IO".to_owned()
+        }
+    }).and_then(|file| {
+        file.sync_all().map_err(export_io_error)?;
+        drop(file);
+        publish_without_replacing(&temp, output).map_err(|error| {
+            if error.kind() == ErrorKind::AlreadyExists {
+                "BACKUP_EXPORT_EXISTS".to_owned()
+            } else {
+                export_io_error(error)
+            }
+        })
+    });
+    if let Err(error) = fs::remove_file(&temp) {
+        if error.kind() != ErrorKind::NotFound {
+            log::warn!("Failed to remove temporary backup: {error}");
+        }
+    }
+    result
+}
+
+#[cfg(target_os = "macos")]
+fn publish_without_replacing(source: &Path, output: &Path) -> std::io::Result<()> {
+    use std::ffi::CString;
+    use std::os::unix::ffi::OsStrExt;
+
+    let source_c = CString::new(source.as_os_str().as_bytes())?;
+    let output_c = CString::new(output.as_os_str().as_bytes())?;
+    publish_with_rename_fallback(source, output, || {
+        // Both paths have the same parent; RENAME_EXCL atomically refuses an existing destination.
+        let result = unsafe { libc::renamex_np(source_c.as_ptr(), output_c.as_ptr(), libc::RENAME_EXCL) };
+        if result == 0 { Ok(()) } else { Err(std::io::Error::last_os_error()) }
+    })
+}
+
+#[cfg(windows)]
+fn publish_without_replacing(source: &Path, output: &Path) -> std::io::Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn MoveFileExW(source: *const u16, destination: *const u16, flags: u32) -> i32;
+    }
+
+    let parent = source.parent().filter(|path| !path.as_os_str().is_empty()).unwrap_or(Path::new("."));
+    let parent = parent.canonicalize()?; // Use the extended-path form for long paths.
+    let wide_path = |file: &Path| -> std::io::Result<Vec<u16>> {
+        let name = file.file_name().ok_or_else(|| std::io::Error::new(
+            std::io::ErrorKind::InvalidInput, "Missing backup file name",
+        ))?;
+        Ok(parent.join(name).as_os_str().encode_wide().chain([0]).collect())
+    };
+    let source = wide_path(source)?;
+    let output = wide_path(output)?;
+    // Zero flags retain the original destination if another export already created it.
+    let result = unsafe { MoveFileExW(source.as_ptr(), output.as_ptr(), 0) };
+    if result == 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    Ok(())
+}
+
+#[cfg(not(any(target_os = "macos", windows)))]
+fn publish_without_replacing(source: &Path, output: &Path) -> std::io::Result<()> {
+    publish_with_rename_fallback(source, output, || fs::hard_link(source, output))
+}
+
+#[cfg(any(not(windows), test))]
+fn publish_with_rename_fallback(
+    source: &Path,
+    output: &Path,
+    publish: impl FnOnce() -> std::io::Result<()>,
+) -> std::io::Result<()> {
+    use std::io::{Error, ErrorKind};
+
+    let Err(error) = publish() else { return Ok(()); };
+    let unsupported = matches!(error.kind(), ErrorKind::Unsupported | ErrorKind::InvalidInput);
+    #[cfg(target_os = "macos")]
+    let unsupported = unsupported || error.raw_os_error() == Some(libc::EOPNOTSUPP);
+    if !unsupported {
+        return Err(error);
+    }
+
+    // Serialize this fallback across exports. Another process could still create
+    // the destination between the check and rename on filesystems without no-clobber.
+    static FALLBACK_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _guard = FALLBACK_LOCK.lock().map_err(|_| Error::other("Backup publication lock poisoned"))?;
+    match fs::symlink_metadata(output) {
+        Ok(_) => Err(ErrorKind::AlreadyExists.into()),
+        Err(error) if error.kind() == ErrorKind::NotFound => fs::rename(source, output),
+        Err(error) => Err(error),
+    }
 }
 
 /// 打包过程中的一帧进度。`phase` 取值与前端 `BackupExportProgress['phase']` 对齐。
@@ -888,7 +1050,7 @@ pub struct ArchiveProgress<'a> {
 /// 进度事件名。刻意不让 WebDAV 自己写一套打包：一旦两份代码分家，就会出现
 /// 「本地导出能恢复、云端备份恢复不了」这种只在换机时才暴露的问题。
 ///
-/// 先写 `.part` 再原子 rename，失败时清掉临时文件 —— 中断留下的半个 zip 不能
+/// 先写 `.part` 再原子发布，失败时清掉临时文件 —— 中断留下的半个 zip 不能
 /// 长得像一个有效备份。
 ///
 /// 总量（文件数 / 字节数）通过 `on_progress` 报出去，不作为返回值：调用方要的是
@@ -899,10 +1061,21 @@ pub fn write_backup_archive(
     output: &Path,
     on_progress: &mut dyn FnMut(ArchiveProgress),
 ) -> Result<(), String> {
-    let temp_path = PathBuf::from(format!("{}.part", output.to_string_lossy()));
-    // [自訂] S71：收集與讀取備份錄音期間禁止清理。
-    let _recordings = scope.include_audio.then(super::audio::lock_recordings);
-    let audio_files = collect_audio_export_files(scope.include_audio, &audio_dir());
+    write_backup_archive_in_dir(storage, scope, output, &audio_dir(), on_progress)
+}
+
+fn write_backup_archive_in_dir(
+    storage: &Storage,
+    scope: BackupScope,
+    output: &Path,
+    adir: &Path,
+    on_progress: &mut dyn FnMut(ArchiveProgress),
+) -> Result<(), String> {
+    // [自訂] S71：收集與讀取備份錄音期間禁止清理。固定先取得錄音鎖，再讀資料庫。
+    let _recordings = scope.include_audio.then(super::audio::lock_recordings_for_backup).transpose()?;
+    let audio_files = collect_audio_export_files(scope.include_audio, adir)?;
+    let payload = build_full_value(storage, scope)?;
+    let json_str = serde_json::to_string_pretty(&payload).map_err(|e| e.to_string())?;
     let total_files = audio_files.len() as u64;
     let total_bytes = audio_files.iter().map(|file| file.size).sum::<u64>();
 
@@ -916,13 +1089,7 @@ pub fn write_backup_archive(
         percent: 2.0,
     });
 
-    let result = (|| -> Result<(), String> {
-        if let Some(parent) = output.parent() {
-            fs::create_dir_all(parent).map_err(|e| format!("Failed to create export directory: {}", e))?;
-        }
-
-        let payload = build_full_value(storage, scope);
-        let json_str = serde_json::to_string_pretty(&payload).map_err(|e| e.to_string())?;
+    publish_backup(output, |file| {
         on_progress(ArchiveProgress {
             phase: "packingData",
             current_file: Some("backup.json"),
@@ -933,7 +1100,6 @@ pub fn write_backup_archive(
             percent: 5.0,
         });
 
-        let file = fs::File::create(&temp_path).map_err(|e| format!("Failed to create file: {}", e))?;
         let mut zip = zip::ZipWriter::new(file);
         super::archive::write_deflated_entry(&mut zip, "backup.json", json_str.as_bytes())?;
 
@@ -943,18 +1109,24 @@ pub fn write_backup_archive(
         let mut buffer = vec![0u8; 256 * 1024];
 
         for audio in &audio_files {
-            let mut source = fs::File::open(&audio.path)
-                .map_err(|e| format!("Failed to read audio file {}: {}", audio.name, e))?;
+            let source = open_backup_recording(&audio.path)
+                .map_err(|_| "BACKUP_READ_RECORDINGS")?;
             let options = super::archive::file_options(zip::CompressionMethod::Stored, audio.size);
             zip.start_file(format!("audio/{}", audio.name), options)
                 .map_err(|e| e.to_string())?;
 
+            let mut source = source.take(audio.size.saturating_add(1));
+            let mut file_bytes = 0;
             loop {
                 let read = source
                     .read(&mut buffer)
-                    .map_err(|e| format!("Failed to read audio file {}: {}", audio.name, e))?;
+                    .map_err(|_| "BACKUP_READ_RECORDINGS")?;
                 if read == 0 {
                     break;
+                }
+                file_bytes += read as u64;
+                if file_bytes > audio.size {
+                    return Err("BACKUP_RECORDING_CHANGED".into());
                 }
                 zip.write_all(&buffer[..read]).map_err(|e| e.to_string())?;
                 processed_bytes += read as u64;
@@ -973,6 +1145,9 @@ pub fn write_backup_archive(
                 }
             }
 
+            if file_bytes != audio.size {
+                return Err("BACKUP_RECORDING_CHANGED".into());
+            }
             processed_files += 1;
             on_progress(ArchiveProgress {
                 phase: "packingAudio",
@@ -994,22 +1169,8 @@ pub fn write_backup_archive(
             total_bytes,
             percent: 98.0,
         });
-        zip.finish().map_err(|e| e.to_string())?;
-
-        if output.exists() {
-            fs::remove_file(output).map_err(|e| format!("Failed to replace the previous backup: {}", e))?;
-        }
-        fs::rename(&temp_path, output).map_err(|e| format!("Failed to finalize the backup file: {}", e))?;
-        Ok(())
-    })();
-
-    match result {
-        Ok(()) => Ok(()),
-        Err(error) => {
-            let _ = fs::remove_file(&temp_path);
-            Err(error)
-        }
-    }
+        zip.finish().map_err(|e| e.to_string())
+    })
 }
 
 #[tauri::command]
@@ -1409,42 +1570,49 @@ fn apply_full_backup_archive(
 
     // [自訂] SC-51：只有含錄音的備份才需要安全的錄音目錄。
     let recordings_guard = (!recordings.is_empty()).then(super::audio::lock_recordings_for_restore);
-    if let Some(guard) = &recordings_guard {
-        check_recording_restore_path(adir, true)?;
-        for (_, name) in &recordings {
-            check_recording_restore_path(&adir.join(name), false)?;
+    apply_full_restore(storage, &data, adir, || {
+        if let Some(guard) = &recordings_guard {
+            check_recording_restore_path(adir, true)?;
+            for (_, name) in &recordings {
+                check_recording_restore_path(&adir.join(name), false)?;
+            }
+            fs::create_dir_all(adir).map_err(|e| format!("Failed to create audio directory: {e}"))?;
+            super::audio::cleanup_restore_staging(adir, guard);
+            for (index, name) in recordings {
+                let mut entry = archive.by_index(index).map_err(|e| e.to_string())?;
+                let destination = adir.join(&name);
+                restore_audio_file(&mut entry, adir, &destination)
+                    .map_err(|e| format!("Failed to restore audio file {name}: {e}"))?;
+            }
         }
-        fs::create_dir_all(adir).map_err(|e| format!("Failed to create audio directory: {e}"))?;
-        super::audio::cleanup_restore_staging(adir, guard);
-        for (index, name) in recordings {
-            let mut entry = archive.by_index(index).map_err(|e| e.to_string())?;
-            let destination = adir.join(&name);
-            restore_audio_file(&mut entry, adir, &destination)
-                .map_err(|e| format!("Failed to restore audio file {name}: {e}"))?;
-        }
-    }
+        Ok(())
+    })
+}
 
-    // 3. 应用配置部分（含 stats，不含本机专属设置）
-    apply_config_part(storage, &data, MACHINE_LOCAL_KEYS)?;
+fn apply_full_restore(
+    storage: &Storage,
+    data: &Value,
+    adir: &Path,
+    install_recordings: impl FnOnce() -> Result<(), String>,
+) -> Result<(), String> {
+    let empty_settings = Map::new();
+    let settings = data.get("appSettings").and_then(Value::as_object).unwrap_or(&empty_settings);
+    let array = |key| data.get(key).and_then(Value::as_array).map(Vec::as_slice);
+    let rewritten_history = array("history").map(|history| {
+        history.iter().map(|record| rewrite_audio_path(record, adir)).collect::<Vec<_>>()
+    });
+    let collections = [
+        ("promptPresets", array("promptPresets")),
+        ("appPromptRules", array("appPromptRules")),
+        ("history", rewritten_history.as_deref()),
+        ("manualCorrections", array("manualCorrections")),
+        ("feedbackQueue", array("feedbackQueue")),
+    ];
 
-    // 4. 历史：重写音频路径后整表替换
-    if let Some(history) = data.get("history").and_then(|v| v.as_array()) {
-        let rewritten: Vec<Value> = history.iter().map(|rec| rewrite_audio_path(rec, adir)).collect();
-        storage
-            .set("history", &Value::Array(rewritten))
-            .map_err(|e| format!("Failed to write history: {}", e))?;
-    }
-    if let Some(arr) = data.get("manualCorrections") {
-        if arr.is_array() {
-            storage.set("manualCorrections", arr).map_err(|e| format!("Failed to write manual corrections: {}", e))?;
-        }
-    }
-    if let Some(arr) = data.get("feedbackQueue") {
-        if arr.is_array() {
-            storage.set("feedbackQueue", arr).map_err(|e| format!("Failed to write feedback queue: {}", e))?;
-        }
-    }
-    Ok(())
+    // The same SQLite write path runs before and after the filesystem changes.
+    storage.apply_restore_transaction(settings, MACHINE_LOCAL_KEYS, &collections, true)?;
+    install_recordings()?;
+    storage.apply_restore_transaction(settings, MACHINE_LOCAL_KEYS, &collections, false)
 }
 
 fn backup_json_entry_error(error: zip::result::ZipError) -> String {
@@ -1808,6 +1976,662 @@ mod tests {
         fs::remove_dir_all(dir).unwrap();
     }
 
+    const RESTORE_COLLECTIONS: [&str; 5] = [
+        "promptPresets", "appPromptRules", "history", "manualCorrections", "feedbackQueue",
+    ];
+
+    fn seed_full_restore(storage: &Storage) -> Value {
+        storage.set("overlayWidth", &json!("original")).unwrap();
+        let mut data = json!({
+            "kind": "full",
+            "formatVersion": 1,
+            "appSettings": { "overlayWidth": "restored" },
+        });
+        for key in RESTORE_COLLECTIONS {
+            storage.set(key, &json!([{ "id": format!("old-{key}") }])).unwrap();
+            data[key] = json!([{ "id": format!("new-{key}") }]);
+        }
+        data
+    }
+
+    fn assert_original_restore_data(storage: &Storage) {
+        assert_eq!(storage.get("overlayWidth", None), json!("original"));
+        for key in RESTORE_COLLECTIONS {
+            assert_eq!(storage.get(key, None), json!([{ "id": format!("old-{key}") }]), "{key}");
+        }
+    }
+
+    fn apply_test_restore(storage: &Storage, data: &Value, adir: &Path, audio: bool) -> Result<(), String> {
+        let payload = data.to_string();
+        let mut entries: Vec<(&str, &[u8])> = vec![("backup.json", payload.as_bytes())];
+        if audio {
+            entries.push(("audio/valid-recording.wav", b"sample recording"));
+        }
+        let archive = zip::ZipArchive::new(Cursor::new(test_backup(&entries))).unwrap();
+        apply_full_backup_archive(storage, archive, adir)
+    }
+
+    #[test]
+    fn duplicate_ids_in_each_collection_fail_before_any_recording_or_database_change() {
+        let (storage, dir) = temp_storage("duplicate_ids");
+        let original = seed_full_restore(&storage);
+        let adir = dir.join("audio");
+        for key in RESTORE_COLLECTIONS {
+            let mut data = original.clone();
+            data[key] = json!([{ "id": "same" }, { "id": "same" }]);
+            assert!(apply_test_restore(&storage, &data, &adir, true).is_err(), "{key}");
+            assert!(!adir.exists(), "{key}");
+            assert_original_restore_data(&storage);
+        }
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn two_missing_ids_fail_before_staging_cleanup_or_recording_overwrite() {
+        let (storage, dir) = temp_storage("missing_ids");
+        let mut data = seed_full_restore(&storage);
+        data["feedbackQueue"] = json!([{ "status": "one" }, { "status": "two" }]);
+        let adir = dir.join("audio");
+        fs::create_dir(&adir).unwrap();
+        let staging = super::super::audio::restore_staging_path(&adir);
+        fs::write(&staging, b"an older staging file").unwrap();
+        let recording = adir.join("valid-recording.wav");
+        fs::write(&recording, b"local recording").unwrap();
+
+        assert!(apply_test_restore(&storage, &data, &adir, true).is_err());
+        assert_eq!(fs::read(&staging).unwrap(), b"an older staging file");
+        assert_eq!(fs::read(&recording).unwrap(), b"local recording");
+        assert_eq!(fs::read_dir(&adir).unwrap().count(), 2);
+        assert_original_restore_data(&storage);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn deferred_constraint_in_late_collection_fails_before_installing_recordings() {
+        let (storage, dir) = temp_storage("late_constraint");
+        let data = seed_full_restore(&storage);
+        create_feedback_constraint(&storage);
+        let adir = dir.join("audio");
+        assert!(apply_test_restore(&storage, &data, &adir, true).is_err());
+        assert!(!adir.exists());
+        assert_original_restore_data(&storage);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    fn create_feedback_constraint(storage: &Storage) {
+        storage.db.lock().unwrap().execute_batch(
+            "CREATE TABLE allowed_feedback (id TEXT PRIMARY KEY);
+             CREATE TABLE feedback_parent (id TEXT REFERENCES allowed_feedback(id)
+                 DEFERRABLE INITIALLY DEFERRED);
+             CREATE TRIGGER demo_feedback_constraint AFTER INSERT ON feedback_queue
+                 BEGIN INSERT INTO feedback_parent VALUES (NEW.id); END;",
+        ).unwrap();
+    }
+
+    #[test]
+    fn failed_second_commit_leaves_all_database_data_unchanged() {
+        let (storage, dir) = temp_storage("second_commit");
+        let data = seed_full_restore(&storage);
+        let audio = dir.join("valid-recording.wav");
+        let error = apply_full_restore(&storage, &data, &dir, || {
+            fs::write(&audio, b"already installed").unwrap();
+            create_feedback_constraint(&storage);
+            Ok(())
+        }).unwrap_err();
+
+        assert_eq!(error, "BACKUP_RESTORE_DB|commit");
+        assert_original_restore_data(&storage);
+        assert_eq!(fs::read(audio).unwrap(), b"already installed");
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn full_restore_preserves_absent_and_non_array_collections_and_clears_empty_arrays() {
+        let (storage, dir) = temp_storage("collection_semantics");
+        seed_full_restore(&storage);
+        for (index, key) in RESTORE_COLLECTIONS.iter().enumerate() {
+            let mut data = json!({
+                "kind": "full", "formatVersion": 1,
+                "appSettings": { "overlayWidth": "restored" },
+            });
+            data[RESTORE_COLLECTIONS[(index + 1) % RESTORE_COLLECTIONS.len()]] = json!({"ignored": true});
+            apply_test_restore(&storage, &data, &dir, false).unwrap();
+            assert_eq!(storage.get(key, None), json!([{ "id": format!("old-{key}") }]));
+            let other = RESTORE_COLLECTIONS[(index + 1) % RESTORE_COLLECTIONS.len()];
+            assert_eq!(storage.get(other, None), json!([{ "id": format!("old-{other}") }]));
+        }
+        let mut data = json!({ "kind": "full", "formatVersion": 1 });
+        for key in RESTORE_COLLECTIONS {
+            data[key] = json!([]);
+        }
+        apply_test_restore(&storage, &data, &dir, false).unwrap();
+        for key in RESTORE_COLLECTIONS {
+            assert_eq!(storage.get(key, None), json!([]));
+        }
+        assert_eq!(storage.get("overlayWidth", None), json!("restored"));
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn store_set_collection_preserves_rows_on_failed_replacement() {
+        let (storage, dir) = temp_storage("replace_collection");
+        seed_full_restore(&storage);
+        assert!(storage.set("history", &json!([{ "id": "same" }, { "id": "same" }])).is_err());
+        assert_original_restore_data(&storage);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    fn config_export_selection(mode: &str) -> ConfigExportSelection {
+        ConfigExportSelection {
+            mode: mode.to_owned(),
+            hotword_group_ids: vec![],
+            include_text_replacements: false,
+            default_text_replacements: None,
+            prompt_preset_ids: vec!["user-preset".into()],
+        }
+    }
+
+    #[test]
+    fn missing_table_or_invalid_row_aborts_all_applicable_export_modes() {
+        let (storage, dir) = temp_storage("read_errors");
+        let output = dir.join("backup.out");
+        let adir = dir.join("audio");
+        fs::write(&output, b"previous export").unwrap();
+        let scope = BackupScope { include_history: true, include_audio: true };
+        storage.set("promptPresets", &json!([{ "id": "user-preset" }, { "id": "bad" }])).unwrap();
+        for (sql, expected) in [
+            ("UPDATE prompt_presets SET raw_json = 'private invalid JSON' WHERE id = 'bad'", "|2"),
+            ("UPDATE prompt_presets SET raw_json = x'11' WHERE id = 'bad'", "|2"),
+            ("DROP TABLE prompt_presets", "promptPresets"),
+        ] {
+            storage.db.lock().unwrap().execute_batch(sql).unwrap();
+            let errors = [
+                read_config_export_choices(&storage).unwrap_err(),
+                write_backup_archive_in_dir(&storage, scope, &output, &adir, &mut |_| {}).unwrap_err(),
+                write_config_file(&storage, &config_export_selection("full"), &output).unwrap_err(),
+                write_config_file(&storage, &config_export_selection("selected"), &output).unwrap_err(),
+            ];
+            for error in errors {
+                assert!(error.contains("promptPresets") && error.contains(expected), "{error}");
+                assert!(!error.contains("private invalid JSON"));
+            }
+            assert_eq!(fs::read(&output).unwrap(), b"previous export");
+            assert_no_backup_parts(&dir);
+        }
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn bad_setting_json_omits_key_but_setting_io_failure_aborts_selected_export() {
+        let (storage, dir) = temp_storage("bad_setting");
+        storage.set("overlayWidth", &json!("long")).unwrap();
+        storage.set("textReplacements", &json!([])).unwrap();
+        storage.db.lock().unwrap().execute_batch(
+            "UPDATE app_settings SET value_json = 'bad json' WHERE key = 'textReplacements'",
+        ).unwrap();
+        let scope = BackupScope { include_history: true, include_audio: false };
+        for value in [build_config_value(&storage).unwrap(), build_full_value(&storage, scope).unwrap()] {
+            assert!(value["appSettings"].get("textReplacements").is_none());
+            assert_eq!(value["appSettings"]["overlayWidth"], json!("long"));
+        }
+        let mut selection = config_export_selection("selected");
+        selection.prompt_preset_ids.clear();
+        selection.include_text_replacements = true;
+        selection.default_text_replacements = Some(vec![json!({ "from": "built-in rule", "to": "default" })]);
+        let choices = read_config_export_choices(&storage).unwrap();
+        assert!(choices.get("textReplacements").is_none());
+        assert_eq!(build_selected_config_value(&storage, &selection).unwrap_err(), "BACKUP_NOTHING_SELECTED");
+        storage.db.lock().unwrap().execute_batch(
+            "UPDATE app_settings SET value_json = x'3132' WHERE key = 'textReplacements'",
+        ).unwrap();
+        for value in [build_config_value(&storage).unwrap(), build_full_value(&storage, scope).unwrap()] {
+            assert!(value["appSettings"].get("textReplacements").is_none());
+            assert_eq!(value["appSettings"]["overlayWidth"], json!("long"));
+        }
+        assert!(read_config_export_choices(&storage).unwrap().get("textReplacements").is_none());
+        assert_eq!(build_selected_config_value(&storage, &selection).unwrap_err(), "BACKUP_NOTHING_SELECTED");
+        storage.db.lock().unwrap().execute_batch("DROP TABLE app_settings").unwrap();
+        let output = dir.join("config.json");
+        assert!(write_config_file(&storage, &selection, &output).unwrap_err().contains("textReplacements"));
+        assert!(!output.exists());
+        assert_no_backup_parts(&dir);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn missing_settings_table_aborts_both_full_export_formats() {
+        let (storage, dir) = temp_storage("missing_settings");
+        storage.db.lock().unwrap().execute_batch("DROP TABLE app_settings").unwrap();
+        let config = dir.join("config.json");
+        let archive = dir.join("backup.zip");
+        let scope = BackupScope { include_history: true, include_audio: false };
+        assert_eq!(
+            write_config_file(&storage, &config_export_selection("full"), &config),
+            Err("BACKUP_READ_SETTINGS".into()),
+        );
+        assert_eq!(
+            write_backup_archive_in_dir(&storage, scope, &archive, &dir.join("audio"), &mut |_| {}),
+            Err("BACKUP_READ_SETTINGS".into()),
+        );
+        assert!(!config.exists());
+        assert!(!archive.exists());
+        assert_no_backup_parts(&dir);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn selected_export_reads_current_replacements_and_uses_defaults_only_for_empty_settings() {
+        let (storage, dir) = temp_storage("selected_snapshot");
+        let mut selection = config_export_selection("selected");
+        selection.prompt_preset_ids.clear();
+        selection.include_text_replacements = true;
+        selection.default_text_replacements = Some(vec![json!({ "from": "built-in", "to": "default" })]);
+        assert_eq!(build_selected_config_value(&storage, &selection).unwrap()["items"]["textReplacements"][0]["from"], "built-in");
+        storage.set("textReplacements", &json!([])).unwrap();
+        assert_eq!(build_selected_config_value(&storage, &selection).unwrap()["items"]["textReplacements"][0]["from"], "built-in");
+        storage.set("textReplacements", &json!([{ "from": "stored", "to": "current" }])).unwrap();
+        assert_eq!(build_selected_config_value(&storage, &selection).unwrap()["items"]["textReplacements"][0]["from"], "stored");
+        assert_eq!(read_config_export_choices(&storage).unwrap()["textReplacements"][0]["from"], "stored");
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn export_snapshot_survives_an_external_writer_between_reads() {
+        let (storage, dir) = temp_storage("snapshot");
+        storage.set("overlayWidth", &json!("before")).unwrap();
+        storage.set("history", &json!([{ "id": "before" }])).unwrap();
+        let writer = Storage::new(dir.join("test.db")).unwrap();
+        storage.with_backup_snapshot(|snapshot| {
+            assert_eq!(snapshot.settings(MACHINE_LOCAL_KEYS)?["overlayWidth"], json!("before"));
+            writer.set("overlayWidth", &json!("after")).unwrap();
+            writer.set("history", &json!([{ "id": "after" }])).unwrap();
+            assert_eq!(snapshot.collection("history")?, json!([{ "id": "before" }]));
+            Ok(())
+        }).unwrap();
+        assert_eq!(storage.get("history", None), json!([{ "id": "after" }]));
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    fn assert_no_backup_parts(dir: &Path) {
+        assert!(!fs::read_dir(dir).unwrap().any(|entry| {
+            entry.unwrap().path().extension().is_some_and(|ext| ext == "part")
+        }));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn audio_only_scope_includes_unreferenced_recordings_and_ignores_non_audio_entries() {
+        use std::os::unix::fs::symlink;
+
+        let (storage, dir) = temp_storage("audio_filter");
+        let adir = dir.join("audio");
+        fs::create_dir(&adir).unwrap();
+        fs::write(adir.join("real-1.wav"), b"real").unwrap();
+        fs::write(adir.join("readme.txt"), b"note").unwrap();
+        fs::write(adir.join("wrong.name.wav"), b"not a recording id").unwrap();
+        fs::write(super::super::audio::restore_staging_path(&adir), b"staging").unwrap();
+        fs::create_dir(adir.join("nested.wav")).unwrap();
+        fs::write(adir.join("nested.wav/inner.wav"), b"nested").unwrap();
+        symlink(adir.join("real-1.wav"), adir.join("link.wav")).unwrap();
+
+        let scope = BackupScope { include_history: false, include_audio: true };
+        let output = dir.join("backup.zip");
+        let mut totals = Vec::new();
+        write_backup_archive_in_dir(&storage, scope, &output, &adir, &mut |progress| {
+            totals.push((progress.total_files, progress.total_bytes, progress.processed_bytes));
+        }).unwrap();
+        assert!(totals.iter().all(|(files, bytes, _)| *files == 1 && *bytes == 4));
+        assert_eq!(totals.last(), Some(&(1, 4, 4)));
+        let mut archive = zip::ZipArchive::new(fs::File::open(output).unwrap()).unwrap();
+        let names: HashSet<_> = archive.file_names().map(|name| name.unwrap().into_owned()).collect();
+        assert_eq!(names, HashSet::from(["backup.json".to_owned(), "audio/real-1.wav".to_owned()]));
+        let payload: Value = serde_json::from_reader(archive.by_name("backup.json").unwrap()).unwrap();
+        assert!(payload.get("history").is_none());
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn linked_audio_directory_can_be_backed_up_but_not_restored_to() {
+        use std::os::unix::fs::symlink;
+
+        let (storage, dir) = temp_storage("linked_audio");
+        let target = dir.join("recordings");
+        let audio = dir.join("audio");
+        fs::create_dir(&target).unwrap();
+        fs::write(target.join("real.wav"), b"recording").unwrap();
+        symlink("real.wav", target.join("link.wav")).unwrap();
+        symlink(&target, &audio).unwrap();
+
+        let output = dir.join("backup.zip");
+        let scope = BackupScope { include_history: false, include_audio: true };
+        write_backup_archive_in_dir(&storage, scope, &output, &audio, &mut |_| {}).unwrap();
+        let mut archive = zip::ZipArchive::new(fs::File::open(&output).unwrap()).unwrap();
+        assert_eq!(archive.len(), 2);
+        let mut bytes = Vec::new();
+        archive.by_name("audio/real.wav").unwrap().read_to_end(&mut bytes).unwrap();
+        assert_eq!(bytes, b"recording");
+        assert!(archive.by_name("audio/link.wav").is_err());
+        assert_eq!(apply_full_backup_archive(&storage, archive, &audio), Err("BACKUP_AUDIO_DIRECTORY_UNSAFE".into()));
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn missing_recording_directory_is_empty_but_other_scan_errors_fail_the_backup() {
+        let (storage, dir) = temp_storage("audio_list");
+        let invalid = dir.join("not-a-directory");
+        fs::write(&invalid, b"file").unwrap();
+        let missing = dir.join("absent");
+        assert!(collect_audio_export_files(true, &missing).unwrap().is_empty());
+        assert!(collect_audio_export_files(false, &invalid).unwrap().is_empty());
+        let output = dir.join("backup.zip");
+        let scope = BackupScope { include_history: false, include_audio: true };
+        for adir in [&invalid, &invalid.join("audio")] {
+            assert!(write_backup_archive_in_dir(&storage, scope, &output, adir, &mut |_| {}).is_err());
+            assert!(!output.exists());
+            assert_no_backup_parts(&dir);
+        }
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn unreadable_recording_directory_fails_instead_of_exporting_an_empty_backup() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let (storage, dir) = temp_storage("unreadable_audio");
+        let adir = dir.join("audio");
+        fs::create_dir(&adir).unwrap();
+        fs::set_permissions(&adir, fs::Permissions::from_mode(0)).unwrap();
+        // Privileged test runners may be allowed to read the directory regardless of its mode.
+        if fs::read_dir(&adir).is_err() {
+            let output = dir.join("backup.zip");
+            let scope = BackupScope { include_history: false, include_audio: true };
+            let result = write_backup_archive_in_dir(&storage, scope, &output, &adir, &mut |_| {});
+            fs::set_permissions(&adir, fs::Permissions::from_mode(0o700)).unwrap();
+            assert_eq!(result.unwrap_err(), "BACKUP_READ_RECORDINGS");
+            assert!(!output.exists());
+            assert_no_backup_parts(&dir);
+        }
+        fs::set_permissions(&adir, fs::Permissions::from_mode(0o700)).unwrap();
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn unreadable_recording_metadata_aborts_the_backup() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let (storage, dir) = temp_storage("unreadable_recording_metadata");
+        let audio = dir.join("audio");
+        fs::create_dir(&audio).unwrap();
+        fs::write(audio.join("recording.wav"), b"recording").unwrap();
+        fs::set_permissions(&audio, fs::Permissions::from_mode(0o400)).unwrap();
+        let entry = fs::read_dir(&audio).unwrap().next().unwrap().unwrap();
+        // A privileged runner may bypass directory search permissions.
+        if entry.metadata().is_err() {
+            let output = dir.join("backup.zip");
+            let scope = BackupScope { include_history: false, include_audio: true };
+            let result = write_backup_archive_in_dir(&storage, scope, &output, &audio, &mut |_| {});
+            fs::set_permissions(&audio, fs::Permissions::from_mode(0o700)).unwrap();
+            assert_eq!(result, Err("BACKUP_READ_RECORDINGS".into()));
+            assert!(!output.exists());
+            assert_no_backup_parts(&dir);
+        }
+        fs::set_permissions(&audio, fs::Permissions::from_mode(0o700)).unwrap();
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn poisoned_database_lock_fails_backup_instead_of_recovering_silently() {
+        let (storage, dir) = temp_storage("backup_lock");
+        let _ = std::panic::catch_unwind(|| {
+            let _guard = storage.db.lock().unwrap();
+            panic!("simulate interrupted database lock holder");
+        });
+        let output = dir.join("config.json");
+        assert_eq!(write_config_file(&storage, &config_export_selection("full"), &output).unwrap_err(), "BACKUP_READ_DATABASE");
+        assert!(!output.exists());
+        assert_no_backup_parts(&dir);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn poisoned_database_lock_stops_restore_before_installing_recordings() {
+        let (storage, dir) = temp_storage("restore_lock");
+        let _ = std::panic::catch_unwind(|| {
+            let _guard = storage.db.lock().unwrap();
+            panic!("simulate interrupted database lock holder");
+        });
+        let audio = dir.join("audio");
+        let backup = test_backup(&[
+            ("backup.json", &backup_with_history(json!([]))),
+            ("audio/recording.wav", b"recording"),
+        ]);
+        let archive = zip::ZipArchive::new(Cursor::new(backup)).unwrap();
+        assert_eq!(apply_full_backup_archive(&storage, archive, &audio), Err("BACKUP_RESTORE_DB|lock".into()));
+        assert!(!audio.exists());
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn full_config_import_rolls_back_settings_and_both_collections_on_write_failure() {
+        let (storage, dir) = temp_storage("config_transaction");
+        for (key, value) in [
+            ("overlayWidth", json!("long")),
+            ("promptPresets", json!([{ "id": "old-preset" }])),
+            ("appPromptRules", json!([{ "id": "old-rule" }])),
+        ] {
+            storage.set(key, &value).unwrap();
+        }
+        let config = json!({
+            "appSettings": { "overlayWidth": "short" },
+            "promptPresets": [{ "id": "new-preset" }],
+            "appPromptRules": [{ "id": "duplicate" }, { "id": "duplicate" }],
+        });
+        assert!(apply_config_part(&storage, &config, CONFIG_EXCLUDE).is_err());
+        assert_eq!(storage.get("overlayWidth", None), json!("long"));
+        assert_eq!(storage.get("promptPresets", None)[0]["id"], "old-preset");
+        assert_eq!(storage.get("appPromptRules", None)[0]["id"], "old-rule");
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn recording_size_changes_abort_export_without_leaving_a_file() {
+        let (storage, dir) = temp_storage("recording_size_changes");
+        let audio = dir.join("audio");
+        fs::create_dir(&audio).unwrap();
+        let recording = audio.join("recording.wav");
+        let output = dir.join("backup.zip");
+        let scope = BackupScope { include_history: false, include_audio: true };
+        for new_bytes in [b"bigger".as_slice(), b"x".as_slice()] {
+            fs::write(&recording, b"wav").unwrap();
+            let mut wrote_audio = false;
+            let result = write_backup_archive_in_dir(&storage, scope, &output, &audio, &mut |progress| {
+                if progress.phase == "packingData" {
+                    fs::write(&recording, new_bytes).unwrap();
+                }
+                wrote_audio |= progress.phase == "packingAudio";
+            });
+            assert_eq!(result, Err("BACKUP_RECORDING_CHANGED".into()), "{new_bytes:?}");
+            if new_bytes.len() > 3 {
+                assert!(!wrote_audio, "Growing input must be rejected before writing excess data");
+            }
+            assert!(!output.exists());
+            assert_no_backup_parts(&dir);
+        }
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn a_nonregular_recording_after_listing_aborts_without_publishing() {
+        use std::ffi::CString;
+        use std::os::unix::{ffi::OsStrExt, fs::symlink};
+
+        let (storage, dir) = temp_storage("recording_replaced");
+        let audio = dir.join("audio");
+        fs::create_dir(&audio).unwrap();
+        fs::write(dir.join("sample"), b"wav").unwrap();
+        let recording = audio.join("recording.wav");
+        let output = dir.join("backup.zip");
+        let scope = BackupScope { include_history: false, include_audio: true };
+        for fifo in [false, true] {
+            fs::write(&recording, b"wav").unwrap();
+            let result = write_backup_archive_in_dir(&storage, scope, &output, &audio, &mut |progress| {
+                if progress.phase == "packingData" {
+                    fs::remove_file(&recording).unwrap();
+                    if fifo {
+                        let path = CString::new(recording.as_os_str().as_bytes()).unwrap();
+                        assert_eq!(unsafe { libc::mkfifo(path.as_ptr(), 0o600) }, 0);
+                    } else {
+                        symlink(dir.join("sample"), &recording).unwrap();
+                    }
+                }
+            });
+            assert_eq!(result, Err("BACKUP_READ_RECORDINGS".into()));
+            assert!(!output.exists());
+            assert_no_backup_parts(&dir);
+            fs::remove_file(&recording).unwrap();
+        }
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn audio_read_failure_after_starting_export_never_publishes_a_partial_backup() {
+        let (storage, dir) = temp_storage("audio_io");
+        let adir = dir.join("audio");
+        fs::create_dir(&adir).unwrap();
+        let audio = adir.join("recording.wav");
+        fs::write(&audio, b"recording").unwrap();
+        let output = dir.join("backup.zip");
+        fs::write(&output, b"previous backup").unwrap();
+        let scope = BackupScope { include_history: false, include_audio: true };
+        let error = write_backup_archive_in_dir(&storage, scope, &output, &adir, &mut |progress| {
+            if progress.phase == "packingData" {
+                fs::remove_file(&audio).unwrap();
+            }
+        }).unwrap_err();
+        assert_eq!(error, "BACKUP_READ_RECORDINGS");
+        assert_eq!(fs::read(&output).unwrap(), b"previous backup");
+        assert_no_backup_parts(&dir);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn completed_exports_do_not_replace_existing_backups_or_leave_partial_files() {
+        let (storage, dir) = temp_storage("publish_collision");
+        let config = dir.join("config.json");
+        write_config_file(&storage, &config_export_selection("full"), &config).unwrap();
+        let previous = fs::read(&config).unwrap();
+        storage.set("overlayWidth", &json!("changed")).unwrap();
+        assert_eq!(write_config_file(&storage, &config_export_selection("full"), &config), Err("BACKUP_EXPORT_EXISTS".into()));
+        assert_eq!(fs::read(&config).unwrap(), previous);
+        let zip = dir.join("backup.zip");
+        let scope = BackupScope { include_history: false, include_audio: false };
+        write_backup_archive_in_dir(&storage, scope, &zip, &dir, &mut |_| {}).unwrap();
+        let previous = fs::read(&zip).unwrap();
+        storage.set("overlayWidth", &json!("changed again")).unwrap();
+        assert!(write_backup_archive_in_dir(&storage, scope, &zip, &dir, &mut |_| {}).is_err());
+        assert_eq!(fs::read(&zip).unwrap(), previous);
+        assert_no_backup_parts(&dir);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn unsupported_publication_renames_the_complete_file() {
+        let (_storage, dir) = temp_storage("unsupported_publication");
+        let source = dir.join("backup.part");
+        let output = dir.join("backup.zip");
+        #[cfg(target_os = "macos")]
+        let unsupported = [libc::ENOTSUP, libc::EOPNOTSUPP, libc::EINVAL].map(io::Error::from_raw_os_error);
+        #[cfg(not(target_os = "macos"))]
+        let unsupported = [io::ErrorKind::Unsupported, io::ErrorKind::InvalidInput].map(io::Error::from);
+        for error in unsupported {
+            fs::write(&source, b"complete backup").unwrap();
+            publish_with_rename_fallback(&source, &output, || Err(error)).unwrap();
+            assert_eq!(fs::read(&output).unwrap(), b"complete backup");
+            assert!(!source.exists());
+            fs::remove_file(&output).unwrap();
+        }
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn publication_fallback_preserves_an_existing_destination() {
+        let (_storage, dir) = temp_storage("fallback_collision");
+        let source = dir.join("backup.part");
+        let output = dir.join("backup.zip");
+        fs::write(&source, b"new backup").unwrap();
+        fs::write(&output, b"old backup").unwrap();
+        let unsupported = || Err(io::ErrorKind::Unsupported.into());
+        let error = publish_with_rename_fallback(&source, &output, unsupported).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::AlreadyExists);
+        assert_eq!(fs::read(&output).unwrap(), b"old backup");
+        assert_eq!(fs::read(&source).unwrap(), b"new backup");
+        #[cfg(unix)]
+        {
+            fs::remove_file(&output).unwrap();
+            std::os::unix::fs::symlink("missing-backup", &output).unwrap();
+            let error = publish_with_rename_fallback(&source, &output, unsupported).unwrap_err();
+            assert_eq!(error.kind(), io::ErrorKind::AlreadyExists);
+            assert_eq!(fs::read_link(&output).unwrap(), Path::new("missing-backup"));
+        }
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn publication_errors_other_than_unsupported_do_not_fall_back() {
+        let (_storage, dir) = temp_storage("publication_error");
+        let source = dir.join("backup.part");
+        let output = dir.join("backup.zip");
+        fs::write(&source, b"complete backup").unwrap();
+        for kind in [io::ErrorKind::AlreadyExists, io::ErrorKind::PermissionDenied] {
+            let error = publish_with_rename_fallback(&source, &output, || Err(kind.into())).unwrap_err();
+            assert_eq!(error.kind(), kind);
+            assert!(!output.exists());
+            assert_eq!(fs::read(&source).unwrap(), b"complete backup");
+        }
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn model_directory_stays_local_for_full_and_selected_transfers() {
+        let (storage, dir) = temp_storage("model_dir");
+        let local = json!("/example/local/model-files");
+        let old = json!("/example/older/model-files");
+        let key = "localAsr.modelsDir";
+        storage.set(key, &local).unwrap();
+        let full = build_full_value(&storage, BackupScope { include_history: true, include_audio: false }).unwrap();
+        let config = build_config_value(&storage).unwrap();
+        assert!(full["appSettings"].get(key).is_none());
+        assert!(config["appSettings"].get(key).is_none());
+        let mut selection = config_export_selection("selected");
+        selection.include_text_replacements = true;
+        let selected = build_selected_config_value(&storage, &selection).unwrap();
+        assert!(!selected.to_string().contains(local.as_str().unwrap()));
+
+        let mut old_full = full;
+        old_full["appSettings"][key] = old.clone();
+        apply_test_restore(&storage, &old_full, &dir, false).unwrap();
+        assert_eq!(storage.get(key, None), local);
+        let mut old_config = config;
+        old_config["appSettings"][key] = old.clone();
+        apply_config_part(&storage, &old_config, CONFIG_EXCLUDE).unwrap();
+        assert_eq!(storage.get(key, None), local);
+
+        let old_selected = json!({
+            "kind": "config", "formatVersion": 2, "scope": "selected",
+            "appSettings": { (key): old },
+            "items": { "textReplacements": [{ "from": "one", "to": "two" }] },
+        });
+        let plan = build_selected_import_plan(&storage, &old_selected).unwrap();
+        storage.apply_config_transaction(&plan.app_settings, CONFIG_EXCLUDE, plan.prompt_presets.as_deref(), None).unwrap();
+        assert_eq!(storage.get(key, None), local);
+        assert_eq!(storage.get("textReplacements", None)[0]["from"], "one");
+        fs::remove_dir_all(dir).unwrap();
+    }
+
     #[test]
     fn backup_stores_recordings_without_packaging_restore_staging() {
         let (storage, dir) = temp_storage("export_zip");
@@ -1819,11 +2643,11 @@ mod tests {
         let stage = super::super::audio::restore_staging_path(&audio);
         fs::write(&recording, b"recording").unwrap();
         fs::write(&stage, b"interrupted").unwrap();
-        assert!(!collect_audio_export_files(true, &audio).iter().any(|file| file.path == stage));
+        assert!(!collect_audio_export_files(true, &audio).unwrap().iter().any(|file| file.path == stage));
         assert!(!super::super::audio::retained_recordings().unwrap().contains(&stage));
 
         let scope = BackupScope { include_history: false, include_audio: true };
-        write_backup_archive(&storage, scope, &output, &mut |_| {}).unwrap();
+        write_backup_archive_in_dir(&storage, scope, &output, &audio, &mut |_| {}).unwrap();
         let mut archive = zip::ZipArchive::new(fs::File::open(&output).unwrap()).unwrap();
         let recording_name = format!("audio/{}", recording.file_name().unwrap().to_str().unwrap());
         let stage_name = format!("audio/{}", stage.file_name().unwrap().to_str().unwrap());
@@ -1856,7 +2680,7 @@ mod tests {
                 include_history: false,
                 include_audio: false,
             },
-        );
+        ).unwrap();
         assert!(
             config_only.get("history").is_none(),
             "history must be absent, got {:?}",
@@ -1878,7 +2702,7 @@ mod tests {
                 include_history: true,
                 include_audio: false,
             },
-        );
+        ).unwrap();
         assert_eq!(
             with_history
                 .get("history")
@@ -1918,7 +2742,7 @@ mod tests {
         assert_eq!(storage.get("deviceId", None), json!("local-device"));
         assert_eq!(storage.get("overlayWidth", None), json!("long"));
 
-        let exported = build_full_value(&storage, BackupScope { include_history: false, include_audio: false });
+        let exported = build_full_value(&storage, BackupScope { include_history: false, include_audio: false }).unwrap();
         let settings = exported.get("appSettings").and_then(Value::as_object).unwrap();
         assert!(!settings.contains_key("deviceId"));
         assert!(settings.contains_key("overlayWidth"));
@@ -1939,8 +2763,8 @@ mod tests {
         storage.set("overlayWidth", &json!("long")).unwrap();
 
         for exported in [
-            build_config_value(&storage),
-            build_full_value(&storage, BackupScope { include_history: false, include_audio: false }),
+            build_config_value(&storage).unwrap(),
+            build_full_value(&storage, BackupScope { include_history: false, include_audio: false }).unwrap(),
         ] {
             let settings = exported.get("appSettings").and_then(Value::as_object).unwrap();
             for key in settings.keys() {
@@ -2000,7 +2824,7 @@ mod tests {
     /// 不含音频时不去扫 audio 目录，也就不会把别的备份的录音塞进来。
     #[test]
     fn audio_files_are_only_collected_when_requested() {
-        assert!(collect_audio_export_files(false, &audio_dir()).is_empty());
+        assert!(collect_audio_export_files(false, Path::new("unused")).unwrap().is_empty());
     }
 
     #[test]

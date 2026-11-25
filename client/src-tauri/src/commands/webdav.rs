@@ -7,7 +7,7 @@
 //   只含配置的包也是合法的全量 zip，用现有的 `apply_full_backup` 就能恢复。
 // - 只允许 https。WebDAV 用 HTTP Basic 认证，凭证随每个请求明文发送。
 // - 先 PUT 到 `<名字>.part` 再 MOVE 成正式名：网络断在中途留下的半个 zip
-//   不能长得像一个有效备份（和本地导出的 .part + rename 是同一个理由）。
+//   不能长得像一个有效备份（和本地导出的 .part 再发布是同一个理由）。
 // - 上传完必须 PROPFIND 回读一次并比对字节数。「服务器收下了但存坏了/没存」
 //   和「上传成功」在客户端看来一模一样，不回读就分不出来。
 // - 每次备份的结果（成功或失败）都写进 `webdav.lastResult` 并落日志。
@@ -475,7 +475,7 @@ pub async fn webdav_backup_now(
         BACKUP_PREFIX,
         chrono::Local::now().format("%Y-%m-%d_%H-%M-%S-%3f")
     );
-    let temp_path = std::env::temp_dir().join(&file_name);
+    let temp_path = std::env::temp_dir().join(format!("sayit-webdav-{}.zip", uuid::Uuid::new_v4()));
 
     let outcome = run_backup(&app, storage.inner(), scope, &file_name, &temp_path).await;
 
