@@ -810,7 +810,12 @@ fn collect_audio_export_files(include_audio: bool, adir: &Path) -> Result<Vec<Au
     // Backups may read a linked audio directory; the entries below must be regular files.
     let entries = match fs::read_dir(adir) {
         Ok(entries) => entries,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return match fs::symlink_metadata(adir) {
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
+                _ => Err(directory_error(error)),
+            };
+        }
         Err(error) => return Err(directory_error(error)),
     };
     let mut files = Vec::new();
@@ -2336,6 +2341,23 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
+    fn unavailable_linked_audio_directory_aborts_recording_backup() {
+        let (storage, dir) = temp_storage("dangling_audio");
+        let audio = dir.join("audio");
+        std::os::unix::fs::symlink(dir.join("unavailable"), &audio).unwrap();
+        let output = dir.join("backup.zip");
+        let scope = BackupScope { include_history: false, include_audio: true };
+        assert_eq!(
+            write_backup_archive_in_dir(&storage, scope, &output, &audio, &mut |_| {}),
+            Err("BACKUP_READ_RECORDINGS".into()),
+        );
+        assert!(!output.exists());
+        assert_no_backup_parts(&dir);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn unreadable_recording_directory_fails_instead_of_exporting_an_empty_backup() {
         use std::os::unix::fs::PermissionsExt;
 
@@ -2433,6 +2455,35 @@ mod tests {
         assert_eq!(storage.get("overlayWidth", None), json!("long"));
         assert_eq!(storage.get("promptPresets", None)[0]["id"], "old-preset");
         assert_eq!(storage.get("appPromptRules", None)[0]["id"], "old-rule");
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn importing_configuration_and_a_full_archive_preserves_the_recording_hold() {
+        use crate::storage::{recovery::recording_cleanup_protected, StorageRecovery};
+
+        let dir = std::env::temp_dir().join(format!("sayit-backup-recovery-{}", uuid::Uuid::new_v4()));
+        fs::create_dir(&dir).unwrap();
+        let db = dir.join("sayit.db");
+        fs::write(&db, b"damaged test database").unwrap();
+        let (storage, mode) = Storage::open_or_recover(db);
+        assert!(matches!(mode, Some(StorageRecovery::MovedAside { .. })));
+        let config = json!({ "appSettings": { "overlayWidth": "long", "audioRetentionDays": 90 } });
+        apply_config_part(&storage, &config, CONFIG_EXCLUDE).unwrap();
+        assert_eq!(storage.get("overlayWidth", None), json!("long"));
+        assert_eq!(storage.get("audioRetentionDays", None), Value::Null);
+        assert!(recording_cleanup_protected(&dir));
+
+        let data = serde_json::to_vec(&json!({
+            "kind": "full", "formatVersion": 1, "appSettings": { "overlayWidth": "short", "audioRetentionDays": 30 }
+        })).unwrap();
+        let bundle = test_backup(&[("backup.json", &data)]);
+        let archive = zip::ZipArchive::new(Cursor::new(bundle)).unwrap();
+        apply_full_backup_archive(&storage, archive, &dir.join("audio")).unwrap();
+        assert_eq!(storage.get("overlayWidth", None), json!("short"));
+        assert_eq!(storage.get("audioRetentionDays", None), Value::Null);
+        assert!(recording_cleanup_protected(&dir));
+        drop(storage);
         fs::remove_dir_all(dir).unwrap();
     }
 

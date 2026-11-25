@@ -53,16 +53,20 @@ fn browser_args_fingerprint(value: &str) -> String {
 }
 
 // [自訂] S71：啟動與執行中清理都讀目前設定，永遠保留錄音仍以 -1 表示。
-fn cleanup_retained_files(storage: &Storage, recovery_session: bool) {
-    commands::audio::cleanup_retained_recordings(recording_retention_days(storage, recovery_session));
+fn cleanup_retained_files(storage: &Storage, volatile_storage: bool) {
+    commands::audio::cleanup_retained_recordings(recording_retention_days(storage, volatile_storage, &commands::app_data_dir()));
     if let Ok(days) = commands::system::log_retention_days(storage) {
         commands::system::cleanup_retained_logs(days);
     }
 }
 
-// [自訂] L-72：重建資料庫的這次執行無法得知原設定，不清理舊錄音。
-fn recording_retention_days(storage: &Storage, recovery_session: bool) -> Option<i64> {
-    if recovery_session {
+// [自訂] L-72：記憶體庫及仍在保護期間的錄音不按保留天數刪除。
+fn recording_retention_days(
+    storage: &Storage,
+    volatile_storage: bool,
+    dir: &std::path::Path,
+) -> Option<i64> {
+    if volatile_storage || storage::recovery::recording_cleanup_protected(dir) {
         return None;
     }
     match storage.retention_days("audioRetentionDays", 7) {
@@ -74,26 +78,48 @@ fn recording_retention_days(storage: &Storage, recovery_session: bool) -> Option
 /// 本地库坏了、已换新库启动时告诉用户：设置和历史看起来全没了，但旧数据在备份文件里。
 /// 用独立线程弹系统对话框，不挡启动（开机自启时也不会卡在这里）。
 fn notify_storage_recovery(recovery: storage::StorageRecovery) {
-    match &recovery {
-        storage::StorageRecovery::MovedAside { backup, error } => {
-            commands::system::write_log_line(&format!("[storage] recovered: moved the unreadable database to {} error={}", backup.display(), error));
-        }
-        storage::StorageRecovery::InMemory { error } => {
-            commands::system::write_log_line(&format!("[storage] recovered: running on an in-memory database error={}", error));
-        }
-    }
+    let summary = match &recovery {
+        storage::StorageRecovery::MovedAside { .. } => "started with a replacement database",
+        storage::StorageRecovery::MovedAsideInMemory { .. } => "moved the database group; using in-memory storage",
+        storage::StorageRecovery::IncompleteMove => "recovery move did not complete; using in-memory storage",
+        storage::StorageRecovery::InMemory => "database unavailable; using in-memory storage",
+    };
+    commands::system::write_log_line(&format!("[storage] {summary}"));
     // [自訂] SCAN1-2（L-72）：提示改成「副本只在本機、可能含舊資料與密鑰、請自行刪除」，不再請使用者把檔案交給開發者。
     let zh = matches!(locale::system_ui_lang(), locale::Lang::ZhCn);
     let text = match &recovery {
-        storage::StorageRecovery::MovedAside { backup, .. } => if zh {
-            format!("SayItLocally 的本地数据文件损坏，无法读取。\n\n已用全新的数据启动，设置和历史记录暂时为空。\n原文件已保留在：\n{}\n\n这个副本只在本机，可能含有旧的设置、历史记录或密钥。不需要时请自行删除，请勿发给他人。", backup.display())
+        storage::StorageRecovery::MovedAside { backup, orphaned } => {
+            let reason = match (zh, orphaned) {
+                (true, true) => "SayItLocally 发现未配对的数据库伴随文件。",
+                (true, false) => "SayItLocally 的本地数据库文件损坏，无法读取。",
+                (false, true) => "SayItLocally found database companion files without a usable main file.",
+                (false, false) => "SayItLocally could not read its local database because it is damaged.",
+            };
+            if zh {
+                format!("{reason}\n\n已用全新的数据启动，设置和历史记录暂时为空。\n原文件已保留，可在设置的数据库副本列表中查看。副本名称：\n{}\n\n这个副本只在本机，可能含有旧的设置、历史记录或密钥。不需要时请自行删除，请勿发给他人。旧录音已暂停自动清理，可在设置中恢复。", backup.display())
+            } else {
+                format!("{reason}\n\nIt has started with fresh data, so settings and history are empty for now.\nThe original files are in the database copies list in Settings under:\n{}\n\nThis copy stays on this computer and may contain old settings, history or keys. Delete it yourself when you no longer need it, and do not send it to anyone. Automatic recording cleanup is paused. You can resume it in Settings.", backup.display())
+            }
+        }
+        storage::StorageRecovery::MovedAsideInMemory { backup } => if zh {
+            format!("SayItLocally 已保留原数据库文件，但无法打开新数据文件。副本名称：\n{}\n\n本次使用内存，设置和历史记录退出后不会保存。旧录音已暂停自动清理。", backup.display())
         } else {
-            format!("SayItLocally could not read its local data file because it is damaged.\n\nIt has started with fresh data, so settings and history are empty for now.\nThe original file was kept at:\n{}\n\nThis copy stays on this computer and may contain old settings, history or keys. Delete it yourself when you no longer need it, and do not send it to anyone.", backup.display())
+            format!("SayItLocally kept the original database files but could not open a replacement. Copy name:\n{}\n\nSettings and history will not be saved after you quit. Automatic recording cleanup is paused.", backup.display())
         },
-        storage::StorageRecovery::InMemory { .. } => if zh {
-            "SayItLocally 无法创建本地数据文件（磁盘已满或没有写入权限）。\n\n本次可以正常使用，但设置和历史记录在退出后不会保存。".to_string()
+        storage::StorageRecovery::IncompleteMove => {
+            let dir = commands::app_data_dir();
+            let current_files = storage::recovery::MANUAL_RECOVERY_FILES.join("\n");
+            let hold = storage::recovery::RECORDING_HOLD_FILE;
+            if zh {
+                format!("SayItLocally 未完成数据库恢复。原数据库文件未被删除，有些可能已经移入副本。本次使用内存，退出后不会保存本次的设置和历史记录。\n\n数据文件夹：\n{}\n\n1. 退出所有正在运行的 SayItLocally。\n2. 将整个数据文件夹（包括录音和数据库副本）备份到另一个位置。\n3. 把下列仍在原数据文件夹中的项目全部移到同一个新的本地文件夹，保留原文件名。请将已生成的数据库副本留在原处。\n{current_files}\n4. 保留原数据文件夹里的 {hold}。如果没有这个文件，请在原数据文件夹中新建一个同名空白文件（不要加 .txt），以暂停清理旧录音。\n5. 确认第 3 步列出的项目都已移走，再重开 App。App 会建立新数据库，旧数据仍在备份中。如果无法备份、移动文件或写入原文件夹，请先解决访问权限或磁盘空间问题。", dir.display())
+            } else {
+                format!("SayItLocally could not finish database recovery. No original database files were deleted. Some may already be in a recovery copy. This session uses memory, so its settings and history will be lost when you quit.\n\nData folder:\n{}\n\n1. Quit all running instances of SayItLocally.\n2. Back up the entire data folder, including recordings and database copies, to another location.\n3. Move every item listed below that is still in the original data folder into the same new local folder. Keep their names and leave any existing database copies in place.\n{current_files}\n4. Keep {hold} in the original data folder. If it is missing, create an empty file with that exact name (no .txt extension) there to pause cleanup of old recordings.\n5. Verify that none of the items in step 3 remain in the original data folder, then reopen the app. The app will create a fresh database. The backup still contains your old files. If you cannot back up, move, or write files, resolve folder access or disk space first.", dir.display())
+            }
+        },
+        storage::StorageRecovery::InMemory => if zh {
+            "SayItLocally 无法使用本地数据库，可能是其他程序正在使用、没有权限或磁盘已满。应用未搬移原文件。\n\n本次使用内存，设置和历史记录退出后不会保存。".to_string()
         } else {
-            "SayItLocally could not create its local data file (the disk may be full or not writable).\n\nYou can use it now, but settings and history will not be saved after you quit.".to_string()
+            "SayItLocally could not use its local database. Another program may be using it, permissions may be missing, or the disk may be full. The app left the original files in place.\n\nThis session uses memory. Settings and history will not be saved after you quit.".to_string()
         },
     };
     #[cfg(target_os = "windows")]
@@ -478,7 +504,11 @@ fn main() {
     let db_path = commands::app_data_dir().join("sayit.db");
 
     let (storage, storage_recovery) = Storage::open_or_recover(db_path);
-    let recovery_session = storage_recovery.is_some();
+    let volatile_storage = matches!(&storage_recovery, Some(
+        storage::StorageRecovery::InMemory
+        | storage::StorageRecovery::IncompleteMove
+        | storage::StorageRecovery::MovedAsideInMemory { .. }
+    ));
     if let Some(recovery) = storage_recovery {
         notify_storage_recovery(recovery);
     }
@@ -603,12 +633,12 @@ fn main() {
         .manage(commands::update_notification::UpdateNotificationState::default())
         .setup(move |app| {
             // [自訂] SC-51：取得單一實例後才清理，以免後啟動的程序刪除進行中的還原暫存。
-            cleanup_retained_files(app.state::<Storage>().inner(), recovery_session);
+            cleanup_retained_files(app.state::<Storage>().inner(), volatile_storage);
             // [自訂] S71：在背景清理，不依賴 WebView 計時器或 App 重啟。
             let retention_app = app.handle().clone();
             thread::spawn(move || loop {
                 thread::sleep(std::time::Duration::from_secs(15 * 60));
-                cleanup_retained_files(retention_app.state::<Storage>().inner(), recovery_session);
+                cleanup_retained_files(retention_app.state::<Storage>().inner(), volatile_storage);
             });
             // [自訂] S45：清掉上次殘留的診斷包。
             commands::diagnostics::purge_stale_diagnostics_zips();
@@ -780,6 +810,8 @@ fn main() {
             commands::corrupt_db::list_corrupt_db_copies,
             commands::corrupt_db::reveal_corrupt_db_copy,
             commands::corrupt_db::delete_corrupt_db_copy,
+            commands::corrupt_db::recording_cleanup_protected,
+            commands::corrupt_db::resume_recording_cleanup,
             // History
             commands::storage::history_list,
             commands::storage::history_count,
@@ -974,11 +1006,12 @@ fn main() {
 #[test]
 fn recovery_session_preserves_recordings_even_with_a_fresh_database() {
     let storage = Storage::new(std::path::PathBuf::from(":memory:")).unwrap();
-    assert_eq!(recording_retention_days(&storage, false), Some(7));
-    assert_eq!(recording_retention_days(&storage, true), None);
+    let dir = std::env::temp_dir().join(uuid::Uuid::new_v4().to_string());
+    assert_eq!(recording_retention_days(&storage, false, &dir), Some(7));
+    assert_eq!(recording_retention_days(&storage, true, &dir), None);
     storage.set("audioRetentionDays", &serde_json::json!(30)).unwrap();
-    assert_eq!(recording_retention_days(&storage, false), Some(30));
-    assert_eq!(recording_retention_days(&storage, true), None);
+    assert_eq!(recording_retention_days(&storage, false, &dir), Some(30));
+    assert_eq!(recording_retention_days(&storage, true, &dir), None);
 }
 
 #[cfg(test)]
