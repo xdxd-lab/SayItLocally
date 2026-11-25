@@ -1,8 +1,13 @@
-use rusqlite::{params, Connection, OptionalExtension, Result as SqlResult};
+use rusqlite::{params, Connection, OpenFlags, OptionalExtension, Result as SqlResult, TransactionBehavior};
 use serde_json::Value;
+use std::borrow::Cow;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use std::time::Duration;
+
+pub(crate) mod recovery;
+pub(crate) use recovery::StorageRecovery;
 
 /// 新库的种子值。JSON 字面量用不了常量，快捷键几项与 crate::defaults 的对账在 defaults.rs 的测试里。
 pub(crate) const DEFAULT_SETTINGS: &[(&str, &str)] = &[
@@ -45,88 +50,79 @@ fn collection_table(key: &str) -> Option<&'static str> {
 
 pub struct Storage {
     pub db: Mutex<Connection>,
-}
-
-/// 库打不开时做了什么，启动后要告诉用户（数据其实还在备份文件里）。
-#[derive(Debug, Clone)]
-pub enum StorageRecovery {
-    /// 原库打不开，已改名备份，换了一个新库启动。
-    MovedAside { backup: PathBuf, error: String },
-    /// 连新库都建不起来（磁盘满、目录没权限），本次用内存库运行，退出后什么都不留。
-    InMemory { error: String },
+    // Drop SQLite before releasing the process lease.
+    recovery_lease: Option<fs::File>,
 }
 
 impl Storage {
-    /// 打开本地库；打不开就把它挪到一边、换新库启动，绝不让应用起不来。
-    ///
-    /// 原来是 `Storage::new(..).expect(..)`：库文件一坏（断电写到一半、杀毒软件锁住、
-    /// 磁盘坏道），每次启动都在窗口创建之前 panic —— 双击没反应、没有窗口也没有提示，
-    /// 和 0.1.4 那次运行库问题一模一样，用户只能重装，重装还不删这个库，于是永远起不来。
-    /// 现在原文件改名成 `sayit.db.corrupt-<时间>` 保留下来（连同 -wal / -shm），能救的数据还在。
     pub fn open_or_recover(db_path: PathBuf) -> (Self, Option<StorageRecovery>) {
-        match Self::new(db_path.clone()) {
-            Ok(storage) => return (storage, None),
-            Err(first_error) => {
-                let error = first_error.to_string();
-                log::error!("[storage] failed to open {}: {}", db_path.display(), error);
-                let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S");
-                let backup = db_path.with_file_name(format!(
-                    "{}.corrupt-{}",
-                    db_path.file_name().and_then(|n| n.to_str()).unwrap_or("sayit.db"),
-                    stamp
-                ));
-                let moved = fs::rename(&db_path, &backup).is_ok() || !db_path.exists();
-                for suffix in ["-wal", "-shm"] {
-                    let side = PathBuf::from(format!("{}{}", db_path.display(), suffix));
-                    if side.exists() {
-                        let _ = fs::rename(&side, PathBuf::from(format!("{}{}", backup.display(), suffix)));
-                    }
-                }
-                if moved {
-                    match Self::new(db_path.clone()) {
-                        Ok(storage) => {
-                            log::warn!("[storage] started with a fresh database; the old one was kept at {}", backup.display());
-                            return (storage, Some(StorageRecovery::MovedAside { backup, error }));
-                        }
-                        Err(second_error) => {
-                            log::error!("[storage] fresh database also failed: {}", second_error);
-                        }
-                    }
-                }
-                let storage = Self::new(PathBuf::from(":memory:"))
-                    .expect("an in-memory SQLite database must always open");
-                log::error!("[storage] running on an in-memory database; nothing will be saved this session");
-                (storage, Some(StorageRecovery::InMemory { error }))
-            }
-        }
+        recovery::open_or_recover(&db_path, Duration::from_millis(750))
     }
 
-    /// 拿连接。锁被某次 panic「污染」时照样拿：SQLite 连接本身没坏，
-    /// 原来的 `lock().unwrap()` 会让一次意外 panic 之后的每次读写都跟着 panic。
+    /// Use the connection even if an earlier holder panicked.
     fn conn(&self) -> std::sync::MutexGuard<'_, Connection> {
         self.db.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
+    #[cfg(test)]
     pub fn new(db_path: PathBuf) -> SqlResult<Self> {
         if db_path.as_os_str() != ":memory:" {
             if let Some(parent) = db_path.parent() {
-                let _ = fs::create_dir_all(parent);
+                fs::create_dir_all(parent).map_err(|_| rusqlite::Error::InvalidPath(db_path.clone()))?;
             }
         }
-
-        let conn = Connection::open(&db_path)?;
-        conn.execute_batch("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;")?;
-
-        let storage = Self { db: Mutex::new(conn) };
-        storage.apply_migrations()?;
-        storage.seed_defaults()?;
-        Ok(storage)
+        Self::open_sqlite(&db_path, true, Duration::from_secs(5))
     }
 
-    fn apply_migrations(&self) -> SqlResult<()> {
-        let db = self.conn();
+    fn sqlite_path(db_path: &Path) -> SqlResult<Cow<'_, Path>> {
+        if db_path.as_os_str() == ":memory:" || cfg!(not(unix)) {
+            return Ok(Cow::Borrowed(db_path));
+        }
+        // The Unix VFS applies NOFOLLOW to ancestors too. Resolve the directory
+        // (e.g. macOS /var → /private/var), keeping the unopened database filename.
+        let parent = db_path.parent().filter(|path| !path.as_os_str().is_empty()).unwrap_or(Path::new("."));
+        let name = db_path.file_name().ok_or_else(|| rusqlite::Error::InvalidPath(db_path.into()))?;
+        let path = parent.canonicalize()
+            .map_err(|_| rusqlite::Error::InvalidPath(db_path.into()))?.join(name);
+        Ok(Cow::Owned(path))
+    }
 
-        db.execute_batch(
+    fn open_sqlite(db_path: &Path, create: bool, timeout: Duration) -> SqlResult<Self> {
+        let disk = db_path.as_os_str() != ":memory:";
+        let mut flags = OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX
+            | OpenFlags::SQLITE_OPEN_NOFOLLOW | OpenFlags::SQLITE_OPEN_EXRESCODE;
+        if create {
+            flags |= OpenFlags::SQLITE_OPEN_CREATE;
+        }
+        let mut db = Connection::open_with_flags(Self::sqlite_path(db_path)?, flags)?;
+        db.busy_timeout(timeout)?;
+        let no_checkpoint = rusqlite::config::DbConfig::SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE;
+        if disk {
+            // An unsuccessful startup probe must not checkpoint/remove WAL
+            // on close. A successfully opened database keeps normal behavior.
+            db.set_db_config(no_checkpoint, true)?;
+        }
+        db.pragma_update(None, "foreign_keys", true)?;
+        Self::initialize_schema(&mut db)?;
+        if disk {
+            // A database with valid committed schema is usable in its current
+            // journal mode. Request WAL only after initialization succeeds.
+            if let Err(error) = db.pragma_update(None, "journal_mode", "WAL") {
+                log_backup_sqlite_error("set journal mode", &error);
+            }
+            if let Err(error) = db.set_db_config(no_checkpoint, false) {
+                log_backup_sqlite_error("restore checkpoint setting", &error);
+            }
+        }
+        db.busy_timeout(Duration::from_secs(5))?;
+        Ok(Self { db: Mutex::new(db), recovery_lease: None })
+    }
+
+    fn initialize_schema(db: &mut Connection) -> SqlResult<()> {
+        // Both migrations and defaults are atomic, including marker creation.
+        // Check markers only after acquiring SQLite's write lock.
+        let tx = db.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        tx.execute_batch(
             "CREATE TABLE IF NOT EXISTS schema_migrations (
                 version INTEGER PRIMARY KEY,
                 name TEXT NOT NULL,
@@ -134,52 +130,71 @@ impl Storage {
             )"
         )?;
 
-        // Migration 1: init
-        if !Self::migration_exists(&db, 1)? {
-            db.execute_batch(include_str!("migration_001.sql"))?;
-            db.execute(
-                "INSERT INTO schema_migrations (version, name, applied_at) VALUES (?1, ?2, ?3)",
-                params![1, "init-sqlite-storage", chrono::Utc::now().timestamp_millis()],
+        if Self::migration_exists(&tx, 1)? {
+            let table_count: i64 = tx.query_row(
+                "SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name IN
+                 ('db_meta', 'app_settings', 'history_records', 'manual_corrections',
+                  'feedback_queue', 'prompt_presets', 'app_prompt_rules')",
+                [],
+                |row| row.get(0),
             )?;
+            if table_count != 7 {
+                return Err(Self::inconsistent_migration());
+            }
+        } else {
+            // Older versions may have applied all or part of this idempotent DDL.
+            tx.execute_batch(include_str!("migration_001.sql"))?;
+            Self::mark_migration(&tx, 1, "init-sqlite-storage")?;
         }
 
-        // Migration 2: add audio_file_path
-        if !Self::migration_exists(&db, 2)? {
-            db.execute_batch("ALTER TABLE history_records ADD COLUMN audio_file_path TEXT;")?;
-            db.execute(
-                "INSERT INTO schema_migrations (version, name, applied_at) VALUES (?1, ?2, ?3)",
-                params![2, "add-audio-file-path", chrono::Utc::now().timestamp_millis()],
-            )?;
+        let has_audio_path = tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM pragma_table_info('history_records') WHERE name = 'audio_file_path')",
+            [],
+            |row| row.get::<_, bool>(0),
+        )?;
+        if Self::migration_exists(&tx, 2)? {
+            if !has_audio_path {
+                return Err(Self::inconsistent_migration());
+            }
+        } else {
+            if !has_audio_path {
+                tx.execute_batch("ALTER TABLE history_records ADD COLUMN audio_file_path TEXT;")?;
+            }
+            Self::mark_migration(&tx, 2, "add-audio-file-path")?;
         }
 
-        Ok(())
+        Self::seed_defaults(&tx)?;
+        tx.commit()
+    }
+
+    fn inconsistent_migration() -> rusqlite::Error {
+        rusqlite::Error::SqliteFailure(rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_SCHEMA), None)
     }
 
     fn migration_exists(db: &Connection, version: i64) -> SqlResult<bool> {
-        let count: i64 = db.query_row(
-            "SELECT COUNT(*) FROM schema_migrations WHERE version = ?1",
-            params![version],
+        db.query_row(
+            "SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE version = ?1)",
+            [version],
             |row| row.get(0),
-        )?;
-        Ok(count > 0)
+        )
     }
 
-    fn seed_defaults(&self) -> SqlResult<()> {
-        let db = self.conn();
-        let now = chrono::Utc::now().timestamp_millis();
+    fn mark_migration(db: &Connection, version: i64, name: &str) -> SqlResult<()> {
+        db.execute(
+            "INSERT INTO schema_migrations (version, name, applied_at) VALUES (?1, ?2, ?3)",
+            params![version, name, chrono::Utc::now().timestamp_millis()],
+        )?;
+        Ok(())
+    }
 
+    fn seed_defaults(db: &Connection) -> SqlResult<()> {
+        let now = chrono::Utc::now().timestamp_millis();
         for &(key, value_json) in DEFAULT_SETTINGS {
-            let exists: bool = db.query_row(
-                "SELECT COUNT(*) > 0 FROM app_settings WHERE key = ?1",
-                params![key],
-                |row| row.get(0),
+            db.execute(
+                "INSERT INTO app_settings (key, value_json, updated_at)
+                 SELECT ?1, ?2, ?3 WHERE NOT EXISTS (SELECT 1 FROM app_settings WHERE key = ?1)",
+                params![key, value_json, now],
             )?;
-            if !exists {
-                db.execute(
-                    "INSERT INTO app_settings (key, value_json, updated_at) VALUES (?1, ?2, ?3)",
-                    params![key, value_json, now],
-                )?;
-            }
         }
         Ok(())
     }

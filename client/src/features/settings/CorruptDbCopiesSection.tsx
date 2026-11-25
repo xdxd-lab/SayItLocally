@@ -13,11 +13,13 @@ export default function CorruptDbCopiesSection() {
   const t = useT()
   const [copies, setCopies] = useState<bridge.CorruptDbCopy[]>([])
   const [selected, setSelected] = useState<bridge.CorruptDbCopy | null>(null)
+  const [protectedRecordings, setProtectedRecordings] = useState(false)
+  const [confirmResume, setConfirmResume] = useState(false)
   const [readyAt, setReadyAt] = useState<number | null>(null)
   const [unlocked, setUnlocked] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<TranslationKey | null>(null)
-  const deleting = useRef(false)
+  const submitting = useRef(false)
 
   useEffect(() => {
     let active = true
@@ -25,6 +27,11 @@ export default function CorruptDbCopiesSection() {
       if (active) setCopies(result)
     }).catch(() => {
       if (active) setError('settings.corruptDb.listFailed')
+    })
+    void bridge.recordingCleanupProtected().then(result => {
+      if (active) setProtectedRecordings(result)
+    }).catch(() => {
+      if (active) setProtectedRecordings(true)
     })
     return () => { active = false }
   }, [])
@@ -37,27 +44,37 @@ export default function CorruptDbCopiesSection() {
 
   const close = () => {
     setSelected(null)
+    setConfirmResume(false)
     setReadyAt(null)
     setUnlocked(false)
   }
 
-  const remove = async (clickCount: number) => {
-    if (!selected || readyAt === null || deleting.current
+  const confirm = async (clickCount: number) => {
+    if ((!selected && !confirmResume) || readyAt === null || submitting.current
       || !canConfirmHistoryClear(performance.now(), readyAt, clickCount)) return
-    deleting.current = true
+    submitting.current = true
     setBusy(true)
     setError(null)
     try {
-      await bridge.deleteCorruptDbCopy(selected.name)
-      setCopies(current => current.filter(copy => copy.name !== selected.name))
+      if (selected) {
+        await bridge.deleteCorruptDbCopy(selected.name)
+        setCopies(current => current.filter(copy => copy.name !== selected.name))
+      } else {
+        await bridge.resumeRecordingCleanup()
+        setProtectedRecordings(false)
+      }
     } catch {
-      setError('settings.corruptDb.deleteFailed')
-      // A sidecar might have been removed before another file failed.
-      try { setCopies(await bridge.listCorruptDbCopies()) } catch { /* keep the deletion error */ }
+      if (selected) {
+        setError('settings.corruptDb.deleteFailed')
+        // A sidecar might have been removed before another file failed.
+        try { setCopies(await bridge.listCorruptDbCopies()) } catch { /* keep the deletion error */ }
+      } else {
+        setError('settings.corruptDb.resumeFailed')
+      }
     } finally {
       close()
       setBusy(false)
-      deleting.current = false
+      submitting.current = false
     }
   }
 
@@ -71,13 +88,21 @@ export default function CorruptDbCopiesSection() {
   return (
     <>
       {error && <p role="alert" className="text-sm text-destructive">{t(error)}</p>}
-      {copies.length > 0 && (
+      {(copies.length > 0 || protectedRecordings) && (
         <Card>
           <CardContent className="space-y-4 p-6">
             <div>
               <h2 className="text-lg font-semibold">{t('settings.corruptDb.title')}</h2>
               <p className="mt-1 text-sm text-muted-foreground">{t('settings.corruptDb.description')}</p>
             </div>
+            {protectedRecordings && (
+              <div className="space-y-2">
+                <p className="text-sm">{t('settings.corruptDb.recordingsProtected')}</p>
+                <Button size="sm" variant="outline" onClick={() => setConfirmResume(true)}>
+                  {t('settings.corruptDb.resumeCleanup')}
+                </Button>
+              </div>
+            )}
             <ul className="divide-y divide-border">
               {copies.map(copy => (
                 <li key={copy.name} className="flex flex-wrap items-center justify-between gap-2 py-3">
@@ -99,18 +124,22 @@ export default function CorruptDbCopiesSection() {
           </CardContent>
         </Card>
       )}
-      {selected && (
+      {(selected || confirmResume) && (
         <Modal
           key={String(readyAt !== null)}
-          title={t(readyAt === null ? 'settings.corruptDb.deleteTitle' : 'settings.corruptDb.confirmTitle')}
+          title={selected
+            ? t(readyAt === null ? 'settings.corruptDb.deleteTitle' : 'settings.corruptDb.confirmTitle')
+            : t(readyAt === null ? 'settings.corruptDb.resumeTitle' : 'settings.corruptDb.resumeConfirmTitle')}
           onClose={close}
           locked={busy}
           panelClassName="w-96"
         >
           <p className="mt-2 text-sm text-muted-foreground">
-            {t(readyAt === null ? 'settings.corruptDb.deletePrompt' : 'settings.corruptDb.confirmPrompt', {
-              date: selected.createdAtLocal.replace('T', ' '),
-            })}
+            {selected
+              ? t(readyAt === null ? 'settings.corruptDb.deletePrompt' : 'settings.corruptDb.confirmPrompt', {
+                date: selected.createdAtLocal.replace('T', ' '),
+              })
+              : t('settings.corruptDb.resumePrompt')}
           </p>
           <div className="mt-5 flex flex-wrap justify-end gap-2">
             <Button variant="outline" data-modal-autofocus disabled={busy} onClick={close}>{t('common.cancel')}</Button>
@@ -118,11 +147,11 @@ export default function CorruptDbCopiesSection() {
               variant="destructive"
               disabled={busy || (readyAt !== null && !unlocked)}
               onClick={event => {
-                if (readyAt !== null) void remove(event.detail)
+                if (readyAt !== null) void confirm(event.detail)
                 else if (event.detail <= 1) setReadyAt(performance.now() + HISTORY_CLEAR_DELAY_MS)
               }}
             >
-              {t('settings.corruptDb.delete')}
+              {t(selected ? 'settings.corruptDb.delete' : 'settings.corruptDb.resumeCleanup')}
             </Button>
           </div>
         </Modal>

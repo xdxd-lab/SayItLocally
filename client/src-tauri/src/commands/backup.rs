@@ -2459,6 +2459,35 @@ mod tests {
     }
 
     #[test]
+    fn importing_configuration_and_a_full_archive_preserves_the_recording_hold() {
+        use crate::storage::{recovery::recording_cleanup_protected, StorageRecovery};
+
+        let dir = std::env::temp_dir().join(format!("sayit-backup-recovery-{}", uuid::Uuid::new_v4()));
+        fs::create_dir(&dir).unwrap();
+        let db = dir.join("sayit.db");
+        fs::write(&db, b"damaged test database").unwrap();
+        let (storage, mode) = Storage::open_or_recover(db);
+        assert!(matches!(mode, Some(StorageRecovery::MovedAside { .. })));
+        let config = json!({ "appSettings": { "overlayWidth": "long", "audioRetentionDays": 90 } });
+        apply_config_part(&storage, &config, CONFIG_EXCLUDE).unwrap();
+        assert_eq!(storage.get("overlayWidth", None), json!("long"));
+        assert_eq!(storage.get("audioRetentionDays", None), Value::Null);
+        assert!(recording_cleanup_protected(&dir));
+
+        let data = serde_json::to_vec(&json!({
+            "kind": "full", "formatVersion": 1, "appSettings": { "overlayWidth": "short", "audioRetentionDays": 30 }
+        })).unwrap();
+        let bundle = test_backup(&[("backup.json", &data)]);
+        let archive = zip::ZipArchive::new(Cursor::new(bundle)).unwrap();
+        apply_full_backup_archive(&storage, archive, &dir.join("audio")).unwrap();
+        assert_eq!(storage.get("overlayWidth", None), json!("short"));
+        assert_eq!(storage.get("audioRetentionDays", None), Value::Null);
+        assert!(recording_cleanup_protected(&dir));
+        drop(storage);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
     fn recording_size_changes_abort_export_without_leaving_a_file() {
         let (storage, dir) = temp_storage("recording_size_changes");
         let audio = dir.join("audio");

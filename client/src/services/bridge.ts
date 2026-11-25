@@ -300,6 +300,14 @@ export function deleteCorruptDbCopy(name: string) {
   return invoke<void>('delete_corrupt_db_copy', { name })
 }
 
+export function recordingCleanupProtected() {
+  return invoke<boolean>('recording_cleanup_protected')
+}
+
+export function resumeRecordingCleanup() {
+  return invoke<void>('resume_recording_cleanup')
+}
+
 // ─── History ───
 
 export function historyList(query?: {

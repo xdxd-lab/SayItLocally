@@ -1,6 +1,7 @@
 // [自訂] L-72：只管理 SQLite 復原留下的備份及其側車檔。
 use std::{collections::BTreeMap, fs, io, path::{Path, PathBuf}};
 use serde::Serialize;
+use crate::storage::recovery;
 
 const PREFIX: &str = "sayit.db.corrupt-";
 
@@ -18,7 +19,15 @@ struct CopyGroup {
 }
 
 fn backup_timestamp(base: &str) -> Option<chrono::NaiveDateTime> {
-    let stamp = base.strip_prefix(PREFIX)?;
+    let name = base.strip_prefix(PREFIX)?;
+    let stamp = name.get(..15)?;
+    let suffix = name.get(15..)?;
+    if !suffix.is_empty() {
+        let id = suffix.strip_prefix('-')?;
+        if !uuid::Uuid::parse_str(id).is_ok_and(|uuid| uuid.to_string() == id) {
+            return None;
+        }
+    }
     let (date, time) = stamp.split_once('-')?;
     if date.len() != 8 || time.len() != 6 || !date.bytes().chain(time.bytes()).all(|b| b.is_ascii_digit()) {
         return None;
@@ -38,7 +47,8 @@ fn copy_groups(dir: &Path) -> io::Result<BTreeMap<String, CopyGroup>> {
         let entry = entry?;
         let name = entry.file_name();
         let Some(name) = name.to_str() else { continue };
-        let base = name.strip_suffix("-wal").or_else(|| name.strip_suffix("-shm")).unwrap_or(name);
+        let base = recovery::COMPANION_SUFFIXES.iter()
+            .find_map(|suffix| name.strip_suffix(suffix)).unwrap_or(name);
         let Some(timestamp) = backup_timestamp(base) else { continue };
         let path = entry.path();
         let metadata = match fs::symlink_metadata(&path) {
@@ -70,6 +80,10 @@ fn find_copy(dir: &Path, name: &str) -> Result<CopyGroup, String> {
 }
 
 fn delete_copy(dir: &Path, name: &str) -> Result<(), String> {
+    let _startup = recovery::startup_lock(dir).map_err(|error| error.to_string())?;
+    if recovery::recovery_move_pending(dir) {
+        return Err("Database recovery is still pending".into());
+    }
     let mut group = find_copy(dir, name)?;
     // 先處理側車檔，若中途出錯，剩下的檔案在重新列舉後仍可操作。
     group.files.sort_unstable_by_key(|path| path.file_name().is_some_and(|file| file == name));
@@ -118,6 +132,19 @@ pub async fn delete_corrupt_db_copy(name: String) -> Result<(), String> {
         .await.map_err(|error| error.to_string())?
 }
 
+#[tauri::command]
+pub async fn recording_cleanup_protected() -> bool {
+    tauri::async_runtime::spawn_blocking(|| recovery::recording_cleanup_protected(&super::app_data_dir()))
+        .await.unwrap_or(true)
+}
+
+#[tauri::command]
+pub async fn resume_recording_cleanup() -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(|| recovery::resume_recording_cleanup(&super::app_data_dir())
+        .map_err(|error| error.to_string()))
+        .await.map_err(|error| error.to_string())?
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -149,6 +176,32 @@ mod tests {
             assert_eq!(fs::read(dir.join(untouched)).unwrap(), b"test");
         }
         assert!(dir.join(format!("{base}-shm")).is_dir());
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn uuid_group_journal_is_listed_and_deleting_the_copy_preserves_the_recording_hold() {
+        use crate::storage::{Storage, StorageRecovery};
+
+        let dir = std::env::temp_dir().join(format!("sayit-corrupt-test-{}", uuid::Uuid::new_v4()));
+        fs::create_dir(&dir).unwrap();
+        let db = dir.join("sayit.db");
+        fs::write(&db, b"damaged test database").unwrap();
+        let (storage, recovery) = Storage::open_or_recover(db);
+        let Some(StorageRecovery::MovedAside { backup }) = recovery else { panic!("{recovery:?}") };
+        let name = backup.file_name().unwrap().to_str().unwrap();
+        let journal = dir.join(format!("{name}-journal"));
+        fs::write(&journal, b"journal").unwrap();
+        let groups = copy_groups(&dir).unwrap();
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[name].info.size_bytes, 28);
+        assert!(groups[name].files.contains(&journal));
+        assert!(recovery::recording_cleanup_protected(&dir));
+        delete_copy(&dir, name).unwrap();
+        assert!(copy_groups(&dir).unwrap().is_empty());
+        assert!(!journal.exists());
+        assert!(recovery::recording_cleanup_protected(&dir));
+        drop(storage);
         fs::remove_dir_all(dir).unwrap();
     }
 
