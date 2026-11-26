@@ -660,7 +660,15 @@ fn main() {
         .manage(context_detector)
         .manage(commands::update_notification::UpdateNotificationState::default())
         .setup(move |app| {
-            // [自訂] SC-60：外掛在 build 時已建立單例通道，放開啟動鎖讓後來的程序轉交參數。
+            // [自訂] SC-60：外掛在 build 時初始化單例通道，放開啟動鎖讓後來的程序轉交參數。
+            // [自訂] SC-61：外掛 2.5 起 macOS 的通道在背景建立，先等它出現（最多 3 秒）再放開。
+            #[cfg(target_os = "macos")]
+            if startup_lock.is_some() {
+                let socket = instance_lock::single_instance_socket(&app.config().identifier);
+                if !instance_lock::wait_for_path(&socket, std::time::Duration::from_secs(3)) {
+                    log::warn!("[instance] single-instance channel not ready; releasing the startup lock anyway");
+                }
+            }
             drop(startup_lock);
             // [自訂] SC-51：取得單一實例後才清理，以免後啟動的程序刪除進行中的還原暫存。
             cleanup_retained_files(app.state::<Storage>().inner());

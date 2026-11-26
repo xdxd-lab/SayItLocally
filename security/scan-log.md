@@ -306,3 +306,14 @@
   - 本批處理：tauri（GHSA-7gmj、GHSA-w28w）、serde_with、openssl 共 7 項。rand 0.7.3 隨 phf 更新已不在相依中。
   - npm 建置工具待鎖定檔解析：vite、postcss、nanoid、picomatch、source-map-js、postcss-selector-parser、browserslist、baseline-browser-mapping、@babel/core、brace-expansion、@humanfs/node。
   - 未處理：react-router（需升到 7，屬大版本）、glib 0.18（只在 Linux，tauri 2 無修正）、pip（server/）。minimatch 的修正在 11.x，屬大版本，待決定。
+- SC-61 補充（接在 SC-60 之後）：
+  - 單例外掛 2.5 起，macOS 改為在背景非同步 bind 通道。SC-60 原本在使用者 setup 第一行放開啟動鎖，那時通道可能還沒建立，後來的程序會誤判沒有主程序而自行接手，主程序的通道之後也可能被它刪掉。
+  - 現在放開啟動鎖之前，先等通道檔出現，最多 3 秒；逾時就記錄警告並照樣放開。檢查方式只看檔案是否存在、不連線，因為連線會觸發主程序的轉交回呼。
+  - Windows 版外掛仍在 setup 內同步建立互斥鎖與視窗，並新增最多 1 秒的 FindWindow 重試，不受影響。
+  - 外掛 2.5 會在 `cleanup_before_exit` 時釋放通道；程式內重新啟動仍先放開實例鎖（SC-60）。
+  - 新增 2 個測試、3 項變異（不等待、通道路徑規則錯誤、逾時回報成功），全數殺掉。`main` 在 setup 中呼叫等待的接線沒有單元測試。
+  - 其他確認：
+    - Windows 程式碼取得 HWND 時一律取出原始指標再重建，tauri 的 `windows` 0.62 與專案的 0.58 都適用。
+    - 托盘使用 tauri 的 API，macOS 編譯已涵蓋。
+    - `tauri.conf.json` 的 `plugins.shell.open = true` 在 shell 2.6 的設定結構中仍可解析。
+  - 離線驗收：Rust 587 通過、0 失敗、7 個忽略，警告 232 則，與前次逐行相同。

@@ -65,6 +65,29 @@ fn release(instance: &File) {
     }
 }
 
+/// [自訂] SC-61：單例外掛 2.5 起在 macOS 改為背景非同步 bind socket，setup 開始時通道可能還沒建好。
+/// 主程序放開啟動鎖之前先等通道檔出現，後來的程序才不會誤判沒有主程序而自行接手。
+/// 路徑規則與外掛相同（`/tmp/<identifier 的 . 與 - 換成 _>_si.sock`，未開 semver 功能）。
+#[cfg(target_os = "macos")]
+pub(crate) fn single_instance_socket(identifier: &str) -> std::path::PathBuf {
+    std::path::PathBuf::from(format!("/tmp/{}_si.sock", identifier.replace(['.', '-'], "_")))
+}
+
+/// 等到 `path` 存在或逾時；回傳是否出現。只看檔案是否存在，不連線（連線會觸發主程序的轉交回呼）。
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub(crate) fn wait_for_path(path: &Path, wait: Duration) -> bool {
+    let deadline = Instant::now() + wait;
+    loop {
+        if path.exists() {
+            return true;
+        }
+        if Instant::now() >= deadline {
+            return false;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+}
+
 pub(crate) fn role(claim: Claim) -> Role {
     match claim {
         Claim::Primary(primary) => Role::Run(Some(primary)),
@@ -182,6 +205,35 @@ mod tests {
         release.join().unwrap();
         drop(instance);
         fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn waits_for_the_single_instance_channel_before_release() {
+        let dir = temp_dir("socket");
+        let path = dir.join("app_si.sock");
+        assert!(!wait_for_path(&path, Duration::from_millis(60)));
+        let writer = {
+            let path = path.clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_millis(80));
+                fs::write(path, b"").unwrap();
+            })
+        };
+        let started = Instant::now();
+        assert!(wait_for_path(&path, Duration::from_secs(5)));
+        assert!(started.elapsed() >= Duration::from_millis(60));
+        writer.join().unwrap();
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn socket_path_matches_the_plugin() {
+        assert_eq!(
+            single_instance_socket("com.sayitlocally.desktop"),
+            std::path::Path::new("/tmp/com_sayitlocally_desktop_si.sock"),
+        );
+        assert_eq!(single_instance_socket("a-b.c"), std::path::Path::new("/tmp/a_b_c_si.sock"));
     }
 
     #[test]
