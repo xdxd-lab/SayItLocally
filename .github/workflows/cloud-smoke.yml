@@ -69,6 +69,26 @@ jobs:
           npm ci
           npm run build
 
+      # SC-61：前端檢查。失敗不擋後續步驟，逐行印出失敗的測試名稱供對照既有失敗清單。
+      - name: Frontend checks
+        working-directory: src/client
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          date -u
+          status=0
+          npx tsc --noEmit || status=1
+          node scripts/check-i18n.mjs --strict || status=1
+          npx vitest run --reporter=dot --reporter=json --outputFile="$RUNNER_TEMP/vitest.json" || status=1
+          node -e '
+            const report = require(process.argv[1]);
+            const failed = report.testResults.flatMap((file) => file.assertionResults)
+              .filter((test) => test.status === "failed").map((test) => test.fullName).sort();
+            console.log(`vitest passed=${report.numPassedTests} failed=${report.numFailedTests}`);
+            for (const name of failed) console.log(`FAILED: ${name}`);
+          ' "$RUNNER_TEMP/vitest.json" || status=1
+          exit "$status"
+
       - name: Download and verify the model
         run: |
           set -euo pipefail

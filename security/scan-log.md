@@ -284,3 +284,57 @@
   - 以下兩點沒有單元測試，依靠程式碼檢視：`main` 在 setup 第一行放開啟動鎖，以及實例鎖放在全域變數中持有到程序結束。
   - 不同使用者帳號同時執行不在範圍內。
 - SC-60 補充：程式內重新啟動（匯入後的 `restart_app`）會先產生新程序再結束舊程序，過程不經過退出事件。若不處理，新程序會因實例鎖仍被占用而只做轉交，App 不會回來。現在重新啟動前先放開實例鎖，新程序可成為主程序。新增 1 個測試與 1 項變異（不放開），都通過與殺掉；Rust 571 通過、0 失敗、7 個忽略，警告 251 則不變。殘餘：新舊程序會短暫重疊，此時兩者都可能開著資料庫，與修改前相同。main 在開資料庫前就結束的兩個分支（轉交、逾時）沒有單元測試，只鎖住 `role()` 的對應。macOS 更新看門人會等舊程序結束後才重新開啟，不受影響。
+
+### SC-61 tauri 2.12 與相依小版更新
+
+- 範圍：使用者 2026-11-27 同意。本機只執行 `cargo update`、`cargo fetch`，連線對象為 crates.io；npm 鎖定檔另行解析。
+- Rust 升級：
+  - tauri 2.10.3 → 2.12.7，連帶 tauri-build 2.7.6、tauri-runtime 2.12.4、tauri-runtime-wry 2.12.5、tauri-utils 2.10.4、wry 0.57.4、tao 0.37.3、tray-icon 0.25.1、muda 0.20.0。
+  - 外掛：shell 2.6.0、dialog 2.8.4、autostart 2.7.0、global-shortcut 2.4.1、single-instance 2.5.5（fs 隨之升到 2.7.1）。
+  - webview2-com 0.38.2 → 0.39.1、windows-core 0.61 → 0.62（Windows 專用）。
+  - 小版：serde_with 3.18.0 → 3.25.0、openssl 0.10.76 → 0.10.82、openssl-sys 0.9.112 → 0.9.118。
+- 移除 `[patch.crates-io] tray-icon`。原本的修補（Windows 托盘右鍵選單卡住）上游在 0.23 已修好，現在用 0.25.1。`vendor/tray-icon` 已不再被引用，目錄的刪除另行處理。
+- 權限：capabilities 與 CSP 不變。
+  - dialog 2.8 把 `ask`、`confirm` 改走 `message` 指令，預設權限只剩 `allow-message`、`allow-save`、`allow-open`。前端使用的 `confirm` 由 `allow-message` 涵蓋，但前提是前端套件也要是 2.8 版。
+  - tauri 2.12 新增的 `core:app:allow-exit` 不在預設內，前端沒有使用。
+  - 自動產生的權限結構檔（`gen/schemas`）隨版本更新。
+- Windows 程式碼：逐一對照 webview2-com 0.39 的 API。專案用到的部分（各事件處理器的 `create` 與閉包型別、`add_*` 與輸出參數、`take_pwstr`、`PWSTR`、`Interface::cast`、`ICoreWebView2_14`／`_19`）簽名都相同，不需要修改。直接使用的 `windows` 0.58 是另一套型別，tauri 沒有要求升級，維持不變。macOS 上無法編譯 Windows，Windows 編譯與實機行為待驗證。
+- 前端：`package.json` 的 `@tauri-apps/api` 改為 ^2.12.5、`cli` ^2.12.6、`plugin-dialog` ^2.8.4、`plugin-shell` ^2.6.0，與 Rust 端的主次版本對齊；鎖定檔另行解析。
+- 雲端煙霧測試：建置前端後，新增「Frontend checks」步驟，依序執行 tsc、嚴格 i18n、vitest，並逐行印出失敗的測試名稱。這一步失敗不擋後續步驟。未加 Windows job：transcribe-cpp 的 Windows 版即使只跑 `cargo check`，也會執行建置腳本，需要 Vulkan SDK；不用第三方 action 就得自行下載並安裝 SDK，不在本批範圍內。
+- 離線驗收（macOS、固定 1.100.0）：Rust 580 通過、0 失敗、7 個忽略。警告 248 → 232，減少的 16 則全是已移除的 vendor tray-icon 產生的，沒有新增。
+- Dependabot：
+  - 本批處理：tauri（GHSA-7gmj、GHSA-w28w）、serde_with、openssl 共 7 項。rand 0.7.3 隨 phf 更新已不在相依中。
+  - npm 建置工具待鎖定檔解析：vite、postcss、nanoid、picomatch、source-map-js、postcss-selector-parser、browserslist、baseline-browser-mapping、@babel/core、brace-expansion、@humanfs/node。
+  - 未處理：react-router（需升到 7，屬大版本）、glib 0.18（只在 Linux，tauri 2 無修正）、pip（server/）。minimatch 的修正在 11.x，屬大版本，待決定。
+- SC-61 補充（接在 SC-60 之後）：
+  - 單例外掛 2.5 起，macOS 改為在背景非同步 bind 通道。SC-60 原本在使用者 setup 第一行放開啟動鎖，那時通道可能還沒建立，後來的程序會誤判沒有主程序而自行接手，主程序的通道之後也可能被它刪掉。
+  - 現在放開啟動鎖之前，先等通道檔出現，最多 3 秒；逾時就記錄警告並照樣放開。檢查方式只看檔案是否存在、不連線，因為連線會觸發主程序的轉交回呼。
+  - Windows 版外掛仍在 setup 內同步建立互斥鎖與視窗，並新增最多 1 秒的 FindWindow 重試，不受影響。
+  - 外掛 2.5 會在 `cleanup_before_exit` 時釋放通道；程式內重新啟動仍先放開實例鎖（SC-60）。
+  - 新增 2 個測試、3 項變異（不等待、通道路徑規則錯誤、逾時回報成功），全數殺掉。`main` 在 setup 中呼叫等待的接線沒有單元測試。
+  - 其他確認：
+    - Windows 程式碼取得 HWND 時一律取出原始指標再重建，tauri 的 `windows` 0.62 與專案的 0.58 都適用。
+    - 托盘使用 tauri 的 API，macOS 編譯已涵蓋。
+    - `tauri.conf.json` 的 `plugins.shell.open = true` 在 shell 2.6 的設定結構中仍可解析。
+  - 離線驗收：Rust 587 通過、0 失敗、7 個忽略，警告 232 則，與前次逐行相同。
+- SC-61 更正（覆核第一輪）：
+  - 更正上方幾點過時的內容：
+    - npm 鎖定檔已解析，「待鎖定檔解析」不再適用。解析方式為 `--package-lock-only --ignore-scripts`，未安裝套件、未執行腳本。實際版本：
+      - 建置工具：vite 6.4.6、postcss 8.5.33、nanoid 3.3.20、picomatch 2.3.2／4.0.7、source-map-js 1.2.4、postcss-selector-parser 6.1.6、browserslist 4.29.6、baseline-browser-mapping 2.11.39、@babel/core 7.29.13、brace-expansion 5.1.0、@humanfs/node 0.16.8。
+      - tauri 前端套件：@tauri-apps/api 2.12.5、cli 2.12.6、plugin-dialog 2.8.4、plugin-shell 2.6.0。
+    - `vendor/tray-icon` 已刪除。
+    - 上方「Rust 580 通過」的基準應為 585。
+    - Dependabot：預期關閉 tauri、serde_with、openssl 與上列 npm 套件的警示，實際以合併後 Dependabot 的結果為準。
+  - 已決定：
+    - minimatch 維持 10.2.5（修正只在 11.x，警示保留）。
+    - 專案直接使用的 `windows` 0.58 不升級。
+    - 不加 Windows CI。
+    - react-router 不動。
+  - 權限更正：
+    - 上方說 capabilities 不變，是指 capabilities 檔案沒改；預設權限組的內容其實有變。
+    - `core:default`、`core:window:default` 在 2.12.7 新增 4 個權限：`core:app:allow-supports-multiple-windows`、`core:tray:allow-set-icon-with-as-template`、`core:window:allow-activity-name`、`core:window:allow-scene-identifier`。三個視窗都拿得到，屬於查詢或同類設定，風險低。
+    - `dialog:default` 少了 `allow-ask`、`allow-confirm`，屬於縮減權限。前端的 `confirm` 改走 `plugin:dialog|message`。
+  - 殘餘：
+    - 單例通道等待 3 秒逾時後，後來的程序可能刪掉主程序晚建好的通道。
+    - autostart 2.7 改用 auto-launch 0.6：LaunchAgent 的檔名與 Label 不變，多了 `AssociatedBundleIdentifiers`。
+  - `gen/schemas/windows-schema.json`：升級前與 desktop-schema、macOS-schema 三份完全相同。macOS 建置不會改寫它，所以照 desktop-schema 更新，維持三份一致。
