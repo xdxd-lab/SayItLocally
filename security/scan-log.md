@@ -207,3 +207,4 @@
 - 模型從 Hugging Face 下載 SenseVoice 權重後，先核對大小（252684608）與 SHA-256（`6c759ee4…adf29`，與 App 內建清單相同），不符就失敗。下載只發生在雲端 runner，不在使用者電腦。不上傳 artifact，結果只看 log。
 - 新增的 `cloud_smoke_sensevoice` 測試預設忽略，沒有設定 `SAYIT_SMOKE_MODELS_DIR` 時直接略過，本機一般測試不受影響。WAV 依 chunk 解析，只接受 16 kHz、單聲道、16 位元 PCM。
 - 本機離線驗收：Rust 564 通過、0 失敗、7 個忽略（新增 1 個忽略），警告 251 則，與前次相同。GitHub runner 的 Metal 可能不可用而改用 CPU，以實際 log 記錄。待覆核，合併後由 QA1 手動觸發一次。
+- SC-57 補充：GitHub 的 macOS arm64 runner 因容量不足連續兩次排不到（run 45821572115），手動觸發時改為可選 runner：macos-15（預設，arm64）、macos-14、macos-15-intel。其他步驟、權限與限制不變。
