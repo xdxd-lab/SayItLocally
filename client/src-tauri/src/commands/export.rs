@@ -67,9 +67,14 @@ fn resolve_export_path(default_path: &str) -> Result<std::path::PathBuf, String>
         .join(name))
 }
 
-/// [自訂] SC-56：JSON 在寫出前去除本機絕對路徑。CSV、TXT、MD 由前端只放文字欄位，不含路徑欄位，原樣寫出。
+/// [自訂] SC-56：JSON 在寫出前去除本機絕對路徑。
+/// [自訂] SC-59（L-97）：CSV 依表頭找出中繼資料欄，值整格是路徑時清空該格，其餘位元組不變。
+/// TXT、MD 目前沒有產生端，也沒有中繼資料欄，原樣寫出。
 /// 記憶體庫的檢查在呼叫端（prepare_text_export、prepare_files），在建檔之前。
 fn export_content(name: &str, content: &str) -> Result<String, String> {
+    if crate::path_guard::has_extension(Path::new(name), &["csv"]) {
+        return scrub_csv(content);
+    }
     if !crate::path_guard::has_extension(Path::new(name), &["json"]) {
         return Ok(content.to_string());
     }
@@ -77,6 +82,64 @@ fn export_content(name: &str, content: &str) -> Result<String, String> {
         .map_err(|error| format!("Export content is not valid JSON: {error}"))?;
     super::backup::scrub_export_document(&mut document);
     serde_json::to_string_pretty(&document).map_err(|error| error.to_string())
+}
+
+/// 依前端 `escapeCsv` 的寫法切格：逗號分欄、`\n` 分列，雙引號包住的格內 `""` 代表一個引號。
+/// 回傳每列每格在原文中的位元組範圍。
+fn csv_cells(content: &str) -> Result<Vec<Vec<std::ops::Range<usize>>>, String> {
+    let bytes = content.as_bytes();
+    let (mut rows, mut row, mut start, mut quoted) = (Vec::new(), Vec::new(), 0, false);
+    for (index, byte) in bytes.iter().enumerate() {
+        match byte {
+            b'"' => quoted = !quoted,
+            b',' if !quoted => {
+                row.push(start..index);
+                start = index + 1;
+            }
+            b'\n' if !quoted => {
+                row.push(start..index);
+                rows.push(std::mem::take(&mut row));
+                start = index + 1;
+            }
+            _ => {}
+        }
+    }
+    if quoted {
+        return Err("Export content is not valid CSV: unbalanced quotes".to_string());
+    }
+    row.push(start..bytes.len());
+    rows.push(row);
+    Ok(rows)
+}
+
+fn csv_value(cell: &str) -> String {
+    match cell.strip_prefix('"').and_then(|inner| inner.strip_suffix('"')) {
+        Some(inner) => inner.replace("\"\"", "\""),
+        None => cell.to_string(),
+    }
+}
+
+fn scrub_csv(content: &str) -> Result<String, String> {
+    let rows = csv_cells(content)?;
+    let Some((header, records)) = rows.split_first() else { return Ok(content.to_string()) };
+    let columns: Vec<usize> = header.iter().enumerate()
+        .filter(|(_, cell)| super::backup::is_metadata_field(&csv_value(&content[(*cell).clone()])))
+        .map(|(index, _)| index)
+        .collect();
+    let mut cleared: Vec<std::ops::Range<usize>> = records.iter()
+        .flat_map(|row| columns.iter().filter_map(|column| row.get(*column)))
+        .filter(|cell| super::backup::is_local_path(&csv_value(&content[(*cell).clone()])))
+        .cloned()
+        .collect();
+    cleared.sort_by_key(|cell| cell.start);
+    let mut output = String::with_capacity(content.len());
+    let mut copied = 0;
+    for cell in cleared {
+        output.push_str(&content[copied..cell.start]);
+        copied = cell.end;
+    }
+    output.push_str(&content[copied..]);
+    Ok(output)
 }
 
 fn prepare_text_export(storage: &Storage, payload: &TextExportPayload) -> Result<(std::path::PathBuf, String), String> {
@@ -311,5 +374,20 @@ mod sc56_tests {
         assert!(prepare_files(&disk, &broken).is_err());
         drop(disk);
         fs::remove_dir_all(dir).unwrap();
+    }
+
+    // [自訂] SC-59：與前端 historyToCsv 的測試共用 fixture。
+    #[test]
+    fn csv_exports_clear_only_metadata_cells_that_are_paths() {
+        let source = include_str!("testdata/history-export.csv");
+        let expected = include_str!("testdata/history-export.scrubbed.csv");
+        assert_eq!(super::export_content("history.csv", source).unwrap(), expected);
+        assert_eq!(super::export_content("HISTORY.CSV", source).unwrap(), expected);
+        // 沒有路徑時逐位元組不變；使用者文字欄即使整格是路徑也保留。
+        assert_eq!(super::export_content("history.csv", expected).unwrap(), expected);
+        let content = "asrText,appName\n/tmp/kept,\"Notes, Inc\"\n\"$HOME\",smb://nas/x";
+        assert_eq!(super::export_content("a.csv", content).unwrap(), "asrText,appName\n/tmp/kept,\"Notes, Inc\"\n\"$HOME\",");
+        assert!(super::export_content("a.csv", "appName\n\"unterminated").is_err());
+        assert_eq!(super::export_content("a.txt", "appName\n/tmp/x").unwrap(), "appName\n/tmp/x");
     }
 }

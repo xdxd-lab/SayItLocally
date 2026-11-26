@@ -59,7 +59,7 @@ function escapeCsv(value: unknown) {
   return text
 }
 
-function historyToCsv(records: HistoryRecord[]) {
+export function historyToCsv(records: HistoryRecord[]) {
   const headers = [
     'id',
     'timestamp',
