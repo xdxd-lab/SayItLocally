@@ -52,11 +52,28 @@ pub struct Storage {
     pub db: Mutex<Connection>,
     // Drop SQLite before releasing the process lease.
     recovery_lease: Option<fs::File>,
+    // [自訂] SC-55：由開啟目標決定；記憶體庫的內容在退出後消失。
+    volatile: bool,
 }
+
+/// [自訂] SC-55：記憶體庫不接受還原與匯入，前端依此碼顯示說明。
+pub(crate) const VOLATILE_STORAGE_ERROR: &str = "BACKUP_VOLATILE_STORAGE";
 
 impl Storage {
     pub fn open_or_recover(db_path: PathBuf) -> (Self, Option<StorageRecovery>) {
         recovery::open_or_recover(&db_path, Duration::from_secs(5))
+    }
+
+    pub(crate) fn is_volatile(&self) -> bool {
+        self.volatile
+    }
+
+    // [自訂] SC-55：還原與匯入在讀寫任何東西之前呼叫。
+    pub(crate) fn ensure_persistent(&self) -> Result<(), String> {
+        if self.volatile {
+            return Err(VOLATILE_STORAGE_ERROR.into());
+        }
+        Ok(())
     }
 
     /// Use the connection even if an earlier holder panicked.
@@ -115,7 +132,7 @@ impl Storage {
             }
         }
         db.busy_timeout(Duration::from_secs(5))?;
-        Ok(Self { db: Mutex::new(db), recovery_lease: None })
+        Ok(Self { db: Mutex::new(db), recovery_lease: None, volatile: !disk })
     }
 
     fn initialize_schema(db: &mut Connection) -> SqlResult<()> {
@@ -243,6 +260,20 @@ impl Storage {
             None => Ok(default),
             Some(raw) => serde_json::from_str::<i64>(&raw).map_err(|error| error.to_string()),
         }
+    }
+
+    // [自訂] SC-55：只有不存在或空字串才算「未自選」；讀取錯誤或型別不符回 Err，不當成預設。
+    pub(crate) fn custom_models_dir(&self) -> Result<Option<PathBuf>, String> {
+        let db = self.conn();
+        let raw: Option<String> = db.query_row(
+            "SELECT value_json FROM app_settings WHERE key = 'localAsr.modelsDir'",
+            [],
+            |row| row.get(0),
+        ).optional().map_err(|error| error.to_string())?;
+        let Some(raw) = raw else { return Ok(None) };
+        let dir = serde_json::from_str::<String>(&raw).map_err(|error| error.to_string())?;
+        let dir = dir.trim();
+        Ok((!dir.is_empty()).then(|| PathBuf::from(dir)))
     }
 
     pub fn set(&self, key: &str, value: &Value) -> SqlResult<()> {

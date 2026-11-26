@@ -373,7 +373,12 @@ fn build_full_value(storage: &Storage, scope: BackupScope) -> Result<Value, Stri
 
         if scope.include_history {
             for key in ["history", "manualCorrections", "feedbackQueue"] {
-                payload[key] = snapshot.collection(key)?;
+                let mut records = snapshot.collection(key)?;
+                // [自訂] SC-55：備份不帶本機目錄；資料庫內的原值不變。
+                for record in records.as_array_mut().into_iter().flatten() {
+                    strip_audio_directory(record);
+                }
+                payload[key] = records;
             }
         }
         Ok(payload)
@@ -439,6 +444,17 @@ fn apply_config_part(
 fn is_backup_audio_name(name: &str) -> bool {
     name.strip_suffix(".wav")
         .is_some_and(crate::path_guard::is_record_id)
+}
+
+/// [自訂] SC-55：備份寫出時，`audioFilePath` 只留還原端會接受的檔名，其餘移除。
+/// 還原端本來就只取檔名，所以新舊備份還原出的路徑相同。
+fn strip_audio_directory(record: &mut Value) {
+    let Some(record) = record.as_object_mut() else { return };
+    let Some(path) = record.get_mut("audioFilePath") else { return };
+    match path.as_str().map(basename) {
+        Some(name) if is_backup_audio_name(&name) => *path = Value::String(name),
+        _ => { record.remove("audioFilePath"); }
+    }
 }
 
 /// 重写单条历史记录的音频路径：把目录段换成本机 audio 目录，文件名不变。
@@ -1451,7 +1467,17 @@ pub async fn import_config(
     expected_import_token: String,
     storage: State<'_, Storage>,
 ) -> Result<ConfigImportResult, String> {
-    let (data, file_fingerprint) = read_config_file(&in_path)?;
+    apply_config_import(storage.inner(), &in_path, &expected_import_token)
+}
+
+fn apply_config_import(
+    storage: &Storage,
+    in_path: &str,
+    expected_import_token: &str,
+) -> Result<ConfigImportResult, String> {
+    // [自訂] SC-55：記憶體庫在讀檔之前就拒絕，涵蓋 v1、完整與分項匯入。
+    storage.ensure_persistent()?;
+    let (data, file_fingerprint) = read_config_file(in_path)?;
     let version = check_kind_and_version(
         &data,
         "config",
@@ -1459,12 +1485,12 @@ pub async fn import_config(
     )?;
 
     if is_selected_config(&data) {
-        let actual_token = config_import_token(storage.inner(), &data, &file_fingerprint)?;
+        let actual_token = config_import_token(storage, &data, &file_fingerprint)?;
         if actual_token != expected_import_token {
             return Err("The configuration file or local settings changed; select the file again and reconfirm".to_string());
         }
 
-        let plan = build_selected_import_plan(storage.inner(), &data)?;
+        let plan = build_selected_import_plan(storage, &data)?;
         let changed_sections = plan
             .sections
             .iter()
@@ -1497,7 +1523,7 @@ pub async fn import_config(
     }
 
     // 完整配置导入排除 stats，避免覆盖本机使用统计。
-    apply_config_part(storage.inner(), &data, CONFIG_EXCLUDE)?;
+    apply_config_part(storage, &data, CONFIG_EXCLUDE)?;
     Ok(ConfigImportResult {
         changed_sections: vec!["fullConfig".to_string()],
         added: 0,
@@ -1523,6 +1549,8 @@ pub fn apply_full_backup(storage: &Storage, in_path: &str) -> Result<(), String>
 }
 
 fn apply_full_backup_in_dir(storage: &Storage, in_path: &str, adir: &Path) -> Result<(), String> {
+    // [自訂] SC-55：本機匯入與 WebDAV 還原共用；記憶體庫在開檔之前就拒絕。
+    storage.ensure_persistent()?;
     let file = fs::File::open(in_path).map_err(|e| format!("Failed to open file: {}", e))?;
     let archive = zip::ZipArchive::new(file).map_err(|e| format!("Not a valid backup archive: {}", e))?;
     apply_full_backup_archive(storage, archive, adir)
@@ -2458,6 +2486,110 @@ mod tests {
         fs::remove_dir_all(dir).unwrap();
     }
 
+    fn volatile_storage(dir: &Path) -> Storage {
+        // A directory at the database path makes the real startup fall back to memory.
+        let blocked = dir.join("blocked.db");
+        fs::create_dir_all(&blocked).unwrap();
+        let (storage, mode) = Storage::open_or_recover(blocked);
+        assert!(matches!(mode, Some(crate::storage::StorageRecovery::InMemory)));
+        storage.set("overlayWidth", &json!("long")).unwrap();
+        storage.set("history", &json!([{ "id": "kept" }])).unwrap();
+        storage
+    }
+
+    fn assert_volatile_storage_unchanged(storage: &Storage) {
+        assert_eq!(storage.get("overlayWidth", None), json!("long"));
+        assert_eq!(storage.get("history", None), json!([{ "id": "kept" }]));
+        assert_eq!(storage.get("customHotwordThemes", None), Value::Null);
+    }
+
+    #[test]
+    fn volatile_storage_rejects_a_full_restore_before_reading_or_writing_anything() {
+        let (disk, dir) = temp_storage("volatile_full");
+        let storage = volatile_storage(&dir);
+        let audio = dir.join("audio");
+        let path = dir.join("backup.zip");
+        let backup = test_backup(&[
+            ("backup.json", &backup_with_history(json!([{ "id": "new" }]))),
+            ("audio/new.wav", b"audio"),
+        ]);
+        fs::write(&path, backup).unwrap();
+        // A missing file gives the same answer, so nothing was opened first.
+        for source in [path.clone(), dir.join("missing.zip")] {
+            assert_eq!(
+                apply_full_backup_in_dir(&storage, source.to_str().unwrap(), &audio),
+                Err(crate::storage::VOLATILE_STORAGE_ERROR.into()),
+            );
+            assert_eq!(
+                apply_full_backup(&storage, source.to_str().unwrap()),
+                Err(crate::storage::VOLATILE_STORAGE_ERROR.into()),
+            );
+        }
+        assert!(!audio.exists());
+        assert_volatile_storage_unchanged(&storage);
+
+        apply_full_backup_in_dir(&disk, path.to_str().unwrap(), &audio).unwrap();
+        assert_eq!(disk.get("history", None)[0]["id"], "new");
+        assert!(audio.join("new.wav").is_file());
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn volatile_storage_rejects_every_configuration_import_before_reading_the_file() {
+        let (disk, dir) = temp_storage("volatile_config");
+        let storage = volatile_storage(&dir);
+        let full = json!({
+            "kind": "config", "formatVersion": 1,
+            "appSettings": { "overlayWidth": "short" },
+            "promptPresets": [], "appPromptRules": [],
+        });
+        let legacy = json!({
+            "kind": "config", "formatVersion": 1, "appSettings": { "overlayWidth": "short" },
+        });
+        let selected = json!({
+            "kind": "config", "formatVersion": 2, "scope": "selected",
+            "items": { "textReplacements": [{ "id": "r", "from": "a", "to": "b", "enabled": true }] },
+        });
+        for (name, config) in [("full.json", full), ("legacy.json", legacy), ("selected.json", selected)] {
+            let path = dir.join(name);
+            fs::write(&path, serde_json::to_vec(&config).unwrap()).unwrap();
+            let path = path.to_str().unwrap();
+            let (data, fingerprint) = read_config_file(path).unwrap();
+            // The token is valid, so only the storage check can refuse this import.
+            let token = config_import_token(&storage, &data, &fingerprint).unwrap();
+            assert_eq!(
+                apply_config_import(&storage, path, &token).err().as_deref(),
+                Some(crate::storage::VOLATILE_STORAGE_ERROR), "{name}",
+            );
+            let token = config_import_token(&disk, &data, &fingerprint).unwrap();
+            assert!(apply_config_import(&disk, path, &token).unwrap().requires_restart, "{name}");
+        }
+        assert_eq!(
+            apply_config_import(&storage, dir.join("missing.json").to_str().unwrap(), "").err().as_deref(),
+            Some(crate::storage::VOLATILE_STORAGE_ERROR),
+        );
+        assert_volatile_storage_unchanged(&storage);
+        assert!(storage.get("textReplacements", None).is_null());
+        assert_eq!(disk.get("overlayWidth", None), json!("short"));
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn a_replacement_disk_database_accepts_restores() {
+        let dir = std::env::temp_dir().join(format!("sayit-backup-replacement-{}", uuid::Uuid::new_v4()));
+        fs::create_dir(&dir).unwrap();
+        let db = dir.join("sayit.db");
+        fs::write(&db, b"damaged test database").unwrap();
+        let (storage, mode) = Storage::open_or_recover(db);
+        assert!(matches!(mode, Some(crate::storage::StorageRecovery::MovedAside { .. })));
+        let path = dir.join("backup.zip");
+        fs::write(&path, test_backup(&[("backup.json", &backup_with_history(json!([{ "id": "new" }])))])).unwrap();
+        apply_full_backup_in_dir(&storage, path.to_str().unwrap(), &dir.join("audio")).unwrap();
+        assert_eq!(storage.get("history", None)[0]["id"], "new");
+        drop(storage);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
     #[test]
     fn importing_configuration_and_a_full_archive_preserves_the_recording_hold() {
         use crate::storage::{recovery::recording_cleanup_protected, StorageRecovery};
@@ -2870,6 +3002,66 @@ mod tests {
         assert_eq!(ok["audioFilePath"], json!(adir.join("abc123.wav").to_string_lossy()));
         let bad = rewrite_audio_path(&json!({ "audioFilePath": "D:\\old\\audio\\evil.exe" }), adir);
         assert!(bad.get("audioFilePath").is_none());
+    }
+
+    #[test]
+    fn full_backup_keeps_only_recording_names_and_restores_the_same_paths() {
+        let (storage, dir) = temp_storage("audio_names");
+        let history = json!([
+            { "id": "mac", "audioFilePath": "/Volumes/Old Mac/audio/abc123.wav" },
+            { "id": "windows", "audioFilePath": "D:\\old\\audio\\def456.wav" },
+            { "id": "name", "audioFilePath": "ghi789.wav" },
+            { "id": "invalid", "audioFilePath": "/Volumes/Old Mac/audio/evil.exe" },
+            { "id": "directory", "audioFilePath": "/Volumes/Old Mac/audio/" },
+            { "id": "empty", "audioFilePath": "" },
+            { "id": "number", "audioFilePath": 7 },
+            { "id": "null", "audioFilePath": null },
+            { "id": "absent", "asrText": "/Volumes/Old Mac/spoken.wav" },
+        ]);
+        let others = json!([{ "id": "other", "audioFilePath": "/Volumes/Old Mac/audio/abc123.wav" }]);
+        storage.set("history", &history).unwrap();
+        storage.set("manualCorrections", &others).unwrap();
+        storage.set("feedbackQueue", &others).unwrap();
+
+        let output = dir.join("backup.zip");
+        let scope = BackupScope { include_history: true, include_audio: false };
+        write_backup_archive_in_dir(&storage, scope, &output, &dir.join("audio"), &mut |_| {}).unwrap();
+        let mut archive = zip::ZipArchive::new(fs::File::open(&output).unwrap()).unwrap();
+        let mut text = String::new();
+        archive.by_name("backup.json").unwrap().read_to_string(&mut text).unwrap();
+        let payload: Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(payload["history"], json!([
+            { "id": "mac", "audioFilePath": "abc123.wav" },
+            { "id": "windows", "audioFilePath": "def456.wav" },
+            { "id": "name", "audioFilePath": "ghi789.wav" },
+            { "id": "invalid" }, { "id": "directory" }, { "id": "empty" },
+            { "id": "number" }, { "id": "null" },
+            { "id": "absent", "asrText": "/Volumes/Old Mac/spoken.wav" },
+        ]));
+        for key in ["manualCorrections", "feedbackQueue"] {
+            assert_eq!(payload[key], json!([{ "id": "other", "audioFilePath": "abc123.wav" }]));
+        }
+        assert!(!text.contains("Old Mac/audio") && !text.contains("old\\\\audio"));
+        assert_eq!(storage.get("history", None), history);
+        assert_eq!(storage.get("manualCorrections", None), others);
+        assert_eq!(storage.get("feedbackQueue", None), others);
+
+        // The stripped backup and an older one with full paths restore identically.
+        let old = dir.join("old.zip");
+        fs::write(&old, test_backup(&[("backup.json", &backup_with_history(history))])).unwrap();
+        let target = dir.join("restored-audio");
+        for source in [&output, &old] {
+            let restored = Storage::new(dir.join(format!("{}.db", uuid::Uuid::new_v4()))).unwrap();
+            apply_full_backup_in_dir(&restored, source.to_str().unwrap(), &target).unwrap();
+            let records = restored.get("history", None);
+            for (index, name) in ["abc123.wav", "def456.wav", "ghi789.wav"].iter().enumerate() {
+                assert_eq!(records[index]["audioFilePath"], json!(target.join(name).to_string_lossy()));
+            }
+            assert!(records[3].get("audioFilePath").is_none());
+            assert!(records[8].get("audioFilePath").is_none());
+        }
+        drop(storage);
+        fs::remove_dir_all(dir).unwrap();
     }
 
     /// 不含音频时不去扫 audio 目录，也就不会把别的备份的录音塞进来。

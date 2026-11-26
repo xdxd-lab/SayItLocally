@@ -329,12 +329,18 @@ pub fn legacy_models_reclaimed_bytes() -> u64 {
 static RECLAIMED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 /// 启动时在后台回收旧模型（几百 MB 的删除别卡启动路径）。
-pub fn spawn_legacy_reclaim() {
-    std::thread::spawn(|| {
-        let Ok(_storage_lease) = downloader::acquire_model_storage() else { return };
+/// [自訂] SC-55：記憶體庫或讀不到模型目錄設定時，無法確認使用者是否自選，不刪任何檔。
+pub fn spawn_legacy_reclaim(storage: &crate::storage::Storage) -> Option<std::thread::JoinHandle<u64>> {
+    if storage.is_volatile() || storage.custom_models_dir().is_err() {
+        log::info!("Skipped legacy model cleanup because the model directory setting is unavailable");
+        return None;
+    }
+    Some(std::thread::spawn(|| {
+        let Ok(_storage_lease) = downloader::acquire_model_storage() else { return 0 };
         let freed = reclaim_legacy_models(&downloader::default_models_dir(), downloader::has_custom_models_dir());
         RECLAIMED.store(freed, std::sync::atomic::Ordering::Relaxed);
-    });
+        freed
+    }))
 }
 
 #[cfg(test)]
@@ -373,6 +379,46 @@ mod tests {
             assert!(!root.join(file).exists());
         }
         fs::remove_dir_all(root).unwrap();
+    }
+
+    // [自訂] SC-55：啟動入口自己讀「自選」旗標與預設根；設定不可用時不刪檔。
+    #[test]
+    fn startup_reclaim_uses_the_custom_flag_and_skips_unreadable_settings() {
+        use crate::storage::Storage;
+        use std::fs;
+        struct Reset;
+        impl Drop for Reset {
+            fn drop(&mut self) {
+                downloader::set_custom_models_dir(None);
+            }
+        }
+        let _guard = downloader::TEST_MODEL_LEASES.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let _reset = Reset;
+        let default = downloader::default_models_dir();
+        let legacy = default.join("silero_vad.onnx");
+        fs::create_dir_all(&default).unwrap();
+        fs::write(&legacy, b"vad").unwrap();
+        let dir = std::env::temp_dir().join(format!("sayit-reclaim-entry-{}", uuid::Uuid::new_v4()));
+        let disk = Storage::new(dir.join("test.db")).unwrap();
+        let memory = Storage::new(std::path::PathBuf::from(":memory:")).unwrap();
+        assert!(spawn_legacy_reclaim(&memory).is_none());
+        for broken in ["7", "not json"] {
+            disk.db.lock().unwrap().execute(
+                "INSERT OR REPLACE INTO app_settings (key, value_json, updated_at) VALUES ('localAsr.modelsDir', ?1, 0)",
+                [broken],
+            ).unwrap();
+            assert!(spawn_legacy_reclaim(&disk).is_none(), "{broken}");
+        }
+        disk.set("localAsr.modelsDir", &serde_json::json!("")).unwrap();
+        // The same folder saved as a custom choice is never cleaned.
+        downloader::set_custom_models_dir(Some(default.clone()));
+        assert_eq!(spawn_legacy_reclaim(&disk).unwrap().join().unwrap(), 0);
+        assert_eq!(fs::read(&legacy).unwrap(), b"vad");
+        downloader::set_custom_models_dir(None);
+        assert_eq!(spawn_legacy_reclaim(&disk).unwrap().join().unwrap(), 3);
+        assert!(!legacy.exists());
+        drop(disk);
+        fs::remove_dir_all(dir).unwrap();
     }
 
     #[cfg(unix)]

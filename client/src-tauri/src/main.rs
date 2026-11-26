@@ -53,8 +53,8 @@ fn browser_args_fingerprint(value: &str) -> String {
 }
 
 // [自訂] S71：啟動與執行中清理都讀目前設定，永遠保留錄音仍以 -1 表示。
-fn cleanup_retained_files(storage: &Storage, volatile_storage: bool) {
-    commands::audio::cleanup_retained_recordings(recording_retention_days(storage, volatile_storage, &commands::app_data_dir()));
+fn cleanup_retained_files(storage: &Storage) {
+    commands::audio::cleanup_retained_recordings(recording_retention_days(storage, &commands::app_data_dir()));
     if let Ok(days) = commands::system::log_retention_days(storage) {
         commands::system::cleanup_retained_logs(days);
     }
@@ -63,10 +63,9 @@ fn cleanup_retained_files(storage: &Storage, volatile_storage: bool) {
 // [自訂] L-72：記憶體庫及仍在保護期間的錄音不按保留天數刪除。
 fn recording_retention_days(
     storage: &Storage,
-    volatile_storage: bool,
     dir: &std::path::Path,
 ) -> Option<i64> {
-    if volatile_storage || storage::recovery::recording_cleanup_protected(dir) {
+    if storage.is_volatile() || storage::recovery::recording_cleanup_protected(dir) {
         return None;
     }
     match storage.retention_days("audioRetentionDays", 7) {
@@ -504,11 +503,6 @@ fn main() {
     let db_path = commands::app_data_dir().join("sayit.db");
 
     let (storage, storage_recovery) = Storage::open_or_recover(db_path);
-    let volatile_storage = matches!(&storage_recovery, Some(
-        storage::StorageRecovery::InMemory
-        | storage::StorageRecovery::IncompleteMove
-        | storage::StorageRecovery::MovedAsideInMemory { .. }
-    ));
     if let Some(recovery) = storage_recovery {
         notify_storage_recovery(recovery);
     }
@@ -543,10 +537,10 @@ fn main() {
 
     // 自定义模型存储目录：启动时读回并设为进程内生效路径（空串 = 用默认）。
     // 必须在任何取模型路径的调用之前设定，且要在 storage 被 move 进 manage 之前读。
-    let models_dir_val = storage.get("localAsr.modelsDir", None);
-    if let Some(custom_dir) = models_dir_val.as_str().map(str::trim).filter(|s| !s.is_empty()) {
-        models::downloader::set_custom_models_dir(Some(std::path::PathBuf::from(custom_dir)));
-        log::info!("Custom models dir from DB: {}", custom_dir);
+    // [自訂] SC-55：讀不到設定時沿用預設路徑，但啟動回收會跳過（見 spawn_legacy_reclaim）。
+    if let Ok(Some(custom_dir)) = storage.custom_models_dir() {
+        log::info!("Custom models dir from DB: {}", custom_dir.display());
+        models::downloader::set_custom_models_dir(Some(custom_dir));
     }
 
     // ⚠️ 这里**故意不注册** ggml 计算后端。注册动作已下沉到 gguf_asr 的懒路径
@@ -564,7 +558,7 @@ fn main() {
 
     // 回收上一代 sherpa-onnx 时期的模型权重（新引擎读不了，只白占几百 MB ~ 1 GB）。
     // 放后台线程，不让删除卡住启动。
-    models::local_asr::spawn_legacy_reclaim();
+    models::local_asr::spawn_legacy_reclaim(&storage);
 
     // 本地模式：启动就在后台把模型加载起来，别等用户第一次按热键才等几百毫秒~几秒。
     // 非本地模式不加载，避免白占几百 MB 内存。
@@ -633,12 +627,12 @@ fn main() {
         .manage(commands::update_notification::UpdateNotificationState::default())
         .setup(move |app| {
             // [自訂] SC-51：取得單一實例後才清理，以免後啟動的程序刪除進行中的還原暫存。
-            cleanup_retained_files(app.state::<Storage>().inner(), volatile_storage);
+            cleanup_retained_files(app.state::<Storage>().inner());
             // [自訂] S71：在背景清理，不依賴 WebView 計時器或 App 重啟。
             let retention_app = app.handle().clone();
             thread::spawn(move || loop {
                 thread::sleep(std::time::Duration::from_secs(15 * 60));
-                cleanup_retained_files(retention_app.state::<Storage>().inner(), volatile_storage);
+                cleanup_retained_files(retention_app.state::<Storage>().inner());
             });
             // [自訂] S45：清掉上次殘留的診斷包。
             commands::diagnostics::purge_stale_diagnostics_zips();
@@ -1005,13 +999,18 @@ fn main() {
 #[cfg(test)]
 #[test]
 fn recovery_session_preserves_recordings_even_with_a_fresh_database() {
-    let storage = Storage::new(std::path::PathBuf::from(":memory:")).unwrap();
     let dir = std::env::temp_dir().join(uuid::Uuid::new_v4().to_string());
-    assert_eq!(recording_retention_days(&storage, false, &dir), Some(7));
-    assert_eq!(recording_retention_days(&storage, true, &dir), None);
-    storage.set("audioRetentionDays", &serde_json::json!(30)).unwrap();
-    assert_eq!(recording_retention_days(&storage, false, &dir), Some(30));
-    assert_eq!(recording_retention_days(&storage, true, &dir), None);
+    let disk = Storage::new(dir.join("sayit.db")).unwrap();
+    let memory = Storage::new(std::path::PathBuf::from(":memory:")).unwrap();
+    assert_eq!(recording_retention_days(&disk, &dir), Some(7));
+    assert_eq!(recording_retention_days(&memory, &dir), None);
+    for storage in [&disk, &memory] {
+        storage.set("audioRetentionDays", &serde_json::json!(30)).unwrap();
+    }
+    assert_eq!(recording_retention_days(&disk, &dir), Some(30));
+    assert_eq!(recording_retention_days(&memory, &dir), None);
+    drop(disk);
+    std::fs::remove_dir_all(dir).unwrap();
 }
 
 #[cfg(test)]
