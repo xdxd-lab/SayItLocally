@@ -3174,7 +3174,7 @@ mod tests {
         let sentence = "Open /Volumes/Work/notes.txt tomorrow";
         let settings = [
             ("overlayWidth", json!("short")),
-            ("customUnknownFolder", json!("/Users/someone/Exports")),
+            ("customUnknownFolder", json!("/home/someone/Exports")),
             ("customNested", json!({ "folders": ["D:\\Exports", "kept"] })),
             ("customHome", json!("~/Exports")),
             ("customShare", json!("\\\\nas\\share")),
@@ -3185,7 +3185,7 @@ mod tests {
         }
         let history = json!([{
             "id": "abc123", "asrText": sentence, "audioFilePath": "/Volumes/Old/audio/abc123.wav",
-            "windowTitle": "/Users/someone/Documents", "exePath": "C:\\Program Files\\App\\app.exe",
+            "windowTitle": "/home/someone/Documents", "exePath": "C:\\Program Files\\App\\app.exe",
             "appContext": { "exePath": "/Applications/App.app", "processName": "App" },
             "autoAppliedHotwords": ["kept", "file:///tmp/x"],
         }]);
@@ -3194,7 +3194,7 @@ mod tests {
         storage.set("feedbackQueue", &json!([{ "id": "f", "snapshot": { "asrText": "/tmp/x" } }])).unwrap();
         storage.set("promptPresets", &json!([{ "id": "p", "name": "Mine", "systemPrompt": sentence }])).unwrap();
         storage.set("appPromptRules", &json!([{ "id": "r", "matcher": { "exePath": "/Applications/A.app", "appId": "a" } }])).unwrap();
-        storage.set("textReplacements", &json!([{ "id": "t", "from": "/Users/someone", "to": "home" }])).unwrap();
+        storage.set("textReplacements", &json!([{ "id": "t", "from": "/home/someone", "to": "home" }])).unwrap();
         let before: Vec<Value> = ["history", "manualCorrections", "customUnknownFolder", "customNested"]
             .iter().map(|key| storage.get(key, None)).collect();
 

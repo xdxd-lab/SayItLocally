@@ -244,7 +244,7 @@ mod sc56_tests {
         let memory = Storage::new(std::path::PathBuf::from(":memory:")).unwrap();
         let history = json!({
             "total": 1,
-            "filters": { "keyword": "/Users/someone" },
+            "filters": { "keyword": "/home/someone" },
             "records": [{ "id": "abc123", "audioFilePath": "C:\\x\\abc123.wav", "windowTitle": "~/Desktop", "asrText": "say /tmp/x" }],
         }).to_string();
         let text = TextExportPayload { default_path: dir.join("h.json").to_string_lossy().into(), content: history.clone(), filters: None };
