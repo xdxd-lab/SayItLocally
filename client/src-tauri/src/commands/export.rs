@@ -94,20 +94,25 @@ fn prepare_files(storage: &Storage, files: &[ExportFile]) -> Result<Vec<(String,
 
 #[tauri::command]
 pub fn save_text_export(payload: TextExportPayload, storage: tauri::State<'_, Storage>) -> Result<Option<String>, String> {
-    let (path, content) = prepare_text_export(storage.inner(), &payload)?;
-    if let Some(parent) = path.parent() {
-        let _ = fs::create_dir_all(parent);
-    }
-    fs::write(&path, content).map_err(|e| e.to_string())?;
+    let path = write_text_export(storage.inner(), &payload)?;
     let abs = fs::canonicalize(&path).unwrap_or(path);
     let abs_str = abs.to_string_lossy().to_string();
     let clean = abs_str.strip_prefix(r"\\?\").unwrap_or(&abs_str).to_string();
     Ok(Some(clean))
 }
 
-#[tauri::command]
-pub fn save_export_bundle(payload: ExportBundlePayload, storage: tauri::State<'_, Storage>) -> Result<Option<String>, String> {
-    let files = prepare_files(storage.inner(), &payload.files)?;
+// [自訂] SC-56：指令層需要 tauri::State，寫檔流程放在這裡，記憶體庫的檢查在建資料夾之前並可測試。
+fn write_text_export(storage: &Storage, payload: &TextExportPayload) -> Result<std::path::PathBuf, String> {
+    let (path, content) = prepare_text_export(storage, payload)?;
+    if let Some(parent) = path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    fs::write(&path, content).map_err(|e| e.to_string())?;
+    Ok(path)
+}
+
+fn write_export_bundle(storage: &Storage, payload: &ExportBundlePayload) -> Result<std::path::PathBuf, String> {
+    let files = prepare_files(storage, &payload.files)?;
     let path = resolve_export_path(&payload.default_path)?;
     check_export_extension(&path, &["zip"])?;
     if let Some(parent) = path.parent() {
@@ -121,6 +126,12 @@ pub fn save_export_bundle(payload: ExportBundlePayload, storage: tauri::State<'_
     }
 
     zip.finish().map_err(|e| e.to_string())?;
+    Ok(path)
+}
+
+#[tauri::command]
+pub fn save_export_bundle(payload: ExportBundlePayload, storage: tauri::State<'_, Storage>) -> Result<Option<String>, String> {
+    let path = write_export_bundle(storage.inner(), &payload)?;
     let abs = fs::canonicalize(&path).unwrap_or(path);
     let abs_str = abs.to_string_lossy().to_string();
     let clean = abs_str.strip_prefix(r"\\?\").unwrap_or(&abs_str).to_string();
@@ -270,6 +281,32 @@ mod sc56_tests {
         let prepared = prepare_files(&disk, &files).unwrap();
         assert_eq!(serde_json::from_str::<Value>(&prepared[0].1).unwrap(), expected);
         assert_eq!(prepared[1].1, files[1].content);
+        // Nothing is created for an in-memory database, not even the missing folder.
+        let missing = dir.join("missing");
+        let text = TextExportPayload { default_path: missing.join("h.json").to_string_lossy().into(), content: history.clone(), filters: None };
+        let bundle = ExportBundlePayload { default_path: missing.join("b.zip").to_string_lossy().into(), files: vec![] };
+        assert_eq!(write_text_export(&memory, &text), Err(crate::storage::VOLATILE_EXPORT_ERROR.into()));
+        assert_eq!(write_export_bundle(&memory, &bundle), Err(crate::storage::VOLATILE_EXPORT_ERROR.into()));
+        assert!(!missing.exists());
+        assert!(write_text_export(&disk, &text).unwrap().is_file());
+        assert!(write_export_bundle(&disk, &bundle).unwrap().is_file());
+
+        // The hotword export keeps every word, even one that is a whole path.
+        let hotwords = json!({
+            "exportedAt": "2026-11-26T00:00:00Z",
+            "activeWords": ["/dev/null", "kept"],
+            "manualHotwords": ["~/notes", "kept"],
+            "builtinSetWords": { "set1": ["/usr/bin", "kept"] },
+            "builtinSetExtraWords": { "set1": ["C:\\Tools", "kept"] },
+            "customThemes": [{ "id": "t", "name": "/dev", "words": ["/opt"] }],
+            "hotwordLearning": { "candidates": [{ "word": "/etc/hosts", "count": 3 }], "learned": ["~/bin"] },
+        });
+        let files = vec![ExportFile { name: "hotwords.json".into(), content: hotwords.to_string() }];
+        let prepared = prepare_files(&disk, &files).unwrap();
+        assert_eq!(serde_json::from_str::<Value>(&prepared[0].1).unwrap(), hotwords);
+        let text = TextExportPayload { default_path: dir.join("hotwords.json").to_string_lossy().into(), content: hotwords.to_string(), filters: None };
+        assert_eq!(serde_json::from_str::<Value>(&prepare_text_export(&disk, &text).unwrap().1).unwrap(), hotwords);
+
         let broken = vec![ExportFile { name: "x.json".into(), content: "{".into() }];
         assert!(prepare_files(&disk, &broken).is_err());
         drop(disk);

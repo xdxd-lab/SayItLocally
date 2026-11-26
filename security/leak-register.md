@@ -281,3 +281,9 @@
 ### L-72 補記（SC-56）
 
 - 記憶體庫時禁止匯出與備份，不再產生幾乎空的備份；WebDAV 備份（未註冊）也不記錄這次結果。啟動時經過任何資料庫復原就跳過舊模型回收，換新庫的那次啟動也不再清理預設根目錄。
+
+### L-96 更正（SC-56 第三輪）
+
+- 更正上方「L-96 補充（SC-56）」的取捨：使用者內容不再因整段像路徑而刪除。紀錄與集合改為只處理列名的系統中繼資料欄位（`windowTitle`、`exePath`、`processName`、`windowClass`、`appId`、`appName`、`failReason`、`promptSummary`、`styleSummary`，以及 `appContext` 內的路徑值），`audioFilePath` 只留有效檔名；其他欄位與頂層鍵（辨識與更正文字、熱詞、提示詞、名稱、規則比對條件等）原樣寫出與還原。
+- 設定：使用者輸入文字的鍵（`aiPromptAppend`、`contextSelectionEditPrompt`、熱詞相關、`textReplacements`、`hotwordLearning`、`styleProfile`）原樣寫出；其他設定的值含路徑時整鍵不寫出，還原保留本機原值。
+- 未處理：物件鍵為路徑、`\Users`、`%USERPROFILE%`、`$HOME`、`smb://` 等寫法不判為路徑；CSV、診斷包日誌未過濾；WebDAV 備份指令層無單元測試。

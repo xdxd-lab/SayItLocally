@@ -456,56 +456,64 @@ pub(crate) fn is_local_path(value: &str) -> bool {
     }
 }
 
-/// [自訂] SC-56 第二輪：使用者說出或輸入的內容。即使整段像路徑也原樣寫出，只處理中繼資料。
-/// 欄位：辨識與整理文字、手動更正前後文字、回饋備註、文字替換、提示詞、名稱、熱詞、搜尋關鍵字。
-const CONTENT_FIELDS: &[&str] = &[
-    "asrText", "llmText", "originalAsrText", "originalLlmText", "editedAsrText", "editedLlmText",
-    "preferredText", "note", "from", "to", "systemPrompt", "promptAppend", "name", "words",
-    "keyword", "autoAppliedHotwords", "activeWords", "builtinSetWords", "builtinSetExtraWords",
-    "customThemes", "manualHotwords", "hotwordLearning", "styleProfile", "hotwordGroups",
-    "textReplacements",
+/// [自訂] SC-56 第三輪：紀錄與集合只處理這些由系統產生的中繼資料欄位；其他欄位與頂層鍵
+/// （辨識與更正文字、熱詞、提示詞、名稱、比對條件等使用者內容）一律原樣寫出。
+const METADATA_FIELDS: &[&str] = &[
+    "windowTitle", "exePath", "processName", "windowClass", "appId", "appName",
+    "failReason", "promptSummary", "styleSummary",
 ];
-/// 值整個都是使用者內容的設定鍵（熱詞、文字替換、學習結果、風格）。
+/// 整個物件都是錄音當時的系統環境資訊，其中所有路徑值都移除。
+const METADATA_CONTAINERS: &[&str] = &["appContext"];
+/// 值是使用者輸入文字的設定鍵：即使整段像路徑也寫出。其他設定的值含路徑時整鍵不寫出。
 const CONTENT_SETTINGS: &[&str] = &[
-    "hotwords", "builtinSetWords", "builtinSetExtraWords", "customHotwordThemes", "manualHotwords",
-    "textReplacements", "hotwordLearning", "styleProfile",
+    "aiPromptAppend", "contextSelectionEditPrompt", "hotwords", "builtinSetWords",
+    "builtinSetExtraWords", "customHotwordThemes", "manualHotwords", "textReplacements",
+    "hotwordLearning", "styleProfile",
 ];
-
-fn is_content_field(key: &str) -> bool {
-    CONTENT_FIELDS.contains(&key)
-}
 
 fn contains_local_path(value: &Value) -> bool {
     match value {
         Value::String(text) => is_local_path(text),
         Value::Array(items) => items.iter().any(contains_local_path),
-        Value::Object(map) => map.iter().any(|(key, item)| !is_content_field(key) && contains_local_path(item)),
+        Value::Object(map) => map.values().any(contains_local_path),
         _ => false,
     }
 }
 
-/// [自訂] SC-56：紀錄與集合內的路徑欄位或元素移除；`audioFilePath` 依 SC-55 只留有效檔名。
-fn scrub_records(value: &mut Value) {
+/// 中繼資料值裡的路徑：字串整個移除（回傳 false），清單與物件只移除路徑項。
+fn keep_metadata(value: &mut Value) -> bool {
     match value {
+        Value::String(text) => !is_local_path(text),
         Value::Array(items) => {
-            items.retain(|item| !item.as_str().is_some_and(is_local_path));
-            items.iter_mut().for_each(scrub_records);
+            items.retain_mut(keep_metadata);
+            true
         }
         Value::Object(map) => {
+            map.retain(|_, item| keep_metadata(item));
+            true
+        }
+        _ => true,
+    }
+}
+
+/// [自訂] SC-56：紀錄與集合中，只處理列名的中繼資料欄位；`audioFilePath` 依 SC-55 只留有效檔名。
+fn scrub_records(value: &mut Value) {
+    match value {
+        Value::Array(items) => items.iter_mut().for_each(scrub_records),
+        Value::Object(map) => {
             strip_audio_field(map);
-            map.retain(|key, item| is_content_field(key) || !item.as_str().is_some_and(is_local_path));
-            for (key, item) in map.iter_mut() {
-                if !is_content_field(key) {
-                    scrub_records(item);
-                }
-            }
+            map.retain(|key, item| {
+                !(METADATA_FIELDS.contains(&key.as_str()) || METADATA_CONTAINERS.contains(&key.as_str()))
+                    || keep_metadata(item)
+            });
+            map.values_mut().for_each(scrub_records);
         }
         _ => {}
     }
 }
 
-/// [自訂] SC-56：寫出前去除本機絕對路徑。設定鍵的值含路徑時整鍵不寫出（還原時保留本機原值），
-/// 其他內容移除路徑欄位或元素。只改寫出的副本，不改資料庫。
+/// [自訂] SC-56：寫出前去除本機絕對路徑。非內容設定的值含路徑時整鍵不寫出（還原時保留本機原值）；
+/// 紀錄只處理列名的中繼資料欄位。只改寫出的副本，不改資料庫。
 pub(crate) fn scrub_export_document(document: &mut Value) {
     if let Some(Value::Object(settings)) = document.get_mut("appSettings") {
         settings.retain(|key, value| CONTENT_SETTINGS.contains(&key.as_str()) || !contains_local_path(value));
@@ -3156,7 +3164,7 @@ mod tests {
     #[test]
     fn local_path_detection_covers_each_platform_but_not_sentences() {
         for path in [
-            "/Volumes/Old Mac/a.wav", "/home/me/x", "~/Library/x", "~\\Documents", "C:\\Users\\me",
+            "/Volumes/Old Mac/a.wav", "/home/me/x", "~/Library/x", "~\\Documents", "C:\\Data\\me",
             "d:/data", "\\\\server\\share\\x", "file:///tmp/x", "  /tmp/x  ",
         ] {
             assert!(is_local_path(path), "{path}");
@@ -3169,35 +3177,42 @@ mod tests {
         }
     }
 
-    /// Strings outside user content: metadata, settings and keys.
-    fn metadata_strings(value: &Value, settings: bool, out: &mut Vec<String>) {
+    /// Strings in metadata fields and in settings that are not user content.
+    fn metadata_strings(value: &Value, out: &mut Vec<String>) {
+        fn all(value: &Value, out: &mut Vec<String>) {
+            match value {
+                Value::String(text) => out.push(text.clone()),
+                Value::Array(items) => items.iter().for_each(|item| all(item, out)),
+                Value::Object(map) => map.values().for_each(|item| all(item, out)),
+                _ => {}
+            }
+        }
         match value {
-            Value::String(text) => out.push(text.clone()),
-            Value::Array(items) => items.iter().for_each(|item| metadata_strings(item, false, out)),
+            Value::Array(items) => items.iter().for_each(|item| metadata_strings(item, out)),
             Value::Object(map) => map.iter().for_each(|(key, item)| {
-                out.push(key.clone());
-                let content = is_content_field(key) || (settings && CONTENT_SETTINGS.contains(&key.as_str()));
-                if !content {
-                    metadata_strings(item, !settings && key == "appSettings", out);
+                if METADATA_FIELDS.contains(&key.as_str()) || METADATA_CONTAINERS.contains(&key.as_str()) {
+                    all(item, out);
+                } else if key == "appSettings" {
+                    for (setting, item) in item.as_object().into_iter().flatten() {
+                        if !CONTENT_SETTINGS.contains(&setting.as_str()) {
+                            all(item, out);
+                        }
+                    }
+                } else {
+                    metadata_strings(item, out);
                 }
             }),
             _ => {}
         }
     }
 
-    fn metadata_strings_contain(document: &Value, text: &str) -> bool {
+    fn assert_no_local_paths(document: &Value) {
         let mut strings = Vec::new();
-        metadata_strings(document, false, &mut strings);
-        strings.iter().any(|item| item == text)
-    }
-
-    fn assert_no_local_paths(document: &Value, sentence: &str) {
-        let mut strings = Vec::new();
-        metadata_strings(document, false, &mut strings);
+        metadata_strings(document, &mut strings);
+        assert!(!strings.is_empty());
         for text in &strings {
             assert!(!is_local_path(text), "{text}");
         }
-        let _ = sentence;
     }
 
     #[test]
@@ -3210,25 +3225,30 @@ mod tests {
             ("customNested", json!({ "folders": ["D:\\Exports", "kept"] })),
             ("customHome", json!("~/Exports")),
             ("customShare", json!("\\\\nas\\share")),
+            ("customNamed", json!({ "name": "~/Projects" })),
             ("customText", json!(sentence)),
             ("hotwords", json!(["/usr/local/bin", "kept"])),
-            ("customNamed", json!({ "name": "~/Projects" })),
+            ("contextSelectionEditPrompt", json!("/no_think rewrite the selection")),
+            ("aiPromptAppend", json!("/no_think")),
         ];
         for (key, value) in &settings {
             storage.set(key, value).unwrap();
         }
         let history = json!([{
             "id": "abc123", "asrText": "/Volumes/Work/notes.txt", "llmText": sentence,
+            "asrCorrectedText": "/home/someone/proj", "promptPresetName": "/translate",
             "audioFilePath": "/Volumes/Old/audio/abc123.wav",
             "windowTitle": "/home/someone/Documents", "exePath": "C:\\Program Files\\App\\app.exe",
-            "appContext": { "exePath": "/Applications/App.app", "processName": "App" },
+            "failReason": sentence,
+            "appContext": { "exePath": "/Applications/App.app", "processName": "App", "recent": ["~/a.txt", "kept"] },
             "autoAppliedHotwords": ["kept", "file:///tmp/x"],
         }]);
         storage.set("history", &history).unwrap();
         storage.set("manualCorrections", &json!([{ "id": "m", "note": "~/x", "preferredText": sentence }])).unwrap();
         storage.set("feedbackQueue", &json!([{ "id": "f", "snapshot": { "asrText": "/tmp/x" } }])).unwrap();
-        storage.set("promptPresets", &json!([{ "id": "p", "name": "Mine", "systemPrompt": sentence }])).unwrap();
-        storage.set("appPromptRules", &json!([{ "id": "r", "matcher": { "exePath": "/Applications/A.app", "appId": "a" } }])).unwrap();
+        storage.set("promptPresets", &json!([{ "id": "p", "name": "/translate", "systemPrompt": "/no_think be brief" }])).unwrap();
+        let matcher = json!({ "processNames": ["C:\\Apps\\code.exe", "code"], "windowTitleIncludes": ["~/work"] });
+        storage.set("appPromptRules", &json!([{ "id": "r", "appId": "a", "matcher": matcher }])).unwrap();
         storage.set("textReplacements", &json!([{ "id": "t", "from": "/home/someone", "to": "home" }])).unwrap();
         let before: Vec<Value> = ["history", "manualCorrections", "customUnknownFolder", "customNested"]
             .iter().map(|key| storage.get(key, None)).collect();
@@ -3238,30 +3258,33 @@ mod tests {
         write_backup_archive_in_dir(&storage, scope, &output, &dir.join("audio"), &mut |_| {}).unwrap();
         let mut archive = zip::ZipArchive::new(fs::File::open(&output).unwrap()).unwrap();
         let backup: Value = serde_json::from_reader(archive.by_name("backup.json").unwrap()).unwrap();
-        assert_no_local_paths(&backup, sentence);
+        assert_no_local_paths(&backup);
         let exported = &backup["appSettings"];
         assert_eq!(exported["overlayWidth"], json!("short"));
         assert_eq!(exported["customText"], json!(sentence));
-        for key in ["customUnknownFolder", "customNested", "customHome", "customShare"] {
+        for key in ["customUnknownFolder", "customNested", "customHome", "customShare", "customNamed"] {
             assert!(exported.get(key).is_none(), "{key}");
         }
-        assert_eq!(backup["history"][0]["audioFilePath"], json!("abc123.wav"));
-        assert_eq!(backup["history"][0]["appContext"], json!({ "processName": "App" }));
-        // User content keeps whole-path values; metadata drops them.
-        assert_eq!(backup["history"][0]["autoAppliedHotwords"], json!(["kept", "file:///tmp/x"]));
-        assert_eq!(backup["history"][0]["asrText"], json!("/Volumes/Work/notes.txt"));
-        assert!(backup["history"][0].get("windowTitle").is_none());
-        assert!(backup["history"][0].get("exePath").is_none());
+        let record = &backup["history"][0];
+        // Metadata: whole-path values go, list items that are paths go, sentences stay.
+        assert_eq!(record["audioFilePath"], json!("abc123.wav"));
+        assert!(record.get("windowTitle").is_none() && record.get("exePath").is_none());
+        assert_eq!(record["failReason"], json!(sentence));
+        assert_eq!(record["appContext"], json!({ "processName": "App", "recent": ["kept"] }));
+        // User content keeps whole-path values and slash commands.
+        assert_eq!(record["asrText"], json!("/Volumes/Work/notes.txt"));
+        assert_eq!(record["asrCorrectedText"], json!("/home/someone/proj"));
+        assert_eq!(record["promptPresetName"], json!("/translate"));
+        assert_eq!(record["autoAppliedHotwords"], json!(["kept", "file:///tmp/x"]));
         assert_eq!(backup["manualCorrections"][0]["note"], json!("~/x"));
         assert_eq!(backup["feedbackQueue"][0]["snapshot"]["asrText"], json!("/tmp/x"));
-        assert_eq!(exported["hotwords"], json!(["/usr/local/bin", "kept"]));
-        assert_eq!(exported["customNamed"], json!({ "name": "~/Projects" }));
+        assert_eq!(backup["promptPresets"][0]["systemPrompt"], json!("/no_think be brief"));
+        assert_eq!(backup["appPromptRules"][0]["matcher"], matcher);
+        for (key, value) in &settings[6..] {
+            assert_eq!(&exported[*key], value, "{key}");
+        }
         assert_eq!(exported["textReplacements"][0]["from"], json!("/home/someone"));
-        assert_eq!(backup["appPromptRules"][0]["matcher"], json!({ "appId": "a" }));
 
-        // A path inside a sentence in metadata is kept as written.
-        assert_eq!(backup["history"][0]["windowTitle"], Value::Null);
-        assert!(metadata_strings_contain(&backup, sentence));
         for (mode, name) in [("full", "full.json"), ("selected", "selected.json")] {
             let selection: ConfigExportSelection = serde_json::from_value(json!({
                 "mode": mode, "includeTextReplacements": true, "promptPresetIds": ["p"],
@@ -3269,28 +3292,35 @@ mod tests {
             let path = dir.join(name);
             write_config_file(&storage, &selection, &path).unwrap();
             let config: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
-            assert_no_local_paths(&config, sentence);
+            if mode == "full" {
+                assert_no_local_paths(&config);
+                assert_eq!(config["appSettings"]["contextSelectionEditPrompt"], settings[8].1);
+            }
+            assert!(serde_json::to_string(&config).unwrap().contains("/no_think be brief"), "{mode}");
         }
         // The database itself is unchanged.
         let after: Vec<Value> = ["history", "manualCorrections", "customUnknownFolder", "customNested"]
             .iter().map(|key| storage.get(key, None)).collect();
         assert_eq!(after, before);
 
-        // An omitted setting keeps the local value on restore; everything else round-trips.
+        // An omitted setting keeps the local value on restore; user content round-trips unchanged.
         let restored = Storage::new(dir.join("restored.db")).unwrap();
         restored.set("customUnknownFolder", &json!("local value")).unwrap();
         apply_full_backup_in_dir(&restored, output.to_str().unwrap(), &dir.join("restored-audio")).unwrap();
         assert_eq!(restored.get("customUnknownFolder", None), json!("local value"));
-        assert_eq!(restored.get("customText", None), json!(sentence));
-        assert_eq!(restored.get("hotwords", None), json!(["/usr/local/bin", "kept"]));
+        for (key, value) in &settings[6..] {
+            assert_eq!(&restored.get(key, None), value, "{key}");
+        }
+        let records = restored.get("history", None);
+        for key in ["asrText", "asrCorrectedText", "promptPresetName", "autoAppliedHotwords"] {
+            assert_eq!(records[0][key], history[0][key], "{key}");
+        }
         assert_eq!(restored.get("textReplacements", None)[0]["from"], json!("/home/someone"));
-        assert_eq!(restored.get("history", None)[0]["asrText"], json!("/Volumes/Work/notes.txt"));
         assert_eq!(restored.get("manualCorrections", None)[0]["note"], json!("~/x"));
         assert_eq!(restored.get("feedbackQueue", None)[0]["snapshot"]["asrText"], json!("/tmp/x"));
-        assert_eq!(
-            restored.get("history", None)[0]["audioFilePath"],
-            json!(dir.join("restored-audio/abc123.wav").to_string_lossy()),
-        );
+        assert_eq!(restored.get("promptPresets", None)[0]["systemPrompt"], json!("/no_think be brief"));
+        assert_eq!(restored.get("appPromptRules", None)[0]["matcher"], matcher);
+        assert_eq!(records[0]["audioFilePath"], json!(dir.join("restored-audio/abc123.wav").to_string_lossy()));
         drop((storage, restored));
         fs::remove_dir_all(dir).unwrap();
     }
@@ -3299,8 +3329,8 @@ mod tests {
     fn volatile_storage_writes_no_backup_or_configuration_file() {
         let (disk, dir) = temp_storage("volatile_export");
         let storage = volatile_storage(&dir);
+        // The output folder does not exist yet; a refused export must not create it.
         let out = dir.join("out");
-        fs::create_dir(&out).unwrap();
         let audio = dir.join("audio");
         fs::create_dir(&audio).unwrap();
         fs::write(audio.join("abc123.wav"), b"RIFF").unwrap();
@@ -3322,7 +3352,7 @@ mod tests {
                 Err(crate::storage::VOLATILE_EXPORT_ERROR.into()),
             );
         }
-        assert_eq!(fs::read_dir(&out).unwrap().count(), 0);
+        assert!(!out.exists());
         assert_volatile_storage_unchanged(&storage);
         let scope = BackupScope { include_history: true, include_audio: true };
         write_backup_archive_in_dir(&disk, scope, &out.join("backup.zip"), &audio, &mut |_| {}).unwrap();
