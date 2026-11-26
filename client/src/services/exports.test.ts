@@ -45,7 +45,7 @@ it('writes history CSV exactly as the shared Rust fixture expects', () => {
     {
       id: 'r2', timestamp: 1700000001000, favorite: false, appName: 'Notes',
       durationSec: 4, charCount: 7, asrText: '~/notes', llmText: 'D:\\Data\\someone\\x',
-      promptPresetName: '', promptSummary: '', styleSummary: '\\\\server\\share\\s',
+      promptPresetName: '', promptSummary: '/Volumes/My "Disk"/p.txt', styleSummary: '\\\\server\\share\\s',
     },
   ] as unknown as HistoryRecord[]
   expect(historyToCsv(records)).toBe(fixture)

@@ -1,4 +1,4 @@
 id,timestamp,favorite,appName,durationSec,charCount,asrText,llmText,promptPresetName,promptSummary,styleSummary
 r1,1700000000000,true,/Applications/Notes.app,3,10,"Open /Volumes/Work/a.txt, ""quoted""
 line2",,Default,%APPDATA%\SayIt\p.txt,casual
-r2,1700000001000,false,Notes,4,7,~/notes,D:\Data\someone\x,,,\\server\share\s
+r2,1700000001000,false,Notes,4,7,~/notes,D:\Data\someone\x,,"/Volumes/My ""Disk""/p.txt",\\server\share\s

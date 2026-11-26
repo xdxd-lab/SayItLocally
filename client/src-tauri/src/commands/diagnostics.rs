@@ -555,7 +555,8 @@ fn write_diagnostics_zip(
         if img.name.is_empty() {
             format!("screenshot-{}.{}", i + 1, ext)
         } else {
-            img.name.clone()
+            // [自訂] SC-59：截圖檔名也可能含帳號或主機名稱；在去重之前遮蔽。
+            identity.mask(&img.name)
         }
     }).collect::<Vec<_>>();
     let reserved: HashSet<_> = image_names.iter().map(|name| name.to_lowercase()).collect();
@@ -838,7 +839,7 @@ mod sc59_redaction_tests {
             settings: serde_json::json!({"/Users/Zqxtester/k": ["C:\\Users\\zqxtester\\v"], "host": "zqx-studio.local"}),
             issue_occurrence: "older".into(),
             images: vec![DiagImage {
-                name: "shot.png".into(),
+                name: "zqxtester on Zqx-Studio.png".into(),
                 mime_type: "image/png".into(),
                 size: 9,
                 data: b"zqxtester".to_vec(),
@@ -852,6 +853,7 @@ mod sc59_redaction_tests {
         assert_eq!(names.len(), 5, "{names:?}");
         let mut log_text = String::new();
         for name in &names {
+            assert_clean("entry name", name);
             let mut bytes = Vec::new();
             zip.by_name(name).unwrap().read_to_end(&mut bytes).unwrap();
             if name.starts_with("images/") {
