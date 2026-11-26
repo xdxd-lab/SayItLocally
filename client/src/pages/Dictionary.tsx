@@ -22,7 +22,7 @@ import {
 } from '@/lib/asrModels'
 import { cn } from '@/lib/utils'
 import * as bridge from '@/services/bridge'
-import { exportHotwords } from '@/services/exports'
+import { describeExportError, exportHotwords } from '@/services/exports'
 import { getSetting } from '@/services/store'
 import { BUILTIN_SETS, MAX_HOTWORDS } from '@/services/hotwords/model'
 import { builtinInputKey, useHotwordsManager } from '@/services/hotwords/useHotwordsManager'
@@ -540,8 +540,12 @@ export default function Dictionary() {
   const themeSortable = useSortable({ onMove: (from, to) => void moveTheme(from, to) })
 
   const handleExport = async () => {
-    const result = await exportHotwords()
-    setExportMessage(result.canceled ? t('history.exportCanceled') : t('history.savedTo', { path: result.filePath ?? '' }))
+    try {
+      const result = await exportHotwords()
+      setExportMessage(result.canceled ? t('history.exportCanceled') : t('history.savedTo', { path: result.filePath ?? '' }))
+    } catch (error) {
+      setExportMessage(describeExportError(error) ?? t('history.exportFailed'))
+    }
   }
 
   return (

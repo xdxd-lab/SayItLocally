@@ -330,8 +330,9 @@ static RECLAIMED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::n
 
 /// 启动时在后台回收旧模型（几百 MB 的删除别卡启动路径）。
 /// [自訂] SC-55：記憶體庫或讀不到模型目錄設定時，無法確認使用者是否自選，不刪任何檔。
+/// [自訂] SC-56：本次啟動經過任何復原（含換新庫，舊的自選設定已隨舊庫移走）也跳過。
 pub fn spawn_legacy_reclaim(storage: &crate::storage::Storage) -> Option<std::thread::JoinHandle<u64>> {
-    if storage.is_volatile() || storage.custom_models_dir().is_err() {
+    if storage.is_volatile() || storage.recovered_at_startup() || storage.custom_models_dir().is_err() {
         log::info!("Skipped legacy model cleanup because the model directory setting is unavailable");
         return None;
     }
@@ -415,9 +416,19 @@ mod tests {
         assert_eq!(spawn_legacy_reclaim(&disk).unwrap().join().unwrap(), 0);
         assert_eq!(fs::read(&legacy).unwrap(), b"vad");
         downloader::set_custom_models_dir(None);
-        assert_eq!(spawn_legacy_reclaim(&disk).unwrap().join().unwrap(), 3);
+        // A replacement database no longer knows the old custom folder.
+        fs::write(dir.join("damaged.db"), b"not a database").unwrap();
+        let (replacement, mode) = Storage::open_or_recover(dir.join("damaged.db"));
+        assert!(matches!(mode, Some(crate::storage::StorageRecovery::MovedAside { .. })), "{mode:?}");
+        assert!(!replacement.is_volatile());
+        assert!(spawn_legacy_reclaim(&replacement).is_none());
+        assert_eq!(fs::read(&legacy).unwrap(), b"vad");
+        drop(replacement);
+        let (started, mode) = Storage::open_or_recover(dir.join("damaged.db"));
+        assert!(mode.is_none());
+        assert_eq!(spawn_legacy_reclaim(&started).unwrap().join().unwrap(), 3);
         assert!(!legacy.exists());
-        drop(disk);
+        drop((disk, started));
         fs::remove_dir_all(dir).unwrap();
     }
 

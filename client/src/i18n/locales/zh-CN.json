@@ -1034,6 +1034,7 @@
   "backup.writeFile": "无法保存备份文件。",
   "backup.fileExists": "同名备份已存在，请重试。",
   "backup.restoreDatabase": "无法将备份数据写入数据库，现有数据库数据已保留。",
+  "backup.volatileExport": "数据库未能打开，SayItLocally 正在使用临时数据，现在导出或备份的内容不完整。请先按启动时的提示处理，重新打开 SayItLocally 后再试。",
   "backup.volatileStorage": "数据库未能打开，SayItLocally 正在使用临时数据，现在恢复或导入的内容会在退出后消失。请先按启动时的提示处理，重新打开 SayItLocally 后再试。",
   "backup.configTitle": "配置",
   "backup.configDesc": "可选择导出完整设置，或单独导出热词、文本替换和润色模式",

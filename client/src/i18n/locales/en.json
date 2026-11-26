@@ -1034,6 +1034,7 @@
   "backup.writeFile": "Could not save the backup file.",
   "backup.fileExists": "A backup with the same name already exists. Try again.",
   "backup.restoreDatabase": "The backup data could not be saved to the database. Existing database data was preserved.",
+  "backup.volatileExport": "SayItLocally is using temporary data because its database could not be opened, so an export or backup now would be incomplete. Follow the message shown at startup, reopen SayItLocally, and then try again.",
   "backup.volatileStorage": "SayItLocally is using temporary data because its database could not be opened, so anything restored or imported now would disappear when you quit. Follow the message shown at startup, reopen SayItLocally, and then try again.",
   "backup.configTitle": "Settings",
   "backup.configDesc": "Export everything, or just your hotwords, text replacements or cleanup presets",

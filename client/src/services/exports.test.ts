@@ -1,5 +1,5 @@
 import { expect, it, vi } from 'vitest'
-import { exportHistory } from './exports'
+import { describeExportError, exportHistory } from './exports'
 
 const mocks = vi.hoisted(() => ({
   confirm: vi.fn(async () => false),
@@ -23,4 +23,10 @@ it('confirms the filtered snapshot count and does not write when canceled', asyn
   expect(mocks.listHistory).toHaveBeenCalledWith({ favoriteOnly: true })
   expect(mocks.confirm).toHaveBeenCalledWith('history.exportConfirmCount 1', expect.any(Object))
   expect(mocks.saveTextExport).not.toHaveBeenCalled()
+})
+
+it('explains only the in-memory export refusal and leaves other errors to the caller', () => {
+  expect(describeExportError('BACKUP_VOLATILE_EXPORT')).toBe('backup.volatileExport')
+  expect(describeExportError(new Error('BACKUP_VOLATILE_EXPORT'))).toBe('backup.volatileExport')
+  expect(describeExportError(new Error('disk full'))).toBeNull()
 })

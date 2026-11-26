@@ -251,6 +251,12 @@ export async function exportSettings() {
   )
 }
 
+/** [自訂] SC-56：記憶體庫時匯出被拒，回傳說明；其他錯誤由呼叫端用原本的提示。 */
+export function describeExportError(error: unknown): string | null {
+  const raw = error instanceof Error ? error.message : String(error)
+  return raw.trim() === 'BACKUP_VOLATILE_EXPORT' ? t('backup.volatileExport') : null
+}
+
 export async function exportHotwords() {
   const payload = await buildHotwordsPayload()
   return saveTextFile(
