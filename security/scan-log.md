@@ -218,3 +218,4 @@
 - 雲端煙霧測試的環境步驟加印 `rustup show active-toolchain`，其他步驟不變。
 - 固定 Rust 1.100.0 未納入此次提交：本機只裝了 `stable`（即 1.100.0），`rust-toolchain.toml` 指定 `1.100.0` 時，rustup 回報該工具鏈未安裝、需要下載，依規格停手，待 PM 決定。
 - 離線驗收：Rust 565 通過、0 失敗、7 個忽略（新增 1 個測試），警告 251 則，與基準逐行相同。變異自查 10 項：第一版有 1 項存活（呼叫端移除錯誤碼判斷），改為純函式並補測後，第二版 6 項全數殺掉。待覆核。
+- SC-58 補充（固定 Rust）：使用者選擇在本機安裝 1.100.0（minimal，rustc `0ef1bc386`），由 t2h 安裝。新增 `client/src-tauri/rust-toolchain.toml`：`channel = "1.100.0"`、`profile = "minimal"`，不加其他元件與 targets。本機以 `RUSTUP_AUTO_INSTALL=0` 經 rustup 執行 `cargo test --offline --locked`，解析到 1.100.0，沒有要求下載。結果 565 通過、0 失敗、7 個忽略，警告 251 則，與基準逐行相同。雲端煙霧測試的環境步驟改在 `src/client/src-tauri` 執行，並先執行 `rustc --version`，讓 runner 依此檔安裝並印出固定版本。可接受殘餘：固定版本後，雲端不再測到其他 Rust 版本的差異（使用者選擇）。

@@ -46,13 +46,15 @@ jobs:
           git -C src log -1 --format='%H %cI'
 
       - name: Show the environment
+        # Run beside rust-toolchain.toml so the pinned Rust is installed and reported.
+        working-directory: src/client/src-tauri
         run: |
           set -euo pipefail
           date -u
           uname -a
           sysctl -n hw.ncpu hw.memsize
-          rustup show active-toolchain
           rustc --version
+          rustup show active-toolchain
           cargo --version
           node --version
           npm --version
