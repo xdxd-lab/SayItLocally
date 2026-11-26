@@ -53,6 +53,7 @@ jobs:
           date -u
           uname -a
           sysctl -n hw.ncpu hw.memsize
+          rustup toolchain install
           rustc --version
           rustup show active-toolchain
           cargo --version

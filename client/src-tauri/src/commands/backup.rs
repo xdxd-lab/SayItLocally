@@ -1119,10 +1119,22 @@ fn publish_with_rename_fallback(
     output: &Path,
     publish: impl FnOnce() -> std::io::Result<()>,
 ) -> std::io::Result<()> {
+    publish_with_fallback_check(source, output, publish, is_unsupported_publication)
+}
+
+/// The check is a parameter so tests can confirm the raw OS code reaches it,
+/// whatever kind the current Rust gives that code.
+#[cfg(any(not(windows), test))]
+fn publish_with_fallback_check(
+    source: &Path,
+    output: &Path,
+    publish: impl FnOnce() -> std::io::Result<()>,
+    is_unsupported: impl FnOnce(std::io::ErrorKind, Option<i32>) -> bool,
+) -> std::io::Result<()> {
     use std::io::{Error, ErrorKind};
 
     let Err(error) = publish() else { return Ok(()); };
-    if !is_unsupported_publication(error.kind(), error.raw_os_error()) {
+    if !is_unsupported(error.kind(), error.raw_os_error()) {
         return Err(error);
     }
 
@@ -2850,6 +2862,23 @@ mod tests {
         assert!(is_unsupported_publication(io::ErrorKind::Unsupported, None));
         assert!(is_unsupported_publication(io::ErrorKind::InvalidInput, None));
         assert!(!is_unsupported_publication(io::ErrorKind::PermissionDenied, Some(libc::EACCES)));
+    }
+
+    #[test]
+    fn publication_fallback_checks_the_raw_os_code() {
+        let (_storage, dir) = temp_storage("fallback_raw_code");
+        let source = dir.join("backup.part");
+        let output = dir.join("backup.zip");
+        fs::write(&source, b"complete backup").unwrap();
+        let by_code = |_kind, code| code == Some(45);
+        let error = publish_with_fallback_check(&source, &output, || Err(io::Error::from_raw_os_error(13)), by_code)
+            .unwrap_err();
+        assert_eq!(error.raw_os_error(), Some(13));
+        assert!(!output.exists());
+        publish_with_fallback_check(&source, &output, || Err(io::Error::from_raw_os_error(45)), by_code).unwrap();
+        assert_eq!(fs::read(&output).unwrap(), b"complete backup");
+        assert!(!source.exists());
+        fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]
