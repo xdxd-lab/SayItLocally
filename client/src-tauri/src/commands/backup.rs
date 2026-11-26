@@ -373,7 +373,12 @@ fn build_full_value(storage: &Storage, scope: BackupScope) -> Result<Value, Stri
 
         if scope.include_history {
             for key in ["history", "manualCorrections", "feedbackQueue"] {
-                payload[key] = snapshot.collection(key)?;
+                let mut records = snapshot.collection(key)?;
+                // [自訂] SC-55：備份不帶本機目錄；資料庫內的原值不變。
+                for record in records.as_array_mut().into_iter().flatten() {
+                    strip_audio_directory(record);
+                }
+                payload[key] = records;
             }
         }
         Ok(payload)
@@ -439,6 +444,17 @@ fn apply_config_part(
 fn is_backup_audio_name(name: &str) -> bool {
     name.strip_suffix(".wav")
         .is_some_and(crate::path_guard::is_record_id)
+}
+
+/// [自訂] SC-55：備份寫出時，`audioFilePath` 只留還原端會接受的檔名，其餘移除。
+/// 還原端本來就只取檔名，所以新舊備份還原出的路徑相同。
+fn strip_audio_directory(record: &mut Value) {
+    let Some(record) = record.as_object_mut() else { return };
+    let Some(path) = record.get_mut("audioFilePath") else { return };
+    match path.as_str().map(basename) {
+        Some(name) if is_backup_audio_name(&name) => *path = Value::String(name),
+        _ => { record.remove("audioFilePath"); }
+    }
 }
 
 /// 重写单条历史记录的音频路径：把目录段换成本机 audio 目录，文件名不变。
@@ -2986,6 +3002,66 @@ mod tests {
         assert_eq!(ok["audioFilePath"], json!(adir.join("abc123.wav").to_string_lossy()));
         let bad = rewrite_audio_path(&json!({ "audioFilePath": "D:\\old\\audio\\evil.exe" }), adir);
         assert!(bad.get("audioFilePath").is_none());
+    }
+
+    #[test]
+    fn full_backup_keeps_only_recording_names_and_restores_the_same_paths() {
+        let (storage, dir) = temp_storage("audio_names");
+        let history = json!([
+            { "id": "mac", "audioFilePath": "/Volumes/Old Mac/audio/abc123.wav" },
+            { "id": "windows", "audioFilePath": "D:\\old\\audio\\def456.wav" },
+            { "id": "name", "audioFilePath": "ghi789.wav" },
+            { "id": "invalid", "audioFilePath": "/Volumes/Old Mac/audio/evil.exe" },
+            { "id": "directory", "audioFilePath": "/Volumes/Old Mac/audio/" },
+            { "id": "empty", "audioFilePath": "" },
+            { "id": "number", "audioFilePath": 7 },
+            { "id": "null", "audioFilePath": null },
+            { "id": "absent", "asrText": "/Volumes/Old Mac/spoken.wav" },
+        ]);
+        let others = json!([{ "id": "other", "audioFilePath": "/Volumes/Old Mac/audio/abc123.wav" }]);
+        storage.set("history", &history).unwrap();
+        storage.set("manualCorrections", &others).unwrap();
+        storage.set("feedbackQueue", &others).unwrap();
+
+        let output = dir.join("backup.zip");
+        let scope = BackupScope { include_history: true, include_audio: false };
+        write_backup_archive_in_dir(&storage, scope, &output, &dir.join("audio"), &mut |_| {}).unwrap();
+        let mut archive = zip::ZipArchive::new(fs::File::open(&output).unwrap()).unwrap();
+        let mut text = String::new();
+        archive.by_name("backup.json").unwrap().read_to_string(&mut text).unwrap();
+        let payload: Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(payload["history"], json!([
+            { "id": "mac", "audioFilePath": "abc123.wav" },
+            { "id": "windows", "audioFilePath": "def456.wav" },
+            { "id": "name", "audioFilePath": "ghi789.wav" },
+            { "id": "invalid" }, { "id": "directory" }, { "id": "empty" },
+            { "id": "number" }, { "id": "null" },
+            { "id": "absent", "asrText": "/Volumes/Old Mac/spoken.wav" },
+        ]));
+        for key in ["manualCorrections", "feedbackQueue"] {
+            assert_eq!(payload[key], json!([{ "id": "other", "audioFilePath": "abc123.wav" }]));
+        }
+        assert!(!text.contains("Old Mac/audio") && !text.contains("old\\\\audio"));
+        assert_eq!(storage.get("history", None), history);
+        assert_eq!(storage.get("manualCorrections", None), others);
+        assert_eq!(storage.get("feedbackQueue", None), others);
+
+        // The stripped backup and an older one with full paths restore identically.
+        let old = dir.join("old.zip");
+        fs::write(&old, test_backup(&[("backup.json", &backup_with_history(history))])).unwrap();
+        let target = dir.join("restored-audio");
+        for source in [&output, &old] {
+            let restored = Storage::new(dir.join(format!("{}.db", uuid::Uuid::new_v4()))).unwrap();
+            apply_full_backup_in_dir(&restored, source.to_str().unwrap(), &target).unwrap();
+            let records = restored.get("history", None);
+            for (index, name) in ["abc123.wav", "def456.wav", "ghi789.wav"].iter().enumerate() {
+                assert_eq!(records[index]["audioFilePath"], json!(target.join(name).to_string_lossy()));
+            }
+            assert!(records[3].get("audioFilePath").is_none());
+            assert!(records[8].get("audioFilePath").is_none());
+        }
+        drop(storage);
+        fs::remove_dir_all(dir).unwrap();
     }
 
     /// 不含音频时不去扫 audio 目录，也就不会把别的备份的录音塞进来。
