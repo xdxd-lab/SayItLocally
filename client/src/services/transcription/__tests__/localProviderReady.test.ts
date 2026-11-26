@@ -188,6 +188,25 @@ describe('LocalProvider reads its settings together after stop', () => {
     await vi.waitFor(() => expect(callbacks.onDone).toHaveBeenCalled())
   })
 
+  it('a repeated stop does not transcribe twice or send a second final', async () => {
+    const { provider, callbacks } = await connected()
+    invokeMock.mockImplementation(async (command: string) =>
+      command === 'local_transcribe_raw' ? { text: '', elapsed_ms: 1 } : '')
+    getSettingMock.mockImplementation((_key: string, fallback: unknown) => Promise.resolve(fallback))
+    expect(provider.start({ runId: 9 })).toBe(true)
+    provider.sendAudio(new ArrayBuffer(16000))
+    expect(provider.stop()).toBe(true)
+    expect(provider.stop()).toBe(false)
+    await vi.waitFor(() => expect(callbacks.onDone).toHaveBeenCalled())
+    expect(provider.stop()).toBe(false)
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(invokeMock.mock.calls.filter(([command]) => command === 'local_transcribe_raw')).toHaveLength(1)
+    expect(callbacks.onASR).toHaveBeenCalledOnce()
+    // 結束回呼（final 或錯誤）只有一次。
+    expect(callbacks.onFinal.mock.calls.length + callbacks.onError.mock.calls.length).toBe(1)
+    expect(callbacks.onDone).toHaveBeenCalledOnce()
+  })
+
   it('does not transcribe when the run is cancelled while the settings are pending', async () => {
     const { provider, callbacks } = await connected()
     const pending = pendingSettings()
