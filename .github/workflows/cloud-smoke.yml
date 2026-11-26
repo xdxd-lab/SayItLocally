@@ -51,6 +51,7 @@ jobs:
           date -u
           uname -a
           sysctl -n hw.ncpu hw.memsize
+          rustup show active-toolchain
           rustc --version
           cargo --version
           node --version

@@ -1122,10 +1122,7 @@ fn publish_with_rename_fallback(
     use std::io::{Error, ErrorKind};
 
     let Err(error) = publish() else { return Ok(()); };
-    let unsupported = matches!(error.kind(), ErrorKind::Unsupported | ErrorKind::InvalidInput);
-    #[cfg(target_os = "macos")]
-    let unsupported = unsupported || error.raw_os_error() == Some(libc::EOPNOTSUPP);
-    if !unsupported {
+    if !is_unsupported_publication(error.kind(), error.raw_os_error()) {
         return Err(error);
     }
 
@@ -1138,6 +1135,19 @@ fn publish_with_rename_fallback(
         Err(error) if error.kind() == ErrorKind::NotFound => fs::rename(source, output),
         Err(error) => Err(error),
     }
+}
+
+/// Rust versions disagree on whether macOS ENOTSUP (45) is `ErrorKind::Unsupported`,
+/// so the raw codes are matched directly.
+#[cfg(any(not(windows), test))]
+fn is_unsupported_publication(kind: std::io::ErrorKind, code: Option<i32>) -> bool {
+    use std::io::ErrorKind;
+    #[cfg(target_os = "macos")]
+    if matches!(code, Some(libc::ENOTSUP | libc::EOPNOTSUPP)) {
+        return true;
+    }
+    let _ = code;
+    matches!(kind, ErrorKind::Unsupported | ErrorKind::InvalidInput)
 }
 
 /// 打包过程中的一帧进度。`phase` 取值与前端 `BackupExportProgress['phase']` 对齐。
@@ -2825,6 +2835,21 @@ mod tests {
             fs::remove_file(&output).unwrap();
         }
         fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn unsupported_codes_do_not_depend_on_rust_error_kinds() {
+        // `Uncategorized` is unstable, so `Other` stands in for an older Rust's ENOTSUP kind.
+        let other = io::ErrorKind::Other;
+        assert!(is_unsupported_publication(other, Some(45)), "ENOTSUP");
+        assert!(is_unsupported_publication(other, Some(102)), "EOPNOTSUPP");
+        for code in [None, Some(libc::EACCES), Some(libc::EEXIST), Some(libc::EXDEV)] {
+            assert!(!is_unsupported_publication(other, code));
+        }
+        assert!(is_unsupported_publication(io::ErrorKind::Unsupported, None));
+        assert!(is_unsupported_publication(io::ErrorKind::InvalidInput, None));
+        assert!(!is_unsupported_publication(io::ErrorKind::PermissionDenied, Some(libc::EACCES)));
     }
 
     #[test]
