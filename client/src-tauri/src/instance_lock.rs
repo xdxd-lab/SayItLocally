@@ -43,6 +43,28 @@ pub(crate) enum Role {
     Exit,
 }
 
+/// 主程序的實例鎖，持有到程序結束。
+static INSTANCE: std::sync::OnceLock<File> = std::sync::OnceLock::new();
+
+/// 主程序保存實例鎖到程序結束。
+pub(crate) fn hold(instance: File) {
+    let _ = INSTANCE.set(instance);
+}
+
+/// 程序內重新啟動（`AppHandle::restart` 會先產生新程序再結束自己）之前放開實例鎖，
+/// 新程序才會成為主程序，而不是把參數轉交給正在結束的舊程序。
+pub(crate) fn release_for_restart() {
+    if let Some(instance) = INSTANCE.get() {
+        release(instance);
+    }
+}
+
+fn release(instance: &File) {
+    if let Err(error) = instance.unlock() {
+        log::warn!("[instance] failed to release the instance lock before restart: {error}");
+    }
+}
+
 pub(crate) fn role(claim: Claim) -> Role {
     match claim {
         Claim::Primary(primary) => Role::Run(Some(primary)),
@@ -132,6 +154,18 @@ mod tests {
         // 異常結束等同關閉檔案：鎖隨之釋放，鎖檔留著也不妨礙之後啟動。
         drop(primary);
         assert!(matches!(role(claim(&dir, SHORT)), Role::Run(Some(_))));
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn releasing_before_restart_lets_the_new_process_become_primary() {
+        let dir = temp_dir("restart");
+        let Claim::Primary(primary) = claim(&dir, SHORT) else { panic!() };
+        drop(primary.starting);
+        // 舊程序還活著、檔案仍開著，但已放開實例鎖。
+        release(&primary.instance);
+        assert!(matches!(role(claim(&dir, SHORT)), Role::Run(Some(_))));
+        drop(primary.instance);
         fs::remove_dir_all(dir).unwrap();
     }
 

@@ -403,8 +403,6 @@ fn notify_main_window_unavailable() {
 
 /// [自訂] SC-60：主程序在資料庫復原時可能久候，等超過這個時間就放棄轉交。
 const STARTUP_LOCK_WAIT: std::time::Duration = std::time::Duration::from_secs(120);
-/// 主程序的實例鎖，持有到程序結束。
-static INSTANCE_GUARD: std::sync::OnceLock<std::fs::File> = std::sync::OnceLock::new();
 
 /// [自訂] SC-60：主程序已就緒，只註冊單例外掛；外掛在 build 時把參數交給主程序並結束本程序。
 /// 若 build 回來（連不到主程序的通道），不當主程序、不建立視窗，直接結束。
@@ -433,7 +431,7 @@ fn main() {
     };
     let startup_lock = match instance_lock::role(claim) {
         instance_lock::Role::Run(primary) => primary.map(|primary| {
-            let _ = INSTANCE_GUARD.set(primary.instance);
+            instance_lock::hold(primary.instance);
             primary.starting
         }),
         instance_lock::Role::Forward => return forward_to_running_instance(context),
