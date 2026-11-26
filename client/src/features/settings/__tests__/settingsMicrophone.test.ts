@@ -219,6 +219,18 @@ describe('settings microphone names', () => {
     expect(mic.onDevices).toHaveBeenLastCalledWith([])
   })
 
+  it('still applies a pending refresh when a name lookup fails', async () => {
+    let finishMount!: (devices: unknown[]) => void
+    enumerate.mockReturnValueOnce(new Promise((resolve) => { finishMount = resolve }))
+    const mic = mount()
+    enumerate.mockRejectedValueOnce(new Error('enumeration failed'))
+    await mic.revealNames()
+    expect(mic.onError).toHaveBeenLastCalledWith('mic.error.namesUnavailable')
+    finishMount([named])
+    await flushMicrophoneUpdates()
+    expect(mic.onDevices).toHaveBeenLastCalledWith([named])
+  })
+
   it('retains an unavailable selection in the options while its labels are hidden', () => {
     const options = buildMicOptions([blank], 'prior-device', {
       systemDefault: 'Default',
