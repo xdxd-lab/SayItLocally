@@ -199,3 +199,11 @@
 - 待覆核及實機驗證。
 - SC-56 第二輪（PM 裁定）：使用者內容（辨識與整理文字、手動更正前後文字、回饋備註、熱詞、文字替換、提示詞、名稱、搜尋關鍵字，以及熱詞、學習結果、風格等設定）即使整段像路徑也原樣寫出與還原；只去除中繼資料與其他設定中的路徑值。輸出保證改為「中繼資料與設定沒有本機絕對路徑；使用者內容不改」。
 - SC-56 覆核第一輪（REV18）不通過 2 項：熱詞匯出的頂層熱詞被移除；`asrCorrectedText` 與以 `/no_think` 開頭的提示詞設定被移除。第三輪改為只處理列名的中繼資料欄位，並補列使用者文字設定鍵；路徑判斷規則不變。拒絕匯出時，不存在的輸出資料夾也不會被建立（已有測試）。
+
+### SC-57 雲端煙霧測試（GitHub Actions）
+
+- 目的：使用者 2026-11-26 選定，在 GitHub 的 macOS arm64 runner 建置一次，並用內建的中英文測試語音實際轉寫，確認地端模型路徑可用。這是開發驗證，不影響 App 行為，App 仍為地端模式。
+- `.github/workflows/cloud-smoke.yml` 只能手動觸發（`workflow_dispatch`），沒有 push、pull request 或排程觸發。權限只有 `contents: read`，不用任何 secrets，也不用任何第三方 action（含 checkout）。原始碼以公開網址淺層 clone 並核對 commit SHA，不在 git 設定留 token。
+- 模型從 Hugging Face 下載 SenseVoice 權重後，先核對大小（252684608）與 SHA-256（`6c759ee4…adf29`，與 App 內建清單相同），不符就失敗。下載只發生在雲端 runner，不在使用者電腦。不上傳 artifact，結果只看 log。
+- 新增的 `cloud_smoke_sensevoice` 測試預設忽略，沒有設定 `SAYIT_SMOKE_MODELS_DIR` 時直接略過，本機一般測試不受影響。WAV 依 chunk 解析，只接受 16 kHz、單聲道、16 位元 PCM。
+- 本機離線驗收：Rust 564 通過、0 失敗、7 個忽略（新增 1 個忽略），警告 251 則，與前次相同。GitHub runner 的 Metal 可能不可用而改用 CPU，以實際 log 記錄。待覆核，合併後由 QA1 手動觸發一次。

@@ -1,0 +1,90 @@
+# [自訂] SC-57：雲端煙霧測試。只能手動觸發，不用 secrets 也不用第三方 action。
+# 在 GitHub 的 macOS arm64 runner 建置一次，下載並核對 SenseVoice 權重，對內建測試語音轉寫。
+name: cloud-smoke
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: macos-15
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    env:
+      MODEL_ID: sensevoice-small-gguf
+      MODEL_FILE: SenseVoiceSmall-Q8_0.gguf
+      MODEL_URL: https://huggingface.co/cswk/sayit-asr-gguf/resolve/main/SenseVoiceSmall-Q8_0.gguf
+      MODEL_SIZE: "252684608"
+      MODEL_SHA256: 6c759ee4c9748c9b3f7a5a60ca74f0f7e685fb9d45d1378fce7cfd62f59adf29
+    steps:
+      - name: Clone the dispatched commit
+        run: |
+          set -euo pipefail
+          date -u
+          # Public repository: no token is used or stored in the git configuration.
+          git clone --depth 1 --branch "$GITHUB_REF_NAME" "https://github.com/$GITHUB_REPOSITORY" src
+          if ! git -C src checkout --quiet "$GITHUB_SHA"; then
+            git -C src fetch --depth 1 origin "$GITHUB_SHA"
+            git -C src checkout --quiet "$GITHUB_SHA"
+          fi
+          test "$(git -C src rev-parse HEAD)" = "$GITHUB_SHA"
+          git -C src log -1 --format='%H %cI'
+
+      - name: Show the environment
+        run: |
+          set -euo pipefail
+          date -u
+          uname -a
+          sysctl -n hw.ncpu hw.memsize
+          rustc --version
+          cargo --version
+          node --version
+          npm --version
+          cmake --version | head -1
+
+      - name: Build the frontend
+        working-directory: src/client
+        run: |
+          set -euo pipefail
+          date -u
+          npm ci
+          npm run build
+
+      - name: Download and verify the model
+        run: |
+          set -euo pipefail
+          date -u
+          dir="$RUNNER_TEMP/models/$MODEL_ID"
+          mkdir -p "$dir"
+          curl --fail --location --proto '=https' --tlsv1.2 --retry 3 --silent --show-error \
+            --output "$dir/$MODEL_FILE" "$MODEL_URL"
+          size=$(stat -f %z "$dir/$MODEL_FILE")
+          sum=$(shasum -a 256 "$dir/$MODEL_FILE" | cut -d ' ' -f 1)
+          echo "size=$size sha256=$sum"
+          test "$size" = "$MODEL_SIZE"
+          test "$sum" = "$MODEL_SHA256"
+
+      - name: Transcribe the bundled test audio
+        working-directory: src/client/src-tauri
+        run: |
+          set -euo pipefail
+          date -u
+          SAYIT_SMOKE_MODELS_DIR="$RUNNER_TEMP/models" \
+            cargo test --locked --bins cloud_smoke_sensevoice -- --ignored --nocapture --test-threads=1
+          date -u
+
+      # Runs after the smoke step so its result stays visible; a failure here is
+      # reported on this step without hiding the smoke result above.
+      - name: Run all Rust tests
+        working-directory: src/client/src-tauri
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          date -u
+          cargo test --locked --bins
+          date -u

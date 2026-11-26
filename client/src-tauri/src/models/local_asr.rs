@@ -469,6 +469,74 @@ mod tests {
             ))
     }
 
+    /// [自訂] SC-57：WAV 只接受 16 kHz、單聲道、16 位元 PCM；逐一讀 chunk 找 `data`，不假設 44 位元組標頭。
+    fn wav_pcm16_mono_16k(bytes: &[u8]) -> Result<&[u8], String> {
+        if bytes.len() < 12 || &bytes[..4] != b"RIFF" || &bytes[8..12] != b"WAVE" {
+            return Err("not a RIFF/WAVE file".into());
+        }
+        let mut offset = 12;
+        let mut format_ok = false;
+        while offset + 8 <= bytes.len() {
+            let id = &bytes[offset..offset + 4];
+            let size = u32::from_le_bytes(bytes[offset + 4..offset + 8].try_into().unwrap()) as usize;
+            let body = offset + 8;
+            let end = body.checked_add(size).filter(|end| *end <= bytes.len())
+                .ok_or("truncated WAV chunk")?;
+            match id {
+                b"fmt " if size >= 16 => {
+                    let field = |at: usize, len: usize| bytes[body + at..body + at + len]
+                        .iter().rev().fold(0u32, |value, byte| value << 8 | u32::from(*byte));
+                    format_ok = field(0, 2) == 1 && field(2, 2) == 1 && field(4, 4) == SR as u32 && field(14, 2) == 16;
+                }
+                b"data" => {
+                    return if format_ok { Ok(&bytes[body..end]) } else { Err("expected 16 kHz mono 16-bit PCM before data".into()) };
+                }
+                _ => {}
+            }
+            offset = end + (size & 1);
+        }
+        Err("no data chunk".into())
+    }
+
+    /// [自訂] SC-57：雲端煙霧測試。只在設定 SAYIT_SMOKE_MODELS_DIR（已核對的模型目錄）時執行。
+    #[test]
+    #[ignore]
+    fn cloud_smoke_sensevoice() {
+        struct Reset;
+        impl Drop for Reset {
+            fn drop(&mut self) {
+                super::super::gguf_asr::unload();
+                downloader::set_custom_models_dir(None);
+            }
+        }
+        let Some(dir) = std::env::var_os("SAYIT_SMOKE_MODELS_DIR") else {
+            eprintln!("skip: SAYIT_SMOKE_MODELS_DIR is not set");
+            return;
+        };
+        let model_id = "sensevoice-small-gguf";
+        let _guard = downloader::TEST_MODEL_LEASES.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let _reset = Reset;
+        downloader::set_custom_models_dir(Some(std::path::PathBuf::from(dir)));
+        assert!(super::super::gguf_asr::model_is_downloaded(model_id), "verified {model_id} weights are required");
+        for name in ["test_zh.wav", "test_en.wav"] {
+            let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("resources").join(name);
+            let bytes = std::fs::read(&path).unwrap();
+            let pcm = wav_pcm16_mono_16k(&bytes).unwrap_or_else(|error| panic!("{name}: {error}"));
+            let seconds = pcm.len() as f64 / (SR * 2) as f64;
+            let b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, pcm);
+            let started = Instant::now();
+            let result = run_local_transcribe(b64, model_id).unwrap();
+            let elapsed = started.elapsed().as_secs_f64();
+            eprintln!(
+                "[cloud-smoke] file={name} audio_sec={seconds:.2} elapsed_sec={elapsed:.2} rtf={:.3} backend={:?} text={:?}",
+                elapsed / seconds,
+                super::super::gguf_asr::current_backend(),
+                result.text,
+            );
+            assert!(!result.text.trim().is_empty(), "{name}: empty transcript");
+        }
+    }
+
     /// 走真实生产路径：base64 → i16→f32 → Silero VAD → GGUF 引擎。
     #[test]
     fn end_to_end_base64_to_text() {
