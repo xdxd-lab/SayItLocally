@@ -7,6 +7,12 @@ use std::sync::LazyLock;
 
 /// 名稱短於這個長度時不做全文替換（避免把一般單字換掉），只在路徑形式中遮蔽。
 const MIN_FREE_TEXT_NAME: usize = 3;
+/// 不當成身分的通用名稱：`whoami` 讀不到時回傳 `unknown`、`localhost`；
+/// 換掉它們會讓 `localhost:11434` 或 `[unknown]` 模組名之類的診斷資訊失去意義。
+const GENERIC_NAMES: &[&str] = &[
+    "unknown", "localhost", "localhost.localdomain", "localdomain", "local", "root", "admin", "user",
+    "mac", "macbook", "default",
+];
 
 pub(crate) struct Identity {
     homes: Vec<String>,
@@ -33,7 +39,7 @@ impl Identity {
             .collect();
         let mut users = users;
         for list in [&mut homes, &mut users, &mut hosts] {
-            list.retain(|name| !name.trim().is_empty());
+            list.retain(|name| !name.trim().is_empty() && !GENERIC_NAMES.contains(&name.to_ascii_lowercase().as_str()));
             list.sort_by_key(|name| std::cmp::Reverse(name.len()));
             list.dedup_by(|a, b| a.eq_ignore_ascii_case(b));
         }
@@ -206,7 +212,16 @@ mod tests {
         // 短名稱不做全文替換，只在路徑形式中遮蔽；家目錄比對有邊界。
         assert_eq!(id.mask("/Users/ab/x and ab"), "~/x and ab");
         assert_eq!(id.mask("/Users/abc/x"), "/Users/<user>/x");
-        assert_eq!(id.mask("on mac here"), "on <host> here");
+        assert_eq!(id.mask("on mac here"), "on mac here");
+    }
+
+    #[test]
+    fn generic_fallback_names_are_not_masked() {
+        let id = Identity::new(None, vec!["unknown".into(), "Root".into()], vec!["localhost".into(), "Unknown".into()]);
+        let text = "[unknown] ollama at http://localhost:11434 as root";
+        assert_eq!(id.mask(text), text);
+        let id = Identity::new(None, vec!["zqxtester".into()], vec!["localhost".into(), "zqx-mini.local".into()]);
+        assert_eq!(id.mask("localhost zqx-mini zqxtester"), "localhost <host> <user>");
     }
 
     #[test]

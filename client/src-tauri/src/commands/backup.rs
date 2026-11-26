@@ -544,7 +544,7 @@ fn contains_local_path(value: &Value) -> bool {
     match value {
         Value::String(text) => is_local_path(text),
         Value::Array(items) => items.iter().any(contains_local_path),
-        Value::Object(map) => map.values().any(contains_local_path),
+        Value::Object(map) => map.iter().any(|(key, item)| is_local_path(key) || contains_local_path(item)),
         _ => false,
     }
 }
@@ -3318,6 +3318,22 @@ mod tests {
         ] {
             assert!(!is_local_path(text), "{text}");
         }
+    }
+
+    #[test]
+    fn settings_whose_object_keys_are_paths_are_not_written() {
+        let mut document = serde_json::json!({
+            "appSettings": {
+                "recentFolders": {"/home/x/Music": true},
+                "shortcutKey": {"ctrl": "/"},
+                "textReplacements": {"/home/x/kept": "user content"},
+            },
+        });
+        scrub_export_document(&mut document);
+        assert_eq!(document["appSettings"], serde_json::json!({
+            "shortcutKey": {"ctrl": "/"},
+            "textReplacements": {"/home/x/kept": "user content"},
+        }));
     }
 
     #[test]
