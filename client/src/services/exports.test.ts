@@ -1,5 +1,8 @@
 import { expect, it, vi } from 'vitest'
-import { describeExportError, exportHistory } from './exports'
+// 專案沒裝 @types/node，fixture 用 Vite 的 `?raw` 讀入。
+import fixture from '../../src-tauri/src/commands/testdata/history-export.csv?raw'
+import { describeExportError, exportHistory, historyToCsv } from './exports'
+import type { HistoryRecord } from './store'
 
 const mocks = vi.hoisted(() => ({
   confirm: vi.fn(async () => false),
@@ -29,4 +32,21 @@ it('explains only the in-memory export refusal and leaves other errors to the ca
   expect(describeExportError('BACKUP_VOLATILE_EXPORT')).toBe('backup.volatileExport')
   expect(describeExportError(new Error('BACKUP_VOLATILE_EXPORT'))).toBe('backup.volatileExport')
   expect(describeExportError(new Error('disk full'))).toBeNull()
+})
+
+// [自訂] SC-59：與 Rust 的 CSV 去路徑測試共用同一份 fixture；欄名或寫法一改，兩邊都會失敗。
+it('writes history CSV exactly as the shared Rust fixture expects', () => {
+  const records = [
+    {
+      id: 'r1', timestamp: 1700000000000, favorite: true, appName: '/Applications/Notes.app',
+      durationSec: 3, charCount: 10, asrText: 'Open /Volumes/Work/a.txt, "quoted"\nline2', llmText: '',
+      promptPresetName: 'Default', promptSummary: '%APPDATA%\\SayIt\\p.txt', styleSummary: 'casual',
+    },
+    {
+      id: 'r2', timestamp: 1700000001000, favorite: false, appName: 'Notes',
+      durationSec: 4, charCount: 7, asrText: '~/notes', llmText: 'D:\\Data\\someone\\x',
+      promptPresetName: '', promptSummary: '', styleSummary: '\\\\server\\share\\s',
+    },
+  ] as unknown as HistoryRecord[]
+  expect(historyToCsv(records)).toBe(fixture)
 })

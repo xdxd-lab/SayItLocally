@@ -444,16 +444,80 @@ fn is_backup_audio_name(name: &str) -> bool {
 
 /// [自訂] SC-56：整個字串是否為本機絕對路徑（Unix、`~`、Windows 磁碟代號、UNC、`file:`）。
 /// 句子中間出現的路徑屬使用者內容，不算。
+/// [自訂] SC-59（L-98）：另認 `\Users\…`（無磁碟代號）、`~name/…`、`%VAR%`、`$VAR`、`${VAR}`、
+/// `smb:`、`afp:`。單獨的 `~`、`$5`、`50%`、`~約` 不算。
 pub(crate) fn is_local_path(value: &str) -> bool {
     let value = value.trim();
     let bytes = value.as_bytes();
     match bytes {
         [b'/', second, ..] if !second.is_ascii_whitespace() => true,
         [b'\\', b'\\', ..] => true,
+        [b'\\', rest @ ..] => rooted_backslash_path(rest),
         [b'~', b'/' | b'\\', ..] => true,
+        [b'~', rest @ ..] => other_user_home(rest),
         [drive, b':', b'/' | b'\\', ..] if drive.is_ascii_alphabetic() => true,
-        _ => value.get(..5).is_some_and(|scheme| scheme.eq_ignore_ascii_case("file:")),
+        [b'%', rest @ ..] => percent_variable(rest),
+        [b'$', rest @ ..] => dollar_variable(rest),
+        _ => ["file:", "smb:", "afp:"].iter().any(|scheme| {
+            value.get(..scheme.len()).is_some_and(|prefix| prefix.eq_ignore_ascii_case(scheme))
+        }),
     }
+}
+
+/// `\Users\name`：第一段非空、不含空白，後面還有一層。
+fn rooted_backslash_path(rest: &[u8]) -> bool {
+    let segment = rest.iter().position(|byte| *byte == b'\\').map(|end| &rest[..end]);
+    segment.is_some_and(|segment| !segment.is_empty() && !segment.iter().any(u8::is_ascii_whitespace))
+}
+
+fn is_identifier(name: &[u8]) -> bool {
+    matches!(name, [first, ..] if first.is_ascii_alphabetic() || *first == b'_')
+        && name.iter().all(|byte| byte.is_ascii_alphanumeric() || *byte == b'_')
+}
+
+fn is_separator_or_end(rest: &[u8]) -> bool {
+    matches!(rest, [] | [b'/' | b'\\', ..])
+}
+
+/// 不接分隔符也算路徑的環境變數（指向家目錄或系統資料夾）。
+const PATH_VARIABLES: &[&str] = &[
+    "HOME", "USERPROFILE", "HOMEPATH", "APPDATA", "LOCALAPPDATA", "PROGRAMDATA", "TMPDIR", "TEMP", "TMP",
+];
+
+/// 變數名後面接 `/`、`\`，或整段就是常見的路徑變數。
+fn variable_path(name: &[u8], rest: &[u8]) -> bool {
+    match rest {
+        [] => PATH_VARIABLES.iter().any(|known| known.as_bytes().eq_ignore_ascii_case(name)),
+        _ => is_separator_or_end(rest),
+    }
+}
+
+/// `~name/…`：name 只收 ASCII，所以 `~約`、`~5/10` 不算。
+fn other_user_home(rest: &[u8]) -> bool {
+    let end = rest.iter().position(|byte| matches!(byte, b'/' | b'\\'));
+    end.is_some_and(|end| {
+        let name = &rest[..end];
+        matches!(name, [first, ..] if first.is_ascii_alphabetic() || *first == b'_')
+            && name.iter().all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-' | b'.'))
+    })
+}
+
+/// `%APPDATA%`、`%USERPROFILE%\x`；`ProgramFiles(x86)` 這類名稱可含括號。
+fn percent_variable(rest: &[u8]) -> bool {
+    let Some(end) = rest.iter().position(|byte| *byte == b'%') else { return false };
+    let name = &rest[..end];
+    let plain: Vec<u8> = name.iter().copied().filter(|byte| !matches!(byte, b'(' | b')')).collect();
+    name.len() >= 2 && is_identifier(&plain) && variable_path(name, &rest[end + 1..])
+}
+
+/// `$HOME`、`${HOME}/x`、`$TMPDIR/x`；`$5`、`$USD` 不算。
+fn dollar_variable(rest: &[u8]) -> bool {
+    if let [b'{', inner @ ..] = rest {
+        let Some(end) = inner.iter().position(|byte| *byte == b'}') else { return false };
+        return is_identifier(&inner[..end]) && is_separator_or_end(&inner[end + 1..]);
+    }
+    let end = rest.iter().position(|byte| !(byte.is_ascii_alphanumeric() || *byte == b'_')).unwrap_or(rest.len());
+    is_identifier(&rest[..end]) && variable_path(&rest[..end], &rest[end..])
 }
 
 /// [自訂] SC-56 第三輪：紀錄與集合只處理這些由系統產生的中繼資料欄位；其他欄位與頂層鍵
@@ -470,6 +534,11 @@ const CONTENT_SETTINGS: &[&str] = &[
     "builtinSetExtraWords", "customHotwordThemes", "manualHotwords", "textReplacements",
     "hotwordLearning", "styleProfile",
 ];
+
+/// [自訂] SC-59：JSON 與 CSV 匯出共用同一份中繼資料欄位清單。
+pub(crate) fn is_metadata_field(name: &str) -> bool {
+    METADATA_FIELDS.contains(&name) || METADATA_CONTAINERS.contains(&name)
+}
 
 fn contains_local_path(value: &Value) -> bool {
     match value {
@@ -489,7 +558,8 @@ fn keep_metadata(value: &mut Value) -> bool {
             true
         }
         Value::Object(map) => {
-            map.retain(|_, item| keep_metadata(item));
+            // [自訂] SC-59：鍵本身是路徑時，整項不寫出。
+            map.retain(|key, item| !is_local_path(key) && keep_metadata(item));
             true
         }
         _ => true,
@@ -503,8 +573,7 @@ fn scrub_records(value: &mut Value) {
         Value::Object(map) => {
             strip_audio_field(map);
             map.retain(|key, item| {
-                !(METADATA_FIELDS.contains(&key.as_str()) || METADATA_CONTAINERS.contains(&key.as_str()))
-                    || keep_metadata(item)
+                !is_metadata_field(key) || keep_metadata(item)
             });
             map.values_mut().for_each(scrub_records);
         }
@@ -3229,6 +3298,39 @@ mod tests {
         ] {
             assert!(!is_local_path(text), "{text}");
         }
+    }
+
+    // [自訂] SC-59（L-98）：每種新形式各有正例與不誤判的反例。
+    #[test]
+    fn local_path_detection_covers_rooted_variable_and_network_forms() {
+        for path in [
+            "\\Users\\someone\\x", "\\Data\\x", "%USERPROFILE%", "%APPDATA%\\SayIt", "%ProgramFiles(x86)%\\x",
+            "%localappdata%/x", "$HOME", "$HOME/notes", "${HOME}", "${XDG_DATA_HOME}/x", "$TMPDIR",
+            "$CUSTOM_DIR/x", "~someone/x", "~some.one\\x", "smb://nas/share", "SMB://nas", "afp://mac/x",
+            "File:///x",
+        ] {
+            assert!(is_local_path(path), "{path}");
+        }
+        for text in [
+            "\\", "\\n", "\\ x\\y", "%", "50%", "%d%", "%s%/x", "%APPDATA", "%TOTAL% done", "$", "$5", "$5/kg",
+            "$USD", "${HOME", "${5}", "$HOME later", "~約", "~約/x", "~5/10", "~ /x", "~bob", "smb", "smbx://a",
+            "afp", "see smb://nas/x",
+        ] {
+            assert!(!is_local_path(text), "{text}");
+        }
+    }
+
+    #[test]
+    fn metadata_objects_drop_keys_that_are_paths() {
+        let mut document = serde_json::json!({
+            "records": [{
+                "appContext": {"/home/x/a.txt": "open", "~bob/b": {"k": "v"}, "%APPDATA%\\c": 1, "title": "kept"},
+                "asrText": {"/kept/user/content": "/also/kept"},
+            }],
+        });
+        scrub_export_document(&mut document);
+        assert_eq!(document["records"][0]["appContext"], serde_json::json!({"title": "kept"}));
+        assert_eq!(document["records"][0]["asrText"], serde_json::json!({"/kept/user/content": "/also/kept"}));
     }
 
     /// Strings in metadata fields and in settings that are not user content.

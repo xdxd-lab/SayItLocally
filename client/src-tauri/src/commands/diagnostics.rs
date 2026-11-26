@@ -463,7 +463,8 @@ fn build_diagnostics_zip(req: DiagnosticsZipRequest) -> Result<String, String> {
     let zip_path = diag_dir.join(format!("{stem}.zip"));
     // [自訂] SCAN1-7（L-77）：先寫成暫存檔，完整寫完才改名成 .zip；中途出錯就刪掉暫存檔，不留半個包。
     let partial_path = diag_dir.join(format!("{stem}.zip.partial"));
-    publish_diagnostics_zip(&partial_path, &zip_path, |path| write_diagnostics_zip(path, &req))?;
+    let identity = super::diag_redact::Identity::current();
+    publish_diagnostics_zip(&partial_path, &zip_path, |path| write_diagnostics_zip(path, &req, &log_dir(), &identity))?;
     Ok(zip_path.to_string_lossy().to_string())
 }
 
@@ -490,10 +491,21 @@ fn remove_partial_zip(path: &std::path::Path) {
     }
 }
 
-fn write_diagnostics_zip(zip_path: &std::path::Path, req: &DiagnosticsZipRequest) -> Result<(), String> {
+/// [自訂] SC-59（L-97）：ZIP 內各項目的處理——
+/// manifest.json（含使用者描述）、settings.json、timeline.json：逐一遮蔽字串值與鍵後再序列化；
+/// logs/*：依時段過濾後遮蔽全文；images/*：二進位，原樣寫入。
+/// 遮蔽內容：家目錄換成 `~`，使用者名稱換成 `<user>`，主機名稱換成 `<host>`（見 diag_redact）。
+fn write_diagnostics_zip(
+    zip_path: &std::path::Path,
+    req: &DiagnosticsZipRequest,
+    log_d: &std::path::Path,
+    identity: &super::diag_redact::Identity,
+) -> Result<(), String> {
     let file = std::fs::File::create(zip_path).map_err(|e| e.to_string())?;
     let mut zip = zip::ZipWriter::new(file);
     use super::archive::write_deflated_entry;
+    let masked_json = |value: &Value| serde_json::to_string_pretty(&identity.mask_value(value))
+        .map_err(|error| error.to_string());
 
     // 1. manifest.json
     let manifest = serde_json::json!({
@@ -505,19 +517,18 @@ fn write_diagnostics_zip(zip_path: &std::path::Path, req: &DiagnosticsZipRequest
         "platform": "win32",
         "imageCount": req.images.len(),
     });
-    let json = serde_json::to_string_pretty(&manifest).map_err(|error| error.to_string())?;
+    let json = masked_json(&manifest)?;
     write_deflated_entry(&mut zip, "manifest.json", json.as_bytes())?;
 
     // 2. settings.json
-    let json = serde_json::to_string_pretty(&req.settings).map_err(|error| error.to_string())?;
+    let json = masked_json(&req.settings)?;
     write_deflated_entry(&mut zip, "settings.json", json.as_bytes())?;
 
     // 3. 日志文件
     // [自訂] SCAN1-5（L-75）：原始日誌也依使用者選的問題時段過濾，和預覽一致；
     // 原本是逐位元組收錄全部日誌（含更早的路徑與事件）。時段外的檔案整個不放。
-    let log_d = log_dir();
     let cutoff = occurrence_cutoff(&req.issue_occurrence);
-    for path in log_paths(&log_d) {
+    for path in log_paths(log_d) {
         if let Some(filename) = path.file_name().and_then(|name| name.to_str()) {
             // REV1：用 lossy 讀取，非 UTF-8 的日誌也照樣依時段過濾，不會整份略過。
             if let Ok(bytes) = std::fs::read(&path) {
@@ -527,7 +538,7 @@ fn write_diagnostics_zip(zip_path: &std::path::Path, req: &DiagnosticsZipRequest
                     continue;
                 }
                 let zip_name = format!("logs/{}", filename);
-                write_deflated_entry(&mut zip, &zip_name, kept.as_bytes())?;
+                write_deflated_entry(&mut zip, &zip_name, identity.mask(&kept).as_bytes())?;
             }
         }
     }
@@ -557,9 +568,9 @@ fn write_diagnostics_zip(zip_path: &std::path::Path, req: &DiagnosticsZipRequest
 
     // 5. diagnostics preview (filtered by occurrence)
     let mut recent = RecentEntries::new(500);
-    scan_log_entries(&log_d, cutoff.as_deref(), |entry| recent.push(entry));
+    scan_log_entries(log_d, cutoff.as_deref(), |entry| recent.push(entry));
     let timeline: Vec<_> = recent.entries.into_values().rev().collect();
-    let json = serde_json::to_string_pretty(&timeline).map_err(|error| error.to_string())?;
+    let json = masked_json(&serde_json::to_value(&timeline).map_err(|error| error.to_string())?)?;
     write_deflated_entry(&mut zip, "timeline.json", json.as_bytes())?;
 
     zip.finish().map_err(|e| e.to_string())?;
@@ -773,6 +784,95 @@ pub fn open_log_folder() -> Result<(), String> {
             .map_err(|e| format!("Failed to open folder: {}", e))?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod sc59_redaction_tests {
+    // [自訂] SC-59（L-97）：以虛構身分產生診斷包，掃描所有文字項目無殘留。
+    use super::{write_diagnostics_zip, DiagImage, DiagnosticsZipRequest};
+    use crate::commands::diag_redact::Identity;
+    use std::{fs, io::Read};
+
+    const SECRETS: &[&str] = &["zqxtester", "zqx-studio", "zqx studio", "fileserver", "nas.lan", "old-mac"];
+
+    fn assert_clean(name: &str, text: &str) {
+        let lower = text.to_ascii_lowercase();
+        for secret in SECRETS {
+            assert!(!lower.contains(secret), "{name} still contains {secret}: {text}");
+        }
+    }
+
+    fn walk(name: &str, value: &serde_json::Value) {
+        match value {
+            serde_json::Value::String(text) => assert_clean(name, text),
+            serde_json::Value::Array(items) => items.iter().for_each(|item| walk(name, item)),
+            serde_json::Value::Object(map) => map.iter().for_each(|(key, item)| {
+                assert_clean(name, key);
+                walk(name, item);
+            }),
+            _ => {}
+        }
+    }
+
+    #[test]
+    fn every_text_entry_hides_home_user_and_host() {
+        let dir = std::env::temp_dir().join(format!("sayit-diag-redact-{}", uuid::Uuid::new_v4()));
+        let logs = dir.join("logs");
+        fs::create_dir_all(&logs).unwrap();
+        let identity = Identity::new(
+            Some("/Users/Zqxtester".into()),
+            vec!["zqxtester".into()],
+            vec!["Zqx-Studio.local".into(), "Zqx Studio".into()],
+        );
+        let lines = [
+            "[2026-11-26 10:00:00.000] [INFO] [app] log at /Users/Zqxtester/Library/Logs/SayItLocally/sayit.log",
+            "[2026-11-26 10:00:01.000] [WARN] [fs] \"C:\\\\Users\\\\ZQXTESTER\\\\AppData\\\\x\" and \\Users\\zqxtester\\y",
+            "[2026-11-26 10:00:02.000] [ERROR] [net] smb://zqxtester@nas.lan/share afp://Old-Mac.local/v \\\\fileserver\\s",
+            "[2026-11-26 10:00:03.000] [INFO] [app] file:///users/zqxtester/a.wav on Zqx-Studio.local (zqx-studio) by zqxtester",
+            "  continuation ~zqxtester/notes $HOME/x %USERPROFILE%\\y host Zqx Studio",
+        ];
+        fs::write(logs.join("sayit.log"), lines.join("\n")).unwrap();
+        let req = DiagnosticsZipRequest {
+            description: "Broke in /Users/Zqxtester/Desktop on Zqx-Studio".into(),
+            issue_type: "insert_failed".into(),
+            settings: serde_json::json!({"/Users/Zqxtester/k": ["C:\\Users\\zqxtester\\v"], "host": "zqx-studio.local"}),
+            issue_occurrence: "older".into(),
+            images: vec![DiagImage {
+                name: "shot.png".into(),
+                mime_type: "image/png".into(),
+                size: 9,
+                data: b"zqxtester".to_vec(),
+            }],
+        };
+        let zip_path = dir.join("diagnostics.zip");
+        write_diagnostics_zip(&zip_path, &req, &logs, &identity).unwrap();
+
+        let mut zip = zip::ZipArchive::new(fs::File::open(&zip_path).unwrap()).unwrap();
+        let names: Vec<String> = (0..zip.len()).map(|index| zip.by_index(index).unwrap().name().unwrap().to_string()).collect();
+        assert_eq!(names.len(), 5, "{names:?}");
+        let mut log_text = String::new();
+        for name in &names {
+            let mut bytes = Vec::new();
+            zip.by_name(name).unwrap().read_to_end(&mut bytes).unwrap();
+            if name.starts_with("images/") {
+                assert_eq!(bytes, b"zqxtester", "binary entries are written unchanged");
+                continue;
+            }
+            let text = String::from_utf8(bytes).unwrap();
+            assert_clean(name, &text);
+            if name.ends_with(".json") {
+                walk(name, &serde_json::from_str(&text).unwrap());
+            } else {
+                log_text = text;
+            }
+        }
+        // 診斷仍可用：相對路徑尾段與檔名保留。
+        assert!(log_text.contains("~/Library/Logs/SayItLocally/sayit.log"), "{log_text}");
+        assert!(log_text.contains("\\Users\\<user>\\y"), "{log_text}");
+        assert!(log_text.contains("smb://<host>/share"), "{log_text}");
+        drop(zip);
+        fs::remove_dir_all(dir).unwrap();
+    }
 }
 
 #[cfg(test)]
