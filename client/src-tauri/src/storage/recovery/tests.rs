@@ -1081,3 +1081,99 @@ fn volatility_follows_the_opened_database_in_every_recovery_outcome() {
     assert!(matches!(mode, Some(StorageRecovery::MovedAsideInMemory { .. })));
     assert!(storage.is_volatile() && storage.ensure_persistent().is_err());
 }
+
+// [自訂] SC-55：q08。缺主檔的孤兒組搬移失敗時，也要放回原位並移除計畫。
+#[test]
+fn every_injected_orphan_move_failure_rolls_back_and_clears_the_plan() {
+    for fail_at in 0..COMPANION_SUFFIXES.len() {
+        let fixture = Fixture::new();
+        for suffix in COMPANION_SUFFIXES {
+            fs::write(append_suffix(&fixture.db, suffix), suffix).unwrap();
+        }
+        let before = snapshot(&fixture.db);
+        let plan = fixture.start_move(true).unwrap();
+        let step = Cell::new(0);
+        assert!(plan.finish(&fixture.dir, &fixture.db, |from, to| {
+            if step.get() == fail_at {
+                return Err(io::Error::other("injected move failure"));
+            }
+            step.set(step.get() + 1);
+            move_exclusive(from, to)
+        }).is_err());
+        assert_eq!(snapshot(&fixture.db), before, "{fail_at}");
+        assert_eq!(snapshot(&plan.backup(&fixture.db)), [None, None, None, None]);
+        assert!(!recovery_move_pending(&fixture.dir), "{fail_at}");
+    }
+}
+
+// [自訂] SC-55：q11。目錄唯讀時，未完成的搬移計畫仍禁止開啟磁碟庫。
+#[cfg(unix)]
+#[test]
+fn a_pending_plan_blocks_the_read_only_directory_fallback() {
+    use std::os::unix::fs::PermissionsExt;
+    let fixture = Fixture::new();
+    drop(fixture.journal_db());
+    fs::write(fixture.dir.join(INTENT), b"pending").unwrap();
+    for lock in [STARTUP_LOCK, LIVE_LOCK] {
+        let _ = fs::remove_file(fixture.dir.join(lock));
+    }
+    let before = snapshot(&fixture.db);
+    fs::set_permissions(&fixture.dir, fs::Permissions::from_mode(0o500)).unwrap();
+    let writable = fs::File::create_new(fixture.dir.join("permission-probe")).is_ok();
+    let result = (!writable).then(|| fixture.open());
+    fs::set_permissions(&fixture.dir, fs::Permissions::from_mode(0o700)).unwrap();
+    // A privileged runner can bypass permission bits; the direct call still applies.
+    if let Some((storage, mode)) = result {
+        assert!(matches!(mode, Some(StorageRecovery::InMemory)), "{mode:?}");
+        assert!(storage.is_volatile());
+    }
+    let denied = io::Error::from(io::ErrorKind::PermissionDenied);
+    let (storage, mode) = open_without_recovery_on_read_only_dir(&fixture.dir, &fixture.db, Duration::ZERO, denied);
+    assert!(matches!(mode, Some(StorageRecovery::InMemory)), "{mode:?}");
+    assert!(storage.is_volatile());
+    assert_eq!(snapshot(&fixture.db), before);
+    fs::remove_file(fixture.dir.join(INTENT)).unwrap();
+    let denied = io::Error::from(io::ErrorKind::PermissionDenied);
+    let (storage, mode) = open_without_recovery_on_read_only_dir(&fixture.dir, &fixture.db, Duration::ZERO, denied);
+    assert!(mode.is_none() && !storage.is_volatile());
+}
+
+// [自訂] SC-55：q18。沒有主檔又不是孤兒組的計畫無效，伴隨檔不搬。
+#[test]
+fn a_plan_without_a_main_file_must_be_an_orphan_plan() {
+    let fixture = Fixture::new();
+    let wal = append_suffix(&fixture.db, "-wal");
+    fs::write(&wal, b"companion").unwrap();
+    let plan = json!({
+        "stamp": "20261126-090000",
+        "id": uuid::Uuid::new_v4().to_string(),
+        "members": [true, false, false, false],
+        "orphaned": false,
+    });
+    fs::write(fixture.dir.join(INTENT), serde_json::to_vec(&plan).unwrap()).unwrap();
+    assert!(MovePlan::load(&fixture.dir).is_err());
+    let (storage, mode) = fixture.open();
+    assert!(matches!(mode, Some(StorageRecovery::IncompleteMove)), "{mode:?}");
+    assert!(storage.is_volatile());
+    assert_eq!(fs::read(&wal).unwrap(), b"companion");
+    assert!(recovery_move_pending(&fixture.dir));
+    let mut valid = plan;
+    valid["orphaned"] = json!(true);
+    fs::write(fixture.dir.join(INTENT), serde_json::to_vec(&valid).unwrap()).unwrap();
+    assert!(MovePlan::load(&fixture.dir).unwrap().is_some());
+}
+
+// [自訂] SC-55：q21。開啟成功後恢復正常關閉，WAL 在最後一個連線關閉時併回主檔。
+#[test]
+fn a_successfully_opened_database_checkpoints_its_wal_on_close() {
+    let fixture = Fixture::new();
+    let (storage, mode) = fixture.open();
+    assert!(mode.is_none());
+    storage.set("overlayWidth", &json!("long")).unwrap();
+    let wal = append_suffix(&fixture.db, "-wal");
+    assert!(wal.exists());
+    drop(storage);
+    assert!(!wal.exists());
+    let (storage, _) = fixture.open();
+    assert_eq!(storage.get("overlayWidth", None), json!("long"));
+}
