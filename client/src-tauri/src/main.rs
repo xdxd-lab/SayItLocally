@@ -16,6 +16,7 @@ mod net_policy;
 mod path_guard;
 mod ipc_body;
 mod platform;
+mod instance_lock;
 
 use storage::Storage;
 use window::WindowState;
@@ -400,12 +401,44 @@ fn notify_main_window_unavailable() {
     let _ = text;
 }
 
+/// [自訂] SC-60：主程序在資料庫復原時可能久候，等超過這個時間就放棄轉交。
+const STARTUP_LOCK_WAIT: std::time::Duration = std::time::Duration::from_secs(120);
+/// 主程序的實例鎖，持有到程序結束。
+static INSTANCE_GUARD: std::sync::OnceLock<std::fs::File> = std::sync::OnceLock::new();
+
+/// [自訂] SC-60：主程序已就緒，只註冊單例外掛；外掛在 build 時把參數交給主程序並結束本程序。
+/// 若 build 回來（連不到主程序的通道），不當主程序、不建立視窗，直接結束。
+/// 不呼叫外掛的 destroy：連線若因其他錯誤失敗，那會刪掉主程序仍在使用的通道。
+fn forward_to_running_instance(context: tauri::Context<tauri::Wry>) {
+    let _ = tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|_, _, _| {}))
+        .build(context);
+}
+
 fn main() {
     // [自訂] S64：在初始化及啟動執行緒前關閉 transcribe-cpp 的語音特徵傾印。
     std::env::remove_var("TRANSCRIBE_DUMP_DIR");
     // Metal 的 GPU trace 也可能保存辨識運算資料。
     #[cfg(target_os = "macos")]
     std::env::remove_var("GGML_METAL_CAPTURE_COMPUTE");
+
+    // [自訂] SC-60（L-72）：初始化日誌、開資料庫之前先決定是否為唯一實例（見 instance_lock）。
+    // 後啟動的程序只轉交參數或直接結束，不寫日誌、不開資料庫、不做復原或清理。
+    // generate_context! 只展開一次，前端資源才不會嵌入兩份。
+    let context = tauri::generate_context!();
+    let claim = instance_lock::claim(&commands::app_data_dir(), STARTUP_LOCK_WAIT);
+    let lock_unavailable = match &claim {
+        instance_lock::Claim::Unavailable(error) => Some(error.to_string()),
+        _ => None,
+    };
+    let startup_lock = match instance_lock::role(claim) {
+        instance_lock::Role::Run(primary) => primary.map(|primary| {
+            let _ = INSTANCE_GUARD.set(primary.instance);
+            primary.starting
+        }),
+        instance_lock::Role::Forward => return forward_to_running_instance(context),
+        instance_lock::Role::Exit => return,
+    };
 
     // Mirror the Rust log facade to sayit.log as well as stderr. This is essential on
     // Windows release builds (`windows_subsystem = "windows"`), where stderr is invisible.
@@ -455,6 +488,9 @@ fn main() {
         }));
     }
 
+    if let Some(error) = &lock_unavailable {
+        log::warn!("[instance] single-instance lock unavailable, starting without it: {error}");
+    }
     log::info!(
         "SayItLocally starting version={} profile={} pid={}",
         env!("CARGO_PKG_VERSION"),
@@ -626,6 +662,8 @@ fn main() {
         .manage(context_detector)
         .manage(commands::update_notification::UpdateNotificationState::default())
         .setup(move |app| {
+            // [自訂] SC-60：外掛在 build 時已建立單例通道，放開啟動鎖讓後來的程序轉交參數。
+            drop(startup_lock);
             // [自訂] SC-51：取得單一實例後才清理，以免後啟動的程序刪除進行中的還原暫存。
             cleanup_retained_files(app.state::<Storage>().inner());
             // [自訂] S71：在背景清理，不依賴 WebView 計時器或 App 重啟。
@@ -978,7 +1016,7 @@ fn main() {
         // 用 build + run 而不是直接 run：需要在 RunEvent::Exit 上挂"退出时兜底安装更新"。
         // 用户没点更新图标就直接关掉 SayItLocally 时，在这里把已下载的新版静默装掉，
         // 下次打开即是新版 —— 否则更新完全依赖用户主动点击，不点的人永远留在旧版。
-        .build(tauri::generate_context!())
+        .build(context)
         .expect("error while building tauri application")
         .run(|app_handle, event| {
             // macOS：主窗藏起来后点 Dock 图标，系统发 Reopen，此时把主窗显示出来。
