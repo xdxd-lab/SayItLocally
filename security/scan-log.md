@@ -208,3 +208,17 @@
 - 新增的 `cloud_smoke_sensevoice` 測試預設忽略，沒有設定 `SAYIT_SMOKE_MODELS_DIR` 時直接略過，本機一般測試不受影響。WAV 依 chunk 解析，只接受 16 kHz、單聲道、16 位元 PCM。
 - 本機離線驗收：Rust 564 通過、0 失敗、7 個忽略（新增 1 個忽略），警告 251 則，與前次相同。GitHub runner 的 Metal 可能不可用而改用 CPU，以實際 log 記錄。待覆核，合併後由 QA1 手動觸發一次。
 - SC-57 補充：GitHub 的 macOS arm64 runner 因容量不足連續兩次排不到（run 45821572115），手動觸發時改為可選 runner：macos-15（預設，arm64）、macos-14、macos-15-intel。其他步驟、權限與限制不變。
+
+### SC-58 L-96：macOS「不支援」錯誤碼歸類不依 Rust 版本
+
+- 起因：雲端煙霧測試 run 45827061192（macOS x86_64、rustc 1.98.0）全套 563/1/7。`unsupported_publication_renames_the_complete_file` 失敗，原因是 ENOTSUP（45）在該版 Rust 歸為 Uncategorized，沒有走備援改名。本機 rustc 1.100.0 通過。
+- 修正：`publish_with_rename_fallback` 改用 `is_unsupported_publication`。macOS 上 ENOTSUP（45）與 EOPNOTSUPP（102）直接依錯誤碼判斷，不看 Rust 的 ErrorKind。其他行為不變：非「不支援」錯誤照樣回傳；目的地已存在（含懸空符號連結）照樣回報 AlreadyExists。
+- 新增測試以 `ErrorKind::Other` 搭配錯誤碼 45、102 模擬舊版歸類，並確認其他錯誤碼不走備援。
+- 全 repo 同類寫法：無其他以「不支援」判斷走備援的地方。`storage/recovery.rs` 的 `move_exclusive` 同樣使用 `renamex_np`，但失敗時直接回報、沒有備援，不受此問題影響。`lease.rs` 只產生 Unsupported，沒有依錯誤碼歸類。
+- 雲端煙霧測試的環境步驟加印 `rustup show active-toolchain`，其他步驟不變。
+- 固定 Rust 1.100.0 未納入此次提交：本機只裝了 `stable`（即 1.100.0），`rust-toolchain.toml` 指定 `1.100.0` 時，rustup 回報該工具鏈未安裝、需要下載，依規格停手，待 PM 決定。
+- 離線驗收：Rust 565 通過、0 失敗、7 個忽略（新增 1 個測試），警告 251 則，與基準逐行相同。變異自查 10 項：第一版有 1 項存活（呼叫端移除錯誤碼判斷），改為純函式並補測後，第二版 6 項全數殺掉。待覆核。
+- SC-58 補充（固定 Rust）：使用者選擇安裝 1.100.0（minimal，rustc `0ef1bc386`），經使用者同意後在本機安裝。新增 `client/src-tauri/rust-toolchain.toml`：`channel = "1.100.0"`、`profile = "minimal"`，不加其他元件與 targets。本機以 `RUSTUP_AUTO_INSTALL=0` 經 rustup 執行 `cargo test --offline --locked`，解析到 1.100.0，沒有要求下載。結果 565 通過、0 失敗、7 個忽略，警告 251 則，與基準逐行相同。雲端煙霧測試的環境步驟改在 `src/client/src-tauri` 執行，並先執行 `rustc --version`，讓 runner 依此檔安裝並印出固定版本。可接受殘餘：固定版本後，雲端不再測到其他 Rust 版本的差異（使用者選擇）。
+- SC-58 更正（覆核第一輪）：上方「固定 Rust 1.100.0 未納入此次提交……待 PM 決定」已由「SC-58 補充（固定 Rust）」取代，固定版本已提交。上方的變異敘述也一併更正：前述第二版 6 項之外，覆核另指出 1 項存活，即呼叫端把錯誤碼改傳 None 時沒有測試抓到，因為 rustc 1.100 已把 45 與 102 歸為 Unsupported。修正方式是把判斷函式改為參數注入（`publish_with_fallback_check`），新測試 `publication_fallback_checks_the_raw_os_code` 只依錯誤碼判斷，以此鎖定錯誤碼確實傳入判斷，與 Rust 版本的歸類無關。實際結果：變異 7 項全數殺掉，分別是移除 ENOTSUP、移除 EOPNOTSUPP、錯誤碼判斷恆為否、任何錯誤碼皆為是、ErrorKind 判斷恆為是、呼叫端改傳 None、不執行改名。仍未涵蓋：外層把注入的判斷換成別的函式，只有在舊版 Rust 上會被改名測試抓到。
+- 雲端煙霧測試的環境步驟在 `rustc --version` 前先執行 `rustup toolchain install`（不帶參數，依 toolchain 檔安裝），不靠 proxy 自動安裝。
+- 離線驗收（固定 1.100.0、經 rustup 且禁止自動安裝）：Rust 566 通過、0 失敗、7 個忽略（新增 1 個測試），警告 251 則，與基準逐行相同。
