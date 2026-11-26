@@ -167,9 +167,10 @@ fn verify_local_file(
 }
 
 fn catalog_model(model_id: &str) -> Result<ModelInfo, String> {
-    catalog::get_available_models()
-        .into_iter()
+    catalog::available_models()
+        .iter()
         .find(|model| model.id == model_id)
+        .cloned()
         .ok_or_else(|| error_protocol::encode(
             "local_model_missing",
             "Unknown local model ID. Select a model from the catalog.",
@@ -206,17 +207,22 @@ pub fn list_available_models() -> Vec<ModelInfo> {
 }
 
 /// 列出已下载的本地模型
+/// [自訂] SC-62：每次開錄都會查，原本是同步命令在主執行緒逐一 stat；改在阻塞執行緒池執行。
+/// 已下載清單不快取（下載、刪除、匯入都會改變），每次照實查檔案。
 #[tauri::command]
-pub fn list_downloaded_models() -> Vec<LocalModelInfo> {
+pub async fn list_downloaded_models() -> Vec<LocalModelInfo> {
+    tokio::task::spawn_blocking(downloaded_models).await.unwrap_or_default()
+}
+
+fn downloaded_models() -> Vec<LocalModelInfo> {
     let models_root = downloader::models_dir();
     if !models_root.exists() {
         return vec![];
     }
 
-    let catalog = catalog::get_available_models();
     let mut result = vec![];
 
-    for model in &catalog {
+    for model in catalog::available_models() {
         let model_path = downloader::model_dir(&model.id);
         if !model_path.exists() {
             continue;

@@ -297,7 +297,20 @@ function createAudioContext() {
   return new AudioContextCtor()
 }
 
+// [自訂] SC-62：停止錄音時不等 AudioContext 關閉（藍牙或切換取樣率時可能很久），
+// 辨識可以先開始；下一次開始錄音前一定先等這裡的關閉完成，不會與新的採集重疊。
+let pendingClose: Promise<void> = Promise.resolve()
+
 async function teardownCapture() {
+  releaseCapture()
+  await pendingClose
+}
+
+/**
+ * 立即切斷資料路徑並停止麥克風：之後不會再有 PCM 交給呼叫端。
+ * AudioContext 的關閉在背景進行，由 pendingClose 追蹤。
+ */
+function releaseCapture() {
   if (workletNode) {
     try { workletNode.port.onmessage = null } catch { /* ignore */ }
     try { workletNode.disconnect() } catch { /* ignore */ }
@@ -320,11 +333,18 @@ async function teardownCapture() {
     mediaStream = null
   }
 
-  if (audioCtx && audioCtx.state !== 'closed') {
-    await audioCtx.close().catch(() => { })
-  }
+  const ctx = audioCtx
   audioCtx = null
   actualSampleRate = TARGET_SAMPLE_RATE
+  if (ctx && ctx.state !== 'closed') {
+    let closing: Promise<void>
+    try {
+      closing = ctx.close().catch(() => { })
+    } catch {
+      closing = Promise.resolve()
+    }
+    pendingClose = Promise.all([pendingClose, closing]).then(() => { })
+  }
 }
 
 // ── Resampler state for ScriptProcessorNode fallback ──
@@ -655,15 +675,21 @@ export async function startCapture(
     microphoneOpened.dispatchEvent(new Event('change'))
     const track = mediaStream.getAudioTracks()[0] || null
     const settings = track?.getSettings?.()
+    // [自訂] SC-62：流已经开着，所以这一次枚举拿得到带名字的条目。与建立 AudioContext、
+    // 载入 worklet 并行，回传前才等它（失败一律是空快照，不会拒绝）。
+    const endpoints = snapshotInputEndpoints()
+    const ready = async () => {
+      activeMicrophone.devices = await endpoints
+      return activeMicrophone
+    }
     const activeMicrophone: ActiveMicrophoneInfo = {
       // Prefer the resolved track setting over the requested id. In system-default mode
       // these may differ, and the resolved value is what the reminder needs to describe.
       deviceId: String(settings?.deviceId || deviceId || ''),
       groupId: String(settings?.groupId || ''),
       label: String(track?.label || ''),
-      // 流已经开着，所以这一次枚举拿得到带名字的条目。多花的是一次进程间调用，
-      // 与同一路径上的 getUserMedia / AudioContext 相比可以忽略。
-      devices: await snapshotInputEndpoints(),
+      // 回传前由 ready() 填入端点快照。
+      devices: [],
     }
 
     console.log('[audio-diag] getUserMedia success', {
@@ -732,13 +758,13 @@ export async function startCapture(
         console.log('[audio-diag] AudioWorklet unavailable, using ScriptProcessorNode directly')
         setupScriptProcessorFallback(audioCtx, sourceNode)
       }
-      return activeMicrophone
+      return await ready()
     }
 
     clearTimeout(fallbackTimerId)
     if (usingFallback) {
       console.log('[audio-diag] ScriptProcessorNode already active, skipping worklet setup')
-      return activeMicrophone
+      return await ready()
     }
 
     // AudioWorklet loaded — set up node and monitor for data
@@ -755,7 +781,7 @@ export async function startCapture(
       }
     }, 800)
 
-    return activeMicrophone
+    return await ready()
 
   } catch (error) {
     await teardownCapture()
@@ -785,7 +811,8 @@ export async function stopCapture() {
     receivedPcm: firstPCMFrameLogged,
   })
 
-  await teardownCapture()
+  // [自訂] SC-62：資料路徑與麥克風在這裡已停止；AudioContext 在背景關閉。
+  releaseCapture()
 
   onAudioData = null
   onVolumeChange = null

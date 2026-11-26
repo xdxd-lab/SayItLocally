@@ -245,11 +245,14 @@ fn trim_logs(dir: &Path, file: &mut Option<std::fs::File>, cutoff: chrono::DateT
 }
 
 pub fn write_log_line(line: &str) {
+    write_log_line_at(line, chrono::Local::now());
+}
+
+fn write_log_line_at(line: &str, now: chrono::DateTime<chrono::Local>) {
     // 用 unwrap_or_else 而非 unwrap()：即使这个 Mutex 曾在某次 panic 中被"污染"
     // （poisoned），日志功能也不能跟着永久失效——否则会形成"一次意外 panic 导致
     // 之后所有诊断日志都写不出来"的雪崩，恰恰是排查间歇性问题最怕遇到的情况。
     let mut guard = LOG_FILE.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-    let now = chrono::Local::now();
     let incoming = line.len() as u64 + 32;
     if incoming > MAX_LOG_SIZE {
         return;
@@ -272,6 +275,62 @@ pub fn write_log_line(line: &str) {
 mod log_retention_tests {
     use super::*;
     use std::fs;
+
+    #[test]
+    fn frontend_log_lines_keep_their_order_and_arrival_time_off_the_caller_thread() {
+        let (done, written) = std::sync::mpsc::channel();
+        let sender = spawn_log_writer(move |at, line: String| {
+            done.send((at, line, std::thread::current().id())).unwrap();
+        })
+        .unwrap();
+        let base = chrono::Local::now() - chrono::Duration::seconds(30);
+        for i in 0..50 {
+            sender.send((base + chrono::Duration::milliseconds(i), format!("line {i}"))).unwrap();
+        }
+        drop(sender);
+        let rows: Vec<_> = written.iter().collect();
+        assert_eq!(rows.len(), 50);
+        for (i, (at, line, thread)) in rows.into_iter().enumerate() {
+            assert_eq!(line, format!("line {i}"));
+            assert_eq!(at, base + chrono::Duration::milliseconds(i as i64));
+            assert_ne!(thread, std::thread::current().id());
+        }
+    }
+
+    #[test]
+    fn a_queued_frontend_line_is_stamped_with_its_arrival_time() {
+        let marker = format!("queued-{}", uuid::Uuid::new_v4());
+        let held = LOG_FILE.lock().unwrap_or_else(|e| e.into_inner());
+        // 第一行讓寫入執行緒卡在日誌鎖上，第二行就在佇列裡排隊。
+        append_debug_log(serde_json::json!({"kind": "runtime", "level": "info", "source": "t", "message": "ahead"})).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        let called = chrono::Local::now();
+        append_debug_log(serde_json::json!({"kind": "runtime", "level": "info", "source": "t", "message": marker})).unwrap();
+        // 寫入執行緒被擋住時命令照樣立即返回；放開後才寫入。
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        let released = chrono::Local::now();
+        drop(held);
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        let line = loop {
+            let text = fs::read_to_string(log_file_path()).unwrap_or_default();
+            if let Some(line) = text.lines().find(|line| line.contains(&marker)) {
+                break line.to_string();
+            }
+            assert!(std::time::Instant::now() < deadline, "queued line was not written");
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        };
+        let stamp = chrono::NaiveDateTime::parse_from_str(&line[1..24], "%Y-%m-%d %H:%M:%S%.3f").unwrap();
+        assert!(stamp >= called.naive_local() - chrono::Duration::milliseconds(1));
+        assert!(stamp < released.naive_local() - chrono::Duration::milliseconds(200), "{line}");
+    }
+
+    #[test]
+    fn frontend_payloads_format_as_before() {
+        let runtime = serde_json::json!({"kind": "runtime", "level": "warn", "source": "audio", "message": "silent"});
+        assert_eq!(format_debug_payload(runtime), "[WARN] [audio] silent");
+        let session = serde_json::json!({"kind": "session_end", "sessionId": "s1", "durationMs": 12, "messageCount": 3});
+        assert_eq!(format_debug_payload(session), "[SESSION] end id=s1 duration=12ms messages=3");
+    }
 
     #[test]
     fn validates_log_retention_setting_and_routes_test_logger_to_temp() {
@@ -1155,10 +1214,47 @@ pub fn install_pending_update_on_exit(app: &AppHandle) {
     let _ = file_path;
 }
 
+/// [自訂] SC-62：前端日誌原本在主執行緒同步格式化、stat、寫檔並 flush。
+/// 命令維持同步（主執行緒依序收件，行序與呼叫順序一致），只記下時間後交給專屬寫入執行緒；
+/// 時間戳記用收件時間，不因排隊而延後。
 #[tauri::command]
 pub fn append_debug_log(payload: Value) -> Result<(), String> {
+    static QUEUE: std::sync::OnceLock<Option<std::sync::mpsc::Sender<(chrono::DateTime<chrono::Local>, Value)>>> =
+        std::sync::OnceLock::new();
+    let now = chrono::Local::now();
+    let queue = QUEUE.get_or_init(|| {
+        spawn_log_writer(|at, payload| write_log_line_at(&format_debug_payload(payload), at))
+    });
+    match queue {
+        Some(sender) => {
+            if let Err(std::sync::mpsc::SendError((at, payload))) = sender.send((now, payload)) {
+                write_log_line_at(&format_debug_payload(payload), at);
+            }
+        }
+        // 開不了寫入執行緒時照原本方式直接寫。
+        None => write_log_line_at(&format_debug_payload(payload), now),
+    }
+    Ok(())
+}
+
+fn spawn_log_writer<T: Send + 'static>(
+    mut sink: impl FnMut(chrono::DateTime<chrono::Local>, T) + Send + 'static,
+) -> Option<std::sync::mpsc::Sender<(chrono::DateTime<chrono::Local>, T)>> {
+    let (sender, receiver) = std::sync::mpsc::channel::<(chrono::DateTime<chrono::Local>, T)>();
+    std::thread::Builder::new()
+        .name("debug-log-writer".into())
+        .spawn(move || {
+            for (at, item) in receiver {
+                sink(at, item);
+            }
+        })
+        .ok()?;
+    Some(sender)
+}
+
+fn format_debug_payload(payload: Value) -> String {
     // Format a compact single-line representation for the log file
-    let line = match payload {
+    match payload {
         Value::Object(ref map) => {
             let kind = map.get("kind").and_then(|v| v.as_str()).unwrap_or("?");
             match kind {
@@ -1201,10 +1297,7 @@ pub fn append_debug_log(payload: Value) -> Result<(), String> {
         _ => {
             serde_json::to_string(&payload).unwrap_or_else(|_| format!("{:?}", payload))
         }
-    };
-
-    write_log_line(&line);
-    Ok(())
+    }
 }
 
 #[tauri::command]

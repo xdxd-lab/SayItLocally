@@ -401,8 +401,18 @@ unsafe fn query_capture_endpoints() -> Result<Vec<CaptureEndpoint>, String> {
 
 /// 列出启用中的录音端点，标出哪个是系统默认、哪个是虚拟设备。
 /// 失败或其他平台一律返回空表：前端拿到空表就照旧跟随系统默认，不做任何替换。
+/// [自訂] SC-62：同步命令在主執行緒執行，每次開錄都會卡住事件迴圈與浮動視窗。
+/// 改在阻塞執行緒池查詢；查詢本身失敗或 panic 時照原本回傳的空值。
+async fn off_main_thread<T: Send + 'static>(query: impl FnOnce() -> T + Send + 'static, fallback: T) -> T {
+    tokio::task::spawn_blocking(query).await.unwrap_or(fallback)
+}
+
 #[tauri::command]
-pub fn list_capture_endpoints() -> Vec<CaptureEndpoint> {
+pub async fn list_capture_endpoints() -> Vec<CaptureEndpoint> {
+    off_main_thread(capture_endpoints, Vec::new()).await
+}
+
+fn capture_endpoints() -> Vec<CaptureEndpoint> {
     #[cfg(windows)]
     unsafe {
         match query_capture_endpoints() {
@@ -520,7 +530,11 @@ unsafe fn query_mic_mute(label: Option<&str>) -> Result<MicMuteState, String> {
 /// `device_label`：本次 MediaStreamTrack 实际打开的设备名；传 None/空才回退查询系统默认麦克风。
 /// 返回 `matched=false` 时表示无法可靠定位设备（如选了特定设备但同名多个），前端应退回信号检测。
 #[tauri::command]
-pub fn get_mic_mute_state(device_label: Option<String>) -> MicMuteState {
+pub async fn get_mic_mute_state(device_label: Option<String>) -> MicMuteState {
+    off_main_thread(move || mic_mute_state(device_label), MicMuteState { matched: false, muted: false }).await
+}
+
+fn mic_mute_state(device_label: Option<String>) -> MicMuteState {
     #[cfg(windows)]
     unsafe {
         match query_mic_mute(device_label.as_deref()) {
@@ -585,6 +599,17 @@ fn query_mic_mute_macos(label: Option<&str>) -> MicMuteState {
 #[cfg(test)]
 mod tests {
     use super::{fourcc_text, is_virtual_enumerator, is_virtual_transport, normalize_mic_label};
+
+    #[test]
+    fn device_queries_run_off_the_calling_thread() {
+        let runtime = tokio::runtime::Builder::new_current_thread().build().unwrap();
+        let caller = std::thread::current().id();
+        let ran_on = runtime.block_on(super::off_main_thread(|| std::thread::current().id(), caller));
+        assert_ne!(ran_on, caller);
+        // 查詢 panic 時回傳原本的空值，不讓命令失敗。
+        let failed = runtime.block_on(super::off_main_thread(|| -> Vec<u8> { panic!("query failed") }, vec![7]));
+        assert_eq!(failed, [7]);
+    }
 
     #[test]
     fn only_virt_transport_counts_as_virtual_on_macos() {

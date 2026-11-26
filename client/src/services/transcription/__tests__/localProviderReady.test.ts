@@ -131,3 +131,74 @@ describe('LocalProvider model validation errors', () => {
     expect(describeProviderError(onError.mock.calls[0][0])).toMatchObject({ code, detail, action: 'none' })
   })
 })
+
+// [自訂] SC-62：停止後的四個設定一起送出，仍用停止時讀到的值；取消後不送辨識。
+describe('LocalProvider reads its settings together after stop', () => {
+  function decodeMeta(body: Uint8Array) {
+    const length = new DataView(body.buffer, body.byteOffset).getUint32(0, true)
+    return JSON.parse(new TextDecoder().decode(body.subarray(4, 4 + length)))
+  }
+
+  async function connected() {
+    getSettingMock.mockReset()
+    invokeMock.mockReset()
+    settings('sensevoice-small-gguf')
+    invokeMock.mockImplementation(async (command: string) =>
+      command === 'list_downloaded_models' ? [{ id: 'sensevoice-small-gguf', complete: true }] : '')
+    const provider = new LocalProvider()
+    const callbacks = { onASR: vi.fn(), onError: vi.fn(), onDone: vi.fn(), onFinal: vi.fn() }
+    await provider.connect(callbacks)
+    return { provider, callbacks }
+  }
+
+  function pendingSettings() {
+    const pending = new Map<string, (value: unknown) => void>()
+    getSettingMock.mockImplementation((key: string) => new Promise(resolve => pending.set(key, resolve)))
+    return pending
+  }
+
+  const values: Record<string, string> = {
+    'localAsr.modelId': 'qwen3-asr-1.7b-gguf',
+    'localAsr.language': 'zh',
+    'localAsr.accelerator': 'gpu',
+    'localAsr.gpuDevice': 'device-2',
+  }
+
+  it('requests all four settings before any of them answers and passes the answers on', async () => {
+    const { provider, callbacks } = await connected()
+    let transcribed!: (body: Uint8Array) => void
+    const sent = new Promise<Uint8Array>(resolve => { transcribed = resolve })
+    invokeMock.mockImplementation(async (command: string, body: Uint8Array) => {
+      if (command === 'local_transcribe_raw') {
+        transcribed(body)
+        return { text: '', elapsed_ms: 1 }
+      }
+      return ''
+    })
+    const pending = pendingSettings()
+    expect(provider.start({ runId: 7 })).toBe(true)
+    provider.sendAudio(new ArrayBuffer(16000))
+    expect(provider.stop()).toBe(true)
+    await vi.waitFor(() => expect(pending.size).toBe(4))
+    expect([...pending.keys()].sort()).toEqual(Object.keys(values).sort())
+    for (const [key, resolve] of pending) resolve(values[key])
+    expect(decodeMeta(await sent)).toEqual({
+      modelId: 'qwen3-asr-1.7b-gguf', language: 'zh', accelerator: 'gpu', gpuDevice: 'device-2',
+    })
+    await vi.waitFor(() => expect(callbacks.onDone).toHaveBeenCalled())
+  })
+
+  it('does not transcribe when the run is cancelled while the settings are pending', async () => {
+    const { provider, callbacks } = await connected()
+    const pending = pendingSettings()
+    expect(provider.start({ runId: 8 })).toBe(true)
+    provider.sendAudio(new ArrayBuffer(16000))
+    expect(provider.stop()).toBe(true)
+    await vi.waitFor(() => expect(pending.size).toBe(4))
+    provider.cancel()
+    for (const [key, resolve] of pending) resolve(values[key])
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(invokeMock).not.toHaveBeenCalledWith('local_transcribe_raw', expect.anything())
+    expect(callbacks.onASR).not.toHaveBeenCalled()
+  })
+})

@@ -413,6 +413,28 @@ mod raw_upload_tests {
     }
 
     #[test]
+    fn startup_purge_in_the_background_keeps_a_zip_built_this_session() {
+        use std::fs;
+        let dir = std::env::temp_dir().join(format!("sayit-diag-purge-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&dir).unwrap();
+        let build = std::sync::Mutex::new(false);
+        fs::write(dir.join("stale.zip"), b"").unwrap();
+        fs::write(dir.join("stale.zip.partial"), b"").unwrap();
+        fs::write(dir.join("keep.txt"), b"").unwrap();
+        super::purge_stale_in(&dir, &build);
+        assert!(!dir.join("stale.zip").exists());
+        assert!(!dir.join("stale.zip.partial").exists());
+        assert!(dir.join("keep.txt").exists());
+
+        // 使用者已在本次執行產生診斷包，背景清理才跑到：不刪新包。
+        *build.lock().unwrap() = true;
+        fs::write(dir.join("fresh.zip"), b"").unwrap();
+        super::purge_stale_in(&dir, &build);
+        assert!(dir.join("fresh.zip").exists());
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
     fn diagnostics_keeps_all_screenshots_and_preserves_nonconflicting_names() {
         use std::fs;
         use std::io::Read;
@@ -443,6 +465,9 @@ mod raw_upload_tests {
         assert!(zip.by_name("settings.json").is_ok());
         assert!(zip.by_name("timeline.json").is_ok());
         drop(zip);
+        // [自訂] SC-62：背景的啟動清理晚於本次建包時，不刪掉這份新包。
+        super::purge_stale_diagnostics_zips();
+        assert!(std::path::Path::new(&path).exists());
         fs::remove_file(path).unwrap();
     }
 
@@ -450,8 +475,8 @@ mod raw_upload_tests {
 
 fn build_diagnostics_zip(req: DiagnosticsZipRequest) -> Result<String, String> {
     // [自訂] REV9：封裝在工作執行緒執行，序列化建立與刪除前一份診斷包。
-    static ZIP_BUILD: std::sync::Mutex<()> = std::sync::Mutex::new(());
-    let _build = ZIP_BUILD.lock().unwrap_or_else(|error| error.into_inner());
+    let mut built = ZIP_BUILD.lock().unwrap_or_else(|error| error.into_inner());
+    *built = true;
     let diag_dir = diagnostics_dir();
     std::fs::create_dir_all(&diag_dir).map_err(|e| e.to_string())?;
     // [自訂] S45：產生新包前先清掉舊包（含日誌、詞彙、截圖），診斷目錄最多只留一份。
@@ -674,8 +699,15 @@ pub fn read_diagnostics_zip_bytes(path: String) -> Result<tauri::ipc::Response, 
 }
 
 /// [自訂] S45：刪除診斷目錄裡所有 .zip（取消另存、產生失敗、上傳停用、上次異常結束都會留下）。
+// [自訂] REV9：序列化建立與刪除診斷包。[自訂] SC-62：值表示本次執行已建立過診斷包。
+static ZIP_BUILD: std::sync::Mutex<bool> = std::sync::Mutex::new(false);
+
 fn purge_diagnostics_zips() {
-    let Ok(entries) = std::fs::read_dir(diagnostics_dir()) else {
+    purge_zips_in(&diagnostics_dir());
+}
+
+fn purge_zips_in(dir: &std::path::Path) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
         return;
     };
     for entry in entries.flatten() {
@@ -688,8 +720,17 @@ fn purge_diagnostics_zips() {
 }
 
 /// [自訂] S45：啟動時清掉上次殘留的診斷包。
+/// [自訂] SC-62：啟動清理改在背景執行緒，可能晚於使用者本次產生的診斷包；
+/// 本次已建立過就跳過（建立時已先清掉舊包），不刪掉新包。
 pub fn purge_stale_diagnostics_zips() {
-    purge_diagnostics_zips();
+    purge_stale_in(&diagnostics_dir(), &ZIP_BUILD);
+}
+
+fn purge_stale_in(dir: &std::path::Path, build: &std::sync::Mutex<bool>) {
+    let built = build.lock().unwrap_or_else(|error| error.into_inner());
+    if !*built {
+        purge_zips_in(dir);
+    }
 }
 
 /// [自訂] S45：前端取消另存或出錯時呼叫，只刪診斷目錄內的 .zip。
