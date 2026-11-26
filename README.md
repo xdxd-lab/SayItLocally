@@ -1,4 +1,8 @@
 <!-- fork-notice:start -->
+<p align="center">
+  <img src="docs/images/banner.svg" width="100%" alt="SayItLocally：說出口的話從對話泡泡化為光點，沿著弧線穿越時間的環，最後在半透明的紙上凝結成文字並被保存下來，全程留在你自己的電腦裡。">
+</p>
+
 # SayItLocally
 
 > [!IMPORTANT]
