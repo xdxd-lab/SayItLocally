@@ -1,16 +1,26 @@
 # [自訂] SC-57：雲端煙霧測試。只能手動觸發，不用 secrets 也不用第三方 action。
-# 在 GitHub 的 macOS arm64 runner 建置一次，下載並核對 SenseVoice 權重，對內建測試語音轉寫。
+# 在 GitHub 的 macOS runner 建置一次，下載並核對 SenseVoice 權重，對內建測試語音轉寫。
+# runner 可選：macos-15（arm64）常因容量不足排不到，可改選 macos-14 或 Intel 的 macos-15-intel。
 name: cloud-smoke
 
 on:
   workflow_dispatch:
+    inputs:
+      runner:
+        description: macOS runner label
+        type: choice
+        default: macos-15
+        options:
+          - macos-15
+          - macos-14
+          - macos-15-intel
 
 permissions:
   contents: read
 
 jobs:
   smoke:
-    runs-on: macos-15
+    runs-on: ${{ inputs.runner }}
     timeout-minutes: 90
     defaults:
       run:
