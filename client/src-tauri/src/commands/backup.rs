@@ -1883,6 +1883,8 @@ pub fn restart_app(app: tauri::AppHandle) {
     // 这次退出的意图是"重启回同一个版本"，不是更新。若让退出兜底安装跑起来，
     // 重启拉起来的会是正在被安装程序覆盖的 exe。
     crate::commands::system::suppress_exit_install();
+    // [自訂] SC-60：restart 會先產生新程序再結束本程序，先放開實例鎖，新程序才能成為主程序。
+    crate::instance_lock::release_for_restart();
     app.restart();
 }
 
