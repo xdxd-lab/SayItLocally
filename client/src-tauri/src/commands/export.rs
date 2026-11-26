@@ -67,10 +67,9 @@ fn resolve_export_path(default_path: &str) -> Result<std::path::PathBuf, String>
         .join(name))
 }
 
-/// [自訂] SC-56：匯出內容都來自資料庫。記憶體庫在建檔前拒絕；JSON 在寫出前去除本機絕對路徑。
-/// CSV、TXT、MD 由前端只放文字欄位，不含路徑欄位，原樣寫出。
-fn export_content(storage: &Storage, name: &str, content: &str) -> Result<String, String> {
-    storage.ensure_exportable()?;
+/// [自訂] SC-56：JSON 在寫出前去除本機絕對路徑。CSV、TXT、MD 由前端只放文字欄位，不含路徑欄位，原樣寫出。
+/// 記憶體庫的檢查在呼叫端（prepare_text_export、prepare_files），在建檔之前。
+fn export_content(name: &str, content: &str) -> Result<String, String> {
     if !crate::path_guard::has_extension(Path::new(name), &["json"]) {
         return Ok(content.to_string());
     }
@@ -84,13 +83,13 @@ fn prepare_text_export(storage: &Storage, payload: &TextExportPayload) -> Result
     storage.ensure_exportable()?;
     let path = resolve_export_path(&payload.default_path)?;
     check_export_extension(&path, &["json", "csv", "txt", "md"])?;
-    let content = export_content(storage, &path.to_string_lossy(), &payload.content)?;
+    let content = export_content(&path.to_string_lossy(), &payload.content)?;
     Ok((path, content))
 }
 
 fn prepare_files(storage: &Storage, files: &[ExportFile]) -> Result<Vec<(String, String)>, String> {
     storage.ensure_exportable()?;
-    files.iter().map(|item| Ok((item.name.clone(), export_content(storage, &item.name, &item.content)?))).collect()
+    files.iter().map(|item| Ok((item.name.clone(), export_content(&item.name, &item.content)?))).collect()
 }
 
 #[tauri::command]
