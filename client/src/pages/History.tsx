@@ -20,7 +20,7 @@ import { Button } from '@/components/ui/button'
 import { Tooltip } from '@/components/ui/tooltip'
 import { useSlidingIndicator } from '@/components/ui/useSlidingIndicator'
 import HistoryRecordList from '@/components/history/HistoryRecordList'
-import { exportHistory } from '@/services/exports'
+import { describeExportError, exportHistory } from '@/services/exports'
 import {
   countHistory,
   deleteHistory,
@@ -432,7 +432,7 @@ export default function History() {
   const [totalCount, setTotalCount] = useState(0)
   const [exportResult, setExportResult] = useState<{ filePath: string | null; canceled: boolean } | null>(null)
   const [exporting, setExporting] = useState(false)
-  const [exportError, setExportError] = useState(false)
+  const [exportError, setExportError] = useState('')
   const [deleteError, setDeleteError] = useState(false)
 
   const loadRecords = useCallback(async (searchKeyword: string, limit: number, favOnly: boolean) => {
@@ -511,14 +511,14 @@ export default function History() {
   const handleExport = async () => {
     // [自訂] L-82：匯出確認和寫檔期間只處理一份篩選結果。
     setExporting(true)
-    setExportError(false)
+    setExportError('')
     setExportResult(null)
     try {
       const result = await exportHistory({ keyword: debouncedKeyword, favoriteOnly })
       setExportResult(result)
       if (!result.canceled) setTimeout(() => setExportResult(null), 8000)
-    } catch {
-      setExportError(true)
+    } catch (error) {
+      setExportError(describeExportError(error) ?? t('history.exportFailed'))
     } finally {
       setExporting(false)
     }
@@ -693,7 +693,7 @@ export default function History() {
       {exportResult?.canceled && (
         <p className="mb-3 text-xs text-muted-foreground">{t('history.exportCanceled')}</p>
       )}
-      {exportError && <p role="alert" className="mb-3 text-xs text-destructive">{t('history.exportFailed')}</p>}
+      {exportError && <p role="alert" className="mb-3 text-xs text-destructive">{exportError}</p>}
       {deleteError && <p role="alert" className="mb-3 text-xs text-destructive">{t('history.deleteFailed')}</p>}
 
       <HistoryRecordList

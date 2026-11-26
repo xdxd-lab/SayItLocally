@@ -54,14 +54,32 @@ pub struct Storage {
     recovery_lease: Option<fs::File>,
     // [自訂] SC-55：由開啟目標決定；記憶體庫的內容在退出後消失。
     volatile: bool,
+    // [自訂] SC-56：本次啟動經過任何復原模式（含換新磁碟庫）。
+    recovered: bool,
 }
 
 /// [自訂] SC-55：記憶體庫不接受還原與匯入，前端依此碼顯示說明。
 pub(crate) const VOLATILE_STORAGE_ERROR: &str = "BACKUP_VOLATILE_STORAGE";
+/// [自訂] SC-56：記憶體庫不寫出匯出檔或備份。
+pub(crate) const VOLATILE_EXPORT_ERROR: &str = "BACKUP_VOLATILE_EXPORT";
 
 impl Storage {
     pub fn open_or_recover(db_path: PathBuf) -> (Self, Option<StorageRecovery>) {
-        recovery::open_or_recover(&db_path, Duration::from_secs(5))
+        let (mut storage, mode) = recovery::open_or_recover(&db_path, Duration::from_secs(5));
+        storage.recovered = mode.is_some();
+        (storage, mode)
+    }
+
+    pub(crate) fn recovered_at_startup(&self) -> bool {
+        self.recovered
+    }
+
+    // [自訂] SC-56：匯出與備份在建立任何檔案之前呼叫。
+    pub(crate) fn ensure_exportable(&self) -> Result<(), String> {
+        if self.volatile {
+            return Err(VOLATILE_EXPORT_ERROR.into());
+        }
+        Ok(())
     }
 
     pub(crate) fn is_volatile(&self) -> bool {
@@ -132,7 +150,7 @@ impl Storage {
             }
         }
         db.busy_timeout(Duration::from_secs(5))?;
-        Ok(Self { db: Mutex::new(db), recovery_lease: None, volatile: !disk })
+        Ok(Self { db: Mutex::new(db), recovery_lease: None, volatile: !disk, recovered: false })
     }
 
     fn initialize_schema(db: &mut Connection) -> SqlResult<()> {
@@ -1051,6 +1069,19 @@ impl Storage {
         exclude: &[&str],
         prompt_presets: Option<&[Value]>,
         app_prompt_rules: Option<&[Value]>,
+    ) -> Result<(), String> {
+        // [自訂] SC-56：寫入層的縱深檢查，入口漏掉時也不寫進記憶體庫。
+        self.ensure_persistent()?;
+        self.apply_config_sql(app_settings, exclude, prompt_presets, app_prompt_rules)
+            .map_err(|error| format!("Failed to write configuration: {}", error))
+    }
+
+    fn apply_config_sql(
+        &self,
+        app_settings: &serde_json::Map<String, Value>,
+        exclude: &[&str],
+        prompt_presets: Option<&[Value]>,
+        app_prompt_rules: Option<&[Value]>,
     ) -> SqlResult<()> {
         let mut db = self.conn();
         let log_error = |error: &rusqlite::Error| log_backup_sqlite_error("import configuration", error);
@@ -1069,6 +1100,8 @@ impl Storage {
         collections: &[(&str, Option<&[Value]>)],
         dry_run: bool,
     ) -> Result<(), String> {
+        // [自訂] SC-56：寫入層的縱深檢查。
+        self.ensure_persistent()?;
         let mut db = self.db.lock().map_err(|_| "BACKUP_RESTORE_DB|lock")?;
         let restore_error = |stage| move |error| {
             log_backup_sqlite_error(stage, &error);

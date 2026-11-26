@@ -4,6 +4,8 @@ use std::io::{Seek, Write};
 use std::path::Path;
 use tauri::Emitter;
 
+use crate::storage::Storage;
+
 #[derive(Deserialize)]
 pub struct TextExportPayload {
     #[serde(rename = "defaultPath")]
@@ -65,14 +67,39 @@ fn resolve_export_path(default_path: &str) -> Result<std::path::PathBuf, String>
         .join(name))
 }
 
-#[tauri::command]
-pub fn save_text_export(payload: TextExportPayload) -> Result<Option<String>, String> {
+/// [自訂] SC-56：匯出內容都來自資料庫。記憶體庫在建檔前拒絕；JSON 在寫出前去除本機絕對路徑。
+/// CSV、TXT、MD 由前端只放文字欄位，不含路徑欄位，原樣寫出。
+fn export_content(storage: &Storage, name: &str, content: &str) -> Result<String, String> {
+    storage.ensure_exportable()?;
+    if !crate::path_guard::has_extension(Path::new(name), &["json"]) {
+        return Ok(content.to_string());
+    }
+    let mut document: serde_json::Value = serde_json::from_str(content)
+        .map_err(|error| format!("Export content is not valid JSON: {error}"))?;
+    super::backup::scrub_export_document(&mut document);
+    serde_json::to_string_pretty(&document).map_err(|error| error.to_string())
+}
+
+fn prepare_text_export(storage: &Storage, payload: &TextExportPayload) -> Result<(std::path::PathBuf, String), String> {
+    storage.ensure_exportable()?;
     let path = resolve_export_path(&payload.default_path)?;
     check_export_extension(&path, &["json", "csv", "txt", "md"])?;
+    let content = export_content(storage, &path.to_string_lossy(), &payload.content)?;
+    Ok((path, content))
+}
+
+fn prepare_files(storage: &Storage, files: &[ExportFile]) -> Result<Vec<(String, String)>, String> {
+    storage.ensure_exportable()?;
+    files.iter().map(|item| Ok((item.name.clone(), export_content(storage, &item.name, &item.content)?))).collect()
+}
+
+#[tauri::command]
+pub fn save_text_export(payload: TextExportPayload, storage: tauri::State<'_, Storage>) -> Result<Option<String>, String> {
+    let (path, content) = prepare_text_export(storage.inner(), &payload)?;
     if let Some(parent) = path.parent() {
         let _ = fs::create_dir_all(parent);
     }
-    fs::write(&path, &payload.content).map_err(|e| e.to_string())?;
+    fs::write(&path, content).map_err(|e| e.to_string())?;
     let abs = fs::canonicalize(&path).unwrap_or(path);
     let abs_str = abs.to_string_lossy().to_string();
     let clean = abs_str.strip_prefix(r"\\?\").unwrap_or(&abs_str).to_string();
@@ -80,7 +107,8 @@ pub fn save_text_export(payload: TextExportPayload) -> Result<Option<String>, St
 }
 
 #[tauri::command]
-pub fn save_export_bundle(payload: ExportBundlePayload) -> Result<Option<String>, String> {
+pub fn save_export_bundle(payload: ExportBundlePayload, storage: tauri::State<'_, Storage>) -> Result<Option<String>, String> {
+    let files = prepare_files(storage.inner(), &payload.files)?;
     let path = resolve_export_path(&payload.default_path)?;
     check_export_extension(&path, &["zip"])?;
     if let Some(parent) = path.parent() {
@@ -89,8 +117,8 @@ pub fn save_export_bundle(payload: ExportBundlePayload) -> Result<Option<String>
 
     let file = fs::File::create(&path).map_err(|e| e.to_string())?;
     let mut zip = zip::ZipWriter::new(file);
-    for item in &payload.files {
-        super::archive::write_deflated_entry(&mut zip, &item.name, item.content.as_bytes())?;
+    for (name, content) in &files {
+        super::archive::write_deflated_entry(&mut zip, name, content.as_bytes())?;
     }
 
     zip.finish().map_err(|e| e.to_string())?;
@@ -119,14 +147,15 @@ struct ExportProgress {
 pub async fn save_full_export(
     app: tauri::AppHandle,
     payload: FullExportPayload,
+    storage: tauri::State<'_, Storage>,
 ) -> Result<Option<String>, String> {
+    let json_files = prepare_files(storage.inner(), &payload.files)?;
     let out_path = std::path::PathBuf::from(&payload.default_path);
     check_export_extension(&out_path, &["zip"])?;
     if let Some(parent) = out_path.parent() {
         let _ = fs::create_dir_all(parent);
     }
 
-    let json_files = payload.files;
     let app_handle = app.clone();
 
     // [自訂] S71：列舉、讀檔及封裝在同一錄音鎖內。
@@ -139,12 +168,12 @@ pub async fn save_full_export(
         let mut current = 0usize;
 
         // 写入 JSON 文件
-        for item in &json_files {
+        for (name, content) in &json_files {
             current += 1;
             let _ = app_handle.emit("export-progress", ExportProgress {
-                current, total, filename: item.name.clone(),
+                current, total, filename: name.clone(),
             });
-            super::archive::write_deflated_entry(&mut zip, &item.name, item.content.as_bytes())?;
+            super::archive::write_deflated_entry(&mut zip, name, content.as_bytes())?;
         }
 
         // 写入音频文件
@@ -201,5 +230,50 @@ mod tests {
         recording.read_to_end(&mut bytes).unwrap();
         assert_eq!(bytes, b"recording");
         fs::remove_file(source).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod sc56_tests {
+    use super::*;
+    use serde_json::{json, Value};
+
+    #[test]
+    fn exports_refuse_volatile_storage_and_drop_local_paths_from_json() {
+        let dir = std::env::temp_dir().join(format!("sayit-export-test-{}", uuid::Uuid::new_v4()));
+        let disk = Storage::new(dir.join("test.db")).unwrap();
+        let memory = Storage::new(std::path::PathBuf::from(":memory:")).unwrap();
+        let history = json!({
+            "total": 1,
+            "filters": { "keyword": "/Users/someone" },
+            "records": [{ "id": "abc123", "audioFilePath": "C:\\x\\abc123.wav", "windowTitle": "~/Desktop", "asrText": "say /tmp/x" }],
+        }).to_string();
+        let text = TextExportPayload { default_path: dir.join("h.json").to_string_lossy().into(), content: history.clone(), filters: None };
+        let files = vec![
+            ExportFile { name: "history.json".into(), content: history.clone() },
+            ExportFile { name: "notes.csv".into(), content: "id,text\nx,/tmp/kept".into() },
+        ];
+        for result in [
+            prepare_text_export(&memory, &text).map(|_| ()),
+            prepare_files(&memory, &files).map(|_| ()),
+        ] {
+            assert_eq!(result, Err(crate::storage::VOLATILE_EXPORT_ERROR.into()));
+        }
+        assert!(!dir.join("h.json").exists());
+
+        let expected = json!({
+            "total": 1, "filters": {},
+            "records": [{ "id": "abc123", "audioFilePath": "abc123.wav", "asrText": "say /tmp/x" }],
+        });
+        let (path, content) = prepare_text_export(&disk, &text).unwrap();
+        assert_eq!(path, dir.join("h.json"));
+        assert_eq!(serde_json::from_str::<Value>(&content).unwrap(), expected);
+        let prepared = prepare_files(&disk, &files).unwrap();
+        assert_eq!(serde_json::from_str::<Value>(&prepared[0].1).unwrap(), expected);
+        assert_eq!(prepared[1].1, files[1].content);
+        let broken = vec![ExportFile { name: "x.json".into(), content: "{".into() }];
+        assert!(prepare_files(&disk, &broken).is_err());
+        drop(disk);
+        fs::remove_dir_all(dir).unwrap();
     }
 }

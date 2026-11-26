@@ -469,6 +469,8 @@ pub async fn webdav_backup_now(
     app: AppHandle,
     storage: State<'_, Storage>,
 ) -> Result<WebDavBackupResult, String> {
+    // [自訂] SC-56：記憶體庫不備份，也不記錄這次結果。
+    storage.ensure_exportable()?;
     let scope = scope_from_settings(storage.inner());
     let file_name = format!(
         "{}{}.zip",

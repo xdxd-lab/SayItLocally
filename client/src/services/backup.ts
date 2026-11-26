@@ -37,6 +37,8 @@ export function describeBackupTransferError(error: unknown): string {
       return t('backup.writeFile')
     case 'BACKUP_EXPORT_EXISTS':
       return t('backup.fileExists')
+    case 'BACKUP_VOLATILE_EXPORT':
+      return t('backup.volatileExport')
     case 'BACKUP_VOLATILE_STORAGE':
       return t('backup.volatileStorage')
     case 'BACKUP_RESTORE_DB':
