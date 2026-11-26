@@ -284,3 +284,25 @@
   - 以下兩點沒有單元測試，依靠程式碼檢視：`main` 在 setup 第一行放開啟動鎖，以及實例鎖放在全域變數中持有到程序結束。
   - 不同使用者帳號同時執行不在範圍內。
 - SC-60 補充：程式內重新啟動（匯入後的 `restart_app`）會先產生新程序再結束舊程序，過程不經過退出事件。若不處理，新程序會因實例鎖仍被占用而只做轉交，App 不會回來。現在重新啟動前先放開實例鎖，新程序可成為主程序。新增 1 個測試與 1 項變異（不放開），都通過與殺掉；Rust 571 通過、0 失敗、7 個忽略，警告 251 則不變。殘餘：新舊程序會短暫重疊，此時兩者都可能開著資料庫，與修改前相同。main 在開資料庫前就結束的兩個分支（轉交、逾時）沒有單元測試，只鎖住 `role()` 的對應。macOS 更新看門人會等舊程序結束後才重新開啟，不受影響。
+
+### SC-61 tauri 2.12 與相依小版更新
+
+- 範圍：使用者 2026-11-27 同意。本機只執行 `cargo update`、`cargo fetch`，連線對象為 crates.io；npm 鎖定檔另行解析。
+- Rust 升級：
+  - tauri 2.10.3 → 2.12.7，連帶 tauri-build 2.7.6、tauri-runtime 2.12.4、tauri-runtime-wry 2.12.5、tauri-utils 2.10.4、wry 0.57.4、tao 0.37.3、tray-icon 0.25.1、muda 0.20.0。
+  - 外掛：shell 2.6.0、dialog 2.8.4、autostart 2.7.0、global-shortcut 2.4.1、single-instance 2.5.5（fs 隨之升到 2.7.1）。
+  - webview2-com 0.38.2 → 0.39.1、windows-core 0.61 → 0.62（Windows 專用）。
+  - 小版：serde_with 3.18.0 → 3.25.0、openssl 0.10.76 → 0.10.82、openssl-sys 0.9.112 → 0.9.118。
+- 移除 `[patch.crates-io] tray-icon`。原本的修補（Windows 托盘右鍵選單卡住）上游在 0.23 已修好，現在用 0.25.1。`vendor/tray-icon` 已不再被引用，目錄的刪除另行處理。
+- 權限：capabilities 與 CSP 不變。
+  - dialog 2.8 把 `ask`、`confirm` 改走 `message` 指令，預設權限只剩 `allow-message`、`allow-save`、`allow-open`。前端使用的 `confirm` 由 `allow-message` 涵蓋，但前提是前端套件也要是 2.8 版。
+  - tauri 2.12 新增的 `core:app:allow-exit` 不在預設內，前端沒有使用。
+  - 自動產生的權限結構檔（`gen/schemas`）隨版本更新。
+- Windows 程式碼：逐一對照 webview2-com 0.39 的 API。專案用到的部分（各事件處理器的 `create` 與閉包型別、`add_*` 與輸出參數、`take_pwstr`、`PWSTR`、`Interface::cast`、`ICoreWebView2_14`／`_19`）簽名都相同，不需要修改。直接使用的 `windows` 0.58 是另一套型別，tauri 沒有要求升級，維持不變。macOS 上無法編譯 Windows，Windows 編譯與實機行為待驗證。
+- 前端：`package.json` 的 `@tauri-apps/api` 改為 ^2.12.5、`cli` ^2.12.6、`plugin-dialog` ^2.8.4、`plugin-shell` ^2.6.0，與 Rust 端的主次版本對齊；鎖定檔另行解析。
+- 雲端煙霧測試：建置前端後，新增「Frontend checks」步驟，依序執行 tsc、嚴格 i18n、vitest，並逐行印出失敗的測試名稱。這一步失敗不擋後續步驟。未加 Windows job：transcribe-cpp 的 Windows 版即使只跑 `cargo check`，也會執行建置腳本，需要 Vulkan SDK；不用第三方 action 就得自行下載並安裝 SDK，不在本批範圍內。
+- 離線驗收（macOS、固定 1.100.0）：Rust 580 通過、0 失敗、7 個忽略。警告 248 → 232，減少的 16 則全是已移除的 vendor tray-icon 產生的，沒有新增。
+- Dependabot：
+  - 本批處理：tauri（GHSA-7gmj、GHSA-w28w）、serde_with、openssl 共 7 項。rand 0.7.3 隨 phf 更新已不在相依中。
+  - npm 建置工具待鎖定檔解析：vite、postcss、nanoid、picomatch、source-map-js、postcss-selector-parser、browserslist、baseline-browser-mapping、@babel/core、brace-expansion、@humanfs/node。
+  - 未處理：react-router（需升到 7，屬大版本）、glib 0.18（只在 Linux，tauri 2 無修正）、pip（server/）。minimatch 的修正在 11.x，屬大版本，待決定。
