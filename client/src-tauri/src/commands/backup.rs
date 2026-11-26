@@ -456,11 +456,30 @@ pub(crate) fn is_local_path(value: &str) -> bool {
     }
 }
 
+/// [自訂] SC-56 第二輪：使用者說出或輸入的內容。即使整段像路徑也原樣寫出，只處理中繼資料。
+/// 欄位：辨識與整理文字、手動更正前後文字、回饋備註、文字替換、提示詞、名稱、熱詞、搜尋關鍵字。
+const CONTENT_FIELDS: &[&str] = &[
+    "asrText", "llmText", "originalAsrText", "originalLlmText", "editedAsrText", "editedLlmText",
+    "preferredText", "note", "from", "to", "systemPrompt", "promptAppend", "name", "words",
+    "keyword", "autoAppliedHotwords", "activeWords", "builtinSetWords", "builtinSetExtraWords",
+    "customThemes", "manualHotwords", "hotwordLearning", "styleProfile", "hotwordGroups",
+    "textReplacements",
+];
+/// 值整個都是使用者內容的設定鍵（熱詞、文字替換、學習結果、風格）。
+const CONTENT_SETTINGS: &[&str] = &[
+    "hotwords", "builtinSetWords", "builtinSetExtraWords", "customHotwordThemes", "manualHotwords",
+    "textReplacements", "hotwordLearning", "styleProfile",
+];
+
+fn is_content_field(key: &str) -> bool {
+    CONTENT_FIELDS.contains(&key)
+}
+
 fn contains_local_path(value: &Value) -> bool {
     match value {
         Value::String(text) => is_local_path(text),
         Value::Array(items) => items.iter().any(contains_local_path),
-        Value::Object(map) => map.values().any(contains_local_path),
+        Value::Object(map) => map.iter().any(|(key, item)| !is_content_field(key) && contains_local_path(item)),
         _ => false,
     }
 }
@@ -474,8 +493,12 @@ fn scrub_records(value: &mut Value) {
         }
         Value::Object(map) => {
             strip_audio_field(map);
-            map.retain(|_, item| !item.as_str().is_some_and(is_local_path));
-            map.values_mut().for_each(scrub_records);
+            map.retain(|key, item| is_content_field(key) || !item.as_str().is_some_and(is_local_path));
+            for (key, item) in map.iter_mut() {
+                if !is_content_field(key) {
+                    scrub_records(item);
+                }
+            }
         }
         _ => {}
     }
@@ -485,7 +508,7 @@ fn scrub_records(value: &mut Value) {
 /// 其他內容移除路徑欄位或元素。只改寫出的副本，不改資料庫。
 pub(crate) fn scrub_export_document(document: &mut Value) {
     if let Some(Value::Object(settings)) = document.get_mut("appSettings") {
-        settings.retain(|_, value| !contains_local_path(value));
+        settings.retain(|key, value| CONTENT_SETTINGS.contains(&key.as_str()) || !contains_local_path(value));
     }
     match document {
         Value::Object(map) => {
@@ -3092,8 +3115,8 @@ mod tests {
             { "id": "name", "audioFilePath": "ghi789.wav" },
             { "id": "invalid" }, { "id": "directory" }, { "id": "empty" },
             { "id": "number" }, { "id": "null" },
-            // [自訂] SC-56：整個值就是路徑的文字欄位也不寫出。
-            { "id": "absent" },
+            // [自訂] SC-56 第二輪：使用者內容即使整段像路徑也保留。
+            { "id": "absent", "asrText": "/Volumes/Old Mac/spoken.wav" },
         ]));
         for key in ["manualCorrections", "feedbackQueue"] {
             assert_eq!(payload[key], json!([{ "id": "other", "audioFilePath": "abc123.wav" }]));
@@ -3146,26 +3169,35 @@ mod tests {
         }
     }
 
-    fn all_strings(value: &Value, out: &mut Vec<String>) {
+    /// Strings outside user content: metadata, settings and keys.
+    fn metadata_strings(value: &Value, settings: bool, out: &mut Vec<String>) {
         match value {
             Value::String(text) => out.push(text.clone()),
-            Value::Array(items) => items.iter().for_each(|item| all_strings(item, out)),
+            Value::Array(items) => items.iter().for_each(|item| metadata_strings(item, false, out)),
             Value::Object(map) => map.iter().for_each(|(key, item)| {
                 out.push(key.clone());
-                all_strings(item, out);
+                let content = is_content_field(key) || (settings && CONTENT_SETTINGS.contains(&key.as_str()));
+                if !content {
+                    metadata_strings(item, !settings && key == "appSettings", out);
+                }
             }),
             _ => {}
         }
     }
 
+    fn metadata_strings_contain(document: &Value, text: &str) -> bool {
+        let mut strings = Vec::new();
+        metadata_strings(document, false, &mut strings);
+        strings.iter().any(|item| item == text)
+    }
+
     fn assert_no_local_paths(document: &Value, sentence: &str) {
         let mut strings = Vec::new();
-        all_strings(document, &mut strings);
+        metadata_strings(document, false, &mut strings);
         for text in &strings {
             assert!(!is_local_path(text), "{text}");
         }
-        // The single exception: a path inside free text is the user's own words.
-        assert!(strings.iter().any(|text| text == sentence));
+        let _ = sentence;
     }
 
     #[test]
@@ -3179,12 +3211,15 @@ mod tests {
             ("customHome", json!("~/Exports")),
             ("customShare", json!("\\\\nas\\share")),
             ("customText", json!(sentence)),
+            ("hotwords", json!(["/usr/local/bin", "kept"])),
+            ("customNamed", json!({ "name": "~/Projects" })),
         ];
         for (key, value) in &settings {
             storage.set(key, value).unwrap();
         }
         let history = json!([{
-            "id": "abc123", "asrText": sentence, "audioFilePath": "/Volumes/Old/audio/abc123.wav",
+            "id": "abc123", "asrText": "/Volumes/Work/notes.txt", "llmText": sentence,
+            "audioFilePath": "/Volumes/Old/audio/abc123.wav",
             "windowTitle": "/home/someone/Documents", "exePath": "C:\\Program Files\\App\\app.exe",
             "appContext": { "exePath": "/Applications/App.app", "processName": "App" },
             "autoAppliedHotwords": ["kept", "file:///tmp/x"],
@@ -3212,9 +3247,21 @@ mod tests {
         }
         assert_eq!(backup["history"][0]["audioFilePath"], json!("abc123.wav"));
         assert_eq!(backup["history"][0]["appContext"], json!({ "processName": "App" }));
-        assert_eq!(backup["history"][0]["autoAppliedHotwords"], json!(["kept"]));
+        // User content keeps whole-path values; metadata drops them.
+        assert_eq!(backup["history"][0]["autoAppliedHotwords"], json!(["kept", "file:///tmp/x"]));
+        assert_eq!(backup["history"][0]["asrText"], json!("/Volumes/Work/notes.txt"));
+        assert!(backup["history"][0].get("windowTitle").is_none());
+        assert!(backup["history"][0].get("exePath").is_none());
+        assert_eq!(backup["manualCorrections"][0]["note"], json!("~/x"));
+        assert_eq!(backup["feedbackQueue"][0]["snapshot"]["asrText"], json!("/tmp/x"));
+        assert_eq!(exported["hotwords"], json!(["/usr/local/bin", "kept"]));
+        assert_eq!(exported["customNamed"], json!({ "name": "~/Projects" }));
+        assert_eq!(exported["textReplacements"][0]["from"], json!("/home/someone"));
         assert_eq!(backup["appPromptRules"][0]["matcher"], json!({ "appId": "a" }));
 
+        // A path inside a sentence in metadata is kept as written.
+        assert_eq!(backup["history"][0]["windowTitle"], Value::Null);
+        assert!(metadata_strings_contain(&backup, sentence));
         for (mode, name) in [("full", "full.json"), ("selected", "selected.json")] {
             let selection: ConfigExportSelection = serde_json::from_value(json!({
                 "mode": mode, "includeTextReplacements": true, "promptPresetIds": ["p"],
@@ -3235,6 +3282,11 @@ mod tests {
         apply_full_backup_in_dir(&restored, output.to_str().unwrap(), &dir.join("restored-audio")).unwrap();
         assert_eq!(restored.get("customUnknownFolder", None), json!("local value"));
         assert_eq!(restored.get("customText", None), json!(sentence));
+        assert_eq!(restored.get("hotwords", None), json!(["/usr/local/bin", "kept"]));
+        assert_eq!(restored.get("textReplacements", None)[0]["from"], json!("/home/someone"));
+        assert_eq!(restored.get("history", None)[0]["asrText"], json!("/Volumes/Work/notes.txt"));
+        assert_eq!(restored.get("manualCorrections", None)[0]["note"], json!("~/x"));
+        assert_eq!(restored.get("feedbackQueue", None)[0]["snapshot"]["asrText"], json!("/tmp/x"));
         assert_eq!(
             restored.get("history", None)[0]["audioFilePath"],
             json!(dir.join("restored-audio/abc123.wav").to_string_lossy()),

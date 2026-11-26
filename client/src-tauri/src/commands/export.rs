@@ -261,7 +261,7 @@ mod sc56_tests {
         assert!(!dir.join("h.json").exists());
 
         let expected = json!({
-            "total": 1, "filters": {},
+            "total": 1, "filters": { "keyword": "/home/someone" },
             "records": [{ "id": "abc123", "audioFilePath": "abc123.wav", "asrText": "say /tmp/x" }],
         });
         let (path, content) = prepare_text_export(&disk, &text).unwrap();
