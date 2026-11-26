@@ -983,6 +983,36 @@ mod tests {
         fs::set_permissions(denied, fs::Permissions::from_mode(0o700)).unwrap();
     }
 
+    // [自訂] SC-55：參考根目錄解析不完整時，另以字面正規化路徑比較（n02、n10、n14）。
+    #[cfg(unix)]
+    #[test]
+    fn unresolved_reference_roots_are_also_compared_lexically() {
+        use std::os::unix::fs::symlink;
+        let fixture = ModelFixture::new();
+        let base = &fixture.dir;
+        let real = base.join("elsewhere/dir");
+        fs::create_dir_all(&real).unwrap();
+        fs::create_dir(base.join("elsewhere/kept")).unwrap();
+        symlink(&real, base.join("link")).unwrap();
+        // `link/..` is `elsewhere` on disk, but `base` when read literally.
+        symlink(base.join("unmounted"), base.join("elsewhere/shared")).unwrap();
+        let default = base.join("appdata/models");
+        let current = base.join("link/../shared");
+        for requested in [base.join("shared/models"), base.join("missing/../shared/models")] {
+            let result = switch_models_dir(Some(&requested), &current, &default,
+                |_| panic!("an overlap must not be saved"), |_| panic!("an overlap must not be activated"));
+            assert!(result.unwrap_err().starts_with("sayit_error:model_dir_overlap:"), "{requested:?}");
+            // The same literal relation is checked for an unresolved default root.
+            let result = switch_models_dir(Some(&requested), &base.join("old"), &current,
+                |_| panic!("an overlap must not be saved"), |_| panic!("an overlap must not be activated"));
+            assert!(result.unwrap_err().starts_with("sayit_error:model_dir_overlap:"), "{requested:?}");
+        }
+        // A fully resolved root uses only the resolved comparison.
+        let kept = base.join("link/../kept");
+        assert!(switch_models_dir(Some(&base.join("kept/models")), &kept, &default, |_| Ok(()), |_| {}).is_ok());
+        assert!(switch_models_dir(Some(&base.join("unrelated")), &current, &default, |_| Ok(()), |_| {}).is_ok());
+    }
+
     #[test]
     fn model_directory_request_respects_download_lease_before_reading_current_path() {
         let _guard = downloader::TEST_MODEL_LEASES.lock().unwrap();

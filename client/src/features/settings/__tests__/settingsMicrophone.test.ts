@@ -178,6 +178,47 @@ describe('settings microphone names', () => {
     ])
   })
 
+  it('lets a newer device list win over an older name lookup and keeps its names', async () => {
+    const mic = mount()
+    await flushMicrophoneUpdates()
+    let finishListing!: (devices: unknown[]) => void
+    enumerate.mockReturnValueOnce(new Promise((resolve) => { finishListing = resolve }))
+    const reveal = mic.revealNames()
+    await flushMicrophoneUpdates()
+    // The named microphone is unplugged while the lookup is still enumerating.
+    const other = { ...blank, deviceId: 'other' }
+    enumerate.mockResolvedValueOnce([other])
+    navigator.mediaDevices.dispatchEvent(new Event('devicechange'))
+    await flushMicrophoneUpdates()
+    expect(mic.onDevices).toHaveBeenLastCalledWith([other])
+    finishListing([named, { ...other, label: 'Other mic' }])
+    await reveal
+    expect(mic.onDevices).toHaveBeenLastCalledWith([{ deviceId: 'other', groupId: '', label: 'Other mic' }])
+    expect(mic.onDevices).not.toHaveBeenCalledWith(expect.arrayContaining([named]))
+  })
+
+  it('applies a newer refresh that finishes after the lookup, and drops an older one', async () => {
+    let finishMount!: (devices: unknown[]) => void
+    enumerate.mockReturnValueOnce(new Promise((resolve) => { finishMount = resolve }))
+    const mic = mount()
+    let finishLookup!: (devices: unknown[]) => void
+    enumerate.mockReturnValueOnce(new Promise((resolve) => { finishLookup = resolve }))
+    const reveal = mic.revealNames()
+    await flushMicrophoneUpdates()
+    let finishNewer!: (devices: unknown[]) => void
+    enumerate.mockReturnValueOnce(new Promise((resolve) => { finishNewer = resolve }))
+    navigator.mediaDevices.dispatchEvent(new Event('devicechange'))
+    finishLookup([named])
+    await reveal
+    expect(mic.onDevices).toHaveBeenLastCalledWith([named])
+    finishMount([blank])
+    await flushMicrophoneUpdates()
+    expect(mic.onDevices).toHaveBeenLastCalledWith([named])
+    finishNewer([])
+    await flushMicrophoneUpdates()
+    expect(mic.onDevices).toHaveBeenLastCalledWith([])
+  })
+
   it('retains an unavailable selection in the options while its labels are hidden', () => {
     const options = buildMicOptions([blank], 'prior-device', {
       systemDefault: 'Default',

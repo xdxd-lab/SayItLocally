@@ -537,10 +537,10 @@ fn main() {
 
     // 自定义模型存储目录：启动时读回并设为进程内生效路径（空串 = 用默认）。
     // 必须在任何取模型路径的调用之前设定，且要在 storage 被 move 进 manage 之前读。
-    let models_dir_val = storage.get("localAsr.modelsDir", None);
-    if let Some(custom_dir) = models_dir_val.as_str().map(str::trim).filter(|s| !s.is_empty()) {
-        models::downloader::set_custom_models_dir(Some(std::path::PathBuf::from(custom_dir)));
-        log::info!("Custom models dir from DB: {}", custom_dir);
+    // [自訂] SC-55：讀不到設定時沿用預設路徑，但啟動回收會跳過（見 spawn_legacy_reclaim）。
+    if let Ok(Some(custom_dir)) = storage.custom_models_dir() {
+        log::info!("Custom models dir from DB: {}", custom_dir.display());
+        models::downloader::set_custom_models_dir(Some(custom_dir));
     }
 
     // ⚠️ 这里**故意不注册** ggml 计算后端。注册动作已下沉到 gguf_asr 的懒路径
@@ -558,7 +558,7 @@ fn main() {
 
     // 回收上一代 sherpa-onnx 时期的模型权重（新引擎读不了，只白占几百 MB ~ 1 GB）。
     // 放后台线程，不让删除卡住启动。
-    models::local_asr::spawn_legacy_reclaim();
+    models::local_asr::spawn_legacy_reclaim(&storage);
 
     // 本地模式：启动就在后台把模型加载起来，别等用户第一次按热键才等几百毫秒~几秒。
     // 非本地模式不加载，避免白占几百 MB 内存。

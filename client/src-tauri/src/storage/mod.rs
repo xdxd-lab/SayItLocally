@@ -262,6 +262,20 @@ impl Storage {
         }
     }
 
+    // [自訂] SC-55：只有不存在或空字串才算「未自選」；讀取錯誤或型別不符回 Err，不當成預設。
+    pub(crate) fn custom_models_dir(&self) -> Result<Option<PathBuf>, String> {
+        let db = self.conn();
+        let raw: Option<String> = db.query_row(
+            "SELECT value_json FROM app_settings WHERE key = 'localAsr.modelsDir'",
+            [],
+            |row| row.get(0),
+        ).optional().map_err(|error| error.to_string())?;
+        let Some(raw) = raw else { return Ok(None) };
+        let dir = serde_json::from_str::<String>(&raw).map_err(|error| error.to_string())?;
+        let dir = dir.trim();
+        Ok((!dir.is_empty()).then(|| PathBuf::from(dir)))
+    }
+
     pub fn set(&self, key: &str, value: &Value) -> SqlResult<()> {
         if is_collection_key(key) {
             let items = match value {

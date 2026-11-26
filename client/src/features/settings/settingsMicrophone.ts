@@ -24,6 +24,8 @@ export function createSettingsMicrophone({
   let disposed = false
   let devices: MicEndpoint[] = []
   let revision = 0
+  // Revision of the enumeration that decided the current device set.
+  let applied = 0
   let closeActive: (() => void) | null = null
 
   function reportError(error: unknown) {
@@ -32,8 +34,9 @@ export function createSettingsMicrophone({
       : name === 'NotFoundError' ? 'mic.error.notFound' : 'mic.error.failed')
   }
 
-  function updateDevices(next: MicEndpoint[]) {
-    const labels = new Map(devices.filter((device) => device.deviceId && device.label.trim())
+  // `named` supplies labels by device id; it never adds or removes devices.
+  function updateDevices(next: MicEndpoint[], named: MicEndpoint[] = []) {
+    const labels = new Map([...devices, ...named].filter((device) => device.deviceId && device.label.trim())
       .map((device) => [device.deviceId, device.label]))
     devices = next.map((device) => {
       const label = labels.get(device.deviceId)
@@ -48,7 +51,10 @@ export function createSettingsMicrophone({
     const id = ++revision
     try {
       const next = await listMicrophones()
-      if (!disposed && id === revision) updateDevices(next)
+      if (!disposed && id > applied) {
+        applied = id
+        updateDevices(next)
+      }
     } catch {
       // Passive refresh must not request access or clear a working list.
     }
@@ -98,12 +104,18 @@ export function createSettingsMicrophone({
           close()
           onError('mic.error.namesUnavailable')
         }, 1000)
+        const id = ++revision
         try {
           const next = await listMicrophones()
           if (closeActive === close) {
-            // An older passive enumeration must not take precedence.
-            revision += 1
-            updateDevices(next)
+            // [自訂] SC-55：較晚開始的列舉若已決定了裝置清單，這次只補名稱，不把已拔除的裝置加回。
+            // 沒有權限時的匿名清單看不出是哪些裝置，仍以這次有名稱的結果為準。
+            if (id > applied || devices.some((device) => !device.deviceId)) {
+              applied = Math.max(applied, id)
+              updateDevices(next)
+            } else {
+              updateDevices(devices, next)
+            }
             if (!next.some((device) => !isPseudoInputDevice(device.deviceId) && device.label.trim())) {
               onError('mic.error.namesUnavailable')
             }
