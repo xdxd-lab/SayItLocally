@@ -317,3 +317,24 @@
     - 托盘使用 tauri 的 API，macOS 編譯已涵蓋。
     - `tauri.conf.json` 的 `plugins.shell.open = true` 在 shell 2.6 的設定結構中仍可解析。
   - 離線驗收：Rust 587 通過、0 失敗、7 個忽略，警告 232 則，與前次逐行相同。
+- SC-61 更正（覆核第一輪）：
+  - 更正上方幾點過時的內容：
+    - npm 鎖定檔已解析，「待鎖定檔解析」不再適用。解析方式為 `--package-lock-only --ignore-scripts`，未安裝套件、未執行腳本。實際版本：
+      - 建置工具：vite 6.4.6、postcss 8.5.33、nanoid 3.3.20、picomatch 2.3.2／4.0.7、source-map-js 1.2.4、postcss-selector-parser 6.1.6、browserslist 4.29.6、baseline-browser-mapping 2.11.39、@babel/core 7.29.13、brace-expansion 5.1.0、@humanfs/node 0.16.8。
+      - tauri 前端套件：@tauri-apps/api 2.12.5、cli 2.12.6、plugin-dialog 2.8.4、plugin-shell 2.6.0。
+    - `vendor/tray-icon` 已刪除。
+    - 上方「Rust 580 通過」的基準應為 585。
+    - Dependabot：預期關閉 tauri、serde_with、openssl 與上列 npm 套件的警示，實際以合併後 Dependabot 的結果為準。
+  - 已決定：
+    - minimatch 維持 10.2.5（修正只在 11.x，警示保留）。
+    - 專案直接使用的 `windows` 0.58 不升級。
+    - 不加 Windows CI。
+    - react-router 不動。
+  - 權限更正：
+    - 上方說 capabilities 不變，是指 capabilities 檔案沒改；預設權限組的內容其實有變。
+    - `core:default`、`core:window:default` 在 2.12.7 新增 4 個權限：`core:app:allow-supports-multiple-windows`、`core:tray:allow-set-icon-with-as-template`、`core:window:allow-activity-name`、`core:window:allow-scene-identifier`。三個視窗都拿得到，屬於查詢或同類設定，風險低。
+    - `dialog:default` 少了 `allow-ask`、`allow-confirm`，屬於縮減權限。前端的 `confirm` 改走 `plugin:dialog|message`。
+  - 殘餘：
+    - 單例通道等待 3 秒逾時後，後來的程序可能刪掉主程序晚建好的通道。
+    - autostart 2.7 改用 auto-launch 0.6：LaunchAgent 的檔名與 Label 不變，多了 `AssociatedBundleIdentifiers`。
+  - `gen/schemas/windows-schema.json`：升級前與 desktop-schema、macOS-schema 三份完全相同。macOS 建置不會改寫它，所以照 desktop-schema 更新，維持三份一致。
