@@ -9,6 +9,7 @@ import { RELEASE_HIGHLIGHTS } from '@/features/update/releaseHighlights'
 import appIcon from '@/assets/icon-128.png'
 import { getLocale, t } from '@/i18n'
 import { useT } from '@/i18n/useT'
+import BrandBanner from '@/components/BrandBanner'
 
 const currentVersion = __APP_VERSION__
 
@@ -58,6 +59,9 @@ export default function About() {
     <div className="mx-auto max-w-4xl">
       <h1 className="mb-4 text-2xl font-bold">{t('about.title')}</h1>
 
+      {/* [自訂] SC-63：關於頁放完整訴求與 fork 說明 */}
+      <BrandBanner appeal="none" />
+
       <Card>
         <CardContent className="p-6">
           {/* 品牌 */}
@@ -92,6 +96,11 @@ export default function About() {
                 </button>
               </div>
             </div>
+          </div>
+
+          <div className="mt-6 space-y-2 border-t border-border pt-5">
+            <p className="text-sm font-medium">{t('brand.appealFull')}</p>
+            <p className="text-xs text-muted-foreground">{t('brand.forkNote')}</p>
           </div>
 
           {/* [自訂] 更新區塊已註解停用，原始 JSX 保留在本檔末尾 */}
