@@ -36,7 +36,7 @@
 - SC-49 更新鎖定檔後，既有的 `client/node_modules` 仍是舊版。下次建置須加上 `--install`，才能從本機快取重裝並使用更新後的前端套件。SC-49 首輪已在暫存複本驗證本機 npm 快取足以離線安裝。
 - 清除繼承的 `TAURI_CONFIG`，避免透過環境變數傳入額外的 Tauri 建置設定。
 - 直接呼叫專案內的 `node_modules/.bin/tauri`，不經過 `npx`，避免改用全域或快取裡的 CLI。
-- PATH 直接加入本機 Node、CMake 及已核對的工具鏈，並移除預設與自訂 Cargo home 的 `bin`，以略過常見的 rustup proxy。Tauri CLI 2.10.1 的桌面建置只有在顯式指定 target 時會執行 `rustup target list`。腳本的白名單排除了這個入口。SC-64：鎖定檔現為 CLI 2.12.6，本機快取還沒有它的套件檔，尚無法離線查證，須在補齊快取後、首次建置前再查；`tauri-build` 2.7.6、`tauri-codegen` 2.7.6 原始碼未發現 rustup 呼叫或網路存取，`tauri-utils` 2.10.4 的 `xcodebuild` 呼叫只在 iOS target 時執行。其他傳遞依賴的執行行為未查證。
+- PATH 直接加入本機 Node、CMake 及已核對的工具鏈，並移除預設與自訂 Cargo home 的 `bin`，以略過常見的 rustup proxy。Tauri CLI 2.10.1 的桌面建置只有在顯式指定 target 時會執行 `rustup target list`。腳本的白名單排除了這個入口。SC-64：鎖定檔現為 CLI 2.12.6。快取補齊後比對 2.12.6 與 2.10.1 的執行檔字串：rustup 相關字串相同（`rustup target list`、`rustup target add`），網址只多了文件連結，下載類主機（`github.com`、`dl.google.com`、WebView2 下載點）兩版相同，且只用於 Windows、Linux、Android 打包；這是字串比對，不是控制流程分析，實際外連以首次建置時的防火牆紀錄為準。`tauri-build` 2.7.6、`tauri-codegen` 2.7.6 原始碼未發現 rustup 呼叫或網路存取，`tauri-utils` 2.10.4 的 `xcodebuild` 呼叫只在 iOS target 時執行。其他傳遞依賴的執行行為未查證。
 - 固定 npm 的離線設定與腳本 shell，移除 Node 預載選項，停用 Cargo 的 rustc 包裝程式，並清除繼承的 `CARGO_BUILD_TARGET`、`CMAKE_ARGS`、`TRANSCRIBE_CMAKE_ARGS`。
 
 ## 需由 LuLu 封鎖的連線（L-91、L-93）
@@ -50,8 +50,8 @@
 
 - 只建本機環境：macOS、Apple Silicon（aarch64-apple-darwin），預設只產生 `.app`（`--bundles app`）；不做 universal、Intel、Windows、Linux。
 - Rust：1.100.0 已安裝；Cargo 快取以 `cargo metadata --offline --locked` 與 `cargo fetch --offline --locked` 確認涵蓋鎖定檔，不需連網。
-- npm：以套件內容雜湊比對本機快取，鎖定檔中本機平台需要的 257 個套件檔有 41 筆不在快取（多為前次依賴升級後的新版本，含 Tauri CLI 2.12.6、Vite 6.4.6、Babel 相關套件）。快取的索引記錄的是舊鏡像網址，npm 依內容雜湊取用，不影響離線安裝。
-- 補齊方式：須經使用者同意，用一次性的暫存目錄，依鎖定檔從 `registry.npmjs.org` 取得，不執行安裝腳本、不更新版本；完成後再以同一方法確認缺少數為 0。
+- npm：以套件內容雜湊比對本機快取，鎖定檔中本機平台需要的 257 個套件檔原有 41 筆不在快取（多為前次依賴升級後的新版本，含 Tauri CLI 2.12.6、Vite 6.4.6、Babel 相關套件）。快取的索引記錄的是舊鏡像網址，npm 依內容雜湊取用，不影響離線安裝。
+- 補齊方式：經使用者同意，在一次性的暫存目錄依鎖定檔從 `registry.npmjs.org` 取得，不執行安裝腳本、不更新版本。補齊後以同一方法確認缺少數為 0。
 - 建置仍等使用者安裝 LuLu 並同意後才執行。
 
 ## 執行期第一次連線（供 LuLu 規則參考）
