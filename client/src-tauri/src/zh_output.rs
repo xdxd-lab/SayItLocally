@@ -1,6 +1,7 @@
 //! [自訂] SC-67：辨識與 AI 校對輸出一律轉成正體中文（台灣）。
 //!
-//! 這是文字離開 Rust 的單一出口：本機辨識（`models::local_asr`）與 AI 校對
+//! 這是文字離開 Rust 的單一出口：本機辨識（`models::local_asr`）、設定頁的辨識測試
+//! （`models::test_audio`）與 AI 校對
 //! （`providers::registry::cloud_polish`）回傳前都經過 [`to_taiwan`]。前端的浮窗、
 //! 歷史（含 ASR 原文）、剪貼簿、後備卡片與匯出拿到的都已是正體。
 //!
@@ -47,8 +48,9 @@ fn language_may_be_chinese(language: &str) -> bool {
 }
 
 fn is_kana(c: char) -> bool {
-    // 平假名、片假名（含擴充與半形片假名）
-    matches!(c, '\u{3040}'..='\u{30ff}' | '\u{31f0}'..='\u{31ff}' | '\u{ff66}'..='\u{ff9f}')
+    // 只認假名字母：平假名、片假名（含擴充與半形片假名）。不含中文也會用到的
+    // 「・」(U+30FB)、「ー」(U+30FC) 與濁點等符號，否則帶間隔號的外國人名會被當成日文。
+    matches!(c, '\u{3041}'..='\u{3096}' | '\u{30a1}'..='\u{30fa}' | '\u{31f0}'..='\u{31ff}' | '\u{ff66}'..='\u{ff6f}' | '\u{ff71}'..='\u{ff9d}')
 }
 
 fn is_han(c: char) -> bool {
@@ -210,6 +212,19 @@ mod tests {
     }
 
     #[test]
+    fn interpunct_and_long_mark_do_not_count_as_kana() {
+        // 外國人名的間隔號「・」與長音符號「ー」中文也會用到，不能讓整句被當成日文而不轉。
+        // 「约翰・史密斯说」的簡體寫法 → 約翰・史密斯說
+        let name = "\u{7ea6}\u{7ff0}\u{30fb}\u{53f2}\u{5bc6}\u{65af}\u{8bf4}";
+        assert_eq!(to_taiwan(name, "auto"), "約翰・史密斯說");
+        // 「卡ー车」的簡體寫法：含長音符號但沒有假名字母，照樣轉換
+        let long_mark = "\u{5361}\u{30fc}\u{8f66}";
+        assert_eq!(to_taiwan(long_mark, "auto"), "卡ー車");
+        // 真正的假名字母仍然擋下：カ（片假名）
+        assert!(!should_convert("\u{5361}\u{30ab}\u{8f66}", "auto"));
+    }
+
+    #[test]
     fn product_backend_converts_and_passthrough_does_not() {
         assert_eq!(PRODUCT_BACKEND, ZhBackend::FerrousOpencc);
         let simplified = "\u{8f6f}\u{4ef6}";
@@ -231,10 +246,10 @@ mod tests {
         assert!(inputs_with_hits * 2 >= CASES.len(), "{inputs_with_hits}");
     }
 
-    /// 兩個出口都必須經過 `to_taiwan`。出口在需要模型或 Ollama 的路徑上，單元測試跑不到，
+    /// 三個出口（本機辨識、辨識測試、AI 校對）都必須經過 `to_taiwan`。出口在需要模型或 Ollama 的路徑上，單元測試跑不到，
     /// 所以比照 gguf_asr 的做法直接檢查原始碼（去掉 `//` 註解後）。
     #[test]
-    fn both_output_exits_call_to_taiwan() {
+    fn all_output_exits_call_to_taiwan() {
         fn code_only(source: &str) -> String {
             source
                 .lines()
@@ -248,6 +263,12 @@ mod tests {
                 include_str!("models/local_asr.rs"),
                 "async fn transcribe_samples(",
                 "fn transcribe_chunks(",
+            ),
+            (
+                "test_audio.rs",
+                include_str!("models/test_audio.rs"),
+                "let text = super::gguf_asr::transcribe(",
+                "Ok(AsrBenchmarkResult {",
             ),
             (
                 "registry.rs",

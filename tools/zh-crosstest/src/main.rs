@@ -82,7 +82,9 @@ impl Converters {
 }
 
 fn should_convert(text: &str) -> bool {
-    let kana = |c: char| matches!(c, '\u{3040}'..='\u{30ff}' | '\u{31f0}'..='\u{31ff}' | '\u{ff66}'..='\u{ff9f}');
+    let kana = |c: char| {
+        matches!(c, '\u{3041}'..='\u{3096}' | '\u{30a1}'..='\u{30fa}' | '\u{31f0}'..='\u{31ff}' | '\u{ff66}'..='\u{ff6f}' | '\u{ff71}'..='\u{ff9d}')
+    };
     let han = |c: char| matches!(c, '\u{3400}'..='\u{4dbf}' | '\u{4e00}'..='\u{9fff}' | '\u{f900}'..='\u{faff}');
     text.chars().any(han) && !text.chars().any(kana)
 }

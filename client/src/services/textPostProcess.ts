@@ -125,7 +125,7 @@ export function convertChineseNumbers(text: string): string {
   // [自訂] SC-67：辨識輸出已轉成台灣正體。下面的規則以簡體字（点两万亿钟时）撰寫，
   // 正體輸入先對應成簡體再套規則，產出的標記（如「9点半」）再換回正體。
   // 含假名（日文）或本來就含這些簡體字的文字維持原行為，不做對應。
-  if (/[\u3040-\u30ff]/.test(text) || /[点两万亿钟时]/.test(text)) return convertChineseNumbersCore(text)
+  if (/[\u3041-\u3096\u30a1-\u30fa\u31f0-\u31ff\uff66-\uff6f\uff71-\uff9d]/.test(text) || /[点两万亿钟时]/.test(text)) return convertChineseNumbersCore(text)
   const mapped = text.replace(/[點兩萬億鐘時]/g, (c) => TRAD_NUMBER_CHARS[c] ?? c)
   if (mapped === text) return convertChineseNumbersCore(text)
   return convertChineseNumbersCore(mapped).replace(/[点两万亿钟时]/g, (c) => SIMP_NUMBER_CHARS[c] ?? c)

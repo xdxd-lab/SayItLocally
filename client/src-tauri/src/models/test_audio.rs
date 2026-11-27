@@ -57,6 +57,8 @@ pub async fn run_asr_benchmark(
         let start = std::time::Instant::now();
         let text = super::gguf_asr::transcribe(&model_id, &lang, "auto", "", &samples, 16000)?;
         let elapsed_ms = start.elapsed().as_millis() as u64;
+        // [自訂] SC-67：辨識測試的結果同樣轉成台灣正體（轉換不計入辨識耗時）。
+        let text = crate::zh_output::to_taiwan(&text, &lang);
         let rtf = if audio_duration_sec > 0.0 {
             (elapsed_ms as f64 / 1000.0) / audio_duration_sec
         } else {
