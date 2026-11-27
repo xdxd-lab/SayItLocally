@@ -56,7 +56,7 @@ import {
   runBackupNow,
 } from '@/features/backup/autoWebdavBackup'
 import { formatBytes } from '@/lib/utils'
-import type { TranslationKey } from '@/i18n'
+import { getLocale, type TranslationKey } from '@/i18n'
 import { useT } from '@/i18n/useT'
 
 const inputClass =
@@ -108,7 +108,8 @@ function shortServer(url: string): string {
 
 /** 摘要行里的时间。完整的 toLocaleString 在 11px 一行里太占地方，年份也没人看。 */
 function shortTime(ms: number): string {
-  return new Date(ms).toLocaleString(undefined, {
+  // [自訂] SC-65：跟介面語言走，不跟系統語系（簡體系統不會帶出簡體字樣）。
+  return new Date(ms).toLocaleString(getLocale(), {
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
