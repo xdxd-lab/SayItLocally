@@ -1550,5 +1550,5 @@
   "brand.forkNote": "SayItLocally 是 SayIt（crosswk/SayIt）的个人自用 fork，采用 AGPL-3.0 授权；上游的名称、网址、授权与著作权声明皆保留。",
   "appearance.effects": "特效",
   "appearance.clickGlow": "点击光辉特效",
-  "appearance.clickGlowDesc": "点击按钮、开关、分页时，在点击处显示柔和光点。系统开启「减少动态效果」时一律不显示。"
+  "appearance.clickGlowDesc": "点击按钮、开关、标签页时，在点击处显示柔和光点。系统开启「减弱动态效果」时一律不显示。"
 }
