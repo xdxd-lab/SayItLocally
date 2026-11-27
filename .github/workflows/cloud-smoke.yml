@@ -19,6 +19,11 @@ on:
         description: Also verify Breeze ASR 25
         type: boolean
         default: false
+      zh_matrix:
+        # SC-67：可選的交叉測試（已下載的模型 × 中文轉換後端），結果印成 Markdown 表格。
+        description: Run the model x Chinese converter cross-test
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -118,6 +123,7 @@ jobs:
           date -u
 
       - name: Download, verify and run Breeze ASR 25
+        # SC-68：放在交叉測試之前，勾選 zh_matrix 時 Breeze 也進入「模型 × 轉換後端」比較。
         if: ${{ inputs.breeze }}
         working-directory: src/client/src-tauri
         env:
@@ -142,9 +148,25 @@ jobs:
             cargo test --locked --bins cloud_smoke_breeze -- --ignored --nocapture --test-threads=1
           date -u
 
+      # SC-67：交叉測試。先讓 App 把各模型的原始辨識文字寫成 TSV，再由獨立的
+      # tools/zh-crosstest 用每個轉換後端轉換並列表。工具有自己的 Cargo.lock，不影響 App。
+      - name: Model x converter cross-test
+        if: ${{ inputs.zh_matrix }}
+        working-directory: src/client/src-tauri
+        run: |
+          set -euo pipefail
+          date -u
+          SAYIT_SMOKE_MODELS_DIR="$RUNNER_TEMP/models" SAYIT_ZH_MATRIX_OUT="$RUNNER_TEMP/zh-matrix.tsv" \
+            cargo test --locked --bins cloud_smoke_zh_matrix_dump -- --ignored --nocapture --test-threads=1
+          cargo run --release --locked --manifest-path ../../tools/zh-crosstest/Cargo.toml -- "$RUNNER_TEMP/zh-matrix.tsv" \
+            | tee -a "$GITHUB_STEP_SUMMARY"
+          date -u
+
       # Runs after the smoke step so its result stays visible; a failure here is
       # reported on this step without hiding the smoke result above.
       - name: Run all Rust tests
+        # SC-68：前面的煙霧測試或 Breeze 步驟失敗時照樣執行，只有取消時不跑。
+        if: ${{ !cancelled() }}
         working-directory: src/client/src-tauri
         continue-on-error: true
         run: |

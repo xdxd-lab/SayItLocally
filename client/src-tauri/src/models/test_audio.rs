@@ -57,22 +57,32 @@ pub async fn run_asr_benchmark(
         let start = std::time::Instant::now();
         let text = super::gguf_asr::transcribe(&model_id, &lang, "auto", "", &samples, 16000)?;
         let elapsed_ms = start.elapsed().as_millis() as u64;
-        let rtf = if audio_duration_sec > 0.0 {
-            (elapsed_ms as f64 / 1000.0) / audio_duration_sec
-        } else {
-            0.0
-        };
-
-        Ok(AsrBenchmarkResult {
-            text,
-            elapsed_ms,
-            audio_duration_sec,
-            model_id,
-            rtf,
-        })
+        Ok(benchmark_result(&text, &lang, elapsed_ms, audio_duration_sec, model_id))
     })
     .await
     .map_err(|e| format!("Test failed: {}", e))?
+}
+
+/// [自訂] SC-67：辨識測試的回傳結果。文字轉成台灣正體（轉換不計入辨識耗時）。
+fn benchmark_result(
+    raw_text: &str,
+    lang: &str,
+    elapsed_ms: u64,
+    audio_duration_sec: f64,
+    model_id: String,
+) -> AsrBenchmarkResult {
+    let rtf = if audio_duration_sec > 0.0 {
+        (elapsed_ms as f64 / 1000.0) / audio_duration_sec
+    } else {
+        0.0
+    };
+    AsrBenchmarkResult {
+        text: crate::zh_output::to_taiwan(raw_text, lang),
+        elapsed_ms,
+        audio_duration_sec,
+        model_id,
+        rtf,
+    }
 }
 
 /// 获取内置测试音频的 base64 WAV 数据（供前端播放）
@@ -84,4 +94,20 @@ pub async fn get_test_audio_b64(app_handle: tauri::AppHandle) -> Result<String, 
     let wav_bytes = std::fs::read(&resource_path)
         .map_err(|e| format!("Failed to read test audio: {}", e))?;
     Ok(base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &wav_bytes))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn benchmark_result_returns_taiwan_traditional_text() {
+        // 「語音輸入法測試成功。」的簡體寫法（跳脫保存）
+        let raw = "\u{8bed}\u{97f3}\u{8f93}\u{5165}\u{6cd5}\u{6d4b}\u{8bd5}\u{6210}\u{529f}\u{3002}";
+        let result = benchmark_result(raw, "auto", 500, 2.0, "m".into());
+        assert_eq!(result.text, "語音輸入法測試成功。");
+        assert_eq!(result.elapsed_ms, 500);
+        assert!((result.rtf - 0.25).abs() < 1e-9);
+        assert_eq!(benchmark_result(raw, "auto", 1, 0.0, "m".into()).rtf, 0.0);
+    }
 }

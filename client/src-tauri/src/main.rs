@@ -17,6 +17,7 @@ mod path_guard;
 mod ipc_body;
 mod platform;
 mod instance_lock;
+mod zh_output;
 
 use storage::Storage;
 use window::WindowState;
@@ -939,6 +940,8 @@ fn main() {
             commands::backup::inspect_config_import,
             commands::backup::import_config,
             commands::backup::import_full,
+            // [自訂] SC-67：取代規則「替換成」欄位新增時轉成台灣正體
+            zh_output::zh_to_taiwan_texts,
             commands::backup::restart_app,
             // WebDAV 备份（配置必备，历史/音频可选）
             // [自訂] S18／S35／L-19：WebDAV 停用（會經 Rust 上傳到外部伺服器，不受 CSP 限制）

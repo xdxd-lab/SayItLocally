@@ -384,7 +384,7 @@ const QWEN3_17B_Q4: GgufWeight = GgufWeight {
 // [自訂] SC-68：Breeze ASR 25（MediaTek Research，Apache-2.0），以 Whisper large-v2 為基礎、
 // 針對台灣華語與中英夾雜調整，輸出正體中文。權重是 handy-computer 為 transcribe.cpp 轉的 GGUF
 // （`general.architecture = whisper`，`stt.whisper.*` 欄位與 transcribe-cpp 0.1.3 的 whisper
-// 載入端一致）。固定在下面的 commit，體積與 sha256 依 PM 提供的值。
+// 載入端一致）。固定在下面的 commit；體積與 sha256 已由雲端煙霧測試下載後核對相符。
 const BREEZE_ASR_25_Q8: GgufWeight = GgufWeight {
     repo: "handy-computer/Breeze-ASR-25-gguf",
     revision: "c827f209c3fcb4956f49f9935ae04a0d88b7fae9",

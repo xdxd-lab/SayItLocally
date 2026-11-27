@@ -1,5 +1,6 @@
 // 文本替换服务 — 对 ASR 识别结果做客户端侧的文本替换
 
+import { invoke } from '@tauri-apps/api/core'
 import { getSetting, setSetting } from './store'
 
 export interface TextReplacementRule {
@@ -14,8 +15,9 @@ const STORAGE_KEY = 'textReplacements'
 /** 内置默认文本替换规则（新用户首次使用时填充） */
 // i18n-allow-start: 中文 ASR 默认替换数据，不是界面文案
 export const BUILTIN_REPLACEMENTS: TextReplacementRule[] = [
-  { id: 'builtin_1', from: '安卓说话', to: '按住说话', enabled: true },
-  { id: 'builtin_2', from: '我的邮箱', to: 'test@example.com', enabled: true },
+  // [自訂] SC-67：辨識輸出已轉成台灣正體，內建規則跟著用正體寫法。
+  { id: 'builtin_1', from: '安卓說話', to: '按住說話', enabled: true },
+  { id: 'builtin_2', from: '我的郵箱', to: 'test@example.com', enabled: true },
   { id: 'builtin_3', from: 'pump', to: 'Prompt', enabled: true },
   { id: 'builtin_4', from: 'Cloud Code', to: 'Claude Code', enabled: true },
 ]
@@ -32,6 +34,23 @@ export async function getTextReplacements(): Promise<TextReplacementRule[]> {
 
 export async function saveTextReplacements(rules: TextReplacementRule[]): Promise<void> {
   await setSetting(STORAGE_KEY, rules)
+}
+
+/**
+ * [自訂] SC-67：新增或批次匯入規則時，「替換成」欄位用辨識輸出同一個轉換器轉成台灣正體
+ * （含假名的句子不轉）。規則在 Rust 出口之後才套用，所以不對最終文字再轉一次。
+ * 比對欄（from）不經這裡。沒有漢字時不呼叫；轉換失敗時保留原文並記錄。
+ */
+export async function toTaiwanReplacementTargets(texts: string[]): Promise<string[]> {
+  if (!texts.some((text) => /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/.test(text))) return texts
+  try {
+    const converted = await invoke<string[]>('zh_to_taiwan_texts', { texts })
+    if (Array.isArray(converted) && converted.length === texts.length) return converted
+    console.warn('[text-replacement] unexpected conversion result')
+  } catch (error) {
+    console.warn('[text-replacement] conversion failed', error)
+  }
+  return texts
 }
 
 /** 批量文本解析出的规则草稿（尚未分配 id/enabled） */
