@@ -1040,6 +1040,8 @@ fn main() {
                 // [自訂] 結束時自動安裝更新已註解停用：
                 // commands::system::install_pending_update_on_exit(app_handle);
                 let _ = app_handle;
+                // [自訂] SC-62 補充（F10b）：結束前把佇列裡的前端日誌寫完（有上限，不拖住結束）。
+                commands::system::flush_debug_log(commands::system::DEBUG_LOG_FLUSH_TIMEOUT);
             }
         });
 }

@@ -279,22 +279,96 @@ mod log_retention_tests {
     #[test]
     fn frontend_log_lines_keep_their_order_and_arrival_time_off_the_caller_thread() {
         let (done, written) = std::sync::mpsc::channel();
-        let sender = spawn_log_writer(move |at, line: String| {
-            done.send((at, line, std::thread::current().id())).unwrap();
+        let queue = spawn_log_writer(DEBUG_LOG_QUEUE_CAP, move |at, line: String, dropped| {
+            done.send((at, line, dropped, std::thread::current().id())).unwrap();
         })
         .unwrap();
         let base = chrono::Local::now() - chrono::Duration::seconds(30);
         for i in 0..50 {
-            sender.send((base + chrono::Duration::milliseconds(i), format!("line {i}"))).unwrap();
+            queue.push(base + chrono::Duration::milliseconds(i), format!("line {i}")).unwrap();
         }
-        drop(sender);
-        let rows: Vec<_> = written.iter().collect();
-        assert_eq!(rows.len(), 50);
-        for (i, (at, line, thread)) in rows.into_iter().enumerate() {
+        let rows: Vec<_> = written.iter().take(50).collect();
+        for (i, (at, line, dropped, thread)) in rows.into_iter().enumerate() {
             assert_eq!(line, format!("line {i}"));
             assert_eq!(at, base + chrono::Duration::milliseconds(i as i64));
+            assert_eq!(dropped, 0);
             assert_ne!(thread, std::thread::current().id());
         }
+    }
+
+    /// 寫入端卡在第一行時，再收的行都排在佇列裡；`release` 放行。
+    fn gated_writer(
+        cap: usize,
+    ) -> (
+        std::sync::Arc<LogQueue<u32>>,
+        std::sync::mpsc::Receiver<()>,
+        std::sync::mpsc::Sender<()>,
+        std::sync::Arc<std::sync::Mutex<Vec<(u32, u64)>>>,
+    ) {
+        let (started_tx, started) = std::sync::mpsc::channel();
+        let (release, gate) = std::sync::mpsc::channel::<()>();
+        let written = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let sink_written = written.clone();
+        let mut first = true;
+        let queue = spawn_log_writer(cap, move |_, item: u32, dropped| {
+            if first {
+                first = false;
+                started_tx.send(()).unwrap();
+                gate.recv().unwrap();
+            }
+            std::thread::sleep(std::time::Duration::from_millis(2));
+            sink_written.lock().unwrap().push((item, dropped));
+        })
+        .unwrap();
+        (queue, started, release, written)
+    }
+
+    #[test]
+    fn flush_waits_for_queued_lines_and_gives_up_at_its_deadline() {
+        let (queue, started, release, written) = gated_writer(DEBUG_LOG_QUEUE_CAP);
+        let now = chrono::Local::now();
+        queue.push(now, 0).unwrap();
+        started.recv().unwrap();
+        for i in 1..=20 {
+            queue.push(now, i).unwrap();
+        }
+        // 寫入端卡住：flush 在時限到時放棄，不會無限等。
+        let begun = std::time::Instant::now();
+        assert!(!queue.flush(std::time::Duration::from_millis(100)));
+        let waited = begun.elapsed();
+        assert!(waited >= std::time::Duration::from_millis(100), "{waited:?}");
+        assert!(waited < std::time::Duration::from_millis(1000), "{waited:?}");
+        // 放行後 flush 返回時，之前收的每一行都已寫出。
+        release.send(()).unwrap();
+        assert!(queue.flush(std::time::Duration::from_secs(5)));
+        let rows: Vec<u32> = written.lock().unwrap().iter().map(|(item, _)| *item).collect();
+        assert_eq!(rows, (0..=20).collect::<Vec<_>>());
+        // 佇列沒有積壓時立即返回。
+        assert!(queue.flush(std::time::Duration::ZERO));
+    }
+
+    #[test]
+    fn a_full_queue_drops_the_oldest_lines_and_reports_how_many() {
+        let (queue, started, release, written) = gated_writer(3);
+        let now = chrono::Local::now();
+        queue.push(now, 0).unwrap();
+        started.recv().unwrap();
+        for i in 1..=5 {
+            queue.push(now, i).unwrap();
+        }
+        release.send(()).unwrap();
+        // 丟掉的行也算處理完，flush 不會因此等到逾時。
+        assert!(queue.flush(std::time::Duration::from_secs(5)));
+        assert_eq!(*written.lock().unwrap(), vec![(0, 0), (3, 2), (4, 0), (5, 0)]);
+    }
+
+    #[test]
+    fn flushing_before_any_frontend_log_returns_at_once() {
+        if DEBUG_LOG_QUEUE.get().is_none() {
+            assert!(flush_debug_log(std::time::Duration::from_secs(5)));
+        }
+        append_debug_log(serde_json::json!({"kind": "runtime", "level": "info", "source": "t", "message": "flush"})).unwrap();
+        assert!(flush_debug_log(std::time::Duration::from_secs(5)));
     }
 
     #[test]
@@ -1219,16 +1293,11 @@ pub fn install_pending_update_on_exit(app: &AppHandle) {
 /// 時間戳記用收件時間，不因排隊而延後。
 #[tauri::command]
 pub fn append_debug_log(payload: Value) -> Result<(), String> {
-    static QUEUE: std::sync::OnceLock<Option<std::sync::mpsc::Sender<(chrono::DateTime<chrono::Local>, Value)>>> =
-        std::sync::OnceLock::new();
     let now = chrono::Local::now();
-    let queue = QUEUE.get_or_init(|| {
-        spawn_log_writer(|at, payload| write_log_line_at(&format_debug_payload(payload), at))
-    });
-    match queue {
-        Some(sender) => {
-            if let Err(std::sync::mpsc::SendError((at, payload))) = sender.send((now, payload)) {
-                write_log_line_at(&format_debug_payload(payload), at);
+    match debug_log_queue() {
+        Some(queue) => {
+            if let Err(payload) = queue.push(now, payload) {
+                write_log_line_at(&format_debug_payload(payload), now);
             }
         }
         // 開不了寫入執行緒時照原本方式直接寫。
@@ -1237,19 +1306,150 @@ pub fn append_debug_log(payload: Value) -> Result<(), String> {
     Ok(())
 }
 
+/// [自訂] SC-62 補充（F10b）：佇列最多積壓的前端日誌行數，超過就丟最舊的並記下丟了幾行。
+const DEBUG_LOG_QUEUE_CAP: usize = 10_000;
+/// 程序結束前等佇列寫完的上限。
+pub const DEBUG_LOG_FLUSH_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(200);
+
+static DEBUG_LOG_QUEUE: std::sync::OnceLock<Option<std::sync::Arc<LogQueue<Value>>>> =
+    std::sync::OnceLock::new();
+
+fn debug_log_queue() -> Option<&'static std::sync::Arc<LogQueue<Value>>> {
+    DEBUG_LOG_QUEUE
+        .get_or_init(|| {
+            spawn_log_writer(DEBUG_LOG_QUEUE_CAP, |at, payload, dropped| {
+                if dropped > 0 {
+                    write_log_line_at(
+                        &format!("[WARN] [log] dropped {dropped} queued frontend log lines (queue full)"),
+                        at,
+                    );
+                }
+                write_log_line_at(&format_debug_payload(payload), at)
+            })
+        })
+        .as_ref()
+}
+
+/// 程序結束（App 結束、restart_app）前呼叫：等佇列裡已收的前端日誌寫完，最多等 `timeout`。
+/// 佇列從沒用過就立即返回。回傳是否在時限內寫完。
+pub fn flush_debug_log(timeout: std::time::Duration) -> bool {
+    match DEBUG_LOG_QUEUE.get() {
+        Some(Some(queue)) => queue.flush(timeout),
+        _ => true,
+    }
+}
+
+struct LogQueueState<T> {
+    items: std::collections::VecDeque<(chrono::DateTime<chrono::Local>, T)>,
+    /// 收進佇列的總行數。
+    pushed: u64,
+    /// 已寫出或已丟棄的總行數；flush 等它追上 `pushed`。
+    settled: u64,
+    /// 上一次交給寫入端之後丟掉的行數。
+    dropped: u64,
+    writer_alive: bool,
+}
+
+struct LogQueue<T> {
+    state: std::sync::Mutex<LogQueueState<T>>,
+    wake_writer: std::sync::Condvar,
+    progress: std::sync::Condvar,
+    cap: usize,
+}
+
+impl<T> LogQueue<T> {
+    fn lock(&self) -> std::sync::MutexGuard<'_, LogQueueState<T>> {
+        self.state.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    /// 寫入執行緒已不在時交還該行，由呼叫端直接寫。
+    fn push(&self, at: chrono::DateTime<chrono::Local>, item: T) -> Result<(), T> {
+        let mut state = self.lock();
+        if !state.writer_alive {
+            return Err(item);
+        }
+        if state.items.len() >= self.cap {
+            state.items.pop_front();
+            state.dropped += 1;
+            state.settled += 1;
+        }
+        state.items.push_back((at, item));
+        state.pushed += 1;
+        drop(state);
+        self.wake_writer.notify_one();
+        self.progress.notify_all();
+        Ok(())
+    }
+
+    fn flush(&self, timeout: std::time::Duration) -> bool {
+        let deadline = std::time::Instant::now() + timeout;
+        let mut state = self.lock();
+        let target = state.pushed;
+        while state.settled < target && state.writer_alive {
+            let left = deadline.saturating_duration_since(std::time::Instant::now());
+            if left.is_zero() {
+                return false;
+            }
+            state = self
+                .progress
+                .wait_timeout(state, left)
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .0;
+        }
+        state.settled >= target
+    }
+}
+
 fn spawn_log_writer<T: Send + 'static>(
-    mut sink: impl FnMut(chrono::DateTime<chrono::Local>, T) + Send + 'static,
-) -> Option<std::sync::mpsc::Sender<(chrono::DateTime<chrono::Local>, T)>> {
-    let (sender, receiver) = std::sync::mpsc::channel::<(chrono::DateTime<chrono::Local>, T)>();
+    cap: usize,
+    mut sink: impl FnMut(chrono::DateTime<chrono::Local>, T, u64) + Send + 'static,
+) -> Option<std::sync::Arc<LogQueue<T>>> {
+    let queue = std::sync::Arc::new(LogQueue {
+        state: std::sync::Mutex::new(LogQueueState {
+            items: std::collections::VecDeque::new(),
+            pushed: 0,
+            settled: 0,
+            dropped: 0,
+            writer_alive: true,
+        }),
+        wake_writer: std::sync::Condvar::new(),
+        progress: std::sync::Condvar::new(),
+        cap: cap.max(1),
+    });
+    let worker = queue.clone();
     std::thread::Builder::new()
         .name("debug-log-writer".into())
         .spawn(move || {
-            for (at, item) in receiver {
-                sink(at, item);
+            // 寫入端 panic 時標記失效：之後的行由呼叫端直接寫，flush 也不再等。
+            struct Alive<T>(std::sync::Arc<LogQueue<T>>);
+            impl<T> Drop for Alive<T> {
+                fn drop(&mut self) {
+                    self.0.lock().writer_alive = false;
+                    self.0.progress.notify_all();
+                }
+            }
+            let alive = Alive(worker);
+            loop {
+                let (at, item, dropped) = {
+                    let mut state = alive.0.lock();
+                    loop {
+                        if let Some((at, item)) = state.items.pop_front() {
+                            break (at, item, std::mem::take(&mut state.dropped));
+                        }
+                        state = alive
+                            .0
+                            .wake_writer
+                            .wait(state)
+                            .unwrap_or_else(|poisoned| poisoned.into_inner());
+                    }
+                };
+                sink(at, item, dropped);
+                alive.0.lock().settled += 1;
+                alive.0.progress.notify_all();
             }
         })
         .ok()?;
-    Some(sender)
+    Some(queue)
 }
 
 fn format_debug_payload(payload: Value) -> String {

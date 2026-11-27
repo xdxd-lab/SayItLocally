@@ -298,12 +298,30 @@ function createAudioContext() {
 }
 
 // [自訂] SC-62：停止錄音時不等 AudioContext 關閉（藍牙或切換取樣率時可能很久），
-// 辨識可以先開始；下一次開始錄音前一定先等這裡的關閉完成，不會與新的採集重疊。
+// 辨識可以先開始；下一次開始錄音前先等這裡的關閉完成。
 let pendingClose: Promise<void> = Promise.resolve()
+
+// [自訂] SC-62 補充（F10b）：close() 永遠不完成時最多等這麼久就照常開錄並記一筆。
+// 舊 context 的資料路徑在 releaseCapture 已同步切斷、麥克風也已停止，不會把音訊交給新的一輪。
+export const CLOSE_WAIT_MS = 1500
 
 async function teardownCapture() {
   releaseCapture()
-  await pendingClose
+  const waiting = pendingClose
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const timedOut = await Promise.race([
+    waiting.then(() => false),
+    new Promise<boolean>(resolve => { timer = setTimeout(() => resolve(true), CLOSE_WAIT_MS) }),
+  ])
+  clearTimeout(timer)
+  if (timedOut) {
+    console.warn('[audio-diag] previous AudioContext close timed out; starting capture anyway')
+    addRuntimeEvent('warn', 'audio', 'Previous AudioContext close timed out; starting capture anyway', {
+      waitedMs: CLOSE_WAIT_MS,
+    })
+    // 不再等這一個，也不讓它一路串到之後每次開錄。
+    if (pendingClose === waiting) pendingClose = Promise.resolve()
+  }
 }
 
 /**

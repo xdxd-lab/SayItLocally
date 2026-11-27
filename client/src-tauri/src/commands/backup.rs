@@ -1885,6 +1885,8 @@ pub fn restart_app(app: tauri::AppHandle) {
     crate::commands::system::suppress_exit_install();
     // [自訂] SC-60：restart 會先產生新程序再結束本程序，先放開實例鎖，新程序才能成為主程序。
     crate::instance_lock::release_for_restart();
+    // [自訂] SC-62 補充（F10b）：在主執行緒 restart 時 Tauri 不送 RunEvent::Exit，這裡自己先寫完前端日誌。
+    crate::commands::system::flush_debug_log(crate::commands::system::DEBUG_LOG_FLUSH_TIMEOUT);
     app.restart();
 }
 
