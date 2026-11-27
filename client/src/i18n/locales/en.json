@@ -1543,5 +1543,12 @@
   "builtinApp.notepadMac": "TextEdit",
   "builtinApp.codex": "Codex",
   "builtinApp.weixin": "WeChat",
-  "builtinApp.qq": "QQ"
+  "builtinApp.qq": "QQ",
+  "brand.bannerAlt": "SayItLocally banner: translucent streams of light weave from a speech bubble into lines of text on a page, with gold glints where they meet.",
+  "brand.appeal": "Speak what matters and keep it as your own record: verify the past, guide the future. Nothing leaves this computer.",
+  "brand.appealFull": "Speak to record the developer's own important words, to verify the past and guide the future. Recognition runs only on this computer; voice, text and usage data never leave it.",
+  "brand.forkNote": "SayItLocally is a personal fork of SayIt (crosswk/SayIt), licensed under AGPL-3.0. The upstream name, links, license and copyright notices are kept.",
+  "appearance.effects": "Effects",
+  "appearance.clickGlow": "Click glow",
+  "appearance.clickGlowDesc": "Show a soft glow where you click buttons, switches and tabs. Always off when the system asks to reduce motion."
 }

@@ -1543,5 +1543,12 @@
   "builtinApp.notepadMac": "文本编辑",
   "builtinApp.codex": "Codex",
   "builtinApp.weixin": "微信",
-  "builtinApp.qq": "QQ"
+  "builtinApp.qq": "QQ",
+  "brand.bannerAlt": "SayItLocally 横幅：多道半透明光流从对话泡泡交织而出，汇入纸上的文字行，交会处闪着金色光辉。",
+  "brand.appeal": "说出重要的话，留作自己的记录：验证过去，指引未来，不外流。",
+  "brand.appealFull": "通过说话，把开发者自己重要的文字记录下来，验证过去，指引未来；只用本机识别，语音、文字与使用信息都不外流。",
+  "brand.forkNote": "SayItLocally 是 SayIt（crosswk/SayIt）的个人自用 fork，采用 AGPL-3.0 授权；上游的名称、网址、授权与著作权声明皆保留。",
+  "appearance.effects": "特效",
+  "appearance.clickGlow": "点击光辉特效",
+  "appearance.clickGlowDesc": "点击按钮、开关、标签页时，在点击处显示柔和光点。系统开启「减弱动态效果」时一律不显示。"
 }
