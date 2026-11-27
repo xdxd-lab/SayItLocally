@@ -6,7 +6,8 @@
 #   - esbuild：安裝時不跑任何安裝腳本（--ignore-scripts），並確認平台 binary 已在本機；
 #     esbuild 的 postinstall 只是加速用，不跑也能正常使用（L-87）
 #   - Cargo：CARGO_NET_OFFLINE＋--locked，不更新索引、不下載 crate（L-88、L-89）
-#   - Rust：確認已安裝的預設工具鏈與標準庫，直接使用該工具鏈的 Cargo、rustc（L-90）
+#   - Rust：使用 src-tauri/rust-toolchain.toml 固定的版本（SC-64），確認已安裝的工具鏈與標準庫，
+#     直接使用該工具鏈的 Cargo、rustc；不讓 rustup 自動下載（L-90）
 #   - Xcode／CLT、SDK、CMake：只檢查是否可用，缺少就停下，不觸發系統補裝（L-91）
 #   - Apple 公證：清除所有 APPLE_* 變數，只用 ad hoc 簽章（L-92）
 # 這個腳本只降低連網的機會，不保證零外連；第一次執行請同時用 LuLu 封鎖外連，
@@ -14,6 +15,7 @@
 #
 # 用法（在 client/ 目錄）：scripts/macos/build-offline.sh [--install] [--bundles <app,dmg>] [--debug] [--verbose]
 #   --install  先用本機快取安裝 node_modules（npm ci）
+#   --bundles  沒有指定時只產生 .app（等同 --bundles app），不打包 dmg
 # 其他 tauri build 參數一律拒絕：自訂 config 或 runner 可能繞過這裡的離線設定。
 # 快取不完整時建置會直接失敗，不會改去下載；屆時請先決定要不要連網補齊。
 set -euo pipefail
@@ -41,21 +43,19 @@ apply_offline_env() {
   done
 }
 
-# L-90：只讀 rustup 的預設設定，直接選用工具鏈目錄裡的執行檔。
+# L-90／SC-64：工具鏈版本取自 src-tauri/rust-toolchain.toml 的 channel（不用 rustup 的預設），
+# 只支援 Apple Silicon，直接選用工具鏈目錄裡的執行檔。
 use_local_rust() {
   local rustup_dir="${RUSTUP_HOME:-$HOME/.rustup}" cargo_home="${CARGO_HOME:-$HOME/.cargo}"
-  local toolchain triple toolchain_bin entry
+  local channel toolchain triple=aarch64-apple-darwin toolchain_bin entry
   local -a stdlibs kept_path
-  toolchain=$(
-    /usr/bin/sed -n '/^[[:space:]]*\[/q; s/^default_toolchain[[:space:]]*=[[:space:]]*"\([^"]*\)"[[:space:]]*$/\1/p' \
-      "$rustup_dir/settings.toml" 2>/dev/null
-  ) || toolchain=
-  case "$toolchain" in
-    *-aarch64-apple-darwin) triple=aarch64-apple-darwin ;;
-    *-x86_64-apple-darwin) triple=x86_64-apple-darwin ;;
-    *) echo "找不到已設定的 macOS 預設 Rust 工具鏈。" >&2; return 1 ;;
-  esac
-  [[ "$toolchain" != *[^a-zA-Z0-9_.-]* ]] || { echo "預設 Rust 工具鏈名稱無效。" >&2; return 1; }
+  [[ "$(/usr/bin/uname -m)" == arm64 ]] || { echo "只支援 Apple Silicon（arm64）建置。" >&2; return 1; }
+  channel=$(
+    /usr/bin/sed -n 's/^[[:space:]]*channel[[:space:]]*=[[:space:]]*"\([^"]*\)"[[:space:]]*$/\1/p' \
+      src-tauri/rust-toolchain.toml 2>/dev/null | /usr/bin/head -n 1
+  ) || channel=
+  [[ "$channel" =~ '^[0-9]+[.][0-9]+[.][0-9]+$' ]] || { echo "src-tauri/rust-toolchain.toml 沒有固定的 Rust 版本（例如 1.100.0）。" >&2; return 1; }
+  toolchain="$channel-$triple"
   toolchain_bin="$rustup_dir/toolchains/$toolchain/bin"
   toolchain_bin=${toolchain_bin:A}
   stdlibs=( "${toolchain_bin:h}/lib/rustlib/$triple/lib"/libstd-*.rlib(N.) )
@@ -63,7 +63,7 @@ use_local_rust() {
         ! -f "$toolchain_bin/rustc" || ! -x "$toolchain_bin/rustc" || -L "$toolchain_bin/rustc" ||
         "$toolchain_bin/cargo" -ef "$cargo_home/bin/rustup" ||
         "$toolchain_bin/rustc" -ef "$cargo_home/bin/rustup" ]] || (( ! ${#stdlibs} )); then
-    echo "預設 Rust 工具鏈缺少可直接執行的 Cargo、rustc 或 $triple 標準庫。" >&2
+    echo "Rust $toolchain 沒有安裝完整（缺 Cargo、rustc 或 $triple 標準庫）。本腳本不會下載；請先自行安裝。" >&2
     return 1
   fi
   for entry in "${path[@]}"; do
@@ -71,6 +71,8 @@ use_local_rust() {
   done
   path=("$toolchain_bin" "${kept_path[@]}")
   export CARGO="$toolchain_bin/cargo" RUSTC="$toolchain_bin/rustc"
+  # 萬一有子程序仍經過 rustup proxy：指定同一個已安裝的工具鏈，並關閉自動安裝。
+  export RUSTUP_TOOLCHAIN="$toolchain" RUSTUP_AUTO_INSTALL=0
 }
 
 # 直接加入本機 Node 和 CMake，避免執行外部環境檔。
@@ -78,6 +80,7 @@ export PATH="$HOME/.local/node/bin:$HOME/.local/cmake/CMake.app/Contents/bin:$PA
 apply_offline_env
 
 INSTALL=0
+HAVE_BUNDLES=0
 TAURI_ARGS=()
 while (( $# )); do
   case "$1" in
@@ -85,12 +88,15 @@ while (( $# )); do
     --bundles|-b)
       (( $# >= 2 )) || { echo "$1 後面要接 bundle 種類，例如 app 或 app,dmg" >&2; exit 2; }
       [[ "$2" == (app|dmg|app,dmg|dmg,app) ]] || { echo "只接受 app、dmg：$2" >&2; exit 2; }
+      HAVE_BUNDLES=1
       TAURI_ARGS+=("$1" "$2"); shift ;;
     --debug|-d|--verbose|-v) TAURI_ARGS+=("$1") ;;
     *) echo "不接受的參數：$1（自訂 config、runner 等可能繞過離線設定）" >&2; exit 2 ;;
   esac
   shift
 done
+# 使用者決定第一版只做 .app；Tauri 設定的預設是 app＋dmg，所以沒指定時明確帶上 --bundles app。
+(( HAVE_BUNDLES )) || TAURI_ARGS+=(--bundles app)
 
 use_local_rust
 
@@ -107,11 +113,12 @@ fi
 export CMAKE="$(command -v cmake)"
 /usr/bin/xcrun --sdk macosx --show-sdk-path >/dev/null 2>&1 || { echo "找不到 macOS SDK（不會自動補裝）。" >&2; exit 1; }
 
-# L-87：esbuild 平台套件名稱依 Node 的架構判斷（不是 uname，避免 Rosetta 下不一致）
-case "$(node -p process.arch)" in
+# L-87：esbuild 平台套件名稱依 Node 的架構判斷（不是 uname）。只支援 arm64：
+# Rosetta 下的 x64 Node 會讓前端用 x64 的 esbuild、Rust 用 arm64，形成混合建置，所以直接停下。
+NODE_ARCH="$(node -p process.arch)"
+case "$NODE_ARCH" in
   arm64) ESBUILD_PKG=darwin-arm64 ;;
-  x64) ESBUILD_PKG=darwin-x64 ;;
-  *) echo "不支援的 Node 架構：$(node -p process.arch)" >&2; exit 1 ;;
+  *) echo "Node 是 $NODE_ARCH 版；只支援 Apple Silicon 原生（arm64）的 Node，請改用 arm64 版 Node（不要在 Rosetta 下執行）。" >&2; exit 1 ;;
 esac
 ESBUILD_BIN="node_modules/@esbuild/$ESBUILD_PKG/bin/esbuild"
 
