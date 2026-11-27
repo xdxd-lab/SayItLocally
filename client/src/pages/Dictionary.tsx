@@ -243,8 +243,8 @@ function HotwordDeliveryNotice({ hotwordCount }: { hotwordCount: number }) {
     <div className={cn('mb-4 -mt-1 space-y-1 text-xs leading-relaxed', tone)}>
       {/* 完整对照的入口跟在结论后面，同一行 —— 用户读完"当前这套会不会发送"，
           紧接着最想问的就是"那别的呢"。
-          原来这里写的是"完整对照见文档《SayIt 语音识别配置》"，那句话没有落点：
-          文档在仓库里，用户在应用内点不到，等于把他推去一个不存在的地方。
+          原來這裡寫的是「完整對照見上游的語音辨識設定文件」，那句話沒有落點：
+          文件在倉庫裡，使用者在 App 內點不到。[自訂] 該文件已自本 fork 移除。
           现在改成应用内打开，表格现问 Rust 现渲染（见 HotwordSupportTable）。 */}
       <p>
         <RichText text={t(deliveryMessageKey(state.ui, state.undecidedReason))} />
@@ -636,8 +636,8 @@ export default function Dictionary() {
           {/* 当前这套配置拿热词做什么。
               取代了原来那张硬编码的「各模型对热词的支持」表：那张表漏了 6 家云服务，
               而且永远显示同一份内容、不看用户选的是谁（issue #67）。用户在这一页要
-              回答的问题只有一个 —— 我配的热词现在有用吗。全模型对照移到了
-              docs/SayIt 语音识别配置.md，那是做选型时才看的东西。 */}
+              回答的问题只有一个 —— 我配的热词现在有用吗。全模型對照改由 App 內的
+              HotwordSupportTable 顯示（[自訂] 上游的設定文件已自本 fork 移除）。 */}
           <HotwordDeliveryNotice hotwordCount={hotwords.length} />
 
           {hotwords.length > HOTWORD_SOFT_LIMIT && !warnDismissed && (
