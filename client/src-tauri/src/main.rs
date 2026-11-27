@@ -111,7 +111,7 @@ fn notify_storage_recovery(recovery: storage::StorageRecovery) {
             let current_files = storage::recovery::MANUAL_RECOVERY_FILES.join("\n");
             let hold = storage::recovery::RECORDING_HOLD_FILE;
             if zh {
-                format!("SayItLocally 沒有完成資料庫復原。原資料庫檔案沒有被刪除，有些可能已經移入副本。這次使用記憶體，結束後不會保存這次的設定和歷史記錄。\n\n資料資料夾：\n{}\n\n1. 結束所有正在執行的 SayItLocally。\n2. 將整個資料資料夾（包括錄音和資料庫副本）備份到另一個位置。\n3. 把下列仍在原資料資料夾中的項目全部移到同一個新的本機資料夾，保留原檔名。已產生的資料庫副本請留在原處。\n{current_files}\n4. 保留原資料資料夾裡的 {hold}。如果沒有這個檔案，請在原資料資料夾中新增一個同名的空白檔案（不要加 .txt），以暫停清理舊錄音。\n5. 確認第 3 步列出的項目都已移走，再重新開啟 App。App 會建立新的資料庫，舊資料仍在備份中。如果無法備份、搬移檔案或寫入原資料夾，請先解決存取權限或磁碟空間問題。", dir.display())
+                format!("SayItLocally 沒有完成資料庫復原。原資料庫檔案沒有被刪除，有些可能已經移入副本。這次使用記憶體，結束後不會保存這次的設定和歷史記錄。\n\nApp 資料夾：\n{}\n\n1. 結束所有正在執行的 SayItLocally。\n2. 將整個App 資料夾（包括錄音和資料庫副本）備份到另一個位置。\n3. 把下列仍在原 App 資料夾中的項目全部移到同一個新的本機資料夾，保留原檔名。已產生的資料庫副本請留在原處。\n{current_files}\n4. 保留原 App 資料夾裡的 {hold}。如果沒有這個檔案，請在原 App 資料夾中新增一個同名的空白檔案（不要加 .txt），以暫停清理舊錄音。\n5. 確認第 3 步列出的項目都已移走，再重新開啟 App。App 會建立新的資料庫，舊資料仍在備份中。如果無法備份、搬移檔案或寫入原資料夾，請先解決存取權限或磁碟空間問題。", dir.display())
             } else {
                 format!("SayItLocally could not finish database recovery. No original database files were deleted. Some may already be in a recovery copy. This session uses memory, so its settings and history will be lost when you quit.\n\nData folder:\n{}\n\n1. Quit all running instances of SayItLocally.\n2. Back up the entire data folder, including recordings and database copies, to another location.\n3. Move every item listed below that is still in the original data folder into the same new local folder. Keep their names and leave any existing database copies in place.\n{current_files}\n4. Keep {hold} in the original data folder. If it is missing, create an empty file with that exact name (no .txt extension) there to pause cleanup of old recordings.\n5. Verify that none of the items in step 3 remain in the original data folder, then reopen the app. The app will create a fresh database. The backup still contains your old files. If you cannot back up, move, or write files, resolve folder access or disk space first.", dir.display())
             }
@@ -384,7 +384,7 @@ fn notify_main_window_unavailable() {
     let text = match (zh, cfg!(target_os = "macos")) {
         (true, false) => "SayItLocally 的主視窗沒能啟動，語音輸入暫時無法使用。\n\n請在系統匣圖示上按右鍵結束 SayItLocally，再重新開啟。如果反覆出現，請在設定裡提交診斷。",
         (false, false) => "SayItLocally's main window failed to start, so voice input is unavailable for now.\n\nPlease quit SayItLocally from the tray icon and open it again. If this keeps happening, send a diagnostics report from Settings.",
-        (true, true) => "SayItLocally 的主視窗沒能啟動，語音輸入暫時無法使用。\n\n請點螢幕上方選單列裡的 SayItLocally 圖示，選「結束 SayItLocally」，再重新打開。如果反覆出現，請在設定裡提交診斷。",
+        (true, true) => "SayItLocally 的主視窗沒能啟動，語音輸入暫時無法使用。\n\n請點螢幕上方選單列裡的 SayItLocally 圖示，選「結束 SayItLocally」，再重新開啟。如果反覆出現，請在設定裡提交診斷。",
         (false, true) => "SayItLocally's main window failed to start, so voice input is unavailable for now.\n\nPlease quit SayItLocally from its icon in the menu bar at the top of the screen, then open it again. If this keeps happening, send a diagnostics report from Settings.",
     };
     #[cfg(target_os = "windows")]

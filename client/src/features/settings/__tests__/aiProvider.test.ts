@@ -71,8 +71,8 @@ describe('checkAiKeyFormat', () => {
   })
 
   it('粘贴带进空白字符时报警', () => {
-    expect(checkAiKeyFormat('deepseek', 'sk-abc def')).toContain('空格')
-    expect(checkAiKeyFormat('doubao', 'abc\ndef')).toContain('空格')
+    expect(checkAiKeyFormat('deepseek', 'sk-abc def')).toContain('空白')
+    expect(checkAiKeyFormat('doubao', 'abc\ndef')).toContain('空白')
   })
 
   it('DeepSeek / 千问 缺 sk- 前缀时报警', () => {

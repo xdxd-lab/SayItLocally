@@ -12,11 +12,14 @@ vi.mock('@/services/bridge', () => ({
 }))
 
 import { getDefault } from '../defaults'
+import legacySimplified from './fixtures/legacySimplifiedBuiltinPrompts.json'
 import {
   BUILTIN_PRESETS,
   builtinPromptContentHash,
   getBuiltinPromptPresets,
   getPromptPresets,
+  isLegacySimplifiedBuiltinPrompt,
+  LEGACY_SIMPLIFIED_BUILTIN_PROMPTS,
   normalizeBuiltinPromptLanguage,
   savePromptPreset,
   setBuiltinPromptLanguage,
@@ -128,5 +131,68 @@ describe('内置 Prompt 语言', () => {
     const presets = await getPromptPresets('zh-TW')
     expect(presets[0].builtinPromptModified).toBeUndefined()
     expect(bridgeState.values.get('promptPresets')).toEqual([])
+  })
+
+  // [自訂] SC-65：舊 store 帶 zh-CN 語言的自訂 Prompt，在 zh-TW 下要照樣套用。
+  it('舊版 zh-CN 語言的 override 在正體中文下套用，英文不受影響', async () => {
+    bridgeState.values.set('promptPresets', [{
+      id: 'intent',
+      name: '舊名稱',
+      systemPrompt: '我的自訂 Prompt',
+      builtinPromptLanguage: 'zh-CN' as unknown as PromptPreset['builtinPromptLanguage'],
+    } satisfies PromptPreset])
+
+    const zh = (await getPromptPresets('zh-TW'))[0]
+    expect(zh.systemPrompt).toBe('我的自訂 Prompt')
+    expect(zh.builtinPromptModified).toBe(true)
+    expect((await getPromptPresets('en'))[0].systemPrompt)
+      .toBe(getBuiltinPromptPresets('en')[0].systemPrompt)
+  })
+
+  // [自訂] SC-65：未修改的舊簡體內建 Prompt 快照要被清掉，改用新的正體內建版。
+  it('指紋表與 Unicode 跳脫保存的舊簡體原文一致', () => {
+    const fixture = legacySimplified as Record<string, string>
+    expect(Object.keys(fixture).sort()).toEqual(BUILTIN_PRESETS.map((preset) => preset.id).sort())
+    expect(Object.keys(LEGACY_SIMPLIFIED_BUILTIN_PROMPTS).sort()).toEqual(Object.keys(fixture).sort())
+    for (const [id, text] of Object.entries(fixture)) {
+      expect(LEGACY_SIMPLIFIED_BUILTIN_PROMPTS[id], id).toEqual({
+        hash: builtinPromptContentHash(text),
+        length: text.length,
+      })
+      // 舊原文與新的正體內建版不同，否則這張表沒有意義。
+      expect(text, id).not.toBe(getBuiltinPromptPresets('zh-TW').find((preset) => preset.id === id)?.systemPrompt)
+    }
+  })
+
+  it('讀取時清理未修改的舊簡體內建快照（含 zh-CN 與無語言欄位）', async () => {
+    const fixture = legacySimplified as Record<string, string>
+    const enIntent = getBuiltinPromptPresets('en')[0]
+    bridgeState.values.set('promptPresets', [
+      { id: 'intent', name: '舊', systemPrompt: fixture.intent },
+      {
+        id: 'faithful',
+        name: '舊',
+        systemPrompt: fixture.faithful,
+        builtinPromptLanguage: 'zh-CN' as unknown as PromptPreset['builtinPromptLanguage'],
+      },
+      // 改過一個字的舊快照是使用者的修改，必須保留。
+      { id: 'casual', name: '舊', systemPrompt: `${fixture.casual}。` },
+      // 英文 override 即使內容剛好是舊簡體原文，也不屬於中文內建快照，保留。
+      { id: 'zh2en', name: 'x', systemPrompt: fixture.zh2en, builtinPromptLanguage: 'en' },
+      { id: 'intent', name: 'x', systemPrompt: 'Custom English prompt', builtinPromptLanguage: 'en' },
+    ] satisfies PromptPreset[])
+
+    // 在英文 Prompt 語言下讀取也要清掉中文舊快照。
+    expect((await getPromptPresets('en'))[0].systemPrompt).toBe('Custom English prompt')
+    const stored = bridgeState.values.get('promptPresets') as PromptPreset[]
+    expect(stored.map((preset) => preset.id)).toEqual(['casual', 'zh2en', 'intent'])
+
+    const zh = await getPromptPresets('zh-TW')
+    const current = getBuiltinPromptPresets('zh-TW')
+    expect(zh[0].systemPrompt).toBe(current[0].systemPrompt)
+    expect(zh[0].builtinPromptModified).toBeUndefined()
+    expect(zh[1].systemPrompt).toBe(current[1].systemPrompt)
+    expect(zh.find((preset) => preset.id === 'casual')?.builtinPromptModified).toBe(true)
+    expect(isLegacySimplifiedBuiltinPrompt({ id: 'intent', name: '', systemPrompt: enIntent.systemPrompt })).toBe(false)
   })
 })

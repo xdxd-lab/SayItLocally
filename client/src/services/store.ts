@@ -214,8 +214,8 @@ export const BUILTIN_PRESETS: PromptPreset[] = [
 6. 語言約束：輸出一律使用台灣正體中文（繁體）與台灣慣用詞彙，即使輸入是簡體中文也必須轉成正體；英文與程式碼維持原樣。
 
 【範例】
-輸入：呃，那個，我們今天準備把伺服器MySQL資料庫遷移到EC2上面去，大概需要擴容三台機器，連接埠號是三三零六吧。
-輸出：我們今天準備把伺服器 MySQL 資料庫遷移到 EC2 上面去，大概需要擴容 3 台機器，連接埠號是 3306 吧。
+輸入：呃，那個，我們今天準備把伺服器MySQL資料庫遷移到EC2上面去，大概需要擴充三台機器，連接埠號是三三零六吧。
+輸出：我們今天準備把伺服器 MySQL 資料庫遷移到 EC2 上面去，大概需要擴充 3 台機器，連接埠號是 3306 吧。
 
 輸入：這個軟體的版本從三點一升級到三點二的時候，出現了一些不相容的情況。
 輸出：這個軟體的版本從 3.1 升級到 3.2 的時候，出現了一些不相容的情況。
@@ -245,7 +245,7 @@ export const BUILTIN_PRESETS: PromptPreset[] = [
 6. 語言約束：輸入可能是簡體或繁體中文（含台灣用語），一律以台灣正體中文的語意理解；輸出只有英文，若輸出中必須保留中文專有名詞（如人名），一律使用台灣正體字，程式碼與英文維持原樣。
 
 【範例】
-輸入：那個，我們今天準備把伺服器MySQL資料庫遷移到EC2上面去，大概需要擴容三台機器，連接埠號是三三零六吧。
+輸入：那個，我們今天準備把伺服器MySQL資料庫遷移到EC2上面去，大概需要擴充三台機器，連接埠號是三三零六吧。
 輸出：We are planning to migrate the server's MySQL database to EC2 today. We will probably need to scale up by 3 machines, and the port number is 3306, right?
 
 輸入：這個軟體的版本從三點一升級到三點二的時候，出現了一些不相容的情況。
@@ -433,6 +433,27 @@ export async function setBuiltinPromptLanguage(language: BuiltinPromptLanguage):
   await setSetting('ai.builtinPromptLanguage', language)
 }
 
+/**
+ * [自訂] SC-65：改為正體前最後一版的簡體官方內建 Prompt（指紋＋長度）。
+ * 舊版「一字未改也存」留下的快照若與它逐字相同，就是未修改的舊內建版，讀取時一併清掉，
+ * 否則它會被當成「已修改」而蓋過新的正體內建 Prompt。原文以 Unicode 跳脫保存在
+ * `__tests__/fixtures/legacySimplifiedBuiltinPrompts.json`，由測試核對這張表。
+ */
+export const LEGACY_SIMPLIFIED_BUILTIN_PROMPTS: Readonly<Record<string, { hash: string; length: number }>> = {
+  intent: { hash: '131wlho', length: 1062 },
+  faithful: { hash: '9lksx6', length: 829 },
+  zh2en: { hash: '9t7v1d', length: 1555 },
+  casual: { hash: 'gu16im', length: 1178 },
+}
+
+export function isLegacySimplifiedBuiltinPrompt(preset: PromptPreset): boolean {
+  const legacy = LEGACY_SIMPLIFIED_BUILTIN_PROMPTS[preset.id]
+  return Boolean(legacy)
+    && overrideLanguage(preset) === 'zh-TW'
+    && preset.systemPrompt.length === legacy.length
+    && builtinPromptContentHash(preset.systemPrompt) === legacy.hash
+}
+
 function overrideLanguage(preset: PromptPreset): BuiltinPromptLanguage {
   // 旧版本没有语言字段，当时只有中文 Prompt，因此安全地归到中文。
   return normalizeBuiltinPromptLanguage(preset.builtinPromptLanguage)
@@ -448,7 +469,9 @@ export async function getPromptPresets(languageOverride?: BuiltinPromptLanguage)
   // 旧版本“打开内置模式、一个字没改也保存”会留下整份快照。内容与当前官方定义
   // 逐字相同时可无损删除；若不清，下一次官方定义更新后它又会反过来覆盖新版。
   const cleaned = custom.filter((candidate) => {
-    if (!builtinIds.has(candidate.id) || overrideLanguage(candidate) !== language) return true
+    if (!builtinIds.has(candidate.id)) return true
+    if (isLegacySimplifiedBuiltinPrompt(candidate)) return false
+    if (overrideLanguage(candidate) !== language) return true
     return candidate.systemPrompt !== definitionById.get(candidate.id)?.systemPrompt
   })
   if (cleaned.length !== custom.length) {

@@ -15,6 +15,10 @@ const BEFORE_LIMIT: usize = 500;
 const SELECTED_LIMIT: usize = 6000;
 const AFTER_LIMIT: usize = 300;
 
+/// [自訂] SC-65：呼叫端沒給 system prompt 時的預設校對提示詞（Ollama 與 OpenAI 相容共用），
+/// 要求以台灣正體中文輸出。
+pub const DEFAULT_PROOFREAD_SYSTEM_PROMPT: &str = "你是語音轉文字的校對助手。請一律使用台灣正體中文與台灣用語輸出，即使輸入是簡體中文也要轉成正體；英文與程式碼維持原樣。";
+
 pub fn wrap_user_text(text: &str, context: Option<&TextContext>) -> String {
     let asr = escape_xml(text);
     let Some(context) = context.filter(|context| !context.selection_truncated) else {
@@ -59,6 +63,11 @@ fn clip_tail(value: &str, limit: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn default_proofread_prompt_requires_taiwan_traditional() {
+        assert!(DEFAULT_PROOFREAD_SYSTEM_PROMPT.contains("台灣正體中文"));
+    }
 
     #[test]
     fn wraps_bounded_context_and_escapes_fake_tags() {

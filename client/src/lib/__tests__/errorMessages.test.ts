@@ -64,7 +64,7 @@ describe('describeProviderError', () => {
   })
 
   it('限流/欠费与密钥错误区分开', () => {
-    expect(describeProviderError(new Error('HTTP 429 rate limit')).message).toContain('限流')
+    expect(describeProviderError(new Error('HTTP 429 rate limit')).message).toContain('請求頻率')
   })
 
   /**
@@ -84,7 +84,7 @@ describe('describeProviderError', () => {
     ))
     expect(raw.code).toBe('provider_insufficient_balance')
     expect(raw.message).toContain('餘額不足')
-    expect(raw.message).not.toContain('限流')
+    expect(raw.message).not.toContain('請求頻率')
     // 动作要把用户带到那份配置上（充值入口和密钥在同一个后台），而不是让他重试
     expect(raw.action).toBe('check_key')
     // 具体金额和链接在服务商给的原文里，必须保留在 detail 供用户看
