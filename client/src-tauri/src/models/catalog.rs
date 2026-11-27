@@ -115,6 +115,17 @@ impl GgufWeight {
 /// 列表顺序 = UI 展示顺序（前端不排序）。按**从快到准**排：越往下越准、越慢、
 /// 下载越大，用户从上往下扫一遍就能理解这几项的关系。
 pub fn get_available_models() -> Vec<ModelInfo> {
+    available_models().to_vec()
+}
+
+/// [自訂] SC-62：目錄是編譯期固定的內容（與下載或刪除哪些模型無關），只建一次；
+/// 每次開錄查「已下載模型」時不再重組整份目錄與網址。
+pub fn available_models() -> &'static [ModelInfo] {
+    static CATALOG: std::sync::OnceLock<Vec<ModelInfo>> = std::sync::OnceLock::new();
+    CATALOG.get_or_init(build_catalog)
+}
+
+fn build_catalog() -> Vec<ModelInfo> {
     vec![
         // ── Parakeet Unified EN 0.6B GGUF（NVIDIA，parakeet 族）──
         // 英文专用，但在英文上**同时**是本目录里最快和最准的一档：
@@ -352,6 +363,14 @@ const QWEN3_17B_Q5: GgufWeight = GgufWeight {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_catalog_is_built_once_and_matches_a_fresh_build() {
+        assert!(std::ptr::eq(available_models(), available_models()));
+        let cached = serde_json::to_value(available_models()).unwrap();
+        assert_eq!(cached, serde_json::to_value(build_catalog()).unwrap());
+        assert_eq!(serde_json::to_value(get_available_models()).unwrap(), cached);
+    }
 
     /// 目录的结构性不变量。跑得快、不碰网络，纯粹是防手写坐标时的低级错误。
     #[test]

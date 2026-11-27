@@ -297,7 +297,38 @@ function createAudioContext() {
   return new AudioContextCtor()
 }
 
+// [自訂] SC-62：停止錄音時不等 AudioContext 關閉（藍牙或切換取樣率時可能很久），
+// 辨識可以先開始；下一次開始錄音前先等這裡的關閉完成。
+let pendingClose: Promise<void> = Promise.resolve()
+
+// [自訂] SC-62 補充（F10b）：close() 永遠不完成時最多等這麼久就照常開錄並記一筆。
+// 舊 context 的資料路徑在 releaseCapture 已同步切斷、麥克風也已停止，不會把音訊交給新的一輪。
+export const CLOSE_WAIT_MS = 1500
+
 async function teardownCapture() {
+  releaseCapture()
+  const waiting = pendingClose
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const timedOut = await Promise.race([
+    waiting.then(() => false),
+    new Promise<boolean>(resolve => { timer = setTimeout(() => resolve(true), CLOSE_WAIT_MS) }),
+  ])
+  clearTimeout(timer)
+  if (timedOut) {
+    console.warn('[audio-diag] previous AudioContext close timed out; starting capture anyway')
+    addRuntimeEvent('warn', 'audio', 'Previous AudioContext close timed out; starting capture anyway', {
+      waitedMs: CLOSE_WAIT_MS,
+    })
+    // 不再等這一個，也不讓它一路串到之後每次開錄。
+    if (pendingClose === waiting) pendingClose = Promise.resolve()
+  }
+}
+
+/**
+ * 立即切斷資料路徑並停止麥克風：之後不會再有 PCM 交給呼叫端。
+ * AudioContext 的關閉在背景進行，由 pendingClose 追蹤。
+ */
+function releaseCapture() {
   if (workletNode) {
     try { workletNode.port.onmessage = null } catch { /* ignore */ }
     try { workletNode.disconnect() } catch { /* ignore */ }
@@ -320,11 +351,18 @@ async function teardownCapture() {
     mediaStream = null
   }
 
-  if (audioCtx && audioCtx.state !== 'closed') {
-    await audioCtx.close().catch(() => { })
-  }
+  const ctx = audioCtx
   audioCtx = null
   actualSampleRate = TARGET_SAMPLE_RATE
+  if (ctx && ctx.state !== 'closed') {
+    let closing: Promise<void>
+    try {
+      closing = ctx.close().catch(() => { })
+    } catch {
+      closing = Promise.resolve()
+    }
+    pendingClose = Promise.all([pendingClose, closing]).then(() => { })
+  }
 }
 
 // ── Resampler state for ScriptProcessorNode fallback ──
@@ -655,15 +693,21 @@ export async function startCapture(
     microphoneOpened.dispatchEvent(new Event('change'))
     const track = mediaStream.getAudioTracks()[0] || null
     const settings = track?.getSettings?.()
+    // [自訂] SC-62：流已经开着，所以这一次枚举拿得到带名字的条目。与建立 AudioContext、
+    // 载入 worklet 并行，回传前才等它（失败一律是空快照，不会拒绝）。
+    const endpoints = snapshotInputEndpoints()
+    const ready = async () => {
+      activeMicrophone.devices = await endpoints
+      return activeMicrophone
+    }
     const activeMicrophone: ActiveMicrophoneInfo = {
       // Prefer the resolved track setting over the requested id. In system-default mode
       // these may differ, and the resolved value is what the reminder needs to describe.
       deviceId: String(settings?.deviceId || deviceId || ''),
       groupId: String(settings?.groupId || ''),
       label: String(track?.label || ''),
-      // 流已经开着，所以这一次枚举拿得到带名字的条目。多花的是一次进程间调用，
-      // 与同一路径上的 getUserMedia / AudioContext 相比可以忽略。
-      devices: await snapshotInputEndpoints(),
+      // 回传前由 ready() 填入端点快照。
+      devices: [],
     }
 
     console.log('[audio-diag] getUserMedia success', {
@@ -732,13 +776,13 @@ export async function startCapture(
         console.log('[audio-diag] AudioWorklet unavailable, using ScriptProcessorNode directly')
         setupScriptProcessorFallback(audioCtx, sourceNode)
       }
-      return activeMicrophone
+      return await ready()
     }
 
     clearTimeout(fallbackTimerId)
     if (usingFallback) {
       console.log('[audio-diag] ScriptProcessorNode already active, skipping worklet setup')
-      return activeMicrophone
+      return await ready()
     }
 
     // AudioWorklet loaded — set up node and monitor for data
@@ -755,7 +799,7 @@ export async function startCapture(
       }
     }, 800)
 
-    return activeMicrophone
+    return await ready()
 
   } catch (error) {
     await teardownCapture()
@@ -785,7 +829,8 @@ export async function stopCapture() {
     receivedPcm: firstPCMFrameLogged,
   })
 
-  await teardownCapture()
+  // [自訂] SC-62：資料路徑與麥克風在這裡已停止；AudioContext 在背景關閉。
+  releaseCapture()
 
   onAudioData = null
   onVolumeChange = null

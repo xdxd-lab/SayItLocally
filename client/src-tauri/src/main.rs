@@ -671,15 +671,19 @@ fn main() {
             }
             drop(startup_lock);
             // [自訂] SC-51：取得單一實例後才清理，以免後啟動的程序刪除進行中的還原暫存。
-            cleanup_retained_files(app.state::<Storage>().inner());
-            // [自訂] S71：在背景清理，不依賴 WebView 計時器或 App 重啟。
+            // [自訂] SC-62：啟動清理也在背景執行，不拖慢 setup。仍在這裡（已確立單一實例、
+            // 資料庫復原已在建立 Builder 前完成）才開始；錄音清理以錄音寫入鎖與還原、
+            // 播放、儲存互斥，診斷包清理不會刪掉本次產生的新包。
             let retention_app = app.handle().clone();
-            thread::spawn(move || loop {
-                thread::sleep(std::time::Duration::from_secs(15 * 60));
-                cleanup_retained_files(retention_app.state::<Storage>().inner());
+            thread::spawn(move || {
+                // [自訂] S45：清掉上次殘留的診斷包。
+                commands::diagnostics::purge_stale_diagnostics_zips();
+                // [自訂] S71：在背景清理，不依賴 WebView 計時器或 App 重啟。
+                loop {
+                    cleanup_retained_files(retention_app.state::<Storage>().inner());
+                    thread::sleep(std::time::Duration::from_secs(15 * 60));
+                }
             });
-            // [自訂] S45：清掉上次殘留的診斷包。
-            commands::diagnostics::purge_stale_diagnostics_zips();
             // macOS：登录时要不要启动只由「登录时自动启动」决定，不让系统的「重新登录时重新打开窗口」
             // 把 SayItLocally 当普通应用不带参数地拉起来（那样主窗口会在登录后弹出来，见 appkit.rs）。
             #[cfg(target_os = "macos")]
@@ -1036,6 +1040,8 @@ fn main() {
                 // [自訂] 結束時自動安裝更新已註解停用：
                 // commands::system::install_pending_update_on_exit(app_handle);
                 let _ = app_handle;
+                // [自訂] SC-62 補充（F10b）：結束前把佇列裡的前端日誌寫完（有上限，不拖住結束）。
+                commands::system::flush_debug_log(commands::system::DEBUG_LOG_FLUSH_TIMEOUT);
             }
         });
 }

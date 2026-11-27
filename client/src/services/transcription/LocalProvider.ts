@@ -52,8 +52,11 @@ export class LocalProvider extends BufferedProvider {
     // 已下载：预加载失败（如文件损坏、显卡后端异常）不代表不能用，
     // 真正的失败会在识别阶段带着具体原因报出来，这里仍按就绪处理。
     try {
-      const accelerator = await getSetting('localAsr.accelerator', 'auto') as string
-      const gpuDevice = await getSetting('localAsr.gpuDevice', '') as string
+      // [自訂] SC-62：互不依賴的設定一起送出（Rust 端仍依序處理）。
+      const [accelerator, gpuDevice] = await Promise.all([
+        getSetting('localAsr.accelerator', 'auto') as Promise<string>,
+        getSetting('localAsr.gpuDevice', '') as Promise<string>,
+      ])
       await invoke<string>('preload_local_model', { modelId, accelerator, gpuDevice })
     } catch (err) {
       addRuntimeEvent('warn', 'local', 'Local model preload failed; provider remains marked ready', { error: String(err) })
@@ -72,15 +75,16 @@ export class LocalProvider extends BufferedProvider {
     let asrMs = 0
 
     try {
-      const modelId = await getSetting('localAsr.modelId', 'sensevoice-small-gguf')
-      if (!this.isRunCurrent(runId)) return
-      const language = await getSetting('localAsr.language', 'auto')
-      if (!this.isRunCurrent(runId)) return
-      const accelerator = await getSetting('localAsr.accelerator', 'auto')
-      if (!this.isRunCurrent(runId)) return
-      // 必须跟着传：它是引擎缓存 key 的一部分，这里漏掉就会与预加载的那份不符，
-      // 每次口述都白付一次"卸旧 + 载新 + 预热"。
-      const gpuDevice = await getSetting('localAsr.gpuDevice', '')
+      // [自訂] SC-62：四個設定原本逐一往返；改成一起送出，仍是停止時讀到的最新值。
+      // Rust 端的設定佇列照舊依序處理，同一個鍵的讀寫順序不變。
+      const [modelId, language, accelerator, gpuDevice] = await Promise.all([
+        getSetting('localAsr.modelId', 'sensevoice-small-gguf'),
+        getSetting('localAsr.language', 'auto'),
+        getSetting('localAsr.accelerator', 'auto'),
+        // 必须跟着传：它是引擎缓存 key 的一部分，这里漏掉就会与预加载的那份不符，
+        // 每次口述都白付一次"卸旧 + 载新 + 预热"。
+        getSetting('localAsr.gpuDevice', ''),
+      ])
       if (!this.isRunCurrent(runId)) return
 
       const result = await bridge.localTranscribeRaw(pcm, {
