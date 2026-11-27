@@ -1,6 +1,6 @@
 <!-- fork-notice:start -->
 > [!NOTE]
-> 本 fork 已更名為 **SayItLocally**（只用本機辨識、資訊不外流的個人自用版本）。說明見 [README.md](README.md)，安全記錄見 [security/](security/README.md)。以下為上游 SayIt 的原始說明（簡體中文），保留供參考；其中的官方安裝檔下載連結不適用於本 fork。
+> 本 fork 已更名為 **SayItLocally**（透過說話把開發者自己重要的文字記錄下來、供日後比對驗證與指引；只用本機辨識、資訊不外流的個人自用版本）。說明見 [README.md](README.md)，安全記錄見 [security/](security/README.md)。以下為上游 SayIt 的原始說明（簡體中文），保留供參考；其中的官方安裝檔下載連結不適用於本 fork。
 >
 > ⚠️ 「下载客户端」連到上游官方安裝檔（不含本 fork 的強化）；「网页版体验／网页版 Demo」（`sayitapp.site`）會把語音上傳到上游伺服器；`v0.2.5` 標籤是上游原版。請勿使用。
 <!-- fork-notice:end -->
