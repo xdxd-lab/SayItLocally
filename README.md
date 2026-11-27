@@ -1,6 +1,6 @@
 <!-- fork-notice:start -->
 <p align="center">
-  <img src="docs/images/banner.svg" width="100%" alt="SayItLocally：說出口的話從對話泡泡化為光點，沿著弧線穿越時間的環，最後在半透明的紙上凝結成文字，成為開發者自己的紀錄，驗證過去、指引未來，全程留在自己的電腦裡、不外流。">
+  <img src="docs/images/banner.svg" width="100%" alt="SayItLocally：對話泡泡放出多道紫、藍、青、金的半透明光流，彼此交織、交會處閃現金色光輝，隨時間流向右方，在半透明的紙上匯成文字；存下的紀錄上仍不時閃著光點。這是開發者自己的紀錄，驗證過去、指引未來，全程留在自己的電腦裡、不外流。">
 </p>
 
 # SayItLocally
