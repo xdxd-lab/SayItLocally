@@ -12,6 +12,7 @@
 > - 只保留 **Local 模式**（Server、Cloud API 入口已移除）；**AI 校對預設關閉**；**歷史記錄與錄音預設不保存**
 > - 已停用：啟動公告、自動更新（檢查、下載、結束時安裝）、Google Fonts、意見回饋／診斷／ASR 校正上傳；CSP 已收緊
 > - 嚴禁 DeepSeek；日後 AI 校對只考慮本機 Ollama
+> - 介面與文件只用正體中文（台灣）。上游的簡體中文說明、供應商教學，以及畫面含簡體或 DeepSeek 的截圖已移除；下方上游說明中與「只用本機」矛盾的敘述以「本 fork」註記更正
 > - 不使用官方安裝檔，一律從原始碼自行建置：App 名稱 `SayItLocally.app`，bundle ID `com.sayitlocally.desktop`
 >
 > 外流風險的完整登錄、處理方式與進度見 **[`security/`](security/README.md)**。
@@ -44,15 +45,7 @@ Open-source voice typing for Windows and macOS. Press a shortcut and speak—Say
 [![Platform: Windows | macOS](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS-0078D6)](https://github.com/crosswk/SayIt/releases/latest)
 [![Latest release](https://img.shields.io/github/v/release/crosswk/SayIt?label=release)](https://github.com/crosswk/SayIt/releases/latest)
 
-**[Download for Windows or Mac](https://github.com/crosswk/SayIt/releases/latest)** · **[Try the web demo](https://sayitapp.site)** · **[简体中文](README.zh-CN.md)**
-
-</div>
-
-<div align="center">
-
-<img src="docs/images/readme/demo-en.gif" width="820" alt="SayIt in action: pressing the shortcut, speaking, and the cleaned-up text appearing at the cursor">
-
-*Trigger the shortcut, speak, and the cleaned-up text is typed in at your cursor — no window switching.*
+**[Download for Windows or Mac](https://github.com/crosswk/SayIt/releases/latest)** · **[Try the web demo](https://sayitapp.site)**
 
 </div>
 
@@ -63,8 +56,8 @@ Typing is often the slowest part of working with AI. SayIt turns speech into tex
 - **Voice typing anywhere** — dictate into editors, chat apps, browsers, and other apps on Windows and macOS.
 - **Editable AI cleanup** — remove filler words, repair recognition errors, format ideas, or keep a faithful transcript. Every prompt is yours to change.
 - **Context-aware writing** (off by default) — reads the text around your cursor so new dictation matches its tone and terminology. Select text first and your speech becomes an editing instruction—translate, tighten, rewrite, or ask a question—replacing the selection directly. Selection edits use your current AI model by default; choose a separate saved model in AI cleanup → Context awareness. Password fields are skipped.
-- **Flexible speech recognition** — use a cloud ASR provider, run a local GGUF model on your own GPU, connect to the public trial server, or host your own backend.
-- **English and Chinese interface** — the UI follows your system language and can be switched at any time.
+- **Flexible speech recognition** — use a cloud ASR provider, run a local GGUF model on your own GPU, connect to the public trial server, or host your own backend. *(This fork: local GGUF models only; cloud ASR, the public trial server and self-hosted backends are not available.)*
+- **English and Chinese interface** — the UI follows your system language and can be switched at any time. *(This fork: English and Traditional Chinese (Taiwan) only.)*
 - **Hotwords and per-app rules** — improve names and technical terms, then change cleanup behavior automatically for different apps.
 - **Overlay feedback** — a small waveform overlay shows recording state and elapsed time, with optional live captions while you speak.
 - **Transparent data flow** — the app shows which mode is active and where audio and text are processed.
@@ -75,12 +68,14 @@ Typing is often the slowest part of working with AI. SayIt turns speech into tex
 | Mode | Best for | Data flow |
 | --- | --- | --- |
 | **Local mode** | Privacy and offline use | Speech recognition stays on your PC. With AI cleanup off, nothing leaves the device. |
-| **Cloud API mode** | The best balance for personal use | Your PC talks directly to the ASR and AI providers you configure. No SayIt server is involved. |
-| **Server mode** | Teams and managed deployments | Audio is processed by a SayIt backend you control—or by the public trial server for a quick start. |
+| **Cloud API mode** *(removed in this fork)* | The best balance for personal use | Your PC talks directly to the ASR and AI providers you configure. No SayIt server is involved. |
+| **Server mode** *(removed in this fork)* | Teams and managed deployments | Audio is processed by a SayIt backend you control—or by the public trial server for a quick start. |
 
-Local recognition ships seven GGUF models, with GPU acceleration when available: Parakeet Unified EN (fastest and most accurate for English), SenseVoice Small, Fun-ASR Nano, Nemotron 3.5 ASR (32 languages), and three Qwen3-ASR sizes. Cloud recognition supports Doubao, Qwen, OpenAI, Gemini, OpenRouter, Xiaomi MiMo, and Groq Whisper, plus any OpenAI-compatible service at an address you supply; AI cleanup works with DeepSeek, Qwen, Doubao, Zhipu GLM, MiMo, Groq, Ollama, and any OpenAI-compatible endpoint.
+Local recognition ships seven GGUF models, with GPU acceleration when available: Parakeet Unified EN (fastest and most accurate for English), SenseVoice Small, Fun-ASR Nano, Nemotron 3.5 ASR (32 languages), and three Qwen3-ASR sizes. Upstream also supports cloud recognition providers and cloud AI cleanup providers. *(This fork: speech recognition runs only on this computer, cloud providers are not used, AI cleanup is off by default and will only ever consider a local Ollama; DeepSeek is blocked.)*
 
 ## A closer look
+
+*(This fork: screenshots whose screen showed Simplified Chinese text or DeepSeek have been removed.)*
 
 <div align="center">
 
@@ -92,25 +87,13 @@ Local recognition ships seven GGUF models, with GPU acceleration when available:
 
 <img src="docs/images/readme/voice-engine-en.png" width="760" alt="Voice engine settings with Local, Cloud API, and Server mode cards above the model list">
 
-*Voice engine — choose Local, Cloud API, or Server mode, then download and switch recognition models. Detected GPUs are used automatically.*
+*Voice engine — choose Local, Cloud API, or Server mode, then download and switch recognition models. Detected GPUs are used automatically. (This fork: Local mode only.)*
 
 <br>
 
 <img src="docs/images/readme/ai-cleanup-en.png" width="760" alt="AI cleanup settings showing built-in presets and per-app rules">
 
 *AI cleanup — every built-in preset is editable, and per-app rules can switch presets based on the app you are typing into.*
-
-<br>
-
-<img src="docs/images/readme/ai-providers-en.png" width="760" alt="AI providers grid with measured response times on each model card">
-
-*AI providers — bring your own keys, add any OpenAI-compatible endpoint, and test round-trip latency on every card.*
-
-<br>
-
-<img src="docs/images/readme/history-en.png" width="760" alt="History list with search, raw ASR text, timings, and playback controls">
-
-*History — searchable local records. Expand one to see the raw ASR text, timings, audio playback, and re-transcribe.*
 
 <br>
 
@@ -123,10 +106,10 @@ Local recognition ships seven GGUF models, with GPU acceleration when available:
 ## Get started
 
 1. Download the latest release: `SayIt_<version>_x64-setup.exe` for Windows 10 and 11, or `SayIt_<version>_arm64.dmg` for Macs with Apple silicon on macOS 14 or later.
-2. Open SayIt and choose a voice engine. The default public server is enough for a quick trial.
+2. Open SayIt and choose a voice engine. The default public server is enough for a quick trial. *(This fork: there is no server option; download a local model instead.)*
 3. Press the configured shortcut in any app and speak. By default you press once to start and again to finish; hold-to-talk is available too, under a separate shortcut.
 
-For regular use, choose Local mode or add your own cloud provider keys from the in-app settings. The provider console links are available beside each key field.
+For regular use, choose Local mode or add your own cloud provider keys from the in-app settings. The provider console links are available beside each key field. *(This fork: Local mode only.)*
 
 ### First launch on a Mac
 
@@ -200,24 +183,13 @@ Requirements: Python 3.10+ and, for GPU inference, an NVIDIA GPU with CUDA.
 SayIt/
 ├── client/       # Tauri + React desktop client
 ├── server/       # FastAPI backend, gateway, web demo, and deployment files
-├── docs/         # User guides and images
+├── docs/         # Images
 └── dev-docs/     # Internal development notes
 ```
 
 ## Community
 
-Follow the WeChat official account for release announcements, or scan the group code to talk things over with other users. Both are Chinese-language channels — for English, open a [GitHub issue](https://github.com/crosswk/SayIt/issues).
-
-<div align="center">
-
-<table>
-<tr>
-<td align="center"><img src="docs/images/readme/wechat-official-account.jpg" width="220" alt="SayIt WeChat official account QR code"><br>Official account</td>
-<td align="center"><img src="docs/images/readme/wechat-group.jpg" width="220" alt="QR code for the SayIt user feedback group on WeChat"><br>User group</td>
-</tr>
-</table>
-
-</div>
+Upstream discussion happens in [GitHub issues](https://github.com/crosswk/SayIt/issues). *(This fork: the upstream WeChat QR codes have been removed.)*
 
 ## Contributing
 
