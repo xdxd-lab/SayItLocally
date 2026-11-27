@@ -537,6 +537,47 @@ mod tests {
         }
     }
 
+    /// [自訂] SC-68：雲端驗證 Breeze ASR 25 能被 transcribe-cpp 載入並辨識內建測試語音。
+    /// 只在 cloud-smoke 勾選 breeze 時執行（權重約 1.6 GB）。
+    #[test]
+    #[ignore]
+    fn cloud_smoke_breeze() {
+        struct Reset;
+        impl Drop for Reset {
+            fn drop(&mut self) {
+                super::super::gguf_asr::unload();
+                downloader::set_custom_models_dir(None);
+            }
+        }
+        let Some(dir) = std::env::var_os("SAYIT_SMOKE_MODELS_DIR") else {
+            eprintln!("skip: SAYIT_SMOKE_MODELS_DIR is not set");
+            return;
+        };
+        let model_id = "breeze-asr-25-gguf";
+        let _guard = downloader::TEST_MODEL_LEASES.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let _reset = Reset;
+        downloader::set_custom_models_dir(Some(std::path::PathBuf::from(dir)));
+        assert!(super::super::gguf_asr::model_is_downloaded(model_id), "verified {model_id} weights are required");
+        for name in ["test_zh.wav", "test_en.wav"] {
+            let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("resources").join(name);
+            let bytes = std::fs::read(&path).unwrap();
+            let pcm = wav_pcm16_mono_16k(&bytes).unwrap_or_else(|error| panic!("{name}: {error}"));
+            let seconds = pcm.len() as f64 / (SR * 2) as f64;
+            let b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, pcm);
+            let started = Instant::now();
+            let result = run_local_transcribe(b64, model_id).unwrap();
+            let elapsed = started.elapsed().as_secs_f64();
+            eprintln!(
+                "[cloud-smoke] model={model_id} file={name} audio_sec={seconds:.2} elapsed_sec={elapsed:.2} rtf={:.3} backend={:?} memory_mb={} text={:?}",
+                elapsed / seconds,
+                super::super::gguf_asr::current_backend(),
+                super::super::gguf_asr::process_memory_mb(),
+                result.text,
+            );
+            assert!(!result.text.trim().is_empty(), "{name}: empty transcript");
+        }
+    }
+
     /// 走真实生产路径：base64 → i16→f32 → Silero VAD → GGUF 引擎。
     #[test]
     fn end_to_end_base64_to_text() {

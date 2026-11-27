@@ -65,8 +65,9 @@ pub struct LocalModelInfo {
     pub complete: bool,
 }
 
-fn hf(repo: &str, file: &str) -> String {
-    format!("https://huggingface.co/{}/resolve/main/{}", repo, file)
+/// [自訂] SC-68：`revision` 為 "main" 或固定的 commit（40 位十六進位）。
+fn hf(repo: &str, revision: &str, file: &str) -> String {
+    format!("https://huggingface.co/{}/resolve/{}/{}", repo, revision, file)
 }
 
 // [自訂] S56：移除 hf-mirror.com 鏡像來源，只從官方 huggingface.co 下載。原：
@@ -82,6 +83,8 @@ fn hf(repo: &str, file: &str) -> String {
 /// 问题最难被发现。
 struct GgufWeight {
     repo: &'static str,
+    /// [自訂] SC-68：下載用的版本。上游轉存的權重沿用 "main"；新增的第三方權重固定在某個 commit。
+    revision: &'static str,
     file: &'static str,
     size: u64,
     sha256: &'static str,
@@ -92,7 +95,7 @@ impl GgufWeight {
     /// 存儲裡的舊值（如 "HuggingFace Mirror"）對不上時，registry 與前端都回落到官方。
     fn sources(&self) -> Vec<DownloadSource> {
         vec![
-            self.at("HuggingFace", hf(self.repo, self.file)),
+            self.at("HuggingFace", hf(self.repo, self.revision, self.file)),
         ]
     }
 
@@ -292,6 +295,25 @@ fn build_catalog() -> Vec<ModelInfo> {
             languages: vec!["zh".into(), "en".into(), "yue".into(), "ja".into(), "ko".into()],
             sources: QWEN3_17B_Q5.sources(),
         },
+        // ── Breeze ASR 25 GGUF Q8_0（台灣華語）──
+        // [自訂] SC-68：可選模型，非預設、不在直接展示之列。速度、準確度與記憶體是依模型規模
+        // （1.5B Whisper large-v2）估的，要在雲端實跑後更新；speed / accuracy 只用於排序與長條圖。
+        ModelInfo {
+            id: "breeze-asr-25-gguf".into(),
+            name: "Breeze ASR 25".into(),
+            description: "台灣華語與中英夾雜，輸出正體；體積大、較慢".into(),
+            model_type: "whisper-gguf".into(),
+            total_size_bytes: BREEZE_ASR_25_Q8.size,
+            speed: 3.5,
+            accuracy: 9.0,
+            recommended: false,
+            memory_mb: 2400,
+            featured: false,
+            languages_label: "中文（台灣）、英文".into(),
+            quant: "Q8_0".into(),
+            languages: vec!["zh".into(), "en".into()],
+            sources: BREEZE_ASR_25_Q8.sources(),
+        },
     ]
 }
 
@@ -313,6 +335,7 @@ fn build_catalog() -> Vec<ModelInfo> {
 
 const PARAKEET_UNIFIED_EN_Q4: GgufWeight = GgufWeight {
     repo: "cswk/sayit-asr-gguf",
+    revision: "main",
     file: "parakeet-unified-en-0.6b-Q4_K_M.gguf",
     size: 477_274_496,
     sha256: "a8bf3de2b393bd14ead5a858c3748d5e3b07a20fdeabdd3b498fba4f463fa929",
@@ -320,6 +343,7 @@ const PARAKEET_UNIFIED_EN_Q4: GgufWeight = GgufWeight {
 
 const NEMOTRON_STREAMING_Q4: GgufWeight = GgufWeight {
     repo: "cswk/sayit-asr-gguf",
+    revision: "main",
     file: "nemotron-3.5-asr-streaming-0.6b-Q4_K_M.gguf",
     size: 495_831_520,
     sha256: "41c99fa5fb6f3d35f68e79adc3e755eca2232a8d921178bd647b71194792b8fd",
@@ -327,6 +351,7 @@ const NEMOTRON_STREAMING_Q4: GgufWeight = GgufWeight {
 
 const SENSEVOICE: GgufWeight = GgufWeight {
     repo: "cswk/sayit-asr-gguf",
+    revision: "main",
     file: "SenseVoiceSmall-Q8_0.gguf",
     size: 252_684_608,
     sha256: "6c759ee4c9748c9b3f7a5a60ca74f0f7e685fb9d45d1378fce7cfd62f59adf29",
@@ -334,6 +359,7 @@ const SENSEVOICE: GgufWeight = GgufWeight {
 
 const FUNASR_NANO_Q8: GgufWeight = GgufWeight {
     repo: "cswk/sayit-asr-gguf",
+    revision: "main",
     file: "Fun-ASR-Nano-2512-Q8_0.gguf",
     size: 891_270_912,
     sha256: "681caef6df15a2c0e153b40ca7fe4087fdf65751fa5e6fe605d8a75dff969e61",
@@ -341,6 +367,7 @@ const FUNASR_NANO_Q8: GgufWeight = GgufWeight {
 
 const QWEN3_06B_Q8: GgufWeight = GgufWeight {
     repo: "cswk/sayit-asr-gguf",
+    revision: "main",
     file: "Qwen3-ASR-0.6B-Q8_0.gguf",
     size: 850_423_456,
     sha256: "f081b2d5e23bd669d92cc331d722a8a0681943b8e6f34b48996fd5c319b5acd8",
@@ -348,13 +375,27 @@ const QWEN3_06B_Q8: GgufWeight = GgufWeight {
 
 const QWEN3_17B_Q4: GgufWeight = GgufWeight {
     repo: "cswk/sayit-asr-gguf",
+    revision: "main",
     file: "Qwen3-ASR-1.7B-Q4_K_M.gguf",
     size: 1_319_830_496,
     sha256: "b7afe3674f653fa84f712ed2440353c6e7cf7f93697fef76b05a26538b24844e",
 };
 
+// [自訂] SC-68：Breeze ASR 25（MediaTek Research，Apache-2.0），以 Whisper large-v2 為基礎、
+// 針對台灣華語與中英夾雜調整，輸出正體中文。權重是 handy-computer 為 transcribe.cpp 轉的 GGUF
+// （`general.architecture = whisper`，`stt.whisper.*` 欄位與 transcribe-cpp 0.1.3 的 whisper
+// 載入端一致）。固定在下面的 commit，體積與 sha256 依 PM 提供的值。
+const BREEZE_ASR_25_Q8: GgufWeight = GgufWeight {
+    repo: "handy-computer/Breeze-ASR-25-gguf",
+    revision: "c827f209c3fcb4956f49f9935ae04a0d88b7fae9",
+    file: "Breeze-ASR-25-Q8_0.gguf",
+    size: 1_667_964_224,
+    sha256: "1650c163cd1623d13b585368ffd87d7e669c5ff23014511e0fa91bb4ce994756",
+};
+
 const QWEN3_17B_Q5: GgufWeight = GgufWeight {
     repo: "cswk/sayit-asr-gguf",
+    revision: "main",
     file: "Qwen3-ASR-1.7B-Q5_K_M.gguf",
     size: 1_517_290_464,
     sha256: "034c557fe92ff8fcd9a9c041cbdaad347be0a86a58d3a348f63cf3f0180879d0",
@@ -434,6 +475,29 @@ mod tests {
             models.iter().any(|m| m.recommended && m.featured),
             "推荐模型必须是 featured"
         );
+    }
+
+    // [自訂] SC-68：Breeze 是可選模型，不是預設也不直接展示；下載網址固定在指定的 commit。
+    #[test]
+    fn breeze_is_optional_and_pinned_to_a_revision() {
+        let models = get_available_models();
+        let breeze = models.iter().find(|m| m.id == "breeze-asr-25-gguf").expect("breeze entry");
+        assert!(!breeze.recommended && !breeze.featured);
+        assert_eq!(breeze.total_size_bytes, 1_667_964_224);
+        let [file] = breeze.sources[0].files.as_slice() else { panic!("one weight") };
+        assert_eq!(
+            file.url,
+            "https://huggingface.co/handy-computer/Breeze-ASR-25-gguf/resolve/c827f209c3fcb4956f49f9935ae04a0d88b7fae9/Breeze-ASR-25-Q8_0.gguf"
+        );
+        assert_eq!(file.sha256.as_deref(), Some("1650c163cd1623d13b585368ffd87d7e669c5ff23014511e0fa91bb4ce994756"));
+        // 其他模型沿用原本的 main，網址不變。
+        for model in models.iter().filter(|m| m.id != breeze.id) {
+            for source in &model.sources {
+                for file in &source.files {
+                    assert!(file.url.starts_with("https://huggingface.co/cswk/sayit-asr-gguf/resolve/main/"), "{}", file.url);
+                }
+            }
+        }
     }
 
     // [自訂] SC-35：所有下載來源必須指向同一份且唯一的權重。
