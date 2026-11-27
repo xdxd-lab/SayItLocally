@@ -123,18 +123,7 @@ The default shortcuts on a Mac are Right ⌘ for hands-free (press to start, pre
 
 ## Self-hosting
 
-The backend combines FastAPI, WebSocket streaming, Qwen3-ASR, and an optional OpenAI-compatible cleanup model. Docker Compose is the recommended deployment path.
-
-```bash
-git clone https://github.com/crosswk/SayIt.git
-cd SayIt/server
-cp config.example.yaml config.yaml
-cp .env.example .env
-# Add your provider and deployment settings to .env/config.yaml
-docker compose up -d --build
-```
-
-GPU speech recognition requires an NVIDIA GPU; 16 GB or more of VRAM is recommended for the default server model. See the [server guide](server/README.md) for configuration, deployment, security, and API details.
+*(This fork: the `server/` directory has been removed. For the self-hosted backend, see the upstream repository at https://github.com/crosswk/SayIt .)*
 
 ## Performance reference
 
@@ -164,25 +153,11 @@ On non-English Windows installations, set `CL=/utf-8` before building so MSVC re
 
 On macOS (Apple silicon), install the Xcode Command Line Tools (`xcode-select --install`) instead of the Vulkan SDK; local models run on Metal. Release builds come from `client/scripts/macos/build-release.sh`.
 
-### Server
-
-```bash
-cd server
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r backend/requirements.txt
-cd backend
-uvicorn app.main:app --port 8000
-```
-
-Requirements: Python 3.10+ and, for GPU inference, an NVIDIA GPU with CUDA.
-
 ## Project layout
 
 ```text
 SayIt/
 ├── client/       # Tauri + React desktop client
-├── server/       # FastAPI backend, gateway, web demo, and deployment files
 ├── docs/         # Images
 └── dev-docs/     # Internal development notes
 ```

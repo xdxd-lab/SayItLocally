@@ -41,14 +41,7 @@ npm run tauri dev
 
 ### 伺服器端
 
-```bash
-cd server
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r backend/requirements.txt
-cd backend && uvicorn app.main:app --port 8000
-```
-
-前置需求：Python 3.10+、NVIDIA GPU + CUDA
+（本 fork：`server/` 目錄已移除；伺服器端開發請見上游倉庫 https://github.com/crosswk/SayIt 。）
 
 ## 程式碼規範
 

@@ -13,15 +13,6 @@ dev-notes/
 we-media/
 sayit说话波形图效果.html
 
-# ── Server dev artifacts ──
-server/.kiro/
-server/.pytest_cache/
-server/.ruff_cache/
-server/docs/
-server/scripts/
-server/benchmarks/
-server/mytestwav.txt
-
 # ── Client dev artifacts ──
 client/scripts/*
 !client/scripts/check-i18n.mjs
