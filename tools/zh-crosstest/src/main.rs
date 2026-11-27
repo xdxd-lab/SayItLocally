@@ -6,6 +6,7 @@
 //! - 不帶參數：只跑內建的文字樣本（台灣用語、一字多義、本來就是正體、日文、英文）。
 //! - 帶 `raw.tsv`：另外讀 App 的 `cloud_smoke_zh_matrix_dump` 產生的模型原始辨識文字
 //!   （欄位 model、file、elapsed_ms、raw_text），逐一用各後端轉換。模型推論只在雲端跑。
+//!   表裡列出 TSV 中的每個模型；SC-68 起 cloud-smoke 同時勾選 breeze 時，Breeze ASR 25 也在內。
 //!
 //! 輸出 Markdown 表格：原始文字、轉換後、殘餘簡體字數、與預期是否一致、耗時、授權。
 //! 「殘餘簡體」用獨立的簡體專用字表判斷，不用後端自己再轉一次（那樣永遠是 0）。
@@ -66,27 +67,65 @@ impl Converters {
         Converters { ferrous, fmmseg, init: [Duration::ZERO, ferrous_init, fmmseg_init, zhconv_init] }
     }
 
-    /// 與 App 的 `zh_output::to_taiwan` 相同的閘門與「臺 → 台」處理，只有後端不同。
+    /// 與 App 的 `zh_output::to_taiwan`（語種為自動偵測）相同的逐句閘門與「臺 → 台」處理，
+    /// 只有後端不同：含假名的句子不轉，連續不含假名的句子合成一段一起轉。
     fn convert(&self, backend: Backend, text: &str) -> String {
-        if !should_convert(text) {
+        if !text.chars().any(is_han) {
             return text.to_string();
         }
+        let mut out = String::with_capacity(text.len());
+        let mut run = String::new();
+        for sentence in sentences(text) {
+            if sentence.chars().any(is_kana) {
+                out.push_str(&self.convert_run(backend, &run));
+                run.clear();
+                out.push_str(sentence);
+            } else {
+                run.push_str(sentence);
+            }
+        }
+        out.push_str(&self.convert_run(backend, &run));
+        out
+    }
+
+    fn convert_run(&self, backend: Backend, run: &str) -> String {
+        if !run.chars().any(is_han) {
+            return run.to_string();
+        }
         let converted = match backend {
-            Backend::None => return text.to_string(),
-            Backend::FerrousOpencc => self.ferrous.convert(text),
-            Backend::OpenccFmmseg => self.fmmseg.s2twp(text, false),
-            Backend::Zhconv => zhconv::zhconv(text, zhconv::Variant::ZhTW),
+            Backend::None => return run.to_string(),
+            Backend::FerrousOpencc => self.ferrous.convert(run),
+            Backend::OpenccFmmseg => self.fmmseg.s2twp(run, false),
+            Backend::Zhconv => zhconv::zhconv(run, zhconv::Variant::ZhTW),
         };
         converted.replace('\u{81fa}', "\u{53f0}")
     }
 }
 
-fn should_convert(text: &str) -> bool {
-    let kana = |c: char| {
-        matches!(c, '\u{3041}'..='\u{3096}' | '\u{30a1}'..='\u{30fa}' | '\u{31f0}'..='\u{31ff}' | '\u{ff66}'..='\u{ff6f}' | '\u{ff71}'..='\u{ff9d}')
-    };
-    let han = |c: char| matches!(c, '\u{3400}'..='\u{4dbf}' | '\u{4e00}'..='\u{9fff}' | '\u{f900}'..='\u{faff}');
-    text.chars().any(han) && !text.chars().any(kana)
+fn is_kana(c: char) -> bool {
+    matches!(c, '\u{3041}'..='\u{3096}' | '\u{30a1}'..='\u{30fa}' | '\u{31f0}'..='\u{31ff}' | '\u{ff66}'..='\u{ff6f}' | '\u{ff71}'..='\u{ff9d}')
+}
+
+fn is_han(c: char) -> bool {
+    matches!(c, '\u{3400}'..='\u{4dbf}' | '\u{4e00}'..='\u{9fff}' | '\u{f900}'..='\u{faff}')
+}
+
+/// 與 App 相同的切句：句末符號留在句尾，各句依序接起來等於原文。
+fn sentences(text: &str) -> impl Iterator<Item = &str> {
+    let mut rest = text;
+    std::iter::from_fn(move || {
+        if rest.is_empty() {
+            return None;
+        }
+        let end = rest
+            .char_indices()
+            .find(|&(_, c)| matches!(c, '。' | '！' | '？' | '.' | '!' | '?' | '；' | ';' | '…' | '\n'))
+            .map(|(i, c)| i + c.len_utf8())
+            .unwrap_or(rest.len());
+        let (head, tail) = rest.split_at(end);
+        rest = tail;
+        Some(head)
+    })
 }
 
 fn simplified_count(text: &str) -> usize {
@@ -115,6 +154,17 @@ const SAMPLES: &[(&str, &str)] = &[
     ("裡面", "裡面"),
     ("看著", "看著"),
     ("這是正體中文，著實不錯。", "這是正體中文，著實不錯。"),
+    // 本來就是正體、像 Breeze 這類正體模型的輸出：預期一字不變（「臺」依本專案寫成「台」）。
+    // 目前三個後端都可能改壞其中幾個，表中的 DIFF 供決定是否對正體模型略過詞組轉換（未實作）。
+    ("里長", "里長"),
+    ("鄰里", "鄰里"),
+    ("于先生", "于先生"),
+    ("國立臺灣大學", "國立台灣大學"),
+    // 中文句與日文句混在同一段：只轉中文句（「軟體。」的簡體寫法 + 日文句）
+    (
+        "\u{8f6f}\u{4ef6}\u{3002}\u{4eca}\u{65e5}\u{306f}\u{3002}",
+        "軟體。\u{4eca}\u{65e5}\u{306f}\u{3002}",
+    ),
     // 日文（含假名）與英文：不轉
     (
         "\u{4eca}\u{65e5}\u{306f}\u{6771}\u{4eac}\u{3067}\u{4f1a}\u{8b70}\u{304c}\u{3042}\u{308a}\u{307e}\u{3059}\u{3002}",

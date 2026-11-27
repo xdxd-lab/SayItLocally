@@ -63,6 +63,12 @@ const LOCAL_MODEL_KEYS: Record<string, {
     description: 'localModel.qwen17Accurate.description',
     languages: 'localModel.qwen17Accurate.languages',
   },
+  // [自訂] SC-68
+  'breeze-asr-25-gguf': {
+    name: 'localModel.breeze.name',
+    description: 'localModel.breeze.description',
+    languages: 'localModel.breeze.languages',
+  },
 }
 
 const HISTORY_FAILURE_KEYS: Record<HistoryFailReasonCode, TranslationKey> = {

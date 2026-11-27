@@ -14,6 +14,11 @@ on:
           - macos-15
           - macos-14
           - macos-15-intel
+      breeze:
+        # SC-68：另外下載 Breeze ASR 25（約 1.6 GB，固定 commit）並實際辨識內建測試語音。
+        description: Also verify Breeze ASR 25
+        type: boolean
+        default: false
       zh_matrix:
         # SC-67：可選的交叉測試（已下載的模型 × 中文轉換後端），結果印成 Markdown 表格。
         description: Run the model x Chinese converter cross-test
@@ -117,6 +122,32 @@ jobs:
             cargo test --locked --bins cloud_smoke_sensevoice -- --ignored --nocapture --test-threads=1
           date -u
 
+      - name: Download, verify and run Breeze ASR 25
+        # SC-68：放在交叉測試之前，勾選 zh_matrix 時 Breeze 也進入「模型 × 轉換後端」比較。
+        if: ${{ inputs.breeze }}
+        working-directory: src/client/src-tauri
+        env:
+          BREEZE_ID: breeze-asr-25-gguf
+          BREEZE_FILE: Breeze-ASR-25-Q8_0.gguf
+          BREEZE_URL: https://huggingface.co/handy-computer/Breeze-ASR-25-gguf/resolve/c827f209c3fcb4956f49f9935ae04a0d88b7fae9/Breeze-ASR-25-Q8_0.gguf
+          BREEZE_SIZE: "1667964224"
+          BREEZE_SHA256: 1650c163cd1623d13b585368ffd87d7e669c5ff23014511e0fa91bb4ce994756
+        run: |
+          set -euo pipefail
+          date -u
+          dir="$RUNNER_TEMP/models/$BREEZE_ID"
+          mkdir -p "$dir"
+          curl --fail --location --proto '=https' --tlsv1.2 --retry 3 --silent --show-error \
+            --output "$dir/$BREEZE_FILE" "$BREEZE_URL"
+          size=$(stat -f %z "$dir/$BREEZE_FILE")
+          sum=$(shasum -a 256 "$dir/$BREEZE_FILE" | cut -d ' ' -f 1)
+          echo "size=$size sha256=$sum"
+          test "$size" = "$BREEZE_SIZE"
+          test "$sum" = "$BREEZE_SHA256"
+          SAYIT_SMOKE_MODELS_DIR="$RUNNER_TEMP/models" \
+            cargo test --locked --bins cloud_smoke_breeze -- --ignored --nocapture --test-threads=1
+          date -u
+
       # SC-67：交叉測試。先讓 App 把各模型的原始辨識文字寫成 TSV，再由獨立的
       # tools/zh-crosstest 用每個轉換後端轉換並列表。工具有自己的 Cargo.lock，不影響 App。
       - name: Model x converter cross-test
@@ -134,6 +165,8 @@ jobs:
       # Runs after the smoke step so its result stays visible; a failure here is
       # reported on this step without hiding the smoke result above.
       - name: Run all Rust tests
+        # SC-68：前面的煙霧測試或 Breeze 步驟失敗時照樣執行，只有取消時不跑。
+        if: ${{ !cancelled() }}
         working-directory: src/client/src-tauri
         continue-on-error: true
         run: |
