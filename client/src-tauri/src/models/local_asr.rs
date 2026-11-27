@@ -166,6 +166,8 @@ async fn transcribe_samples(
                     diag::fail("local/asr", "transcribe", e)
                 }
             })?;
+        // [自訂] SC-67：辨識文字的單一出口，轉成台灣正體（日文、英文等不轉）。
+        let text = crate::zh_output::to_taiwan(&text, lang);
         let elapsed_ms = start.elapsed().as_millis() as u64;
         if text.trim().is_empty() {
             // VAD 认定有人声、模型却什么都没输出 —— 模型/量化档/加速器组合有问题的信号
@@ -534,7 +536,62 @@ mod tests {
                 result.text,
             );
             assert!(!result.text.trim().is_empty(), "{name}: empty transcript");
+            // [自訂] SC-67：中文輸出一律是台灣正體，且不得殘留簡體專用字。
+            assert_eq!(crate::zh_output::count_simplified_only(&result.text), 0, "{name}: simplified characters remain");
+            if name == "test_zh.wav" {
+                assert_eq!(result.text.trim(), "語音輸入法測試成功。", "{name}");
+            }
         }
+    }
+
+    /// [自訂] SC-67：交叉測試第一段（只在雲端跑）。對 `SAYIT_SMOKE_MODELS_DIR` 裡已下載的每個模型，
+    /// 把內建測試語音的**原始**辨識文字（未轉換）寫成 TSV，交給 `tools/zh-crosstest` 依各後端轉換比較。
+    /// 欄位：model、file、elapsed_ms、raw_text（換行與 tab 以空白取代）。
+    #[test]
+    #[ignore]
+    fn cloud_smoke_zh_matrix_dump() {
+        struct Reset;
+        impl Drop for Reset {
+            fn drop(&mut self) {
+                super::super::gguf_asr::unload();
+                downloader::set_custom_models_dir(None);
+            }
+        }
+        let (Some(dir), Some(out)) = (std::env::var_os("SAYIT_SMOKE_MODELS_DIR"), std::env::var_os("SAYIT_ZH_MATRIX_OUT")) else {
+            eprintln!("skip: SAYIT_SMOKE_MODELS_DIR or SAYIT_ZH_MATRIX_OUT is not set");
+            return;
+        };
+        let _guard = downloader::TEST_MODEL_LEASES.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let _reset = Reset;
+        downloader::set_custom_models_dir(Some(std::path::PathBuf::from(dir)));
+        super::super::gguf_asr::init_backends();
+        let mut rows = String::from("model\tfile\telapsed_ms\traw_text\n");
+        let mut models = 0;
+        for model in super::super::catalog::available_models() {
+            if !super::super::gguf_asr::model_is_downloaded(&model.id) {
+                continue;
+            }
+            models += 1;
+            for name in ["test_zh.wav", "test_en.wav"] {
+                let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("resources").join(name);
+                let bytes = std::fs::read(&path).unwrap();
+                let pcm = wav_pcm16_mono_16k(&bytes).unwrap_or_else(|error| panic!("{name}: {error}"));
+                let samples: Vec<f32> = pcm
+                    .chunks_exact(2)
+                    .map(|c| i16::from_le_bytes([c[0], c[1]]) as f32 / 32768.0)
+                    .collect();
+                let started = Instant::now();
+                let raw = super::super::gguf_asr::transcribe(&model.id, "auto", "auto", "", &samples, SR)
+                    .unwrap_or_else(|error| format!("ERROR: {error}"));
+                let elapsed = started.elapsed().as_millis();
+                let clean = raw.replace(['\t', '\n', '\r'], " ");
+                eprintln!("[zh-matrix] model={} file={name} elapsed_ms={elapsed} raw={clean:?}", model.id);
+                rows.push_str(&format!("{}\t{name}\t{elapsed}\t{clean}\n", model.id));
+            }
+            super::super::gguf_asr::unload();
+        }
+        std::fs::write(&out, rows).unwrap();
+        assert!(models > 0, "no downloaded model found");
     }
 
     /// 走真实生产路径：base64 → i16→f32 → Silero VAD → GGUF 引擎。

@@ -14,8 +14,9 @@ const STORAGE_KEY = 'textReplacements'
 /** 内置默认文本替换规则（新用户首次使用时填充） */
 // i18n-allow-start: 中文 ASR 默认替换数据，不是界面文案
 export const BUILTIN_REPLACEMENTS: TextReplacementRule[] = [
-  { id: 'builtin_1', from: '安卓说话', to: '按住说话', enabled: true },
-  { id: 'builtin_2', from: '我的邮箱', to: 'test@example.com', enabled: true },
+  // [自訂] SC-67：辨識輸出已轉成台灣正體，內建規則跟著用正體寫法。
+  { id: 'builtin_1', from: '安卓說話', to: '按住說話', enabled: true },
+  { id: 'builtin_2', from: '我的郵箱', to: 'test@example.com', enabled: true },
   { id: 'builtin_3', from: 'pump', to: 'Prompt', enabled: true },
   { id: 'builtin_4', from: 'Cloud Code', to: 'Claude Code', enabled: true },
 ]

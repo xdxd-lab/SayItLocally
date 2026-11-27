@@ -17,6 +17,7 @@ mod path_guard;
 mod ipc_body;
 mod platform;
 mod instance_lock;
+mod zh_output;
 
 use storage::Storage;
 use window::WindowState;

@@ -63,15 +63,18 @@ pub async fn cloud_polish(request: CloudPolishRequest) -> Result<AiResult, Strin
         //     )
         //     .await
         // }
-        "ollama" => {
-            ai_ollama::polish(
-                &request.text,
-                config,
-                request.system_prompt.as_deref(),
-                request.text_context.as_ref(),
-            )
-            .await
-        }
+        // [自訂] SC-67：AI 校對的輸出同樣轉成台灣正體（含假名時視為日文不轉）。
+        "ollama" => ai_ollama::polish(
+            &request.text,
+            config,
+            request.system_prompt.as_deref(),
+            request.text_context.as_ref(),
+        )
+        .await
+        .map(|mut result| {
+            result.text = crate::zh_output::to_taiwan(&result.text, "auto");
+            result
+        }),
         other => Err(error_protocol::encode(
             "connect_failed",
             format!("Unknown AI provider: {}", other),

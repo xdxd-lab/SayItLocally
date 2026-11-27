@@ -228,3 +228,36 @@ describe('replacePunctuationWithSpace', () => {
     expect(replacePunctuationWithSpace('')).toBe('')
   })
 })
+
+// [自訂] SC-67：辨識輸出已轉成台灣正體，數字規範化要認得正體字，產出的標記也用正體。
+describe('convertChineseNumbers：正體輸入', () => {
+  it('正體寫法與簡體寫法得到相同的數字', () => {
+    const cases: Array<[string, string]> = [
+      ['增長了百分之十五', '增長了15%'],
+      ['百分之三點五', '3.5%'],
+      ['圓周率約等於三點一四', '圓周率約等於3.14'],
+      ['用的是GPT五點四', '用的是GPT 5.4'],
+      ['升級到零點一點零', '升級到0.1.0'],
+      ['擴充二十三台', '擴充23台'],
+      ['大概一萬五', '大概15000'],
+      ['兩百五', '250'],
+      ['三億', '300000000'],
+    ]
+    for (const [input, expected] of cases) {
+      expect(convertChineseNumbers(input), input).toBe(expected)
+    }
+  })
+
+  it('時間標記保留正體「點」', () => {
+    expect(convertChineseNumbers('下午兩點半開會')).toBe('下午2點半開會')
+    expect(convertChineseNumbers('九點三十二分')).toBe('9點32分')
+    expect(convertChineseNumbers('夜裡十點')).toBe('夜裡10點')
+    expect(convertChineseNumbers('一點鐘')).toBe('1點鐘')
+  })
+
+  it('非數字用法與日文不受影響', () => {
+    expect(convertChineseNumbers('千萬不要')).toBe('千萬不要')
+    expect(convertChineseNumbers('調寬一點')).toBe('調寬一點')
+    expect(convertChineseNumbers('今日は三時です')).toBe('今日は三時です')
+  })
+})
