@@ -52,10 +52,10 @@ describe('AI_PROVIDERS 清单', () => {
 })
 
 describe('地区相关的供应商默认值', () => {
-  afterEach(() => setLocale('zh-CN'))
+  afterEach(() => setLocale('zh-TW'))
 
   // [自訂] S34：不論介面語言，一律本機 Ollama；DeepSeek 不在清單中
-  it.each(['en', 'zh-CN'] as const)('%s 介面一律 Ollama 优先', (locale) => {
+  it.each(['en', 'zh-TW'] as const)('%s 介面一律 Ollama 优先', (locale) => {
     setLocale(locale)
     expect(preferredAiProviderValue()).toBe('ollama')
     expect(aiProvidersForDisplay()[0].value).toBe('ollama')
@@ -71,8 +71,8 @@ describe('checkAiKeyFormat', () => {
   })
 
   it('粘贴带进空白字符时报警', () => {
-    expect(checkAiKeyFormat('deepseek', 'sk-abc def')).toContain('空格')
-    expect(checkAiKeyFormat('doubao', 'abc\ndef')).toContain('空格')
+    expect(checkAiKeyFormat('deepseek', 'sk-abc def')).toContain('空白')
+    expect(checkAiKeyFormat('doubao', 'abc\ndef')).toContain('空白')
   })
 
   it('DeepSeek / 千问 缺 sk- 前缀时报警', () => {
@@ -108,7 +108,7 @@ describe('checkApiUrl', () => {
   })
 
   it('非法网址报警', () => {
-    expect(checkApiUrl('https://')).toContain('合法')
+    expect(checkApiUrl('https://')).toContain('有效的網址')
   })
 })
 
@@ -221,8 +221,8 @@ describe('parseProfiles', () => {
 
 describe('gradeLatency', () => {
   it('五档，按口述场景的手感切：200 / 500 / 1000 / 2000', () => {
-    expect(gradeLatency(0).label).toBe('极速')
-    expect(gradeLatency(199).label).toBe('极速')
+    expect(gradeLatency(0).label).toBe('極速')
+    expect(gradeLatency(199).label).toBe('極速')
     expect(gradeLatency(200).label).toBe('很快')
     expect(gradeLatency(499).label).toBe('很快')
     expect(gradeLatency(500).label).toBe('正常')
@@ -268,17 +268,17 @@ describe('formatCheckedAt', () => {
 
   // 断言"选了哪个粒度"，不写死具体文案：相对时间现在交给 Intl.RelativeTimeFormat
   // 渲染（英文的单复数没法用一条模板覆盖），所以文案随语言与 CLDR 走，不该锁死。
-  const rtf = new Intl.RelativeTimeFormat('zh-CN', { numeric: 'auto' })
+  const rtf = new Intl.RelativeTimeFormat('zh-TW', { numeric: 'auto' })
 
   it('按最粗的合适粒度说"多久之前"', () => {
-    expect(formatCheckedAt(now - 30 * 1000, now)).toBe('刚刚')
+    expect(formatCheckedAt(now - 30 * 1000, now)).toBe('剛剛')
     expect(formatCheckedAt(now - 5 * 60 * 1000, now)).toBe(rtf.format(-5, 'minute'))
     expect(formatCheckedAt(now - 3 * 3600 * 1000, now)).toBe(rtf.format(-3, 'hour'))
     expect(formatCheckedAt(now - 50 * 3600 * 1000, now)).toBe(rtf.format(-2, 'day'))
   })
 
   it('时钟往回跳时不说"负几分钟前"', () => {
-    expect(formatCheckedAt(now + 60 * 1000, now)).toBe('刚刚')
+    expect(formatCheckedAt(now + 60 * 1000, now)).toBe('剛剛')
   })
 })
 
@@ -297,14 +297,14 @@ describe('resolveActiveProfile', () => {
 
 describe('一行的标题与副标题', () => {
   it('没填模型时也有字，否则那一行看着像坏了', () => {
-    expect(profileTitle(profile({ model: '  ' }))).toBe('未填写模型')
+    expect(profileTitle(profile({ model: '  ' }))).toBe('未填寫模型')
   })
 
   it('默认地址不重复念，自定义端点才显示主机名', () => {
     // [自訂] S34：DeepSeek 已移出清單，改用千问驗證「預設位址不顯示主機名」
-    expect(profileSubtitle(profile({ provider: 'qwen', apiUrl: 'https://dashscope.aliyuncs.com/compatible-mode' }))).toBe('通义千问')
+    expect(profileSubtitle(profile({ provider: 'qwen', apiUrl: 'https://dashscope.aliyuncs.com/compatible-mode' }))).toBe('通義千問')
     expect(profileSubtitle(profile({ provider: 'openai_compat', apiUrl: 'http://127.0.0.1:8000/v1' })))
-      .toBe('OpenAI 兼容 · 127.0.0.1:8000')
+      .toBe('OpenAI 相容 · 127.0.0.1:8000')
   })
 
   it('两个不同端点的 OpenAI 兼容在列表里能区分开——这正是旧结构做不到的事', () => {

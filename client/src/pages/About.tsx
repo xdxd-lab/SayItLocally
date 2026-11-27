@@ -18,7 +18,7 @@ const RELEASES_URL = `${REPO_URL}/releases`
 
 function formatTimestamp(value: number | null | undefined) {
   if (!value) return t('about.neverChecked')
-  // 时间格式跟界面语言：中文界面用 zh-CN 的写法，英文界面用 en-US 的。
+  // 時間格式跟介面語言：中文介面用 zh-TW 的寫法，英文介面用 en 的。
   return new Date(value).toLocaleString(getLocale(), { hour12: false })
 }
 

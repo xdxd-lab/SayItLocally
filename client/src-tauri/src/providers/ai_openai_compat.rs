@@ -360,7 +360,7 @@ pub async fn polish(
     let base_url = normalize_base_url(&config.api_url);
     let url = format!("{}/chat/completions", base_url);
 
-    let sys_prompt = system_prompt.unwrap_or("你是语音转文本的校对助手。");
+    let sys_prompt = system_prompt.unwrap_or(super::prompt::DEFAULT_PROOFREAD_SYSTEM_PROMPT);
     let user_content = wrap_user_text(text, text_context);
 
     // 思考参数不写在这里：由 send_chat_with_thinking_fallback 合并进来，

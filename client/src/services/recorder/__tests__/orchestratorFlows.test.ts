@@ -147,7 +147,7 @@ vi.mock('../../personalization/store', async () => ({
   recordSessionStats: vi.fn(async () => (await import('../../personalization/defaults')).createDefaultUserStats()),
 }))
 vi.mock('../../../stores/activePreset', () => ({ setActivePresetKnown: vi.fn() }))
-vi.mock('@/i18n', () => ({ t: (key: string) => key, getLocale: () => 'zh-CN' }))
+vi.mock('@/i18n', () => ({ t: (key: string) => key, getLocale: () => 'zh-TW' }))
 
 import * as bridge from '../../bridge'
 import { addRuntimeEvent } from '../../debugLog'

@@ -62,12 +62,12 @@ describe('PTT 物理组合键', () => {
   })
 
   it('拒绝单独 Win、裸字母、多主键和危险系统组合', () => {
-    expect(getPTTShortcutValidationError('MetaLeft')).toContain('不能单独')
-    expect(getPTTShortcutValidationError('KeyK')).toContain('不能单独')
+    expect(getPTTShortcutValidationError('MetaLeft')).toContain('不能單獨')
+    expect(getPTTShortcutValidationError('KeyK')).toContain('不能單獨')
     expect(getPTTShortcutValidationError('ControlLeft+KeyK+KeyL')).toContain('最多')
     expect(getPTTShortcutValidationError('ControlLeft+ControlRight+KeyK')).toContain('左右')
-    expect(getPTTShortcutValidationError('MetaLeft+KeyL')).toContain('系统组合')
-    expect(getPTTShortcutValidationError('AltLeft+F4')).toContain('系统组合')
+    expect(getPTTShortcutValidationError('MetaLeft+KeyL')).toContain('系統組合')
+    expect(getPTTShortcutValidationError('AltLeft+F4')).toContain('系統組合')
     expect(getPTTShortcutValidationError('MetaLeft+KeyK')).not.toBeNull()
     expect(getPTTShortcutValidationError('AltLeft+Space')).not.toBeNull()
     expect(isValidPTTShortcut('ControlLeft+MetaLeft')).toBe(true)

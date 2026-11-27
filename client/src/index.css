@@ -108,6 +108,11 @@
     font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, "Microsoft YaHei", sans-serif;
   }
 
+  /* [自訂] SC-65：繁體中文界面用正黑體／蘋方繁體字形。 */
+  html[lang="zh-TW"] body {
+    font-family: "Microsoft JhengHei", -apple-system, BlinkMacSystemFont, "PingFang TC", "Segoe UI", Roboto, sans-serif;
+  }
+
   /* macOS（WKWebView）：系统字体和苹方优先，否则装了 Office 的 Mac 会先命中微软雅黑。
      只有 WebKit 认 -apple-system-body，Windows 的 WebView2 会跳过整段，选字与原来完全一致。 */
   @supports (font: -apple-system-body) {
@@ -117,6 +122,11 @@
 
     html[lang="en"] body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+
+    /* [自訂] SC-65：繁體中文界面用蘋方繁體字形。 */
+    html[lang="zh-TW"] body {
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang TC", "Microsoft JhengHei", "Segoe UI", Roboto, sans-serif;
     }
   }
 }

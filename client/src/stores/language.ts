@@ -9,6 +9,7 @@ import * as bridge from '@/services/bridge'
 import { getSetting, setSetting } from '@/services/store'
 import {
   getLocale,
+  LEGACY_ZH_LOCALE,
   normalizePreference,
   resolveLocale,
   setLocale,
@@ -45,7 +46,10 @@ async function resolvePreference(preference: LanguagePreference): Promise<Locale
  * 必须在首帧渲染之前 await（见 main.tsx），否则会先闪一帧默认语言再跳。
  */
 export async function initLanguage(): Promise<Locale> {
-  const preference = normalizePreference(await getSetting(LANGUAGE_SETTING_KEY, 'auto'))
+  const stored = await getSetting<unknown>(LANGUAGE_SETTING_KEY, 'auto')
+  const preference = normalizePreference(stored)
+  // [自訂] SC-65：舊版存的簡體中文（zh-CN）改寫成正體中文（台灣），系統匣等 Rust 端讀到的也一致。
+  if (stored === LEGACY_ZH_LOCALE) await setSetting(LANGUAGE_SETTING_KEY, preference).catch(() => {})
   const locale = await resolvePreference(preference)
   setLocale(locale)
   return locale
@@ -63,7 +67,7 @@ export async function initLocaleDefaults(locale: Locale): Promise<void> {
     // [自訂] S34：第一次啟動不寫入 deepseek／openrouter；AI 只允許本機 Ollama。
     // 原：'cloudAi.provider': locale === 'en' ? 'openrouter' : 'deepseek',
     'cloudAi.provider': 'ollama',
-    'ai.builtinPromptLanguage': locale === 'en' ? 'en' : 'zh-CN',
+    'ai.builtinPromptLanguage': locale === 'en' ? 'en' : 'zh-TW',
   }
   await Promise.all(Object.entries(defaults).map(async ([key, value]) => {
     const existing = await bridge.storeGet(key)

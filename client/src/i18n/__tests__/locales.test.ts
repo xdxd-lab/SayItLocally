@@ -1,6 +1,6 @@
 import { describe, expect, it, afterEach } from 'vitest'
 import en from '../locales/en.json'
-import zhCN from '../locales/zh-CN.json'
+import zhTW from '../locales/zh-TW.json'
 import {
   getLocale,
   isLocale,
@@ -26,16 +26,16 @@ import {
  * 断言里出现任何一句人类语言时都要先问：这条会不会在文案改一个字之后就挂？
  */
 describe('locale 表', () => {
-  it('en 与 zh-CN 的 key 集合完全一致', () => {
+  it('en 与 zh-TW 的 key 集合完全一致', () => {
     // 类型层面已经保证 en 不缺 key（i18n/index.ts 的 Record<TranslationKey, string>），
     // 这里补的是另一半：en 里**多出来**的 key 类型查不出来，只能靠测试。
-    const zhKeys = Object.keys(zhCN).sort()
+    const zhKeys = Object.keys(zhTW).sort()
     const enKeys = Object.keys(en).sort()
     expect(enKeys).toEqual(zhKeys)
   })
 
   it('没有空文案', () => {
-    for (const [locale, table] of [['zh-CN', zhCN], ['en', en]] as const) {
+    for (const [locale, table] of [['zh-TW', zhTW], ['en', en]] as const) {
       for (const [key, value] of Object.entries(table)) {
         expect(value.trim(), `${locale} 的 ${key} 是空的`).not.toBe('')
       }
@@ -45,22 +45,40 @@ describe('locale 表', () => {
   it('两边的插值占位符一一对应', () => {
     // 漏掉一个 {name} 不会报错，只会在界面上少显示一个东西 —— 典型的静默失败。
     const placeholders = (text: string) => (text.match(/\{(\w+)\}/g) ?? []).sort()
-    for (const key of Object.keys(zhCN) as (keyof typeof zhCN)[]) {
-      expect(placeholders(en[key]), `key=${key}`).toEqual(placeholders(zhCN[key]))
+    for (const key of Object.keys(zhTW) as (keyof typeof zhTW)[]) {
+      expect(placeholders(en[key]), `key=${key}`).toEqual(placeholders(zhTW[key]))
     }
   })
 })
 
-describe('resolveLocale', () => {
-  it('所有中文变体都落到简体（不把繁体用户推去英文）', () => {
-    for (const tag of ['zh', 'zh-CN', 'zh-TW', 'zh-Hans', 'ZH-HK']) {
-      expect(resolveLocale(tag), tag).toBe('zh-CN')
-    }
-  })
+// [自訂] SC-65：與 Rust 端 locale.rs 的 TAG_CASES 是同一份表，兩邊要一起改。
+const LOCALE_TAG_CASES: Array<[string | null | undefined, 'zh-TW' | 'en']> = [
+  ['zh-TW', 'zh-TW'],
+  ['zh-HK', 'zh-TW'],
+  ['zh-MO', 'zh-TW'],
+  ['zh-Hant', 'zh-TW'],
+  ['zh-Hant-TW', 'zh-TW'],
+  ['zh-CN', 'zh-TW'],
+  ['zh-SG', 'zh-TW'],
+  ['zh-Hans', 'zh-TW'],
+  ['zh-Hans-CN', 'zh-TW'],
+  ['zh', 'zh-TW'],
+  ['zh_TW', 'zh-TW'],
+  ['ZH-hk', 'zh-TW'],
+  ['en', 'en'],
+  ['en-US', 'en'],
+  ['en-TW', 'en'],
+  ['ja-JP', 'en'],
+  ['zht', 'en'],
+  ['', 'en'],
+  [null, 'en'],
+  [undefined, 'en'],
+]
 
-  it('其余语言与空值一律落到英文', () => {
-    for (const tag of ['en', 'en-US', 'ja-JP', 'ko-KR', 'de', '', null, undefined]) {
-      expect(resolveLocale(tag), String(tag)).toBe('en')
+describe('resolveLocale', () => {
+  it('所有中文（含簡體地區與字形標記）都落到正體中文（台灣），其餘落到英文', () => {
+    for (const [tag, expected] of LOCALE_TAG_CASES) {
+      expect(resolveLocale(tag), String(tag)).toBe(expected)
     }
   })
 })
@@ -69,27 +87,38 @@ describe('normalizePreference', () => {
   it('保留合法值', () => {
     expect(normalizePreference('auto')).toBe('auto')
     expect(normalizePreference('en')).toBe('en')
-    expect(normalizePreference('zh-CN')).toBe('zh-CN')
+    expect(normalizePreference('zh-TW')).toBe('zh-TW')
+  })
+
+  it('舊版的簡體中文設定遷移成正體中文（台灣）', () => {
+    expect(normalizePreference('zh-CN')).toBe('zh-TW')
   })
 
   it('脏数据回落 auto', () => {
-    for (const value of ['zh', 'EN', '', null, undefined, 42, {}]) {
+    for (const value of ['zh', 'EN', 'zh-HK', '', null, undefined, 42, {}]) {
       expect(normalizePreference(value), String(value)).toBe('auto')
     }
   })
 })
 
+describe('只有正體中文與英文', () => {
+  it('語系清單不含簡體中文', () => {
+    expect([...LOCALES].sort()).toEqual(['en', 'zh-TW'])
+    expect(isLocale('zh-CN')).toBe(false)
+  })
+})
+
 describe('t', () => {
-  afterEach(() => setLocale('zh-CN'))
+  afterEach(() => setLocale('zh-TW'))
 
   // 断言对照 JSON 表本身，不写死具体文案：改一个字就挂的测试没人愿意维护，
   // 而这里要锁的是「t 有没有按当前语言查表」这个机制。
   it('按当前语言取文案', () => {
-    setLocale('zh-CN')
-    expect(t('nav.home')).toBe(zhCN['nav.home'])
+    setLocale('zh-TW')
+    expect(t('nav.home')).toBe(zhTW['nav.home'])
     setLocale('en')
     expect(t('nav.home')).toBe(en['nav.home'])
-    expect(en['nav.home']).not.toBe(zhCN['nav.home'])
+    expect(en['nav.home']).not.toBe(zhTW['nav.home'])
   })
 
   it('替换插值占位符', () => {
@@ -107,15 +136,15 @@ describe('t', () => {
 })
 
 describe('内置名称显示', () => {
-  afterEach(() => setLocale('zh-CN'))
+  afterEach(() => setLocale('zh-TW'))
 
   it('内置 preset 与应用规则按稳定 id 切换语言', () => {
     const preset = { id: 'intent', name: 'legacy name', builtin: true }
     const rule = { id: 'notepad', appId: 'notepad', name: 'legacy name', builtin: true }
 
-    setLocale('zh-CN')
-    expect(promptPresetDisplayName(preset)).toBe(zhCN['builtinPreset.intent'])
-    expect(appPromptRuleDisplayName(rule)).toBe(zhCN['builtinApp.notepad'])
+    setLocale('zh-TW')
+    expect(promptPresetDisplayName(preset)).toBe(zhTW['builtinPreset.intent'])
+    expect(appPromptRuleDisplayName(rule)).toBe(zhTW['builtinApp.notepad'])
 
     setLocale('en')
     expect(promptPresetDisplayName(preset)).toBe(en['builtinPreset.intent'])
@@ -134,7 +163,7 @@ describe('内置名称显示', () => {
 })
 
 describe('本地模型目录显示', () => {
-  afterEach(() => setLocale('zh-CN'))
+  afterEach(() => setLocale('zh-TW'))
 
   it('已知模型按稳定 id 切换名称、简介和语种', () => {
     const model = {
@@ -144,10 +173,10 @@ describe('本地模型目录显示', () => {
       languages_label: 'raw languages',
     }
 
-    setLocale('zh-CN')
-    expect(localModelDisplayName(model)).toBe(zhCN['localModel.qwen17Accurate.name'])
-    expect(localModelDisplayDescription(model)).toBe(zhCN['localModel.qwen17Accurate.description'])
-    expect(localModelDisplayLanguages(model)).toBe(zhCN['localModel.qwen17Accurate.languages'])
+    setLocale('zh-TW')
+    expect(localModelDisplayName(model)).toBe(zhTW['localModel.qwen17Accurate.name'])
+    expect(localModelDisplayDescription(model)).toBe(zhTW['localModel.qwen17Accurate.description'])
+    expect(localModelDisplayLanguages(model)).toBe(zhTW['localModel.qwen17Accurate.languages'])
 
     setLocale('en')
     expect(localModelDisplayName(model)).toBe(en['localModel.qwen17Accurate.name'])
@@ -170,13 +199,13 @@ describe('本地模型目录显示', () => {
 })
 
 describe('历史失败原因显示', () => {
-  afterEach(() => setLocale('zh-CN'))
+  afterEach(() => setLocale('zh-TW'))
 
   it('新记录按稳定 code 跟随当前界面语言', () => {
     const record = { failReasonCode: 'provider_bad_key' as const, failReason: '底层原文' }
 
-    setLocale('zh-CN')
-    expect(historyFailureReasonDisplay(record)).toBe(zhCN['err.provider.badKey'])
+    setLocale('zh-TW')
+    expect(historyFailureReasonDisplay(record)).toBe(zhTW['err.provider.badKey'])
     setLocale('en')
     expect(historyFailureReasonDisplay(record)).toBe(en['err.provider.badKey'])
   })
@@ -188,11 +217,11 @@ describe('历史失败原因显示', () => {
 })
 
 describe('locale 状态', () => {
-  afterEach(() => setLocale('zh-CN'))
+  afterEach(() => setLocale('zh-TW'))
 
   it('isLocale 只认受支持的值', () => {
     expect(LOCALES.every(isLocale)).toBe(true)
-    for (const value of ['zh', 'en-US', '', null, 1]) {
+    for (const value of ['zh', 'zh-CN', 'en-US', '', null, 1]) {
       expect(isLocale(value), String(value)).toBe(false)
     }
   })

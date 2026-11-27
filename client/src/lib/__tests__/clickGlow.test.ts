@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import en from '@/i18n/locales/en.json'
-import zhCN from '@/i18n/locales/zh-CN.json'
+import zhTW from '@/i18n/locales/zh-TW.json'
 import {
   DEFAULT_MAX_PARTICLES,
   GLOW_DURATION_MS,
@@ -332,7 +332,7 @@ describe('click glow', () => {
 
   it('has its texts in every locale', () => {
     const keys = ['brand.bannerAlt', 'brand.appeal', 'brand.appealFull', 'brand.forkNote', 'appearance.effects', 'appearance.clickGlow', 'appearance.clickGlowDesc']
-    for (const table of [en, zhCN] as Array<Record<string, string>>) {
+    for (const table of [en, zhTW] as Array<Record<string, string>>) {
       for (const key of keys) expect(table[key]?.trim(), key).toBeTruthy()
     }
   })

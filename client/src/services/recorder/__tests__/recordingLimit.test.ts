@@ -16,14 +16,14 @@ describe('formatRecordingTimer', () => {
 
   it('最后一分钟改为显示剩余时间', () => {
     // 正好剩 60 秒时进入倒计时
-    expect(formatRecordingTimer(240)).toMatchObject({ text: '剩余 60s', countdown: true, remainingSec: 60 })
-    expect(formatRecordingTimer(253)).toMatchObject({ text: '剩余 47s', countdown: true, remainingSec: 47 })
-    expect(formatRecordingTimer(299)).toMatchObject({ text: '剩余 1s', countdown: true, remainingSec: 1 })
+    expect(formatRecordingTimer(240)).toMatchObject({ text: '剩餘 60s', countdown: true, remainingSec: 60 })
+    expect(formatRecordingTimer(253)).toMatchObject({ text: '剩餘 47s', countdown: true, remainingSec: 47 })
+    expect(formatRecordingTimer(299)).toMatchObject({ text: '剩餘 1s', countdown: true, remainingSec: 1 })
   })
 
   it('到点及越界都停在 0，不出现负数', () => {
-    expect(formatRecordingTimer(300)).toMatchObject({ text: '剩余 0s', remainingSec: 0 })
-    expect(formatRecordingTimer(999)).toMatchObject({ text: '剩余 0s', remainingSec: 0 })
+    expect(formatRecordingTimer(300)).toMatchObject({ text: '剩餘 0s', remainingSec: 0 })
+    expect(formatRecordingTimer(999)).toMatchObject({ text: '剩餘 0s', remainingSec: 0 })
   })
 
   it('异常输入不炸', () => {
@@ -49,7 +49,7 @@ describe('formatRecordingLimit', () => {
       MAX_RECORDING_SEC < 60
         ? `${MAX_RECORDING_SEC} 秒`
         : MAX_RECORDING_SEC % 60 === 0
-          ? `${MAX_RECORDING_SEC / 60} 分钟`
+          ? `${MAX_RECORDING_SEC / 60} 分鐘`
           : `${Math.floor(MAX_RECORDING_SEC / 60)} 分 ${MAX_RECORDING_SEC % 60} 秒`,
     )
   })

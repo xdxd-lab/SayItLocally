@@ -223,7 +223,7 @@ export function getClientRuntimeInfo() {
 }
 
 /**
- * 系统**显示语言**，返回 `zh-CN` / `en`。
+ * 系統**顯示語言**，回傳 `zh-TW` / `en`。
  *
  * 与 `getClientRuntimeInfo().systemLocale` 不是一回事：那个是**区域格式**
  * （日期货币怎么写），诊断用；这个是 Windows 界面本身的语言，决定界面语言。

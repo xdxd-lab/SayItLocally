@@ -1511,11 +1511,16 @@ fn validate_config_collection(key: &str, items: &[Value]) -> Result<(), String> 
         // 内置 Prompt 的中英文自定义内容共存在 promptPresets 中，因此同一个稳定 id
         // 可以出现两次，但同一语言仍只能有一份。旧备份没有语言字段，只能是中文。
         let unique_id = if key == "promptPresets" && BUILTIN_PRESET_IDS.contains(&id) {
-            let language = object
+            // [自訂] SC-65：中文內建 Prompt 改為正體中文（zh-TW）；舊備份的 zh-CN 視為同一語言。
+            let language = match object
                 .get("builtinPromptLanguage")
                 .and_then(Value::as_str)
-                .unwrap_or("zh-CN");
-            if language != "zh-CN" && language != "en" {
+                .unwrap_or("zh-TW")
+            {
+                "zh-CN" => "zh-TW",
+                other => other,
+            };
+            if language != "zh-TW" && language != "en" {
                 return Err(format!(
                     "Item {} in {} has an invalid language",
                     index + 1,
@@ -3598,5 +3603,21 @@ mod tests {
         ];
 
         assert!(validate_config_collection("promptPresets", &items).is_err());
+    }
+
+    /// [自訂] SC-65：中文內建 Prompt 改用 zh-TW；舊備份的 zh-CN 是同一種語言，不能和 zh-TW 並存兩份。
+    #[test]
+    fn prompt_overrides_treat_legacy_simplified_as_traditional() {
+        let entry = |language: &str| {
+            json!({
+                "id": "intent",
+                "name": "Intent cleanup",
+                "systemPrompt": "custom",
+                "builtinPromptLanguage": language,
+            })
+        };
+        assert!(validate_config_collection("promptPresets", &[entry("zh-TW"), entry("en")]).is_ok());
+        assert!(validate_config_collection("promptPresets", &[entry("zh-TW"), entry("zh-CN")]).is_err());
+        assert!(validate_config_collection("promptPresets", &[entry("zh-HK")]).is_err());
     }
 }

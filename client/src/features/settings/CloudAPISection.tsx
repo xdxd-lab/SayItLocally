@@ -940,7 +940,7 @@ export default function CloudAPISection() {
                   （新版只给 API Key，旧版还要 Access Token + App ID），光看界面讲不清，
                   确实需要一篇文档。给所有平台都挂上等于让用户为一件不复杂的事去读文档。
                   英文文档发布前，这个链接只对中文界面显示。 */}
-              {SHOW_CLOUD_CONSOLE_LINKS && draftPlatform === 'doubao' && getLocale() === 'zh-CN' && (
+              {SHOW_CLOUD_CONSOLE_LINKS && draftPlatform === 'doubao' && getLocale() === 'zh-TW' && (
                 <button type="button" onClick={() => void shellOpen(DOC_URL)} className={linkClass}>
                   {t('asr.howToGetKey')}
                   <ExternalLink className="h-3 w-3" aria-hidden />

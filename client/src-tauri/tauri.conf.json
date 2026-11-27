@@ -47,8 +47,8 @@
       "icons/128x128.png",
       "icons/128x128@2x.png"
     ],
-    "shortDescription": "语音输入，AI 润色",
-    "longDescription": "SayItLocally - 随口说，出色写。用说话代替打字，AI 实时把口语变成书面表达。",
+    "shortDescription": "本機語音輸入，留下自己的紀錄",
+    "longDescription": "SayItLocally：透過說話，把開發者自己重要的文字記錄下來，驗證過去，指引未來；只用本機辨識，語音、文字與使用資訊都不外流。",
     "copyright": "© 2026 Liu Qianglong & Claude",
     "category": "Productivity",
     "windows": {
@@ -56,14 +56,14 @@
         "installMode": "currentUser",
         "displayLanguageSelector": false,
         "languages": [
-          "SimpChinese",
+          "TradChinese",
           "English"
         ],
         "installerIcon": "icons/icon.ico"
       },
       "wix": {
         "language": [
-          "zh-CN",
+          "zh-TW",
           "en-US"
         ]
       }
