@@ -1,13 +1,17 @@
 //! [自訂] SC-67：辨識與 AI 校對輸出一律轉成正體中文（台灣）。
 //!
-//! 這是文字離開 Rust 的單一出口：本機辨識（`models::local_asr`）、設定頁的辨識測試
-//! （`models::test_audio`）與 AI 校對
-//! （`providers::registry::cloud_polish`）回傳前都經過 [`to_taiwan`]。前端的浮窗、
-//! 歷史（含 ASR 原文）、剪貼簿、後備卡片與匯出拿到的都已是正體。
+//! 這是文字離開 Rust 的單一出口：本機辨識（`models::local_asr::assemble_transcript`）、
+//! 設定頁的辨識測試（`models::test_audio::benchmark_result`）與 AI 校對
+//! （`providers::registry::finalize_polish`）回傳前都經過 [`to_taiwan`]。前端的浮窗、
+//! 歷史（含 ASR 原文）、剪貼簿、後備卡片與匯出拿到的都已是正體。使用者取代規則的
+//! 「替換成」欄位在新增與匯入時經 [`zh_to_taiwan_texts`] 轉換（前端在 Rust 出口之後才套用規則，
+//! 所以不對最終文字再轉一次，以免誤改正體與使用者寫的內容）。
 //!
 //! - 後端：ferrous-opencc（Apache-2.0，純 Rust，字典來自 OpenCC，編譯時內嵌，執行時不讀檔、
 //!   不連網）的 `s2twp`（簡體 → 台灣正體，含台灣慣用詞，例如簡體的「軟件」寫法轉成「軟體」）。
-//! - 只轉中文與粵語：介面指定英文、日文、韓文時不轉；自動偵測時，輸出含假名就視為日文不轉。
+//! - 逐句判斷：依「。！？.!?；;…」與換行切句，含假名的句子視為日文不轉；其餘句子連成一段一起轉，
+//!   所以不含假名的文字與整段轉換逐位元相同。介面指定日文時整段不轉；英文、韓文照樣轉
+//!   （說中文時模型仍可能輸出漢字，對英文與韓文跑轉換不會改變任何字）。
 //! - OpenCC 的台灣標準會把「台」寫成「臺」；本專案一律用「台」（台灣、台北），轉換後統一改回。
 //! - 產品路徑只有 ferrous-opencc，使用者介面不提供關閉。其他後端的比較在
 //!   `tools/zh-crosstest`（獨立 crate，不進 App）。
@@ -41,10 +45,10 @@ fn ferrous() -> Option<&'static ferrous_opencc::OpenCC> {
         .as_ref()
 }
 
-/// 辨識語種是否可能輸出中文。`auto`、空值、`zh*`、`yue*` 視為可能；其餘（en、ja、ko…）不轉。
-fn language_may_be_chinese(language: &str) -> bool {
+/// 介面是否指定日文（`ja`、`ja-JP`、`ja_JP`）。只有日文整段不轉。
+fn language_is_japanese(language: &str) -> bool {
     let tag = language.trim().to_ascii_lowercase();
-    tag.is_empty() || tag == "auto" || tag.starts_with("zh") || tag.starts_with("yue")
+    tag == "ja" || tag.starts_with("ja-") || tag.starts_with("ja_")
 }
 
 fn is_kana(c: char) -> bool {
@@ -57,9 +61,32 @@ fn is_han(c: char) -> bool {
     matches!(c, '\u{3400}'..='\u{4dbf}' | '\u{4e00}'..='\u{9fff}' | '\u{f900}'..='\u{faff}')
 }
 
-/// 這段文字是否需要轉換：語種可能是中文、含漢字、且不含假名（含假名視為日文）。
-pub fn should_convert(text: &str, language: &str) -> bool {
-    language_may_be_chinese(language) && text.chars().any(is_han) && !text.chars().any(is_kana)
+/// 句末符號：切句後逐句判斷假名。
+fn is_sentence_end(c: char) -> bool {
+    matches!(c, '。' | '！' | '？' | '.' | '!' | '?' | '；' | ';' | '…' | '\n')
+}
+
+/// 依句末符號切句，符號留在句尾；切出的各句依序接起來等於原文。
+fn sentences(text: &str) -> impl Iterator<Item = &str> {
+    let mut rest = text;
+    std::iter::from_fn(move || {
+        if rest.is_empty() {
+            return None;
+        }
+        let end = rest
+            .char_indices()
+            .find(|&(_, c)| is_sentence_end(c))
+            .map(|(i, c)| i + c.len_utf8())
+            .unwrap_or(rest.len());
+        let (head, tail) = rest.split_at(end);
+        rest = tail;
+        Some(head)
+    })
+}
+
+/// 單一句子是否需要轉換：含漢字且不含假名（含假名視為日文）。
+fn sentence_needs_conversion(sentence: &str) -> bool {
+    sentence.chars().any(is_han) && !sentence.chars().any(is_kana)
 }
 
 /// 「臺」統一寫成「台」（台灣、台北、三台機器）。颱風、檯燈等不同字不受影響。
@@ -83,13 +110,39 @@ pub fn convert_with(backend: ZhBackend, text: &str) -> String {
     }
 }
 
-/// 產品出口：需要時轉成台灣正體，否則原樣回傳。
+/// 產品出口：逐句判斷，需要時轉成台灣正體，含假名的句子與介面指定日文時原樣回傳。
+/// 連續不含假名的句子合成一段一起轉，詞組比對不會被切句打斷。
 pub fn to_taiwan(text: &str, language: &str) -> String {
-    if should_convert(text, language) {
-        convert_with(PRODUCT_BACKEND, text)
-    } else {
-        text.to_string()
+    if language_is_japanese(language) || !text.chars().any(is_han) {
+        return text.to_string();
     }
+    let mut out = String::with_capacity(text.len());
+    let mut run = String::new();
+    let flush = |out: &mut String, run: &mut String| {
+        if sentence_needs_conversion(run) {
+            out.push_str(&convert_with(PRODUCT_BACKEND, run));
+        } else {
+            out.push_str(run);
+        }
+        run.clear();
+    };
+    for sentence in sentences(text) {
+        if sentence.chars().any(is_kana) {
+            flush(&mut out, &mut run);
+            out.push_str(sentence);
+        } else {
+            run.push_str(sentence);
+        }
+    }
+    flush(&mut out, &mut run);
+    out
+}
+
+/// [自訂] SC-67：取代規則的「替換成」欄位在新增與匯入時轉成台灣正體（規則與辨識輸出相同，
+/// 語種視為自動偵測）。比對欄不經這裡。
+#[tauri::command]
+pub fn zh_to_taiwan_texts(texts: Vec<String>) -> Vec<String> {
+    texts.iter().map(|text| to_taiwan(text, "auto")).collect()
 }
 
 /// 獨立判準：簡體專用字（414 字，以 Unicode 跳脫保存，原始碼本身不含簡體）。
@@ -195,20 +248,65 @@ mod tests {
         assert_eq!(to_taiwan("臺灣", "zh"), "台灣");
     }
 
+    /// 日文例句（含假名），其中的漢字是日文寫法，不可改成正體。
+    const JAPANESE: &str = "\u{4eca}\u{65e5}\u{306f}\u{6771}\u{4eac}\u{3067}\u{4f1a}\u{8b70}\u{304c}\u{3042}\u{308a}\u{307e}\u{3059}\u{3002}";
+
     #[test]
-    fn japanese_and_non_chinese_languages_are_left_alone() {
-        // 日文例句（含假名），其中的漢字是日文寫法，不可改成正體。
-        let japanese = "\u{4eca}\u{65e5}\u{306f}\u{6771}\u{4eac}\u{3067}\u{4f1a}\u{8b70}\u{304c}\u{3042}\u{308a}\u{307e}\u{3059}\u{3002}";
-        assert_eq!(to_taiwan(japanese, "auto"), japanese);
-        assert_eq!(to_taiwan(japanese, "zh"), japanese, "kana always means Japanese");
-        // 「會議」的簡體寫法會轉成「會議」，但語種指定為日文、英文或韓文時不轉。
+    fn japanese_is_left_alone_and_other_languages_convert() {
+        assert_eq!(to_taiwan(JAPANESE, "auto"), JAPANESE);
+        assert_eq!(to_taiwan(JAPANESE, "zh"), JAPANESE, "kana always means Japanese");
+        // 「會議」的簡體寫法：只有介面指定日文時不轉；英文、韓文、粵語、中文都轉。
         let meeting = "\u{4f1a}\u{8bae}";
-        assert_eq!(to_taiwan(meeting, "auto"), "會議");
-        for language in ["ja", "en", "ko"] {
+        for language in ["ja", "JA", "ja-JP", "ja_JP"] {
             assert_eq!(to_taiwan(meeting, language), meeting, "{language}");
         }
-        assert_eq!(to_taiwan(meeting, "yue"), "會議");
-        assert_eq!(to_taiwan("plain English", "auto"), "plain English");
+        for language in ["auto", "", "zh", "zh-TW", "yue", "en", "ko", "cmn"] {
+            assert_eq!(to_taiwan(meeting, language), "會議", "{language}");
+        }
+        assert_eq!(to_taiwan("plain English", "en"), "plain English");
+        assert_eq!(to_taiwan("\u{d55c}\u{ad6d}\u{c5b4}", "ko"), "\u{d55c}\u{ad6d}\u{c5b4}");
+    }
+
+    #[test]
+    fn only_sentences_with_kana_are_left_alone() {
+        // 「中文簡體句。」的簡體寫法 + 日文句：只轉第一句。
+        let chinese = "\u{4e2d}\u{6587}\u{7b80}\u{4f53}\u{53e5}\u{3002}";
+        let mixed = format!("{chinese}{JAPANESE}");
+        assert_eq!(to_taiwan(&mixed, "auto"), format!("中文簡體句。{JAPANESE}"));
+        // 日文句在中間、各種句末符號與換行都能切開；沒有句末符號的結尾也照轉。
+        // 「軟體！」…「測試\n」…「影片」的簡體寫法
+        let text = format!("\u{8f6f}\u{4ef6}\u{ff01}{JAPANESE}\u{6d4b}\u{8bd5}\n\u{4eca}\u{65e5}\u{306f}?\u{89c6}\u{9891}");
+        assert_eq!(to_taiwan(&text, "zh"), format!("軟體！{JAPANESE}測試\n\u{4eca}\u{65e5}\u{306f}?影片"));
+        // 介面指定日文：整段不轉。
+        assert_eq!(to_taiwan(&mixed, "ja"), mixed);
+    }
+
+    #[test]
+    fn sentence_split_matches_whole_text_conversion_without_kana() {
+        let samples: Vec<String> = CASES
+            .windows(3)
+            .map(|w| format!("{}。{}！{}\n{}?.", w[0].0, w[1].0, w[2].0, w[0].0))
+            .chain(ALREADY_TRADITIONAL.iter().map(|t| format!("{t}。{t}；{t}…")))
+            .collect();
+        for text in &samples {
+            assert_eq!(
+                to_taiwan(text, "auto").as_bytes(),
+                convert_with(PRODUCT_BACKEND, text).as_bytes(),
+                "{text}"
+            );
+        }
+        // 切出的句子依序接回等於原文。
+        let joined: String = sentences(&samples[0]).collect();
+        assert_eq!(joined, samples[0]);
+        assert!(sentences(&samples[0]).count() >= 5);
+    }
+
+    #[test]
+    fn replacement_texts_command_converts_each_text() {
+        assert_eq!(
+            zh_to_taiwan_texts(vec!["\u{8f6f}\u{4ef6}".into(), "test@example.com".into(), JAPANESE.into(), String::new()]),
+            vec!["軟體".to_string(), "test@example.com".into(), JAPANESE.into(), String::new()]
+        );
     }
 
     #[test]
@@ -221,7 +319,9 @@ mod tests {
         let long_mark = "\u{5361}\u{30fc}\u{8f66}";
         assert_eq!(to_taiwan(long_mark, "auto"), "卡ー車");
         // 真正的假名字母仍然擋下：カ（片假名）
-        assert!(!should_convert("\u{5361}\u{30ab}\u{8f66}", "auto"));
+        let katakana = "\u{5361}\u{30ab}\u{8f66}";
+        assert!(!sentence_needs_conversion(katakana));
+        assert_eq!(to_taiwan(katakana, "auto"), katakana);
     }
 
     #[test]
@@ -246,10 +346,11 @@ mod tests {
         assert!(inputs_with_hits * 2 >= CASES.len(), "{inputs_with_hits}");
     }
 
-    /// 三個出口（本機辨識、辨識測試、AI 校對）都必須經過 `to_taiwan`。出口在需要模型或 Ollama 的路徑上，單元測試跑不到，
-    /// 所以比照 gguf_asr 的做法直接檢查原始碼（去掉 `//` 註解後）。
+    /// 三個出口的轉換在各自的純函式裡（`assemble_transcript`、`benchmark_result`、`finalize_polish`），
+    /// 由各模組的單元測試直接驗證輸出。出口本身在需要模型或 Ollama 的路徑上跑不到，這裡檢查出口
+    /// 回傳的就是純函式的結果（去掉 `//` 註解後），「呼叫了但沒用結果」或繞過純函式都會紅燈。
     #[test]
-    fn all_output_exits_call_to_taiwan() {
+    fn all_output_exits_return_the_converted_text() {
         fn code_only(source: &str) -> String {
             source
                 .lines()
@@ -257,33 +358,45 @@ mod tests {
                 .collect::<Vec<_>>()
                 .join("\n")
         }
-        for (file, source, start, end) in [
+        for (file, source, start, end, must) in [
+            (
+                "local_asr.rs",
+                include_str!("models/local_asr.rs"),
+                "fn transcribe_chunks(",
+                "fn assemble_transcript(",
+                &["Ok(assemble_transcript(&parts, lang))"][..],
+            ),
             (
                 "local_asr.rs",
                 include_str!("models/local_asr.rs"),
                 "async fn transcribe_samples(",
                 "fn transcribe_chunks(",
+                &["let text = transcribe_chunks(", "Ok(LocalAsrResult { text, elapsed_ms })"][..],
             ),
             (
                 "test_audio.rs",
                 include_str!("models/test_audio.rs"),
                 "let text = super::gguf_asr::transcribe(",
-                "Ok(AsrBenchmarkResult {",
+                "fn benchmark_result(",
+                &["Ok(benchmark_result(&text, &lang, "][..],
             ),
             (
                 "registry.rs",
                 include_str!("providers/registry.rs"),
                 "pub async fn cloud_polish(",
-                "pub async fn test_ai_connection(",
+                "fn finalize_polish(",
+                &[".map(finalize_polish)"][..],
             ),
         ] {
             let code = code_only(source);
             let from = code.find(start).unwrap_or_else(|| panic!("{file}: {start} not found"));
             let to = code[from..].find(end).map(|offset| from + offset).unwrap_or_else(|| panic!("{file}: {end} not found"));
-            assert!(
-                code[from..to].contains("crate::zh_output::to_taiwan("),
-                "{file}: the output exit no longer converts to Traditional Chinese (Taiwan)"
-            );
+            for needle in must {
+                assert!(
+                    code[from..to].contains(needle),
+                    "{file}: the output exit no longer returns the Taiwan conversion ({needle})"
+                );
+            }
         }
     }
 }

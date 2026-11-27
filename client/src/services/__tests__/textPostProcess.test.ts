@@ -231,6 +231,12 @@ describe('replacePunctuationWithSpace', () => {
 
 // [自訂] SC-67：辨識輸出已轉成台灣正體，數字規範化要認得正體字，產出的標記也用正體。
 describe('convertChineseNumbers：正體輸入', () => {
+  it('逐句判斷：日文句不影響其他中文句', () => {
+    // 日文句（含假名）維持原行為；同段的正體中文句照樣規範化。
+    expect(convertChineseNumbers('晚上八點半。今日は\u4e09\u6642です。差不多兩萬人')).toBe('晚上8點半。今日は\u4e09\u6642です。差不多20000人')
+    // 含簡體「点」的句子維持原行為，不影響下一句的正體對應。
+    expect(convertChineseNumbers('三\u70b9\u4e94！百分之三點五')).toBe('3.5！3.5%')
+  })
   it('正體寫法與簡體寫法得到相同的數字', () => {
     const cases: Array<[string, string]> = [
       ['增長了百分之十五', '增長了15%'],

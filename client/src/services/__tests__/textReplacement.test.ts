@@ -1,5 +1,14 @@
-import { describe, it, expect } from 'vitest'
-import { applyReplacements, parseBatchReplacements, type TextReplacementRule } from '../textReplacement'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+
+const { invoke } = vi.hoisted(() => ({ invoke: vi.fn() }))
+vi.mock('@tauri-apps/api/core', () => ({ invoke }))
+
+import {
+  applyReplacements,
+  parseBatchReplacements,
+  toTaiwanReplacementTargets,
+  type TextReplacementRule,
+} from '../textReplacement'
 
 function rule(from: string, to: string, enabled = true): TextReplacementRule {
   return { id: '1', from, to, enabled }
@@ -124,5 +133,28 @@ describe('applyReplacements 的顺序语义', () => {
       rule('b', '甲', '丙'),
     ])
     expect(result).toBe('丙')
+  })
+})
+
+describe('toTaiwanReplacementTargets', () => {
+  beforeEach(() => invoke.mockReset())
+
+  it('有漢字時交給 Rust 轉換器，回傳轉換後的值', async () => {
+    invoke.mockResolvedValue(['軟體', 'ok'])
+    // 「軟體」的簡體寫法
+    await expect(toTaiwanReplacementTargets(['\u8f6f\u4ef6', 'ok'])).resolves.toEqual(['軟體', 'ok'])
+    expect(invoke).toHaveBeenCalledWith('zh_to_taiwan_texts', { texts: ['\u8f6f\u4ef6', 'ok'] })
+  })
+
+  it('沒有漢字時不呼叫', async () => {
+    await expect(toTaiwanReplacementTargets(['Claude Code', ''])).resolves.toEqual(['Claude Code', ''])
+    expect(invoke).not.toHaveBeenCalled()
+  })
+
+  it('轉換失敗或結果長度不符時保留原文', async () => {
+    invoke.mockRejectedValueOnce(new Error('boom'))
+    await expect(toTaiwanReplacementTargets(['\u8f6f\u4ef6'])).resolves.toEqual(['\u8f6f\u4ef6'])
+    invoke.mockResolvedValueOnce([])
+    await expect(toTaiwanReplacementTargets(['\u8f6f\u4ef6'])).resolves.toEqual(['\u8f6f\u4ef6'])
   })
 })

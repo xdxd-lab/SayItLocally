@@ -407,6 +407,35 @@ fn is_selected_config(data: &Value) -> bool {
 }
 
 /// 应用完整配置部分（设置 + Prompt 预设 + 分应用规则），两档共用。
+/// [自訂] SC-67：匯入設定裡取代規則的「替換成」欄位轉成台灣正體（與辨識輸出同一個轉換器），
+/// 比對欄與其他設定不改。沒有需要轉的內容時回傳 `None`，沿用原本的設定。
+fn taiwanize_replacement_rules(settings: &Map<String, Value>) -> Option<Map<String, Value>> {
+    let rules = settings.get("textReplacements")?.as_array()?;
+    let mut changed = false;
+    let converted = rules
+        .iter()
+        .map(|rule| {
+            let mut rule = rule.clone();
+            if let Some(obj) = rule.as_object_mut() {
+                if let Some(to) = obj.get("to").and_then(Value::as_str) {
+                    let taiwan = crate::zh_output::to_taiwan(to, "auto");
+                    if taiwan != to {
+                        obj.insert("to".to_string(), Value::String(taiwan));
+                        changed = true;
+                    }
+                }
+            }
+            rule
+        })
+        .collect::<Vec<_>>();
+    if !changed {
+        return None;
+    }
+    let mut settings = settings.clone();
+    settings.insert("textReplacements".to_string(), Value::Array(converted));
+    Some(settings)
+}
+
 fn apply_config_part(
     storage: &Storage,
     data: &Value,
@@ -417,6 +446,8 @@ fn apply_config_part(
         .get("appSettings")
         .and_then(Value::as_object)
         .unwrap_or(&empty_settings);
+    let converted_settings = taiwanize_replacement_rules(app_settings);
+    let app_settings = converted_settings.as_ref().unwrap_or(app_settings);
     let prompt_presets = data
         .get("promptPresets")
         .and_then(Value::as_array)
@@ -813,7 +844,9 @@ fn build_selected_import_plan(storage: &Storage, data: &Value) -> Result<Selecte
                 skipped += 1;
                 continue;
             }
-            let to = obj.get("to").and_then(Value::as_str).unwrap_or("");
+            // [自訂] SC-67：匯入的「替換成」欄位轉成台灣正體，比對欄不改。
+            let to = crate::zh_output::to_taiwan(obj.get("to").and_then(Value::as_str).unwrap_or(""), "auto");
+            let to = to.as_str();
             let existing_index = local_rules.iter().position(|rule| {
                 rule.get("from").and_then(Value::as_str) == Some(from)
             });
@@ -1813,6 +1846,8 @@ fn apply_full_restore(
 ) -> Result<(), String> {
     let empty_settings = Map::new();
     let settings = data.get("appSettings").and_then(Value::as_object).unwrap_or(&empty_settings);
+    let converted_settings = taiwanize_replacement_rules(settings);
+    let settings = converted_settings.as_ref().unwrap_or(settings);
     let array = |key| data.get(key).and_then(Value::as_array).map(Vec::as_slice);
     let rewritten_history = array("history").map(|history| {
         history.iter().map(|record| rewrite_audio_path(record, adir)).collect::<Vec<_>>()
@@ -3031,6 +3066,52 @@ mod tests {
         storage.apply_config_transaction(&plan.app_settings, CONFIG_EXCLUDE, plan.prompt_presets.as_deref(), None).unwrap();
         assert_eq!(storage.get(key, None), local);
         assert_eq!(storage.get("textReplacements", None)[0]["from"], "one");
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn imported_replacement_targets_become_taiwan_traditional() {
+        // 「軟體」的簡體寫法：比對欄保持原樣，「替換成」欄轉成正體；日文（含假名）不轉。
+        let simplified = "\u{8f6f}\u{4ef6}";
+        let japanese = "\u{4eca}\u{65e5}\u{306f}";
+        let rules = json!([
+            { "id": "a", "from": simplified, "to": simplified, "enabled": true },
+            { "id": "b", "from": "jp", "to": japanese, "enabled": false },
+            { "id": "c", "from": "mail", "to": "test@example.com", "enabled": true },
+        ]);
+        let expect = |value: Value| {
+            assert_eq!(value[0]["from"], simplified);
+            assert_eq!(value[0]["to"], "軟體");
+            assert_eq!(value[1]["to"], japanese);
+            assert_eq!(value[1]["enabled"], false);
+            assert_eq!(value[2]["to"], "test@example.com");
+        };
+        let (storage, dir) = temp_storage("import_zh_rules");
+
+        let selected = json!({
+            "kind": "config", "formatVersion": 2, "scope": "selected",
+            "items": { "textReplacements": rules.clone() },
+        });
+        let plan = build_selected_import_plan(&storage, &selected).unwrap();
+        storage.apply_config_transaction(&plan.app_settings, CONFIG_EXCLUDE, plan.prompt_presets.as_deref(), None).unwrap();
+        expect(storage.get("textReplacements", None));
+        // 再匯入同一份：轉換後與本機相同，算略過而不是更新。
+        let again = build_selected_import_plan(&storage, &selected).unwrap();
+        assert_eq!((again.added, again.updated), (0, 0));
+
+        storage.set("textReplacements", &json!([])).unwrap();
+        let config = json!({ "kind": "config", "formatVersion": 1, "appSettings": { "textReplacements": rules.clone() } });
+        apply_config_part(&storage, &config, CONFIG_EXCLUDE).unwrap();
+        expect(storage.get("textReplacements", None));
+
+        storage.set("textReplacements", &json!([])).unwrap();
+        let full = json!({ "kind": "full", "formatVersion": 1, "appSettings": { "textReplacements": rules } });
+        apply_test_restore(&storage, &full, &dir, false).unwrap();
+        expect(storage.get("textReplacements", None));
+
+        // 沒有需要轉的內容時沿用原設定。
+        let plain = json!({ "textReplacements": [{ "from": "a", "to": "b" }] });
+        assert!(taiwanize_replacement_rules(plain.as_object().unwrap()).is_none());
         fs::remove_dir_all(dir).unwrap();
     }
 

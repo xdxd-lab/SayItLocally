@@ -13,6 +13,7 @@ import {
   getTextReplacements,
   saveTextReplacements,
   parseBatchReplacements,
+  toTaiwanReplacementTargets,
   type TextReplacementRule,
 } from '@/services/textReplacement'
 
@@ -41,10 +42,11 @@ export default function TextReplacementSection() {
     })
   }, [])
 
-  const addRule = useCallback(() => {
+  const addRule = useCallback(async () => {
     const from = fromInput.trim()
-    const to = toInput.trim()
     if (!from) return
+    // [自訂] SC-67：「替換成」欄位轉成台灣正體，清單顯示的就是轉換後的值。
+    const [to] = await toTaiwanReplacementTargets([toInput.trim()])
     setRules((prev) => {
       if (prev.some((r) => r.from === from)) return prev
       return [...prev, { id: createId(), from, to, enabled: true }]
@@ -53,12 +55,15 @@ export default function TextReplacementSection() {
     setToInput('')
   }, [fromInput, toInput])
 
-  const importBatch = useCallback(() => {
-    const parsed = parseBatchReplacements(batchText)
-    if (parsed.length === 0) {
+  const importBatch = useCallback(async () => {
+    const drafts = parseBatchReplacements(batchText)
+    if (drafts.length === 0) {
       setBatchHint(t('textReplace.importNothing'))
       return
     }
+    // [自訂] SC-67：「替換成」欄位轉成台灣正體，比對欄不改。
+    const targets = await toTaiwanReplacementTargets(drafts.map((draft) => draft.to))
+    const parsed = drafts.map((draft, index) => ({ from: draft.from, to: targets[index] }))
     setRules((prev) => {
       const existing = new Set(prev.map((r) => r.from))
       const next = [...prev]

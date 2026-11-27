@@ -166,8 +166,6 @@ async fn transcribe_samples(
                     diag::fail("local/asr", "transcribe", e)
                 }
             })?;
-        // [自訂] SC-67：辨識文字的單一出口，轉成台灣正體（日文、英文等不轉）。
-        let text = crate::zh_output::to_taiwan(&text, lang);
         let elapsed_ms = start.elapsed().as_millis() as u64;
         if text.trim().is_empty() {
             // VAD 认定有人声、模型却什么都没输出 —— 模型/量化档/加速器组合有问题的信号
@@ -199,12 +197,21 @@ fn transcribe_chunks(
     samples: &[f32],
     chunks: &[std::ops::Range<usize>],
 ) -> Result<String, String> {
-    let mut text = String::new();
+    let mut parts = Vec::with_capacity(chunks.len());
     for chunk in chunks {
-        let part = gguf_asr::transcribe(model_id, lang, accel, gpu, &samples[chunk.clone()], SR)?;
-        gguf_asr::append_segment_text(&mut text, &part);
+        parts.push(gguf_asr::transcribe(model_id, lang, accel, gpu, &samples[chunk.clone()], SR)?);
     }
-    Ok(text)
+    Ok(assemble_transcript(&parts, lang))
+}
+
+/// [自訂] SC-67：辨識文字的單一出口。每一段先各自轉成台灣正體再串接，
+/// 被判成日文的一段（含假名）不會連累其他段；段內再逐句判斷（見 `zh_output::to_taiwan`）。
+fn assemble_transcript(parts: &[String], lang: &str) -> String {
+    let mut text = String::new();
+    for part in parts {
+        gguf_asr::append_segment_text(&mut text, &crate::zh_output::to_taiwan(part, lang));
+    }
+    text
 }
 
 #[tauri::command]
@@ -349,6 +356,19 @@ pub fn spawn_legacy_reclaim(storage: &crate::storage::Storage) -> Option<std::th
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn assembled_transcript_converts_each_chunk() {
+        // 第一段：「軟體」的簡體寫法、沒有句末標點；第二段：日文（含假名）；第三段：「測試。」的簡體寫法。
+        let parts = [
+            "\u{8f6f}\u{4ef6}".to_string(),
+            "\u{4eca}\u{65e5}\u{306f}".to_string(),
+            " \u{6d4b}\u{8bd5}\u{3002} ".to_string(),
+        ];
+        assert_eq!(assemble_transcript(&parts, "auto"), "軟體 \u{4eca}\u{65e5}\u{306f} 測試。");
+        assert_eq!(assemble_transcript(&parts[..1], "ja"), "\u{8f6f}\u{4ef6}");
+        assert_eq!(assemble_transcript(&[], "auto"), "");
+    }
 
     #[test]
     fn legacy_reclaim_preserves_custom_and_unknown_files() {
