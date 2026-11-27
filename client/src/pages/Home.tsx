@@ -8,6 +8,7 @@ import { SHORTCUTS_CHANGED_EVENT, listen } from '@/services/bridge'
 import { displayShortcut } from '@/lib/shortcutKeys'
 import { getLocale } from '@/i18n'
 import { useT } from '@/i18n/useT'
+import BrandBanner from '@/components/BrandBanner'
 // [自訂] 啟動公告已註解停用（日後移除）：
 // import NoticeBanner from '@/components/NoticeBanner'
 
@@ -112,6 +113,8 @@ export default function Home() {
 
   return (
     <div className="max-w-4xl mx-auto">
+      {/* [自訂] SC-63：首頁頂部橫幅＋一句訴求 */}
+      <BrandBanner />
       <h1 className="mb-4 text-2xl font-bold">{t('home.title')}</h1>
       <p className="mb-8 text-sm text-muted-foreground">
         <WithKeyChip

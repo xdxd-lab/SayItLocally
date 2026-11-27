@@ -731,3 +731,72 @@
   border-width: 2px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
 }
+/* [自訂] SC-63：點擊光輝（lib/clickGlow.ts）。覆蓋層不接收指標事件；只在點擊後播一次 CSS 動畫。 */
+.click-glow-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;
+  pointer-events: none;
+  overflow: hidden;
+  contain: strict;
+}
+
+.click-glow-halo,
+.click-glow-spark,
+.click-glow-star {
+  position: absolute;
+  pointer-events: none;
+  will-change: transform, opacity;
+}
+
+.click-glow-halo {
+  width: 44px;
+  height: 44px;
+  margin: -22px 0 0 -22px;
+  border-radius: 9999px;
+  background: radial-gradient(circle, color-mix(in srgb, var(--glow-color) 40%, transparent) 0%, transparent 70%);
+  animation: click-glow-halo 600ms ease-out forwards;
+}
+
+.click-glow-spark {
+  width: 6px;
+  height: 6px;
+  margin: -3px 0 0 -3px;
+  border-radius: 9999px;
+  background: var(--glow-color);
+  box-shadow: 0 0 6px var(--glow-color);
+  opacity: 0.75;
+  animation: click-glow-spark 600ms cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+}
+
+.click-glow-star {
+  width: 12px;
+  height: 12px;
+  margin: -6px 0 0 -6px;
+  background: radial-gradient(circle, #fff7d6 0%, var(--glow-color) 70%);
+  clip-path: polygon(50% 0, 58% 42%, 100% 50%, 58% 58%, 50% 100%, 42% 58%, 0 50%, 42% 42%);
+  filter: drop-shadow(0 0 3px rgba(180, 83, 9, 0.45));
+  animation: click-glow-star 600ms ease-out forwards;
+}
+
+@keyframes click-glow-halo {
+  from { transform: scale(0.4); opacity: 0.9; }
+  to { transform: scale(1.4); opacity: 0; }
+}
+
+@keyframes click-glow-spark {
+  from { transform: translate(0, 0) scale(1); opacity: 0.8; }
+  to { transform: translate(var(--glow-dx), var(--glow-dy)) scale(0.4); opacity: 0; }
+}
+
+@keyframes click-glow-star {
+  0% { transform: scale(0.3) rotate(0deg); opacity: 0; }
+  35% { transform: scale(1.1) rotate(20deg); opacity: 0.95; }
+  100% { transform: scale(0.8) rotate(45deg); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .click-glow-layer {
+    display: none;
+  }
+}

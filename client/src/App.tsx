@@ -16,6 +16,7 @@ import { initRecorder, cleanup } from './services/recorder'
 import { initTheme } from './stores/theme'
 import { initAiEnabled } from './stores/aiEnabled'
 import { initActivePreset } from './stores/activePreset'
+import { startClickGlow } from './stores/clickGlow'
 import { getSetting, setSetting } from './services/store'
 // [自訂] 更新已註解停用：import { startUpdateService } from './features/update/autoUpdate'
 // [自訂] S18／L-19 WebDAV 自動備份已註解停用：import { startWebDavBackupService } from './features/backup/autoWebdavBackup'
@@ -54,6 +55,9 @@ export default function App() {
       cleanup()
     }
   }, [])
+
+  // [自訂] SC-63：點擊光輝只裝在主視窗；錄音懸浮窗是另一個入口，不載入。
+  useEffect(() => startClickGlow(), [])
 
   // 自动更新安装完成后，看门人进程会带 --open-about 重新拉起本程序，
   // Rust 端据此发出 open-about 事件，这里跳转到关于页方便用户确认更新已生效。

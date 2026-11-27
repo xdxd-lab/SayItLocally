@@ -24,6 +24,7 @@ import {
 import { CustomWaveEditor } from './CustomWaveEditor'
 import { type TranslationKey } from '@/i18n'
 import { useT } from '@/i18n/useT'
+import { loadClickGlowEnabled, setClickGlowEnabled } from '@/stores/clickGlow'
 
 const OVERLAY_OPTIONS: Array<{
   theme: Exclude<OverlayWaveTheme, 'custom'>
@@ -194,6 +195,7 @@ export default function AppearancePage() {
   // 「默认项高亮淡出、已保存项淡入」真的动画一遍 —— 那就是反复没修掉的那个「闪」。
   // 因此：揭开的那一帧仍然不带过渡，等再下一帧才允许过渡（此时颜色已无变化）。
   const [animate, setAnimate] = useState(false)
+  const [clickGlow, setClickGlow] = useState(true)
 
   useEffect(() => {
     // 先把所有值取回，再在同一个同步块里一次性落值 + 置 ready：React 会把这批更新
@@ -207,16 +209,18 @@ export default function AppearancePage() {
     //     同样可能先提交出一帧「已显示但值是默认值」。
     let cancelled = false
     void (async () => {
-      const [showDuration, streaming, waveTheme, waveCustom, width] = await Promise.all([
+      const [showDuration, streaming, waveTheme, waveCustom, width, glow] = await Promise.all([
         getSetting('overlayShowDuration', true).catch(() => true),
         getSetting('streamingDisplayEnabled', false).catch(() => false),
         getSetting('overlayWaveTheme', 'black-rainbow').catch(() => 'black-rainbow'),
         getSetting<unknown>('overlayWaveCustom', DEFAULT_CUSTOM_WAVE).catch(() => DEFAULT_CUSTOM_WAVE),
         getSetting('overlayWidth', 'medium').catch(() => 'medium'),
+        loadClickGlowEnabled(),
       ])
       if (cancelled) return
       setOverlayShowDuration(Boolean(showDuration))
       setStreamingDisplay(Boolean(streaming))
+      setClickGlow(glow)
       setOverlayWaveTheme(normalizeWaveTheme(waveTheme, 'black-rainbow'))
       setCustomWave(normalizeCustomWave(waveCustom))
       const w = width as OverlayWidthPreset
@@ -285,6 +289,12 @@ export default function AppearancePage() {
     await refreshOverlaySettings()
   }
 
+  const handleToggleClickGlow = () => {
+    const next = !clickGlow
+    setClickGlow(next)
+    void setClickGlowEnabled(next)
+  }
+
   const handleToggleStreamingDisplay = () => {
     const next = !streamingDisplay
     setStreamingDisplay(next)
@@ -325,6 +335,20 @@ export default function AppearancePage() {
                   <span className="text-sm font-medium">{theme.name}</span>
                 </button>
               ))}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* [自訂] SC-63：點擊光輝特效開關（預設開） */}
+        <Card>
+          <CardContent className="p-6">
+            <h2 className="mb-4 text-lg font-semibold">{t('appearance.effects')}</h2>
+            <div className="flex items-center justify-between">
+              <div className="pr-3">
+                <p className="text-sm font-medium">{t('appearance.clickGlow')}</p>
+                <p className="text-xs text-muted-foreground">{t('appearance.clickGlowDesc')}</p>
+              </div>
+              <Switch checked={clickGlow} onChange={handleToggleClickGlow} noAnimation={!animate} hidden={!ready} />
             </div>
           </CardContent>
         </Card>
