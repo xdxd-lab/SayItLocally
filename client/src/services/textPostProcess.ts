@@ -122,6 +122,28 @@ function maybeSpace(str: string, offset: number, replacement: string): string {
  */
 export function convertChineseNumbers(text: string): string {
   if (!text) return text
+  // [自訂] SC-67：辨識輸出已轉成台灣正體。下面的規則以簡體字（点两万亿钟时）撰寫，
+  // 正體輸入先對應成簡體再套規則，產出的標記（如「9点半」）再換回正體。
+  // 逐句判斷（與 Rust 端相同）：含假名（日文）或本來就含這些簡體字的句子維持原行為，不做對應。
+  // 不以半形「.」切句，避免切開小數。
+  return text.split(/(?<=[。！？!?；;…\n])/).map(convertChineseNumbersSentence).join('')
+}
+
+function convertChineseNumbersSentence(text: string): string {
+  if (/[\u3041-\u3096\u30a1-\u30fa\u31f0-\u31ff\uff66-\uff6f\uff71-\uff9d]/.test(text) || /[点两万亿钟时]/.test(text)) return convertChineseNumbersCore(text)
+  const mapped = text.replace(/[點兩萬億鐘時]/g, (c) => TRAD_NUMBER_CHARS[c] ?? c)
+  if (mapped === text) return convertChineseNumbersCore(text)
+  return convertChineseNumbersCore(mapped).replace(/[点两万亿钟时]/g, (c) => SIMP_NUMBER_CHARS[c] ?? c)
+}
+
+const TRAD_NUMBER_CHARS: Record<string, string> = {
+  '點': '点', '兩': '两', '萬': '万', '億': '亿', '鐘': '钟', '時': '时',
+}
+const SIMP_NUMBER_CHARS: Record<string, string> = Object.fromEntries(
+  Object.entries(TRAD_NUMBER_CHARS).map(([trad, simp]) => [simp, trad]),
+)
+
+function convertChineseNumbersCore(text: string): string {
   let result = text
 
   // 1. 百分之X → X%
@@ -187,7 +209,7 @@ export function convertChineseNumbers(text: string): string {
   //        ② 后面紧跟「钟」（一点钟）；
   //        ③ 小时是含「十」的两位（十点 / 十二点，几乎只作时间用）。
   //      无信号时宁可不转，交给 AI 整理处理歧义场景（与整体「尽力而为」取向一致）。
-  const TIME_OF_DAY_PREFIX = /(凌晨|清晨|早晨|早上|上午|中午|下午|傍晚|晚上|夜里|半夜|今早|今晚|明早|明晚|昨晚)$/
+  const TIME_OF_DAY_PREFIX = /(凌晨|清晨|早晨|早上|上午|中午|下午|傍晚|晚上|夜里|夜裡|半夜|今早|今晚|明早|明晚|昨晚)$/
   result = result.replace(
     new RegExp(`([${TIME_HOUR}]+)点(?![${DIGIT_CHARS}点])`, 'g'),
     (m: string, hourStr: string, offset: number, str: string) => {

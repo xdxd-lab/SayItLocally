@@ -63,20 +63,26 @@ pub async fn cloud_polish(request: CloudPolishRequest) -> Result<AiResult, Strin
         //     )
         //     .await
         // }
-        "ollama" => {
-            ai_ollama::polish(
-                &request.text,
-                config,
-                request.system_prompt.as_deref(),
-                request.text_context.as_ref(),
-            )
-            .await
-        }
+        // [自訂] SC-67：AI 校對的輸出同樣轉成台灣正體（含假名時視為日文不轉）。
+        "ollama" => ai_ollama::polish(
+            &request.text,
+            config,
+            request.system_prompt.as_deref(),
+            request.text_context.as_ref(),
+        )
+        .await
+        .map(finalize_polish),
         other => Err(error_protocol::encode(
             "connect_failed",
             format!("Unknown AI provider: {}", other),
         )),
     }
+}
+
+/// [自訂] SC-67：AI 校對的回傳結果。文字轉成台灣正體（含假名的句子視為日文不轉）。
+fn finalize_polish(mut result: AiResult) -> AiResult {
+    result.text = crate::zh_output::to_taiwan(&result.text, "auto");
+    result
 }
 
 /// 测试 AI 连接（Tauri command）
@@ -413,6 +419,17 @@ pub async fn test_asr_connection(config: AsrProviderConfig) -> Result<TestResult
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn finalize_polish_returns_taiwan_traditional_text() {
+        // 「軟體」的簡體寫法 + 日文句子：只轉中文句。
+        let result = finalize_polish(AiResult {
+            text: "\u{8f6f}\u{4ef6}\u{3002}\u{4eca}\u{65e5}\u{306f}\u{3002}".into(),
+            elapsed_ms: 7,
+        });
+        assert_eq!(result.text, "軟體。\u{4eca}\u{65e5}\u{306f}\u{3002}");
+        assert_eq!(result.elapsed_ms, 7);
+    }
 
     /// 一段人造的分发函数，形状覆盖真实 match 里出现过的每一种臂。
     ///

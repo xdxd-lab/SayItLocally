@@ -197,12 +197,21 @@ fn transcribe_chunks(
     samples: &[f32],
     chunks: &[std::ops::Range<usize>],
 ) -> Result<String, String> {
-    let mut text = String::new();
+    let mut parts = Vec::with_capacity(chunks.len());
     for chunk in chunks {
-        let part = gguf_asr::transcribe(model_id, lang, accel, gpu, &samples[chunk.clone()], SR)?;
-        gguf_asr::append_segment_text(&mut text, &part);
+        parts.push(gguf_asr::transcribe(model_id, lang, accel, gpu, &samples[chunk.clone()], SR)?);
     }
-    Ok(text)
+    Ok(assemble_transcript(&parts, lang))
+}
+
+/// [自訂] SC-67：辨識文字的單一出口。每一段先各自轉成台灣正體再串接，
+/// 被判成日文的一段（含假名）不會連累其他段；段內再逐句判斷（見 `zh_output::to_taiwan`）。
+fn assemble_transcript(parts: &[String], lang: &str) -> String {
+    let mut text = String::new();
+    for part in parts {
+        gguf_asr::append_segment_text(&mut text, &crate::zh_output::to_taiwan(part, lang));
+    }
+    text
 }
 
 #[tauri::command]
@@ -347,6 +356,19 @@ pub fn spawn_legacy_reclaim(storage: &crate::storage::Storage) -> Option<std::th
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn assembled_transcript_converts_each_chunk() {
+        // 第一段：「軟體」的簡體寫法、沒有句末標點；第二段：日文（含假名）；第三段：「測試。」的簡體寫法。
+        let parts = [
+            "\u{8f6f}\u{4ef6}".to_string(),
+            "\u{4eca}\u{65e5}\u{306f}".to_string(),
+            " \u{6d4b}\u{8bd5}\u{3002} ".to_string(),
+        ];
+        assert_eq!(assemble_transcript(&parts, "auto"), "軟體 \u{4eca}\u{65e5}\u{306f} 測試。");
+        assert_eq!(assemble_transcript(&parts[..1], "ja"), "\u{8f6f}\u{4ef6}");
+        assert_eq!(assemble_transcript(&[], "auto"), "");
+    }
 
     #[test]
     fn legacy_reclaim_preserves_custom_and_unknown_files() {
@@ -534,7 +556,62 @@ mod tests {
                 result.text,
             );
             assert!(!result.text.trim().is_empty(), "{name}: empty transcript");
+            // [自訂] SC-67：中文輸出一律是台灣正體，且不得殘留簡體專用字。
+            assert_eq!(crate::zh_output::count_simplified_only(&result.text), 0, "{name}: simplified characters remain");
+            if name == "test_zh.wav" {
+                assert_eq!(result.text.trim(), "語音輸入法測試成功。", "{name}");
+            }
         }
+    }
+
+    /// [自訂] SC-67：交叉測試第一段（只在雲端跑）。對 `SAYIT_SMOKE_MODELS_DIR` 裡已下載的每個模型，
+    /// 把內建測試語音的**原始**辨識文字（未轉換）寫成 TSV，交給 `tools/zh-crosstest` 依各後端轉換比較。
+    /// 欄位：model、file、elapsed_ms、raw_text（換行與 tab 以空白取代）。
+    #[test]
+    #[ignore]
+    fn cloud_smoke_zh_matrix_dump() {
+        struct Reset;
+        impl Drop for Reset {
+            fn drop(&mut self) {
+                super::super::gguf_asr::unload();
+                downloader::set_custom_models_dir(None);
+            }
+        }
+        let (Some(dir), Some(out)) = (std::env::var_os("SAYIT_SMOKE_MODELS_DIR"), std::env::var_os("SAYIT_ZH_MATRIX_OUT")) else {
+            eprintln!("skip: SAYIT_SMOKE_MODELS_DIR or SAYIT_ZH_MATRIX_OUT is not set");
+            return;
+        };
+        let _guard = downloader::TEST_MODEL_LEASES.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let _reset = Reset;
+        downloader::set_custom_models_dir(Some(std::path::PathBuf::from(dir)));
+        super::super::gguf_asr::init_backends();
+        let mut rows = String::from("model\tfile\telapsed_ms\traw_text\n");
+        let mut models = 0;
+        for model in super::super::catalog::available_models() {
+            if !super::super::gguf_asr::model_is_downloaded(&model.id) {
+                continue;
+            }
+            models += 1;
+            for name in ["test_zh.wav", "test_en.wav"] {
+                let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("resources").join(name);
+                let bytes = std::fs::read(&path).unwrap();
+                let pcm = wav_pcm16_mono_16k(&bytes).unwrap_or_else(|error| panic!("{name}: {error}"));
+                let samples: Vec<f32> = pcm
+                    .chunks_exact(2)
+                    .map(|c| i16::from_le_bytes([c[0], c[1]]) as f32 / 32768.0)
+                    .collect();
+                let started = Instant::now();
+                let raw = super::super::gguf_asr::transcribe(&model.id, "auto", "auto", "", &samples, SR)
+                    .unwrap_or_else(|error| format!("ERROR: {error}"));
+                let elapsed = started.elapsed().as_millis();
+                let clean = raw.replace(['\t', '\n', '\r'], " ");
+                eprintln!("[zh-matrix] model={} file={name} elapsed_ms={elapsed} raw={clean:?}", model.id);
+                rows.push_str(&format!("{}\t{name}\t{elapsed}\t{clean}\n", model.id));
+            }
+            super::super::gguf_asr::unload();
+        }
+        std::fs::write(&out, rows).unwrap();
+        assert!(models > 0, "no downloaded model found");
     }
 
     /// 走真实生产路径：base64 → i16→f32 → Silero VAD → GGUF 引擎。

@@ -37,3 +37,14 @@ describe('segmentAsrText', () => {
     expect(segmentAsrText(undefined as unknown as string)).toBeFalsy()
   })
 })
+
+// [自訂] SC-67：辨識輸出已轉成台灣正體，分段詞的正體寫法也要觸發分段。
+describe('segmentAsrText：正體輸入', () => {
+  it('正體的話題轉換詞與簡體一樣分段', () => {
+    const lead = '今天我們先把登入頁面的錯誤修好然後推到測試環境讓大家確認一下。'
+    for (const shift of ['還有就是', '接下來', '最後就是', '總的來說', '第二個']) {
+      const text = `${lead}${shift}要把文件補齊，順便整理一下待辦清單裡的項目。`
+      expect(segmentAsrText(text), shift).toBe(`${lead}\n\n${shift}要把文件補齊，順便整理一下待辦清單裡的項目。`)
+    }
+  })
+})
