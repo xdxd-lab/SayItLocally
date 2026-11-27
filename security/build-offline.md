@@ -12,7 +12,7 @@
 | L-84 | npm 缺套件時，會從 `registry.npmjs.org` 下載 | `npm_config_offline=true`；`--install` 時執行 `npm ci --offline --include=dev --include=optional` | 快取不完整時會直接失敗，不會改去下載。npm 的離線設定只管 npm 本身，管不到安裝腳本自己發出的連線 |
 | L-85 | `npm ci` 預設做 audit，會送出依賴清單 | `.npmrc` 設定 `audit=false`，腳本另加 `--no-audit` | — |
 | L-86 | npm 會檢查自身新版本 | `.npmrc` 設定 `update-notifier=false` | — |
-| L-87 | esbuild 的 postinstall 找不到 binary 時，會自行下載 | 安裝時加 `--ignore-scripts`，不執行任何安裝腳本；再依 Node 的架構確認 `@esbuild/darwin-*` 的 binary 已在本機。esbuild 的 postinstall 只是加速步驟，不執行也能正常使用 | 日後若有其他套件新增安裝腳本，要重新檢查 |
+| L-87 | esbuild 的 postinstall 找不到 binary 時，會自行下載 | 安裝時加 `--ignore-scripts`，不執行任何安裝腳本；再確認 Node 是 arm64（其他架構直接停下），且 `@esbuild/darwin-arm64` 的 binary 已在本機。esbuild 的 postinstall 只是加速步驟，不執行也能正常使用 | 日後若有其他套件新增安裝腳本，要重新檢查 |
 | L-88、L-89 | Cargo 會更新索引、下載 crate | `CARGO_NET_OFFLINE=true`，並把 `--locked` 傳給 cargo | 快取不完整時直接失敗 |
 | L-90 | rustup 會補裝工具鏈 | SC-64 起：版本取自 `client/src-tauri/rust-toolchain.toml` 的 `channel`（目前 1.100.0），只接受三段數字的固定版本；工具鏈為 `<版本>-aarch64-apple-darwin`。確認 Cargo、rustc 與標準庫已安裝後，將工具鏈的 `bin` 放在 PATH 首位，固定 `CARGO`、`RUSTC`，另設 `RUSTUP_TOOLCHAIN` 為同一工具鏈、`RUSTUP_AUTO_INSTALL=0` | 只支援 Apple Silicon（`uname -m` 為 arm64）。工具鏈未安裝時直接停下，不會下載；rustup 的預設工具鏈與目錄 override 不參與選擇 |
 | L-91 | 缺 Xcode、CLT 或 SDK 時，系統會補裝 | 檢查 `xcode-select -p`、`xcrun --show-sdk-path`、`cmake`，缺少就停下 | macOS 的背景更新不在腳本控制範圍內 |
@@ -48,7 +48,7 @@
 
 ## 第一版自建前的狀態（SC-64，2026-11-27）
 
-- 只建本機環境：macOS、Apple Silicon（aarch64-apple-darwin），預設只產生 `.app`（`--bundles app`）；不做 universal、Intel、Windows、Linux。
+- 只建本機環境：macOS、Apple Silicon（aarch64-apple-darwin），預設只產生 `.app`：Tauri 設定的預設是 app＋dmg，腳本在沒有指定 `--bundles` 時自動帶上 `--bundles app`。Node 也必須是 arm64 原生版，Rosetta 下的 x64 Node 會直接停下，避免前端與 Rust 架構混用；不做 universal、Intel、Windows、Linux。
 - Rust：1.100.0 已安裝；Cargo 快取以 `cargo metadata --offline --locked` 與 `cargo fetch --offline --locked` 確認涵蓋鎖定檔，不需連網。
 - npm：以套件內容雜湊比對本機快取，鎖定檔中本機平台需要的 257 個套件檔原有 41 筆不在快取（多為前次依賴升級後的新版本，含 Tauri CLI 2.12.6、Vite 6.4.6、Babel 相關套件）。快取的索引記錄的是舊鏡像網址，npm 依內容雜湊取用，不影響離線安裝。
 - 補齊方式：經使用者同意，在一次性的暫存目錄依鎖定檔從 `registry.npmjs.org` 取得，不執行安裝腳本、不更新版本。補齊後以同一方法確認缺少數為 0。

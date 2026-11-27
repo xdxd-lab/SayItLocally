@@ -15,6 +15,7 @@
 #
 # 用法（在 client/ 目錄）：scripts/macos/build-offline.sh [--install] [--bundles <app,dmg>] [--debug] [--verbose]
 #   --install  先用本機快取安裝 node_modules（npm ci）
+#   --bundles  沒有指定時只產生 .app（等同 --bundles app），不打包 dmg
 # 其他 tauri build 參數一律拒絕：自訂 config 或 runner 可能繞過這裡的離線設定。
 # 快取不完整時建置會直接失敗，不會改去下載；屆時請先決定要不要連網補齊。
 set -euo pipefail
@@ -79,6 +80,7 @@ export PATH="$HOME/.local/node/bin:$HOME/.local/cmake/CMake.app/Contents/bin:$PA
 apply_offline_env
 
 INSTALL=0
+HAVE_BUNDLES=0
 TAURI_ARGS=()
 while (( $# )); do
   case "$1" in
@@ -86,12 +88,15 @@ while (( $# )); do
     --bundles|-b)
       (( $# >= 2 )) || { echo "$1 後面要接 bundle 種類，例如 app 或 app,dmg" >&2; exit 2; }
       [[ "$2" == (app|dmg|app,dmg|dmg,app) ]] || { echo "只接受 app、dmg：$2" >&2; exit 2; }
+      HAVE_BUNDLES=1
       TAURI_ARGS+=("$1" "$2"); shift ;;
     --debug|-d|--verbose|-v) TAURI_ARGS+=("$1") ;;
     *) echo "不接受的參數：$1（自訂 config、runner 等可能繞過離線設定）" >&2; exit 2 ;;
   esac
   shift
 done
+# 使用者決定第一版只做 .app；Tauri 設定的預設是 app＋dmg，所以沒指定時明確帶上 --bundles app。
+(( HAVE_BUNDLES )) || TAURI_ARGS+=(--bundles app)
 
 use_local_rust
 
@@ -108,11 +113,12 @@ fi
 export CMAKE="$(command -v cmake)"
 /usr/bin/xcrun --sdk macosx --show-sdk-path >/dev/null 2>&1 || { echo "找不到 macOS SDK（不會自動補裝）。" >&2; exit 1; }
 
-# L-87：esbuild 平台套件名稱依 Node 的架構判斷（不是 uname，避免 Rosetta 下不一致）
-case "$(node -p process.arch)" in
+# L-87：esbuild 平台套件名稱依 Node 的架構判斷（不是 uname）。只支援 arm64：
+# Rosetta 下的 x64 Node 會讓前端用 x64 的 esbuild、Rust 用 arm64，形成混合建置，所以直接停下。
+NODE_ARCH="$(node -p process.arch)"
+case "$NODE_ARCH" in
   arm64) ESBUILD_PKG=darwin-arm64 ;;
-  x64) ESBUILD_PKG=darwin-x64 ;;
-  *) echo "不支援的 Node 架構：$(node -p process.arch)" >&2; exit 1 ;;
+  *) echo "Node 是 $NODE_ARCH 版；只支援 Apple Silicon 原生（arm64）的 Node，請改用 arm64 版 Node（不要在 Rosetta 下執行）。" >&2; exit 1 ;;
 esac
 ESBUILD_BIN="node_modules/@esbuild/$ESBUILD_PKG/bin/esbuild"
 
