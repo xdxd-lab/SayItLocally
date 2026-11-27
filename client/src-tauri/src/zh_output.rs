@@ -5,7 +5,7 @@
 //! 歷史（含 ASR 原文）、剪貼簿、後備卡片與匯出拿到的都已是正體。
 //!
 //! - 後端：ferrous-opencc（Apache-2.0，純 Rust，字典來自 OpenCC，編譯時內嵌，執行時不讀檔、
-//!   不連網）的 `s2twp`（簡體 → 台灣正體，含台灣慣用詞，例如软件 → 軟體）。
+//!   不連網）的 `s2twp`（簡體 → 台灣正體，含台灣慣用詞，例如簡體的「軟件」寫法轉成「軟體」）。
 //! - 只轉中文與粵語：介面指定英文、日文、韓文時不轉；自動偵測時，輸出含假名就視為日文不轉。
 //! - OpenCC 的台灣標準會把「台」寫成「臺」；本專案一律用「台」（台灣、台北），轉換後統一改回。
 //! - 產品路徑只有 ferrous-opencc，使用者介面不提供關閉。其他後端的比較在
@@ -142,31 +142,31 @@ mod tests {
 
     /// 簡體輸入以 Unicode 跳脫保存，讓原始碼本身不含簡體字。
     const CASES: &[(&str, &str)] = &[
-        // 软件 → 軟體
+        // → 軟體
         ("\u{8f6f}\u{4ef6}", "軟體"),
-        // 内存 → 記憶體
+        // → 記憶體
         ("\u{5185}\u{5b58}", "記憶體"),
-        // 信息 → 資訊
+        // → 資訊
         ("\u{4fe1}\u{606f}", "資訊"),
-        // 视频 → 影片
+        // → 影片
         ("\u{89c6}\u{9891}", "影片"),
-        // 默认设置 → 預設設定
+        // → 預設設定
         ("\u{9ed8}\u{8ba4}\u{8bbe}\u{7f6e}", "預設設定"),
-        // 后天去皇后大道 → 後天去皇后大道
+        // → 後天去皇后大道
         ("\u{540e}\u{5929}\u{53bb}\u{7687}\u{540e}\u{5927}\u{9053}", "後天去皇后大道"),
-        // 头发和发展 → 頭髮和發展
+        // → 頭髮和發展
         ("\u{5934}\u{53d1}\u{548c}\u{53d1}\u{5c55}", "頭髮和發展"),
-        // 干净的干部 → 乾淨的幹部
+        // → 乾淨的幹部
         ("\u{5e72}\u{51c0}\u{7684}\u{5e72}\u{90e8}", "乾淨的幹部"),
-        // 只有一只猫 → 只有一隻貓
+        // → 只有一隻貓
         ("\u{53ea}\u{6709}\u{4e00}\u{53ea}\u{732b}", "只有一隻貓"),
-        // 里面走了三公里 → 裡面走了三公里
+        // → 裡面走了三公里
         ("\u{91cc}\u{9762}\u{8d70}\u{4e86}\u{4e09}\u{516c}\u{91cc}", "裡面走了三公里"),
-        // 语音输入法测试成功。 → 語音輸入法測試成功。
+        // → 語音輸入法測試成功。
         ("\u{8bed}\u{97f3}\u{8f93}\u{5165}\u{6cd5}\u{6d4b}\u{8bd5}\u{6210}\u{529f}\u{3002}", "語音輸入法測試成功。"),
-        // 台北的天气，三台机器 → 台北的天氣，三台機器（「台」不改成「臺」）
+        // → 台北的天氣，三台機器（「台」不改成「臺」）
         ("\u{53f0}\u{5317}\u{7684}\u{5929}\u{6c14}\u{ff0c}\u{4e09}\u{53f0}\u{673a}\u{5668}", "台北的天氣，三台機器"),
-        // 台风 → 颱風
+        // → 颱風
         ("\u{53f0}\u{98ce}", "颱風"),
     ];
 
@@ -195,11 +195,11 @@ mod tests {
 
     #[test]
     fn japanese_and_non_chinese_languages_are_left_alone() {
-        // 今日は東京で会議があります。（「会」是日文寫法，不可改成「會」）
+        // 日文例句（含假名），其中的漢字是日文寫法，不可改成正體。
         let japanese = "\u{4eca}\u{65e5}\u{306f}\u{6771}\u{4eac}\u{3067}\u{4f1a}\u{8b70}\u{304c}\u{3042}\u{308a}\u{307e}\u{3059}\u{3002}";
         assert_eq!(to_taiwan(japanese, "auto"), japanese);
         assert_eq!(to_taiwan(japanese, "zh"), japanese, "kana always means Japanese");
-        // 会议 → 會議，但語種指定為日文或英文時不轉。
+        // 「會議」的簡體寫法會轉成「會議」，但語種指定為日文、英文或韓文時不轉。
         let meeting = "\u{4f1a}\u{8bae}";
         assert_eq!(to_taiwan(meeting, "auto"), "會議");
         for language in ["ja", "en", "ko"] {
@@ -229,5 +229,40 @@ mod tests {
         }
         // 字表抓不到「后、里、干、只、内」這類字（見模組說明），只要求至少一半的樣本被抓到。
         assert!(inputs_with_hits * 2 >= CASES.len(), "{inputs_with_hits}");
+    }
+
+    /// 兩個出口都必須經過 `to_taiwan`。出口在需要模型或 Ollama 的路徑上，單元測試跑不到，
+    /// 所以比照 gguf_asr 的做法直接檢查原始碼（去掉 `//` 註解後）。
+    #[test]
+    fn both_output_exits_call_to_taiwan() {
+        fn code_only(source: &str) -> String {
+            source
+                .lines()
+                .map(|line| line.split("//").next().unwrap_or(""))
+                .collect::<Vec<_>>()
+                .join("\n")
+        }
+        for (file, source, start, end) in [
+            (
+                "local_asr.rs",
+                include_str!("models/local_asr.rs"),
+                "async fn transcribe_samples(",
+                "fn transcribe_chunks(",
+            ),
+            (
+                "registry.rs",
+                include_str!("providers/registry.rs"),
+                "pub async fn cloud_polish(",
+                "pub async fn test_ai_connection(",
+            ),
+        ] {
+            let code = code_only(source);
+            let from = code.find(start).unwrap_or_else(|| panic!("{file}: {start} not found"));
+            let to = code[from..].find(end).map(|offset| from + offset).unwrap_or_else(|| panic!("{file}: {end} not found"));
+            assert!(
+                code[from..to].contains("crate::zh_output::to_taiwan("),
+                "{file}: the output exit no longer converts to Traditional Chinese (Taiwan)"
+            );
+        }
     }
 }
