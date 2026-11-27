@@ -86,23 +86,23 @@ fn notify_storage_recovery(recovery: storage::StorageRecovery) {
     };
     commands::system::write_log_line(&format!("[storage] {summary}"));
     // [自訂] SCAN1-2（L-72）：提示改成「副本只在本機、可能含舊資料與密鑰、請自行刪除」，不再請使用者把檔案交給開發者。
-    let zh = matches!(locale::system_ui_lang(), locale::Lang::ZhCn);
+    let zh = matches!(locale::system_ui_lang(), locale::Lang::ZhTw);
     let text = match &recovery {
         storage::StorageRecovery::MovedAside { backup, orphaned } => {
             let reason = match (zh, orphaned) {
-                (true, true) => "SayItLocally 发现未配对的数据库伴随文件。",
-                (true, false) => "SayItLocally 的本地数据库文件损坏，无法读取。",
+                (true, true) => "SayItLocally 發現沒有配對的資料庫附屬檔案。",
+                (true, false) => "SayItLocally 的本機資料庫檔案已損毀，無法讀取。",
                 (false, true) => "SayItLocally found database companion files without a usable main file.",
                 (false, false) => "SayItLocally could not read its local database because it is damaged.",
             };
             if zh {
-                format!("{reason}\n\n已用全新的数据启动，设置和历史记录暂时为空。\n原文件已保留，可在设置的数据库副本列表中查看。副本路径：\n{}\n\n这个副本只在本机，可能含有旧的设置、历史记录或密钥。不需要时请自行删除，请勿发给他人。旧录音已暂停自动清理，可在设置中恢复。", backup.display())
+                format!("{reason}\n\n已用全新的資料啟動，設定和歷史記錄暫時是空的。\n原檔案已保留，可在設定的資料庫副本清單中查看。副本路徑：\n{}\n\n這個副本只在本機，可能含有舊的設定、歷史記錄或金鑰。不需要時請自行刪除，請勿傳給他人。舊錄音已暫停自動清理，可在設定中恢復。", backup.display())
             } else {
                 format!("{reason}\n\nIt has started with fresh data, so settings and history are empty for now.\nThe original files are listed under Database Copies in Settings. Copy path:\n{}\n\nThis copy stays on this computer and may contain old settings, history or keys. Delete it yourself when you no longer need it, and do not send it to anyone. Automatic recording cleanup is paused. You can resume it in Settings.", backup.display())
             }
         }
         storage::StorageRecovery::MovedAsideInMemory { backup } => if zh {
-            format!("SayItLocally 已保留原数据库文件，但无法打开新数据文件。副本路径：\n{}\n\n本次使用内存，设置和历史记录退出后不会保存。旧录音已暂停自动清理。", backup.display())
+            format!("SayItLocally 已保留原資料庫檔案，但無法開啟新的資料檔案。副本路徑：\n{}\n\n這次使用記憶體，設定和歷史記錄在結束後不會保存。舊錄音已暫停自動清理。", backup.display())
         } else {
             format!("SayItLocally kept the original database files but could not open a replacement. Copy path:\n{}\n\nSettings and history will not be saved after you quit. Automatic recording cleanup is paused.", backup.display())
         },
@@ -111,13 +111,13 @@ fn notify_storage_recovery(recovery: storage::StorageRecovery) {
             let current_files = storage::recovery::MANUAL_RECOVERY_FILES.join("\n");
             let hold = storage::recovery::RECORDING_HOLD_FILE;
             if zh {
-                format!("SayItLocally 未完成数据库恢复。原数据库文件未被删除，有些可能已经移入副本。本次使用内存，退出后不会保存本次的设置和历史记录。\n\n数据文件夹：\n{}\n\n1. 退出所有正在运行的 SayItLocally。\n2. 将整个数据文件夹（包括录音和数据库副本）备份到另一个位置。\n3. 把下列仍在原数据文件夹中的项目全部移到同一个新的本地文件夹，保留原文件名。请将已生成的数据库副本留在原处。\n{current_files}\n4. 保留原数据文件夹里的 {hold}。如果没有这个文件，请在原数据文件夹中新建一个同名空白文件（不要加 .txt），以暂停清理旧录音。\n5. 确认第 3 步列出的项目都已移走，再重开 App。App 会建立新数据库，旧数据仍在备份中。如果无法备份、移动文件或写入原文件夹，请先解决访问权限或磁盘空间问题。", dir.display())
+                format!("SayItLocally 沒有完成資料庫復原。原資料庫檔案沒有被刪除，有些可能已經移入副本。這次使用記憶體，結束後不會保存這次的設定和歷史記錄。\n\n資料資料夾：\n{}\n\n1. 結束所有正在執行的 SayItLocally。\n2. 將整個資料資料夾（包括錄音和資料庫副本）備份到另一個位置。\n3. 把下列仍在原資料資料夾中的項目全部移到同一個新的本機資料夾，保留原檔名。已產生的資料庫副本請留在原處。\n{current_files}\n4. 保留原資料資料夾裡的 {hold}。如果沒有這個檔案，請在原資料資料夾中新增一個同名的空白檔案（不要加 .txt），以暫停清理舊錄音。\n5. 確認第 3 步列出的項目都已移走，再重新開啟 App。App 會建立新的資料庫，舊資料仍在備份中。如果無法備份、搬移檔案或寫入原資料夾，請先解決存取權限或磁碟空間問題。", dir.display())
             } else {
                 format!("SayItLocally could not finish database recovery. No original database files were deleted. Some may already be in a recovery copy. This session uses memory, so its settings and history will be lost when you quit.\n\nData folder:\n{}\n\n1. Quit all running instances of SayItLocally.\n2. Back up the entire data folder, including recordings and database copies, to another location.\n3. Move every item listed below that is still in the original data folder into the same new local folder. Keep their names and leave any existing database copies in place.\n{current_files}\n4. Keep {hold} in the original data folder. If it is missing, create an empty file with that exact name (no .txt extension) there to pause cleanup of old recordings.\n5. Verify that none of the items in step 3 remain in the original data folder, then reopen the app. The app will create a fresh database. The backup still contains your old files. If you cannot back up, move, or write files, resolve folder access or disk space first.", dir.display())
             }
         },
         storage::StorageRecovery::InMemory => if zh {
-            "SayItLocally 无法使用本地数据库，可能是其他程序正在使用、没有权限或磁盘已满。应用未搬移原文件。\n\n本次使用内存，设置和历史记录退出后不会保存。".to_string()
+            "SayItLocally 無法使用本機資料庫，可能是其他程式正在使用、沒有權限或磁碟已滿。App 沒有搬移原檔案。\n\n這次使用記憶體，設定和歷史記錄在結束後不會保存。".to_string()
         } else {
             "SayItLocally could not use its local database. Another program may be using it, permissions may be missing, or the disk may be full. The app left the original files in place.\n\nThis session uses memory. Settings and history will not be saved after you quit.".to_string()
         },
@@ -379,12 +379,12 @@ fn recreate_main_window(app: &tauri::AppHandle, launched_minimized: bool) {
 }
 
 fn notify_main_window_unavailable() {
-    let zh = matches!(locale::system_ui_lang(), locale::Lang::ZhCn);
+    let zh = matches!(locale::system_ui_lang(), locale::Lang::ZhTw);
     // mac 上没有托盘、也不用右键：退出入口是屏幕顶部菜单栏里的 SayItLocally 图标
     let text = match (zh, cfg!(target_os = "macos")) {
-        (true, false) => "SayItLocally 的主界面没能启动，语音输入暂时不可用。\n\n请从托盘图标右键退出 SayItLocally，再重新打开。如果反复出现，请在设置里提交诊断。",
+        (true, false) => "SayItLocally 的主視窗沒能啟動，語音輸入暫時無法使用。\n\n請在系統匣圖示上按右鍵結束 SayItLocally，再重新開啟。如果反覆出現，請在設定裡提交診斷。",
         (false, false) => "SayItLocally's main window failed to start, so voice input is unavailable for now.\n\nPlease quit SayItLocally from the tray icon and open it again. If this keeps happening, send a diagnostics report from Settings.",
-        (true, true) => "SayItLocally 的主界面没能启动，语音输入暂时不可用。\n\n请点屏幕顶部菜单栏里的 SayItLocally 图标，选「退出 SayItLocally」，再重新打开。如果反复出现，请在设置里提交诊断。",
+        (true, true) => "SayItLocally 的主視窗沒能啟動，語音輸入暫時無法使用。\n\n請點螢幕上方選單列裡的 SayItLocally 圖示，選「結束 SayItLocally」，再重新打開。如果反覆出現，請在設定裡提交診斷。",
         (false, true) => "SayItLocally's main window failed to start, so voice input is unavailable for now.\n\nPlease quit SayItLocally from its icon in the menu bar at the top of the screen, then open it again. If this keeps happening, send a diagnostics report from Settings.",
     };
     #[cfg(target_os = "windows")]

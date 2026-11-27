@@ -788,18 +788,18 @@ describe('effectiveAsrCredentials', () => {
 
 describe('describeAsrMissing', () => {
   it('豆包新版只要密钥', () => {
-    expect(describeAsrMissing(profile({ provider: 'doubao', console: 'new' }))).toBe('还没填 API Key')
+    expect(describeAsrMissing(profile({ provider: 'doubao', console: 'new' }))).toBe('還沒填 API Key')
     expect(describeAsrMissing(profile({ provider: 'doubao', console: 'new', apiKey: 'k' }))).toBe('')
   })
 
   it('豆包旧版两个都要，且先报密钥', () => {
-    expect(describeAsrMissing(profile({ provider: 'doubao', console: 'legacy' }))).toBe('还没填 Access Token')
-    expect(describeAsrMissing(profile({ provider: 'doubao', console: 'legacy', apiKey: 't' }))).toBe('还没填 App ID')
+    expect(describeAsrMissing(profile({ provider: 'doubao', console: 'legacy' }))).toBe('還沒填 Access Token')
+    expect(describeAsrMissing(profile({ provider: 'doubao', console: 'legacy', apiKey: 't' }))).toBe('還沒填 App ID')
     expect(describeAsrMissing(profile({ provider: 'doubao', console: 'legacy', apiKey: 't', appId: '1' }))).toBe('')
   })
 
   it('其它平台只要 API Key', () => {
-    expect(describeAsrMissing(profile({ provider: 'mimo' }))).toBe('还没填 API Key')
+    expect(describeAsrMissing(profile({ provider: 'mimo' }))).toBe('還沒填 API Key')
     expect(describeAsrMissing(profile({ provider: 'mimo', apiKey: 'k' }))).toBe('')
   })
 })
@@ -909,7 +909,7 @@ describe('gradeAsrLatency', () => {
   })
 
   it('按 RTF 分档', () => {
-    expect(gradeAsrLatency(300, 3).label).toBe('极速')
+    expect(gradeAsrLatency(300, 3).label).toBe('極速')
     expect(gradeAsrLatency(700, 3).label).toBe('很快')
     expect(gradeAsrLatency(1200, 3).label).toBe('正常')
     expect(gradeAsrLatency(2000, 3).label).toBe('偏慢')
@@ -933,7 +933,7 @@ describe('gradeAsrLatency', () => {
   })
 
   it('音频时长缺失时不硬猜档位', () => {
-    expect(gradeAsrLatency(1000, 0).label).toBe('已测通')
-    expect(gradeAsrLatency(1000, NaN).label).toBe('已测通')
+    expect(gradeAsrLatency(1000, 0).label).toBe('已測通')
+    expect(gradeAsrLatency(1000, NaN).label).toBe('已測通')
   })
 })

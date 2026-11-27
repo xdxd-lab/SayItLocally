@@ -82,7 +82,8 @@ export default function Home() {
    * 但它在 zh-CN 下不会给"千"这一档，会改掉现有中文显示，所以这里手写分支。
    */
   const formatCompactNumber = (num: number) => {
-    if (getLocale() === 'zh-CN') {
+    // [自訂] SC-65：中文介面（正體中文）用萬／千分檔。
+    if (getLocale() === 'zh-TW') {
       if (num >= 10000) return t('home.compactTenThousand', { value: (num / 10000).toFixed(1) })
       if (num >= 1000) return t('home.compactThousand', { value: (num / 1000).toFixed(1) })
       return `${num}`

@@ -20,7 +20,7 @@ export const DEFAULTS: Record<string, unknown> = {
   // 只管**界面文字**，不改识别语种。设置层已经有三个"语言"了
   // （localAsr.language / server.language 是 ASR 语种，Preset 决定输出语种），
   // 所以这个键必须带 ui. 前缀，别再起名叫 language。
-  'ui.language': 'auto', // 可选: 'auto'（跟随系统）| 'zh-CN' | 'en'
+  'ui.language': 'auto', // 可選: 'auto'（跟隨系統）| 'zh-TW' | 'en'
 
   // ── 工作模式 ──
   workMode: 'local', // [自訂 local-only] 只支援 'local'
@@ -57,7 +57,7 @@ export const DEFAULTS: Record<string, unknown> = {
   contextAwareWritingEnabled: false,
   contextSelectionAiProfileId: '', // 空字符串 = 选区编辑沿用当前 AI；否则引用已保存的 AI 服务
   aiPromptAppend: '', // 全局附加 prompt
-  'ai.builtinPromptLanguage': 'zh-CN', // 内置 Prompt 内容语言；与界面语言相互独立
+  'ai.builtinPromptLanguage': 'zh-TW', // 內建 Prompt 內容語言；與介面語言相互獨立
 
   // ── AI 供应商 ──
   // 下面这四个是**运行时生效的那一份**，录音链路、历史重跑、诊断页、反馈上报都只认它们。

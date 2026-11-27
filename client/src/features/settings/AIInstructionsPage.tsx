@@ -40,7 +40,7 @@ import { PageTitle } from '@/components/ui/info-tip'
 export default function AIInstructionsPage() {
   const t = useT()
   const [presets, setPresets] = useState<PromptPreset[]>([])
-  const [promptLanguage, setPromptLanguage] = useState<BuiltinPromptLanguage>('zh-CN')
+  const [promptLanguage, setPromptLanguage] = useState<BuiltinPromptLanguage>('zh-TW')
   const [promptLanguageChanging, setPromptLanguageChanging] = useState(false)
   const activePreset = useActivePreset()
   const activePresetId = activePreset.id

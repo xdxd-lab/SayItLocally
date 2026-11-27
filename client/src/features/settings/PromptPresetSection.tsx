@@ -119,7 +119,7 @@ export default function PromptPresetSection({
               label={t('promptPreset.promptLanguage')}
               value={promptLanguage}
               options={[
-                { value: 'zh-CN', label: t('promptPreset.languageZh') },
+                { value: 'zh-TW', label: t('promptPreset.languageZh') },
                 { value: 'en', label: t('promptPreset.languageEn') },
               ]}
               onChange={onPromptLanguageChange}

@@ -38,7 +38,8 @@ pub async fn polish(
     }
 
     let url = normalize_url(&config.api_url);
-    let sys_prompt = system_prompt.unwrap_or("你是语音转文本的校对助手。");
+    // [自訂] SC-65：預設提示詞要求以台灣正體中文回覆。
+    let sys_prompt = system_prompt.unwrap_or("你是語音轉文字的校對助手。請一律使用台灣正體中文與台灣用語輸出，即使輸入是簡體中文也要轉成正體；英文與程式碼維持原樣。");
     // Ollama /api/generate 是单一 prompt 字符串，没有 system/user 角色区分，
     // 这里手动拼接：system prompt 在前，user 消息（中性标签包裹）在后。
     let combined = format!("{}\n\n{}", sys_prompt, wrap_user_text(text, text_context));

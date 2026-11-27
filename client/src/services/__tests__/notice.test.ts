@@ -13,14 +13,19 @@ describe('normalizeRemoteNotice', () => {
   it('selects title, body, and link label for the active locale', () => {
     const payload = {
       ...base,
-      title: '维护通知',
-      body: '今晚维护',
-      linkLabel: '查看详情',
+      title: 'Fallback title',
+      body: 'Fallback body',
+      linkLabel: 'Fallback link',
       translations: {
         en: {
           title: 'Maintenance notice',
           body: 'Maintenance tonight',
           linkLabel: 'Learn more',
+        },
+        'zh-TW': {
+          title: '維護通知',
+          body: '今晚維護',
+          linkLabel: '查看詳細資料',
         },
       },
     }
@@ -29,11 +34,22 @@ describe('normalizeRemoteNotice', () => {
       body: 'Maintenance tonight',
       linkLabel: 'Learn more',
     })
-    expect(normalizeRemoteNotice(payload, 'zh-CN')).toMatchObject({
-      title: '维护通知',
-      body: '今晚维护',
-      linkLabel: '查看详情',
+    expect(normalizeRemoteNotice(payload, 'zh-TW')).toMatchObject({
+      title: '維護通知',
+      body: '今晚維護',
+      linkLabel: '查看詳細資料',
     })
+  })
+
+  // [自訂] SC-65：舊格式公告可能帶簡體中文（zh-CN）翻譯；整則仍有效，但不會顯示那一份。
+  it('accepts but never shows a legacy simplified Chinese translation', () => {
+    const payload = {
+      ...base,
+      title: 'Fallback title',
+      translations: { 'zh-CN': { title: 'legacy-zh-cn-title' } },
+    }
+    expect(normalizeRemoteNotice(payload, 'zh-TW')?.title).toBe('Fallback title')
+    expect(normalizeRemoteNotice({ ...payload, translations: { fr: { title: 'x' } } }, 'zh-TW')).toBeNull()
   })
 
   it('falls back field by field to legacy strings', () => {

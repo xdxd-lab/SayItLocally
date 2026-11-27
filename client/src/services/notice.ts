@@ -9,7 +9,7 @@
 
 import { getBackendBaseUrl } from './runtimeConfig'
 import { getSetting, setSetting } from './store'
-import { getLocale, type Locale } from '@/i18n'
+import { getLocale, isLocale, LEGACY_ZH_LOCALE, type Locale } from '@/i18n'
 
 export type NoticeLevel = 'info' | 'warning' | 'critical'
 
@@ -75,7 +75,7 @@ function isValidNotice(v: unknown): v is RemoteNoticePayload {
     && typeof translations === 'object'
     && !Array.isArray(translations)
     && Object.entries(translations).every(([locale, value]) => (
-      (locale === 'zh-CN' || locale === 'en') && isTranslation(value)
+      (isLocale(locale) || locale === LEGACY_ZH_LOCALE) && isTranslation(value)
     ))
   )
   return typeof n.id === 'string' && n.id.length > 0

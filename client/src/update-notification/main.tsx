@@ -21,7 +21,7 @@ const initial: UpdateNotificationSnapshot = preview ? {
     version: '0.2.2',
     currentVersion: __APP_VERSION__,
     theme: params.get('theme') || 'light',
-    locale: isLocale(previewLocale) ? previewLocale : 'zh-CN',
+    locale: isLocale(previewLocale) ? previewLocale : 'zh-TW',
     installing: params.get('state') === 'installing',
     installFailed: params.get('state') === 'error',
   },

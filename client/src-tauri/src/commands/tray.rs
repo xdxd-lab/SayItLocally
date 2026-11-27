@@ -63,25 +63,26 @@ fn sync_ai_item(app: &AppHandle, enabled: bool) {
 /// 原生菜单的文字跟随界面语言设置（`ui.language`：auto 时跟系统）。
 /// 原生菜单不在网页里，前端的 i18n 管不到它，所以 Rust 自己判一次。
 fn ui_is_chinese(storage: &Storage) -> bool {
+    // [自訂] SC-65：設定值 zh-TW（或舊版的 zh-CN）→ 正體中文；auto 時跟系統。
     let setting = storage.get("ui.language", None);
-    match setting.as_str() {
-        Some("zh-CN") => true,
-        Some("en") => false,
-        _ => matches!(crate::locale::system_ui_lang(), crate::locale::Lang::ZhCn),
-    }
+    let lang = setting
+        .as_str()
+        .and_then(crate::locale::Lang::from_setting)
+        .unwrap_or_else(crate::locale::system_ui_lang);
+    lang == crate::locale::Lang::ZhTw
 }
 
 fn tray_labels(storage: &Storage) -> TrayLabels {
     let zh = ui_is_chinese(storage);
     // mac 菜单的惯例是「退出 SayItLocally」；Windows 托盘菜单惯例只写「退出」，与原来的网页菜单一致。
     let quit = match (zh, cfg!(target_os = "macos")) {
-        (true, true) => "退出 SayItLocally",
-        (true, false) => "退出",
+        (true, true) => "結束 SayItLocally",
+        (true, false) => "結束",
         (false, true) => "Quit SayItLocally",
         (false, false) => "Quit",
     };
     if zh {
-        TrayLabels { open: "打开 SayItLocally", ai_on: "AI 整理（已开启）", ai_off: "AI 整理（已关闭）", quit }
+        TrayLabels { open: "打開 SayItLocally", ai_on: "AI 整理（已開啟）", ai_off: "AI 整理（已關閉）", quit }
     } else {
         TrayLabels { open: "Open SayItLocally", ai_on: "AI cleanup (on)", ai_off: "AI cleanup (off)", quit }
     }

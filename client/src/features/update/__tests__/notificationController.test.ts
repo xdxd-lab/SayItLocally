@@ -13,7 +13,7 @@ function fixture() {
   const controller = new UpdateNotificationController({
     readUpdate: () => state,
     isIdle: () => idle,
-    appearance: () => ({ theme, locale: 'zh-CN', currentVersion: '0.2.1' }),
+    appearance: () => ({ theme, locale: 'zh-TW', currentVersion: '0.2.1' }),
     publish,
     install,
     onError,

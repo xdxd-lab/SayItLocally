@@ -34,7 +34,7 @@ import { MacPermissionsPanel } from '@/components/MacPermissionsPanel'
  *  界面语言的人，正是靠认出自己的语言名才能切回去的。 */
 const LANGUAGE_OPTIONS = [
   { value: 'auto', labelKey: 'language.auto' },
-  { value: 'zh-CN', labelKey: 'language.zhCN' },
+  { value: 'zh-TW', labelKey: 'language.zhTW' },
   { value: 'en', labelKey: 'language.en' },
 ] as const satisfies readonly { value: LanguagePreference; labelKey: TranslationKey }[]
 

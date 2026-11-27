@@ -21,7 +21,7 @@ pub struct ModelInfo {
     pub id: String,
     /// 展示名，不带 GGUF/量化档等术语（那些进 `quant`，前端排进小字参数行）
     pub name: String,
-    /// 一句话定位（"速度极快，日常首选"），不再混内存/语种——那些有各自的字段
+    /// 一句话定位（"速度極快，日常首選"），不再混内存/语种——那些有各自的字段
     pub description: String,
     pub model_type: String,
     pub total_size_bytes: u64,
@@ -41,7 +41,7 @@ pub struct ModelInfo {
     /// gguf_asr.rs 的 `footprint_report`）。
     #[serde(default)]
     pub memory_mb: u64,
-    /// 语种的展示文案（"中英日韩粤" / "30+ 语种"）。`languages` 留给逻辑用，
+    /// 语种的展示文案（"中、英、日、韓、粵語" / "30+ 語種"）。`languages` 留给逻辑用，
     /// 展示不从 code 拼：Qwen3 支持 30 种，逐个列 code 没有意义。
     #[serde(default)]
     pub languages_label: String,
@@ -138,7 +138,7 @@ fn build_catalog() -> Vec<ModelInfo> {
         ModelInfo {
             id: "parakeet-unified-en-0.6b-gguf".into(),
             name: "Parakeet Unified EN".into(),
-            description: "英文最快也最准，仅支持英文".into(),
+            description: "英文最快也最準，僅支援英文".into(),
             model_type: "parakeet-gguf".into(),
             total_size_bytes: PARAKEET_UNIFIED_EN_Q4.size,
             speed: 9.0,
@@ -146,7 +146,7 @@ fn build_catalog() -> Vec<ModelInfo> {
             recommended: false,
             memory_mb: 900,
             featured: false,
-            languages_label: "英语".into(),
+            languages_label: "英文".into(),
             quant: "Q4_K_M".into(),
             languages: vec!["en".into()],
             sources: PARAKEET_UNIFIED_EN_Q4.sources(),
@@ -157,7 +157,7 @@ fn build_catalog() -> Vec<ModelInfo> {
         ModelInfo {
             id: "sensevoice-small-gguf".into(),
             name: "SenseVoice Small".into(),
-            description: "速度极快，日常首选".into(),
+            description: "速度極快，日常首選".into(),
             model_type: "sensevoice-gguf".into(),
             total_size_bytes: SENSEVOICE.size,
             speed: 8.5,
@@ -165,7 +165,7 @@ fn build_catalog() -> Vec<ModelInfo> {
             recommended: true,
             memory_mb: 350,
             featured: true,
-            languages_label: "中英日韩粤".into(),
+            languages_label: "中、英、日、韓、粵語".into(),
             quant: "Q8_0".into(),
             languages: vec!["zh".into(), "en".into(), "ja".into(), "ko".into(), "yue".into()],
             sources: SENSEVOICE.sources(),
@@ -184,7 +184,7 @@ fn build_catalog() -> Vec<ModelInfo> {
         ModelInfo {
             id: "nemotron-asr-streaming-0.6b-gguf".into(),
             name: "Nemotron 3.5 ASR".into(),
-            description: "语种最全，适合多语言混用".into(),
+            description: "語種最全，適合多語言混用".into(),
             model_type: "parakeet-gguf".into(),
             total_size_bytes: NEMOTRON_STREAMING_Q4.size,
             speed: 8.0,
@@ -192,7 +192,7 @@ fn build_catalog() -> Vec<ModelInfo> {
             recommended: false,
             memory_mb: 1050,
             featured: false,
-            languages_label: "32 语种".into(),
+            languages_label: "32 語種".into(),
             quant: "Q4_K_M".into(),
             languages: vec![
                 "en".into(),
@@ -219,7 +219,7 @@ fn build_catalog() -> Vec<ModelInfo> {
         ModelInfo {
             id: "funasr-nano-2512-gguf".into(),
             name: "Fun-ASR Nano".into(),
-            description: "又快又准，中文口述的性价比之选".into(),
+            description: "又快又準，中文口述的高 CP 值之選".into(),
             model_type: "funasr-nano-gguf".into(),
             total_size_bytes: FUNASR_NANO_Q8.size,
             speed: 7.5,
@@ -227,7 +227,7 @@ fn build_catalog() -> Vec<ModelInfo> {
             recommended: false,
             memory_mb: 1400,
             featured: true,
-            languages_label: "中英日".into(),
+            languages_label: "中、英、日文".into(),
             quant: "Q8_0".into(),
             languages: vec!["zh".into(), "en".into(), "ja".into()],
             sources: FUNASR_NANO_Q8.sources(),
@@ -239,7 +239,7 @@ fn build_catalog() -> Vec<ModelInfo> {
         ModelInfo {
             id: "qwen3-asr-0.6b-gguf".into(),
             name: "Qwen3-ASR 0.6B".into(),
-            description: "较快，多语种的轻量之选".into(),
+            description: "較快，多語種的輕量之選".into(),
             model_type: "qwen3-asr-gguf".into(),
             total_size_bytes: QWEN3_06B_Q8.size,
             speed: 7.0,
@@ -247,7 +247,7 @@ fn build_catalog() -> Vec<ModelInfo> {
             recommended: false,
             memory_mb: 1500,
             featured: false,
-            languages_label: "30+ 语种".into(),
+            languages_label: "30+ 語種".into(),
             quant: "Q8_0".into(),
             languages: vec!["zh".into(), "en".into(), "yue".into(), "ja".into(), "ko".into()],
             sources: QWEN3_06B_Q8.sources(),
@@ -260,7 +260,7 @@ fn build_catalog() -> Vec<ModelInfo> {
         ModelInfo {
             id: "qwen3-asr-1.7b-q4-gguf".into(),
             name: "Qwen3-ASR 1.7B".into(),
-            description: "很准，高精度档的提速版".into(),
+            description: "很準，高精度檔的加速版".into(),
             model_type: "qwen3-asr-gguf".into(),
             total_size_bytes: QWEN3_17B_Q4.size,
             speed: 4.5,
@@ -268,7 +268,7 @@ fn build_catalog() -> Vec<ModelInfo> {
             recommended: false,
             memory_mb: 2300,
             featured: false,
-            languages_label: "30+ 语种".into(),
+            languages_label: "30+ 語種".into(),
             quant: "Q4_K_M".into(),
             languages: vec!["zh".into(), "en".into(), "yue".into(), "ja".into(), "ko".into()],
             sources: QWEN3_17B_Q4.sources(),
@@ -279,7 +279,7 @@ fn build_catalog() -> Vec<ModelInfo> {
         ModelInfo {
             id: "qwen3-asr-1.7b-gguf".into(),
             name: "Qwen3-ASR 1.7B 高精度".into(),
-            description: "最准，但明显更慢".into(),
+            description: "最準，但明顯更慢".into(),
             model_type: "qwen3-asr-gguf".into(),
             total_size_bytes: QWEN3_17B_Q5.size,
             speed: 4.0,
@@ -287,7 +287,7 @@ fn build_catalog() -> Vec<ModelInfo> {
             recommended: false,
             memory_mb: 2600,
             featured: true,
-            languages_label: "30+ 语种".into(),
+            languages_label: "30+ 語種".into(),
             quant: "Q5_K_M".into(),
             languages: vec!["zh".into(), "en".into(), "yue".into(), "ja".into(), "ko".into()],
             sources: QWEN3_17B_Q5.sources(),
