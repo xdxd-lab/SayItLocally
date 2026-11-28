@@ -31,12 +31,12 @@ use std::thread;
 /// `additionalBrowserArgs` in tauri.conf.json (WebView2 rejects the second environment
 /// with ERROR_INVALID_STATE when the option sets differ).
 // 注意：不要再加回 --auto-accept-camera-and-microphone-capture。
-// 该参数会抢先自动处理权限请求，使 PermissionRequested 事件不触发，权限停留在 "prompt"，
-// 导致新版 WebView2 隐藏 enumerateDevices 的设备名/deviceId。麦克风授权改由下面的
-// PermissionRequested 处理器负责（显式 Allow → 变为持久 granted → 恢复设备枚举）。
-// 也不要加回 --ignore-certificate-errors：它让所有主机都不校验证书，网络被截获时
-// 识别结果和更新清单都能被换掉。自建服务器的自签名证书改由主窗的
-// ServerCertificateErrorDetected 处理器按地址放行（见 net_policy::cert_error_allowed）。
+// 該引數會搶先自動處理許可權請求，使 PermissionRequested 事件不觸發，許可權停留在 "prompt"，
+// 導致新版 WebView2 隱藏 enumerateDevices 的裝置名/deviceId。麥克風授權改由下面的
+// PermissionRequested 處理器負責（顯式 Allow → 變為持久 granted → 恢復裝置列舉）。
+// 也不要加回 --ignore-certificate-errors：它讓所有主機都不校驗證書，網路被截獲時
+// 識別結果和更新清單都能被換掉。自建伺服器的自簽名證書改由主窗的
+// ServerCertificateErrorDetected 處理器按地址放行（見 net_policy::cert_error_allowed）。
 #[cfg_attr(not(windows), allow(dead_code))]
 const WEBVIEW2_BROWSER_ARGS: &str =
     "--disable-backgrounding-occluded-windows --disable-renderer-backgrounding \
@@ -76,8 +76,8 @@ fn recording_retention_days(
     }
 }
 
-/// 本地库坏了、已换新库启动时告诉用户：设置和历史看起来全没了，但旧数据在备份文件里。
-/// 用独立线程弹系统对话框，不挡启动（开机自启时也不会卡在这里）。
+/// 本地庫壞了、已換新庫啟動時告訴使用者：設定和歷史看起來全沒了，但舊資料在備份檔案裡。
+/// 用獨立執行緒彈系統對話方塊，不擋啟動（開機自啟時也不會卡在這裡）。
 fn notify_storage_recovery(recovery: storage::StorageRecovery) {
     let summary = match &recovery {
         storage::StorageRecovery::MovedAside { .. } => "started with a replacement database",
@@ -137,11 +137,11 @@ fn notify_storage_recovery(recovery: storage::StorageRecovery) {
     let _ = text;
 }
 
-/// 主窗的图标和 WebView2 事件处理器（麦克风权限、证书、渲染进程崩溃）。
-/// 启动时和主窗被重建时都要走一遍。
+/// 主窗的圖示和 WebView2 事件處理器（麥克風許可權、證書、渲染程序崩潰）。
+/// 啟動時和主窗被重建時都要走一遍。
 fn prepare_main_window(app: &tauri::AppHandle, main_window: &tauri::WebviewWindow) {
-    // macOS：没有 WebView2 那几个处理器；麦克风授权由 wry 的 WKUIDelegate 默认放行，
-    // 后台节流在 tauri.macos.conf.json 里用 backgroundThrottling 关掉。
+    // macOS：沒有 WebView2 那幾個處理器；麥克風授權由 wry 的 WKUIDelegate 預設放行，
+    // 後台節流在 tauri.macos.conf.json 裡用 backgroundThrottling 關掉。
     #[cfg(not(target_os = "windows"))]
     let _ = app;
     let ico_bytes = include_bytes!("../icons/icon.ico");
@@ -149,10 +149,10 @@ fn prepare_main_window(app: &tauri::AppHandle, main_window: &tauri::WebviewWindo
         let _ = main_window.set_icon(icon);
     }
 
-    // 麦克风/摄像头权限：--auto-accept-camera-and-microphone-capture 只放行采集，
-    // 不会把权限置为持久 granted，导致新版 WebView2 隐藏 enumerateDevices 的设备名与
-    // deviceId（设置里麦克风列表只剩一个通用项）。挂 PermissionRequested 显式 Allow，
-    // 使权限变为 granted，恢复完整设备枚举与选择。失败仅记录日志、不影响其余功能。
+    // 麥克風/攝像頭許可權：--auto-accept-camera-and-microphone-capture 只放行採集，
+    // 不會把許可權置為持久 granted，導致新版 WebView2 隱藏 enumerateDevices 的裝置名與
+    // deviceId（設定裡麥克風列表只剩一個通用項）。掛 PermissionRequested 顯式 Allow，
+    // 使許可權變為 granted，恢復完整裝置列舉與選擇。失敗僅記錄日誌、不影響其餘功能。
     #[cfg(target_os = "windows")]
     {
         let _ = main_window.with_webview(|webview| {
@@ -197,10 +197,10 @@ fn prepare_main_window(app: &tauri::AppHandle, main_window: &tauri::WebviewWindo
         });
     }
 
-    // 证书错误：只对用户自己填的、非官方的 https 服务器放行（自建 + 自签名证书）。
-    // 2026-10 实测这个事件对 wss:// 同样触发，所以 WebSocket 也走这里。
-    // 每次都从数据库读当前地址：用户改地址后不用重启就生效。
-    // 只挂在主窗上 —— 联网的只有主窗；挂不上（运行时太旧）就退回"一律严格校验"。
+    // 證書錯誤：只對使用者自己填的、非官方的 https 伺服器放行（自建 + 自簽名證書）。
+    // 2026-10 實測這個事件對 wss:// 同樣觸發，所以 WebSocket 也走這裡。
+    // 每次都從資料庫讀當前地址：使用者改地址後不用重啟就生效。
+    // 只掛在主窗上 —— 聯網的只有主窗；掛不上（執行時太舊）就退回"一律嚴格校驗"。
     #[cfg(target_os = "windows")]
     {
         let cert_app = app.clone();
@@ -214,12 +214,12 @@ fn prepare_main_window(app: &tauri::AppHandle, main_window: &tauri::WebviewWindo
             unsafe {
                 let controller = webview.controller();
                 let Ok(core) = controller.CoreWebView2() else { return };
-                // 主窗网页进程崩溃后自动重载。录音、连接、插字调度都跑在这个进程里，
-                // 它一退出就是「托盘还在、热键全没反应、没有任何提示」，以前只能重启 SayItLocally。
-                // 只处理「已退出」：「无响应」只记日志，导出大量历史这类长任务也会短暂无响应，
-                // 那时重载会把用户正在做的事打断。5 分钟内超过 3 次就不再重载，免得反复崩溃时死循环。
-                // 和证书处理器挂在同一次 with_webview 里：单独再调一次 with_webview 时
-                // 主窗 webview 稳定建不起来（0x80070057，2026-10-12 复现 5 次），原因未查明。
+                // 主窗網頁程序崩潰後自動過載。錄音、連線、插字排程都跑在這個程序裡，
+                // 它一退出就是「托盤還在、熱鍵全沒反應、沒有任何提示」，以前只能重啟 SayItLocally。
+                // 只處理「已退出」：「無響應」只記日誌，匯出大量歷史這類長任務也會短暫無響應，
+                // 那時過載會把使用者正在做的事打斷。5 分鐘內超過 3 次就不再過載，免得反覆崩潰時死迴圈。
+                // 和證書處理器掛在同一次 with_webview 裡：單獨再調一次 with_webview 時
+                // 主窗 webview 穩定建不起來（0x80070057，2026-10-12 復現 5 次），原因未查明。
                 {
                     use webview2_com::Microsoft::Web::WebView2::Win32::{
                         COREWEBVIEW2_PROCESS_FAILED_KIND, COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_EXITED,
@@ -297,21 +297,21 @@ fn prepare_main_window(app: &tauri::AppHandle, main_window: &tauri::WebviewWindo
     }
 }
 
-/// 第二次启动（交给已在运行的实例）时，是不是应该保持隐藏：带了 `--minimized`（登录项）、
-/// 又不是自动更新装完后要跳关于页的那次重新打开。目前只在 macOS 上用。
+/// 第二次啟動（交給已在執行的例項）時，是不是應該保持隱藏：帶了 `--minimized`（登入項）、
+/// 又不是自動更新裝完後要跳關於頁的那次重新開啟。目前只在 macOS 上用。
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 fn second_launch_should_stay_hidden(args: &[String]) -> bool {
     args.iter().any(|a| a == "--minimized") && !args.iter().any(|a| a == "--open-about")
 }
 
-/// 主窗 webview 建不起来时（`failed to create webview ... 0x80070057`），窗口对象没了，
-/// 托盘和悬浮窗还在，但录音、连接全在主窗网页里 —— 用户看到的是「热键没反应」，没有任何提示。
-/// 2026-10-12 开发期间撞到 7 次（多在 tauri dev 连续重启时），正式版少见但一旦发生就是整个软件失灵。
+/// 主窗 webview 建不起來時（`failed to create webview ... 0x80070057`），視窗物件沒了，
+/// 托盤和懸浮窗還在，但錄音、連線全在主窗網頁裡 —— 使用者看到的是「熱鍵沒反應」，沒有任何提示。
+/// 2026-10-12 開發期間撞到 7 次（多在 tauri dev 連續重啟時），正式版少見但一旦發生就是整個軟體失靈。
 ///
-/// 启动 5 秒后查一次，坏了就按配置重建一次；重建后还坏就弹窗请用户重启。
+/// 啟動 5 秒後查一次，壞了就按配置重建一次；重建後還壞就彈窗請使用者重啟。
 fn spawn_main_window_watchdog(app: tauri::AppHandle, launched_minimized: bool) {
     thread::spawn(move || {
-        // 只在开发版：设了这个环境变量就在启动后故意毁掉主窗，用来验证下面的重建（真故障没法稳定复现）。
+        // 只在開發版：設了這個環境變數就在啟動後故意毀掉主窗，用來驗證下面的重建（真故障沒法穩定復現）。
         if cfg!(debug_assertions) && std::env::var_os("SAYIT_DEBUG_BREAK_MAIN_WINDOW").is_some() {
             thread::sleep(std::time::Duration::from_secs(2));
             let break_app = app.clone();
@@ -344,7 +344,7 @@ fn spawn_main_window_watchdog(app: tauri::AppHandle, launched_minimized: bool) {
                     let _ = window.destroy();
                 }
             });
-            // 等旧窗口的标签真正释放，否则同名重建会报「label already exists」
+            // 等舊視窗的標籤真正釋放，否則同名重建會報「label already exists」
             thread::sleep(std::time::Duration::from_millis(800));
             let build_app = app.clone();
             let _ = app.run_on_main_thread(move || recreate_main_window(&build_app, launched_minimized));
@@ -355,7 +355,7 @@ fn spawn_main_window_watchdog(app: tauri::AppHandle, launched_minimized: bool) {
 fn main_window_is_broken(app: &tauri::AppHandle) -> bool {
     match app.get_webview_window("main") {
         None => true,
-        // 正常窗口这里一定拿得到；建失败的那种是 Err（日志里的 visible=None）
+        // 正常視窗這裡一定拿得到；建失敗的那種是 Err（日誌裡的 visible=None）
         Some(window) => window.is_visible().is_err(),
     }
 }
@@ -381,7 +381,7 @@ fn recreate_main_window(app: &tauri::AppHandle, launched_minimized: bool) {
 
 fn notify_main_window_unavailable() {
     let zh = matches!(locale::system_ui_lang(), locale::Lang::ZhTw);
-    // mac 上没有托盘、也不用右键：退出入口是屏幕顶部菜单栏里的 SayItLocally 图标
+    // mac 上沒有托盤、也不用右鍵：退出入口是螢幕頂部選單欄裡的 SayItLocally 圖示
     let text = match (zh, cfg!(target_os = "macos")) {
         (true, false) => "SayItLocally 的主視窗沒能啟動，語音輸入暫時無法使用。\n\n請在系統匣圖示上按右鍵結束 SayItLocally，再重新開啟。如果反覆出現，請在設定裡提交診斷。",
         (false, false) => "SayItLocally's main window failed to start, so voice input is unavailable for now.\n\nPlease quit SayItLocally from the tray icon and open it again. If this keeps happening, send a diagnostics report from Settings.",
@@ -456,13 +456,13 @@ fn main() {
         })
         .init();
 
-    // ── 全局 panic 钩子（悬浮窗/热键间歇性失效排查埋点）──
-    // 生产环境用 windows_subsystem="windows"，没有控制台窗口，任何线程 panic 的
-    // 默认输出（stderr）都会直接丢失、无迹可寻。键盘钩子回调、dispatcher 线程等
-    // 一旦 panic，对应线程直接退出但主进程不受影响——表现出来就是"Alt 键突然
-    // 没反应了，但软件看起来还在正常运行"，与用户反馈的现象高度吻合。
-    // 这里把所有 panic 信息（发生位置、线程名、payload）写入 sayit.log，
-    // 下次复现后可以直接搜索 "[PANIC]" 定位是哪个线程挂了。
+    // ── 全域性 panic 鉤子（懸浮窗/熱鍵間歇性失效排查埋點）──
+    // 生產環境用 windows_subsystem="windows"，沒有控制台視窗，任何執行緒 panic 的
+    // 預設輸出（stderr）都會直接丟失、無跡可尋。鍵盤鉤子回撥、dispatcher 執行緒等
+    // 一旦 panic，對應執行緒直接退出但主程序不受影響——表現出來就是"Alt 鍵突然
+    // 沒反應了，但軟體看起來還在正常執行"，與使用者反饋的現象高度吻合。
+    // 這裡把所有 panic 資訊（發生位置、執行緒名、payload）寫入 sayit.log，
+    // 下次復現後可以直接搜尋 "[PANIC]" 定位是哪個執行緒掛了。
     {
         let default_hook = std::panic::take_hook();
         std::panic::set_hook(Box::new(move |panic_info| {
@@ -508,7 +508,7 @@ fn main() {
     // or not focused. Without these flags, WebView2 throttles setInterval timers in the
     // background, delaying the heartbeat well past the server's idle timeout and causing
     // spurious "idle timeout" disconnects while the app is just sitting idle in the tray.
-    // macOS 没有 WebView2；隐藏主窗的节流在 tauri.macos.conf.json 用 backgroundThrottling 关掉。
+    // macOS 沒有 WebView2；隱藏主窗的節流在 tauri.macos.conf.json 用 backgroundThrottling 關掉。
     #[cfg(windows)]
     {
     let (browser_args_source, browser_args) = match std::env::var("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS") {
@@ -530,8 +530,8 @@ fn main() {
     );
     }
 
-    // macOS：同样要赶在第一个 WebView 创建之前——关掉 WKWebView 输入框里的智能引号和破折号，
-    // 否则 Prompt、热词里打的 " 和 -- 会被换成弯引号和长破折号（见 appkit.rs）。
+    // macOS：同樣要趕在第一個 WebView 建立之前——關掉 WKWebView 輸入框裡的智慧引號和破折號，
+    // 否則 Prompt、熱詞裡打的 " 和 -- 會被換成彎引號和長破折號（見 appkit.rs）。
     #[cfg(target_os = "macos")]
     platform::macos::appkit::disable_webkit_smart_substitutions();
 
@@ -570,33 +570,33 @@ fn main() {
     log::info!("PTT setting from DB: raw={:?} parsed={:?}", ptt_setting_val, ptt_str);
     log::info!("HF setting from DB: raw={:?} parsed={:?}", hf_setting_val, hf_str);
 
-    // 自定义模型存储目录：启动时读回并设为进程内生效路径（空串 = 用默认）。
-    // 必须在任何取模型路径的调用之前设定，且要在 storage 被 move 进 manage 之前读。
+    // 自定義模型儲存目錄：啟動時讀回並設為程序內生效路徑（空串 = 用預設）。
+    // 必須在任何取模型路徑的呼叫之前設定，且要在 storage 被 move 進 manage 之前讀。
     // [自訂] SC-55：讀不到設定時沿用預設路徑，但啟動回收會跳過（見 spawn_legacy_reclaim）。
     if let Ok(Some(custom_dir)) = storage.custom_models_dir() {
         log::info!("Custom models dir from DB: {}", custom_dir.display());
         models::downloader::set_custom_models_dir(Some(custom_dir));
     }
 
-    // ⚠️ 这里**故意不注册** ggml 计算后端。注册动作已下沉到 gguf_asr 的懒路径
-    // （ensure_loaded / describe_devices），别再把 init_backends() 加回启动路径。
+    // ⚠️ 這裡**故意不註冊** ggml 計算後端。註冊動作已下沉到 gguf_asr 的懶路徑
+    // （ensure_loaded / describe_devices），別再把 init_backends() 加回啟動路徑。
     //
-    // 为什么：注册会 dlopen exe 旁边所有 ggml 模块，其中 ggml-vulkan.dll 一被载入就
-    // 立刻 vk::createInstance() 建出真实的 Vulkan 上下文。放在这里意味着**云 API 和
-    // 服务器模式的用户也要付这笔钱**：实测白占约 36 MB 共享显存、让进程出现在任务
-    // 管理器的 GPU 进程列表里（连 engtype_compute 都登记上），还同步阻塞启动 80~520 ms
-    // —— 而这些模式一个模型都不会加载，收益是零。用户反馈"即便使用云 API 模式也持续
-    // 占用 GPU"就是这条。
+    // 為什麼：註冊會 dlopen exe 旁邊所有 ggml 模組，其中 ggml-vulkan.dll 一被載入就
+    // 立刻 vk::createInstance() 建出真實的 Vulkan 上下文。放在這裡意味著**雲 API 和
+    // 伺服器模式的使用者也要付這筆錢**：實測白佔約 36 MB 共享視訊記憶體、讓程序出現在任務
+    // 管理器的 GPU 程序列表裡（連 engtype_compute 都登記上），還同步阻塞啟動 80~520 ms
+    // —— 而這些模式一個模型都不會載入，收益是零。使用者反饋"即便使用雲 API 模式也持續
+    // 佔用 GPU"就是這條。
     //
-    // 另外 transcribe-cpp 的 init_backends 上游标注为 idempotent 但 NOT retryable，
-    // 进程内也没有反注册路径，所以一旦注册就撤不回来 —— 更不该无条件先做。
+    // 另外 transcribe-cpp 的 init_backends 上游標註為 idempotent 但 NOT retryable，
+    // 程序內也沒有反註冊路徑，所以一旦註冊就撤不回來 —— 更不該無條件先做。
 
-    // 回收上一代 sherpa-onnx 时期的模型权重（新引擎读不了，只白占几百 MB ~ 1 GB）。
-    // 放后台线程，不让删除卡住启动。
+    // 回收上一代 sherpa-onnx 時期的模型權重（新引擎讀不了，只白佔幾百 MB ~ 1 GB）。
+    // 放後台執行緒，不讓刪除卡住啟動。
     models::local_asr::spawn_legacy_reclaim(&storage);
 
-    // 本地模式：启动就在后台把模型加载起来，别等用户第一次按热键才等几百毫秒~几秒。
-    // 非本地模式不加载，避免白占几百 MB 内存。
+    // 本地模式：啟動就在後台把模型載入起來，別等使用者第一次按熱鍵才等幾百毫秒~幾秒。
+    // 非本地模式不載入，避免白佔幾百 MB 記憶體。
     if storage.get("workMode", None).as_str() == Some("local") {
         let model_id = storage
             .get("localAsr.modelId", None)
@@ -608,9 +608,9 @@ fn main() {
             .as_str()
             .unwrap_or("auto")
             .to_string();
-        // 必须跟着一起读：显卡选择是缓存 key 的一部分，这里传空（自动）而用户设了
-        // 具体某张卡的话，启动预热加载的引擎会在第一次口述时因 key 不符被整个丢掉
-        // 重载一遍 —— 预热白做，用户还要多等一次"卸旧 + 载新 + 预热"。
+        // 必須跟著一起讀：顯示卡選擇是快取 key 的一部分，這裡傳空（自動）而使用者設了
+        // 具體某張卡的話，啟動預熱載入的引擎會在第一次口述時因 key 不符被整個丟掉
+        // 過載一遍 —— 預熱白做，使用者還要多等一次"卸舊 + 載新 + 預熱"。
         let gpu_device = storage
             .get("localAsr.gpuDevice", None)
             .as_str()
@@ -619,14 +619,14 @@ fn main() {
         std::thread::spawn(move || {
             match models::gguf_asr::preload(&model_id, &accelerator, &gpu_device) {
                 Ok(()) => log::info!("Startup local model warm-up completed: {}", model_id),
-                // 模型没下载是正常情况（新装用户），不当错误刷日志
+                // 模型沒下載是正常情況（新裝使用者），不當錯誤刷日誌
                 Err(e) => log::info!("Startup local model warm-up skipped ({}): {}", model_id, e),
             }
         });
     }
 
-    // 空闲超时卸载：默认让本地模型常驻，用户可在设置里选择 10 / 30 / 60 分钟。
-    // 守护线程始终只启动一个，0 表示仅监听动态配置、不执行卸载。
+    // 空閒超時解除安裝：預設讓本地模型常駐，使用者可在設定裡選擇 10 / 30 / 60 分鐘。
+    // 守護執行緒始終只啟動一個，0 表示僅監聽動態配置、不執行解除安裝。
     let idle_minutes = storage
         .get("localAsr.unloadIdleMinutes", None)
         .as_u64()
@@ -638,11 +638,11 @@ fn main() {
     let context_detector = ContextDetector::new();
 
     tauri::Builder::default()
-        // 单实例锁：必须作为第一个插件注册。第二次启动时不新开进程，
-        // 而是唤起已有窗口，避免两个客户端同时收全局热键、各插一份文本。
+        // 單例項鎖：必須作為第一個外掛註冊。第二次啟動時不新開程序，
+        // 而是喚起已有視窗，避免兩個客戶端同時收全域性熱鍵、各插一份文本。
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
-            // macOS：登录项带 --minimized 启动时 SayItLocally 可能已经在跑（用户先手动打开了），
-            // 这时把启动请求交给已有实例就够了，不能把主窗口调出来。
+            // macOS：登入項帶 --minimized 啟動時 SayItLocally 可能已經在跑（使用者先手動開啟了），
+            // 這時把啟動請求交給已有例項就夠了，不能把主視窗調出來。
             #[cfg(target_os = "macos")]
             if second_launch_should_stay_hidden(&args) {
                 log::info!("Second launch with --minimized while already running; staying hidden");
@@ -685,8 +685,8 @@ fn main() {
                     thread::sleep(std::time::Duration::from_secs(15 * 60));
                 }
             });
-            // macOS：登录时要不要启动只由「登录时自动启动」决定，不让系统的「重新登录时重新打开窗口」
-            // 把 SayItLocally 当普通应用不带参数地拉起来（那样主窗口会在登录后弹出来，见 appkit.rs）。
+            // macOS：登入時要不要啟動只由「登入時自動啟動」決定，不讓系統的「重新登入時重新開啟視窗」
+            // 把 SayItLocally 當普通應用不帶引數地拉起來（那樣主視窗會在登入後彈出來，見 appkit.rs）。
             #[cfg(target_os = "macos")]
             platform::macos::appkit::disable_relaunch_on_login();
             // SayItLocally's main window and lazy overlay share one WebView2 user-data directory.
@@ -716,26 +716,26 @@ fn main() {
             let hook: tauri::State<KeyboardHookManager> = app.state();
             hook.start(app.handle(), &ptt_str, &hf_str, &ai_toggle_str);
 
-            // 每 60s 记录一次键盘钩子健康快照（[ptt-watchdog] 日志行），
-            // 用于排查"过一段时间后 Alt 说话没反应"这类间歇性问题：
-            // 复现后翻 sayit.log 找最后一次正常快照和第一次异常快照之间的时间窗。
+            // 每 60s 記錄一次鍵盤鉤子健康快照（[ptt-watchdog] 日誌行），
+            // 用於排查"過一段時間後 Alt 說話沒反應"這類間歇性問題：
+            // 復現後翻 sayit.log 找最後一次正常快照和第一次異常快照之間的時間窗。
             keyboard::spawn_health_watchdog();
 
-            // 设置窗口图标（用 ICO 文件，包含多尺寸帧，Windows 自动选最合适的）
-            // 并根据启动方式决定是否显示主窗口：
-            // 开机自启会带 --minimized 参数 → 保持隐藏，静默停留在托盘
-            // 用户手动打开则正常显示（窗口配置为 visible:false，需显式 show）
+            // 設定視窗圖示（用 ICO 檔案，包含多尺寸幀，Windows 自動選最合適的）
+            // 並根據啟動方式決定是否顯示主視窗：
+            // 開機自啟會帶 --minimized 引數 → 保持隱藏，靜默停留在托盤
+            // 使用者手動開啟則正常顯示（視窗配置為 visible:false，需顯式 show）
             let launched_minimized = std::env::args().any(|arg| arg == "--minimized");
-            // 自动更新安装完成后，看门人进程会带 --open-about 重新拉起本程序，
-            // 用于自动打开并跳转到关于页，让用户能确认更新已生效。
+            // 自動更新安裝完成後，看門人程序會帶 --open-about 重新拉起本程式，
+            // 用於自動開啟並跳轉到關於頁，讓使用者能確認更新已生效。
             let launched_open_about = std::env::args().any(|arg| arg == "--open-about");
             if let Some(main_window) = app.get_webview_window("main") {
                 prepare_main_window(app.handle(), &main_window);
 
                 if !launched_minimized {
-                    // show() 只清 SW_HIDE，不解除最小化（iconic）状态：窗口若以
-                    // 最小化状态诞生，只 show 会停在 -32000 的停车位上，看起来"没启动"。
-                    // 托盘/单实例路径都是 show + unminimize，这里保持一致。
+                    // show() 只清 SW_HIDE，不解除最小化（iconic）狀態：視窗若以
+                    // 最小化狀態誕生，只 show 會停在 -32000 的停車位上，看起來"沒啟動"。
+                    // 托盤/單例項路徑都是 show + unminimize，這裡保持一致。
                     window::show_main_window(&main_window);
                     log::info!(
                         "Main window shown (minimized={:?} visible={:?})",
@@ -745,7 +745,7 @@ fn main() {
                 } else {
                     log::info!("Launched with --minimized, staying hidden in tray");
                     window::set_main_window_memory_low(&main_window, true);
-                    // macOS：开机自启时只出现在菜单栏，不在 Dock 里占位
+                    // macOS：開機自啟時只出現在選單欄，不在 Dock 裡佔位
                     window::set_dock_icon_visible(app.handle(), false);
                 }
                 if launched_open_about {
@@ -754,9 +754,9 @@ fn main() {
             }
             spawn_main_window_watchdog(app.handle().clone(), launched_minimized);
 
-            // 托盘图标 + 原生菜单（macOS：菜单栏图标）
+            // 托盤圖示 + 原生選單（macOS：選單欄圖示）
             commands::tray::build_tray(app.handle())?;
-            // macOS 顶部菜单栏里的应用菜单（中文 / 英文跟随界面语言，带 ⌘, 打开设置）
+            // macOS 頂部選單欄裡的應用選單（中文 / 英文跟隨介面語言，帶 ⌘, 開啟設定）
             #[cfg(target_os = "macos")]
             commands::tray::install_macos_app_menu(app.handle())?;
 
@@ -771,9 +771,9 @@ fn main() {
                 commands::shortcuts::register_all_global_shortcuts(app.handle(), storage.inner());
             }
 
-            // 把首次 overlay WebView 的创建成本挪到启动后的空闲时段。延迟执行避免与主窗
-            // 首屏、托盘和键盘钩子争抢启动资源；用户若在此之前已开始口述，预热会看到
-            // overlay 已存在或正在显示并安全跳过。
+            // 把首次 overlay WebView 的建立成本挪到啟動後的空閒時段。延遲執行避免與主窗
+            // 首屏、托盤和鍵盤鉤子爭搶啟動資源；使用者若在此之前已開始口述，預熱會看到
+            // overlay 已存在或正在顯示並安全跳過。
             {
                 let overlay_app = app.handle().clone();
                 let _ = thread::Builder::new()
@@ -785,7 +785,7 @@ fn main() {
                     });
             }
 
-            // 首次安装时自动启用开机自启（仅执行一次）
+            // 首次安裝時自動啟用開機自啟（僅執行一次）
             // [自訂] S30：不在第一次啟動時自動註冊「登入時啟動」（LaunchAgent）。
             // 只寫入標記，不呼叫 autostart.enable()；使用者仍可在「設定 → 一般」手動開啟。
             {
@@ -794,14 +794,14 @@ fn main() {
                 let autostart = app.autolaunch();
                 let already_set = storage.get("autoLaunchInitialized", None);
                 if already_set.is_null() || already_set.as_str() == Some("") {
-                    // 首次运行，注册开机自启并标记（新注册已带 --minimized 参数）
+                    // 首次執行，註冊開機自啟並標記（新註冊已帶 --minimized 引數）
                     // [自訂] S30 已註解停用：let _ = autostart.enable();
                     let flag = serde_json::json!("true");
                     let _ = storage.set("autoLaunchInitialized", &flag);
                     let _ = storage.set("autoLaunchArgsMigrated", &flag);
                     log::info!("Auto-launch left off on first run (user opt-in only)"); // [自訂] S30
                 } else {
-                    // 老用户迁移：旧自启项不带 --minimized 参数，重新注册一次以写入新参数
+                    // 老使用者遷移：舊自啟項不帶 --minimized 引數，重新註冊一次以寫入新引數
                     let migrated = storage.get("autoLaunchArgsMigrated", None);
                     if migrated.as_str() != Some("true") {
                         if autostart.is_enabled().unwrap_or(false) {
@@ -910,12 +910,12 @@ fn main() {
             commands::audio::protect_playing_recording, // [自訂] S71
             commands::audio::renew_playing_recording,
             commands::audio::release_playing_recording,
-            // Audio output mute (录音期间静音系统输出，防回采)
+            // Audio output mute (錄音期間靜音系統輸出，防回採)
             commands::audio_mute::mute_system_output,
             commands::audio_mute::restore_system_output,
             commands::audio_mute::get_mic_mute_state,
             commands::audio_mute::list_capture_endpoints,
-            // Permissions（macOS 的辅助功能 / 麦克风授权状态与引导）
+            // Permissions（macOS 的輔助功能 / 麥克風授權狀態與引導）
             commands::permissions::get_platform_permissions,
             commands::permissions::request_accessibility_permission,
             commands::permissions::open_privacy_settings,
@@ -932,7 +932,7 @@ fn main() {
             commands::export::save_text_export,
             commands::export::save_export_bundle,
             commands::export::save_full_export,
-            // Backup / Restore (配置与全部数据的导入导出)
+            // Backup / Restore (配置與全部資料的匯入匯出)
             commands::backup::get_backup_directory,
             commands::backup::inspect_config_export,
             commands::backup::export_config,
@@ -943,7 +943,7 @@ fn main() {
             // [自訂] SC-67：取代規則「替換成」欄位新增時轉成台灣正體
             zh_output::zh_to_taiwan_texts,
             commands::backup::restart_app,
-            // WebDAV 备份（配置必备，历史/音频可选）
+            // WebDAV 備份（配置必備，歷史/音訊可選）
             // [自訂] S18／S35／L-19：WebDAV 停用（會經 Rust 上傳到外部伺服器，不受 CSP 限制）
             // [自訂] 已註解停用：commands::webdav::webdav_test,
             // [自訂] 已註解停用：commands::webdav::webdav_list,
@@ -967,11 +967,11 @@ fn main() {
             // [自訂] S17 已註解停用：providers::registry::cloud_transcribe_raw,
             providers::registry::test_ai_connection,
             // [自訂] S17 已註解停用：providers::registry::test_asr_connection,
-            // 「这家 ASR 拿热词做什么」的唯一权威来源。前端不再自己维护一份清单 ——
-            // 那正是 issue #67 的成因（声明和实现分处两侧、无人对账）。
+            // 「這家 ASR 拿熱詞做什麼」的唯一權威來源。前端不再自己維護一份清單 ——
+            // 那正是 issue #67 的成因（宣告和實現分處兩側、無人對帳）。
             providers::capabilities::asr_hotword_capability,
-            // 同上，全部服务一次给全，供「各服务对热词的支持」对照表使用。
-            // 那张表因此是实现的投影，不是第二份手写清单。
+            // 同上，全部服務一次給全，供「各服務對熱詞的支援」對照表使用。
+            // 那張表因此是實現的投影，不是第二份手寫清單。
             providers::capabilities::asr_hotword_capability_matrix,
             // Doubao realtime streaming ASR
             // [自訂] S17 已註解停用：providers::asr_doubao_realtime::doubao_stream_open,
@@ -1018,7 +1018,7 @@ fn main() {
             models::test_audio::get_test_audio_b64,
         ]))
         .on_window_event(|window, event| {
-            // 点击关闭按钮时隐藏到托盘，而不是退出
+            // 點選關閉按鈕時隱藏到托盤，而不是退出
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 if window.label() == "main" {
                     api.prevent_close();
@@ -1026,13 +1026,13 @@ fn main() {
                 }
             }
         })
-        // 用 build + run 而不是直接 run：需要在 RunEvent::Exit 上挂"退出时兜底安装更新"。
-        // 用户没点更新图标就直接关掉 SayItLocally 时，在这里把已下载的新版静默装掉，
-        // 下次打开即是新版 —— 否则更新完全依赖用户主动点击，不点的人永远留在旧版。
+        // 用 build + run 而不是直接 run：需要在 RunEvent::Exit 上掛"退出時兜底安裝更新"。
+        // 使用者沒點更新圖示就直接關掉 SayItLocally 時，在這裡把已下載的新版靜默裝掉，
+        // 下次開啟即是新版 —— 否則更新完全依賴使用者主動點選，不點的人永遠留在舊版。
         .build(context)
         .expect("error while building tauri application")
         .run(|app_handle, event| {
-            // macOS：主窗藏起来后点 Dock 图标，系统发 Reopen，此时把主窗显示出来。
+            // macOS：主窗藏起來後點 Dock 圖示，系統發 Reopen，此時把主窗顯示出來。
             #[cfg(target_os = "macos")]
             if let tauri::RunEvent::Reopen { .. } = event {
                 if let Some(w) = app_handle.get_webview_window("main") {

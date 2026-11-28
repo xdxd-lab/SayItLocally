@@ -6,11 +6,11 @@ import type { PlatformPermissions } from '@/services/bridge'
 import { useT } from '@/i18n/useT'
 
 /**
- * macOS 权限面板：辅助功能（全局快捷键、插字、读光标上下文）与麦克风。
+ * macOS 許可權面板：輔助功能（全域性快捷鍵、插字、讀游標上下文）與麥克風。
  *
- * 辅助功能系统不会弹窗直接授予，只能带用户去系统设置勾选；勾选后 Rust 侧的 event tap
- * 会在 2 秒内自动装上，不用重启。这里每 1.5 秒轮询一次状态，用户在系统设置里勾完
- * 切回来就能看到变绿。
+ * 輔助功能系統不會彈窗直接授予，只能帶使用者去系統設定勾選；勾選後 Rust 側的 event tap
+ * 會在 2 秒內自動裝上，不用重啟。這裡每 1.5 秒輪詢一次狀態，使用者在系統設定裡勾完
+ * 切回來就能看到變綠。
  */
 export function MacPermissionsPanel({ compact = false }: { compact?: boolean }) {
   const t = useT()
@@ -38,7 +38,7 @@ export function MacPermissionsPanel({ compact = false }: { compact?: boolean }) 
       await bridge.openPrivacySettings('microphone').catch(() => {})
       return
     }
-    // 第一次调用 getUserMedia 会触发系统的麦克风授权弹窗；拿到流立刻关掉
+    // 第一次呼叫 getUserMedia 會觸發系統的麥克風授權彈窗；拿到流立刻關掉
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       stream.getTracks().forEach((track) => track.stop())

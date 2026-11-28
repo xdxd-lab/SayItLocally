@@ -1,58 +1,58 @@
-// OpenAI 形态的 `POST /audio/transcriptions` —— 目前接了两家：
+// OpenAI 形態的 `POST /audio/transcriptions` —— 目前接了兩家：
 //   · Groq（whisper-large-v3-turbo / whisper-large-v3）
 //   · OpenAI 官方（gpt-transcribe / gpt-4o-transcribe / gpt-4o-mini-transcribe / whisper-1）
 //
-// 两家共用这一份实现：端点路径、multipart 字段、响应形状完全一样，只有 base URL 和
-// 可用模型不同。**不要为 OpenAI 再抄一份文件** —— 那会让标点 prompt、WAV 封装、
-// 空结果日志这些真正有内容的部分各自漂移。
+// 兩家共用這一份實現：端點路徑、multipart 欄位、響應形狀完全一樣，只有 base URL 和
+// 可用模型不同。**不要為 OpenAI 再抄一份檔案** —— 那會讓標點 prompt、WAV 封裝、
+// 空結果日誌這些真正有內容的部分各自漂移。
 //
-// **multipart 上传音频文件**，这是本项目唯一用这种形态的 ASR 供应商。其余几家
-// （豆包 / 千问 / MiMo）要么是 WebSocket 协议，要么是 chat/completions + base64
-// data URL，都不是这个端点。
+// **multipart 上傳音訊檔案**，這是本專案唯一用這種形態的 ASR 供應商。其餘幾家
+// （豆包 / 千問 / MiMo）要麼是 WebSocket 協議，要麼是 chat/completions + base64
+// data URL，都不是這個端點。
 //
-// 与 asr_mimo.rs 的差异：
-//   · 鉴权是 Bearer（MiMo 是 api-key 头）；
-//   · 音频以 multipart 的 file 字段上传，不是塞进 JSON 的 data URL —— 十几秒的音频
-//     用 base64 塞 JSON 会膨胀 1/3，multipart 是原始字节；
-//   · 响应是 `{"text": "..."}`，不是 OpenAI chat 的 choices[0].message.content。
+// 與 asr_mimo.rs 的差異：
+//   · 鑑權是 Bearer（MiMo 是 api-key 頭）；
+//   · 音訊以 multipart 的 file 欄位上傳，不是塞進 JSON 的 data URL —— 十幾秒的音訊
+//     用 base64 塞 JSON 會膨脹 1/3，multipart 是原始位元組；
+//   · 響應是 `{"text": "..."}`，不是 OpenAI chat 的 choices[0].message.content。
 //
-// 端点写死在这里而不做成可配置项：ASR 侧的约定是「供应商只能从内置清单里选」，
-// 因为每家的协议都要一份专门实现，能填任意地址只会让用户以为随便填个地址就能用。
-// 模型则是可选的（extra.model），因为换模型不改协议 —— 前端目录里那份清单说明了
-// 每家有哪些，见 features/settings/asrProviderCatalog.ts 的 AsrProviderEntry.models。
+// 端點寫死在這裡而不做成可配置項：ASR 側的約定是「供應商只能從內建清單裡選」，
+// 因為每家的協議都要一份專門實現，能填任意地址只會讓使用者以為隨便填個地址就能用。
+// 模型則是可選的（extra.model），因為換模型不改協議 —— 前端目錄裡那份清單說明了
+// 每家有哪些，見 features/settings/asrProviderCatalog.ts 的 AsrProviderEntry.models。
 
 use super::diag;
 use super::types::{AsrProviderConfig, AsrResult, TestResult};
 use std::time::Instant;
 
-/// 一家「OpenAI 形态转写」的接入点。
+/// 一家「OpenAI 形態轉寫」的接入點。
 struct Endpoint {
     url: &'static str,
-    /// 前端没指定模型时用它
+    /// 前端沒指定模型時用它
     default_model: &'static str,
-    /// 日志作用域，出问题时要一眼看出是哪家
+    /// 日誌作用域，出問題時要一眼看出是哪家
     scope: &'static str,
-    /// 前端选定的 `extra.model` 在这个端点上是否可用。
+    /// 前端選定的 `extra.model` 在這個端點上是否可用。
     ///
-    /// `openai_live_transcribe` 选的是**流式**模型（gpt-live-transcribe），而
-    /// `/audio/transcriptions` 上没有这个模型。那张卡关掉实时字幕时会回落到这条
-    /// HTTP 路径（见 registry.rs），照着把流式模型名发出去只会换来一个含义模糊的
-    /// 400 —— 而用户完全不知道自己发了个文件端点不认识的模型。所以这一档忽略
-    /// 选定值，一律用 default_model。
+    /// `openai_live_transcribe` 選的是**流式**模型（gpt-live-transcribe），而
+    /// `/audio/transcriptions` 上沒有這個模型。那張卡關掉即時字幕時會回落到這條
+    /// HTTP 路徑（見 registry.rs），照著把流式模型名發出去只會換來一個含義模糊的
+    /// 400 —— 而使用者完全不知道自己發了個檔案端點不認識的模型。所以這一檔忽略
+    /// 選定值，一律用 default_model。
     honors_selected_model: bool,
-    /// 用户填了 `extra.baseUrl` 就用他的，空着用上面的 `url`。
+    /// 使用者填了 `extra.baseUrl` 就用他的，空著用上面的 `url`。
     ///
-    /// 为什么内置几家也开：拿中转站 / 反代接 OpenAI 很常见 —— 协议是官方那套，
-    /// 只是换了个域名。不给填等于逼这些用户用不了。
-    /// 安全边界在前端：只有标了 `supportsCustomUrl` 的模型才会把地址发下来，
-    /// 所以档案里的残留地址到不了这里（见 asrEndpointUrl）。
+    /// 為什麼內建幾家也開：拿中轉站 / 反代接 OpenAI 很常見 —— 協議是官方那套，
+    /// 只是換了個域名。不給填等於逼這些使用者用不了。
+    /// 安全邊界在前端：只有標了 `supportsCustomUrl` 的模型才會把地址發下來，
+    /// 所以檔案裡的殘留地址到不了這裡（見 asrEndpointUrl）。
     allows_custom_url: bool,
-    /// 地址**必填**（协议卡）。此时 `url` 是空串，没有可回落的内置地址。
+    /// 地址**必填**（協議卡）。此時 `url` 是空串，沒有可回落的內建地址。
     requires_custom_url: bool,
-    /// 第三方实现对 `prompt` 的态度不一，有的直接 400。宽容档位在失败后去掉它重试一次。
+    /// 第三方實現對 `prompt` 的態度不一，有的直接 400。寬容檔位在失敗後去掉它重試一次。
     ///
-    /// 官方那几家不需要这层：它们都接受 prompt，而 prompt 是中文标点的唯一来源
-    /// （见 PUNCTUATION_PROMPT），无条件丢掉会让转写结果变差。
+    /// 官方那幾家不需要這層：它們都接受 prompt，而 prompt 是中文標點的唯一來源
+    /// （見 PUNCTUATION_PROMPT），無條件丟掉會讓轉寫結果變差。
     retry_without_prompt: bool,
 }
 
@@ -76,25 +76,25 @@ const OPENAI: Endpoint = Endpoint {
     retry_without_prompt: false,
 };
 
-/// OpenAI 流式那张卡回落到文件端点时用的档位。
-/// 端点与 OPENAI 相同，区别只有一个：不接受选定模型（那是流式专用的）。
+/// OpenAI 流式那張卡回落到檔案端點時用的檔位。
+/// 端點與 OPENAI 相同，區別只有一個：不接受選定模型（那是流式專用的）。
 const OPENAI_FILE_FALLBACK: Endpoint = Endpoint {
     url: OPENAI.url,
     default_model: "gpt-transcribe",
     scope: "openai/asr-fallback",
     honors_selected_model: false,
-    // 流式那个模型在前端没标 supportsCustomUrl，所以地址不会发下来；
-    // 这里也显式关掉，免得「我没给这个模型填地址、回落时却用了别处的地址」。
+    // 流式那個模型在前端沒標 supportsCustomUrl，所以地址不會發下來；
+    // 這裡也顯式關掉，免得「我沒給這個模型填地址、回落時卻用了別處的地址」。
     allows_custom_url: false,
     requires_custom_url: false,
     retry_without_prompt: false,
 };
 
-/// 「OpenAI 兼容转写」那张卡：协议固定、地址由用户填。
+/// 「OpenAI 相容轉寫」那張卡：協議固定、地址由使用者填。
 ///
-/// 对面可能是 whisper.cpp / faster-whisper / FunASR 的 OpenAI 兼容服务、硅基流动，
-/// 或者某个聚合网关。所以这一档比内置几家宽容：prompt 被拒时去掉重试，
-/// 响应不是 JSON 时按纯文本收（见 extract_text_or_plain）。
+/// 對面可能是 whisper.cpp / faster-whisper / FunASR 的 OpenAI 相容服務、矽基流動，
+/// 或者某個聚合閘道器。所以這一檔比內建幾家寬容：prompt 被拒時去掉重試，
+/// 響應不是 JSON 時按純文本收（見 extract_text_or_plain）。
 const OPENAI_COMPAT: Endpoint = Endpoint {
     url: "",
     default_model: "whisper-1",
@@ -105,8 +105,8 @@ const OPENAI_COMPAT: Endpoint = Endpoint {
     retry_without_prompt: true,
 };
 
-/// provider id → 接入点。未知 id 回落到 Groq（registry 只会把这几个 id 分发过来，
-/// 加一家时这里和 registry 要一起改）。
+/// provider id → 接入點。未知 id 回落到 Groq（registry 只會把這幾個 id 分發過來，
+/// 加一家時這裡和 registry 要一起改）。
 fn endpoint_for(provider: &str) -> &'static Endpoint {
     match provider {
         "openai_transcribe" => &OPENAI,
@@ -116,14 +116,14 @@ fn endpoint_for(provider: &str) -> &'static Endpoint {
     }
 }
 
-/// 把用户填的 base URL 接成完整的转写地址。
+/// 把使用者填的 base URL 接成完整的轉寫地址。
 ///
-/// 用户会填成什么样无法预设，实际见过这三种，都要能用：
-///   · `http://127.0.0.1:8000/v1`            → 补 `/audio/transcriptions`
-///   · `http://127.0.0.1:8000/v1/`           → 同上，先去掉尾斜杠
-///   · `http://.../v1/audio/transcriptions`  → 已经是完整地址，原样用
-/// 不做第四种猜测（比如自动补 `/v1`）：猜错会打到一个存在但语义不同的路径上，
-/// 那种失败比「404 地址不对」难查得多。
+/// 使用者會填成什麼樣無法預設，實際見過這三種，都要能用：
+///   · `http://127.0.0.1:8000/v1`            → 補 `/audio/transcriptions`
+///   · `http://127.0.0.1:8000/v1/`           → 同上，先去掉尾斜線
+///   · `http://.../v1/audio/transcriptions`  → 已經是完整地址，原樣用
+/// 不做第四種猜測（比如自動補 `/v1`）：猜錯會打到一個存在但語義不同的路徑上，
+/// 那種失敗比「404 地址不對」難查得多。
 fn join_transcriptions_url(base: &str) -> String {
     let trimmed = base.trim().trim_end_matches('/');
     if trimmed.ends_with("/audio/transcriptions") {
@@ -158,11 +158,11 @@ fn resolve_url(config: &AsrProviderConfig, endpoint: &Endpoint) -> Result<String
     Ok(endpoint.url.to_string())
 }
 
-/// 本次要用的模型：前端选定的（extra.model）优先，否则用该家的默认。
+/// 本次要用的模型：前端選定的（extra.model）優先，否則用該家的預設。
 ///
-/// 不校验模型名是否属于这一家 —— 服务商上下线模型比我们改代码勤，硬校验只会让
-/// 新模型必须等一次客户端更新才能用。前端目录已经限定了可选项，这里只兜住空值，
-/// 以及 `honors_selected_model = false` 那一档（说明见 Endpoint 上的注释）。
+/// 不校驗模型名是否屬於這一家 —— 服務商上下線模型比我們改程式碼勤，硬校驗只會讓
+/// 新模型必須等一次客戶端更新才能用。前端目錄已經限定了可選項，這裡只兜住空值，
+/// 以及 `honors_selected_model = false` 那一檔（說明見 Endpoint 上的註釋）。
 fn resolve_model(config: &AsrProviderConfig, endpoint: &Endpoint) -> String {
     if !endpoint.honors_selected_model {
         return endpoint.default_model.to_string();
@@ -177,33 +177,33 @@ fn resolve_model(config: &AsrProviderConfig, endpoint: &Endpoint) -> String {
         .to_string()
 }
 
-/// 标点引导。**这不是可选的润色，缺了它短句中文转写会一个标点都没有。**
+/// 標點引導。**這不是可選的潤色，缺了它短句中文轉寫會一個標點都沒有。**
 ///
-/// Whisper 的 `prompt` 不是指令，而是「上文样例」：解码时模型会模仿它的书写风格。
-/// 所以想要标点，prompt 自己就必须是**带标点的句子** —— 写成「请加标点」毫无作用。
+/// Whisper 的 `prompt` 不是指令，而是「上文樣例」：解碼時模型會模仿它的書寫風格。
+/// 所以想要標點，prompt 自己就必須是**帶標點的句子** —— 寫成「請加標點」毫無作用。
 ///
-/// 实测（dev-scripts/groq-asr-punct-probe.mjs，打的是真实接口）：
-///   · 中文短句、不带 prompt   → "语音输入法测试成功"     一个标点都没有
-///   · 中文短句、带这个 prompt → "语音输入法测试成功。"
-///   · 英文                   → 两种情况都带标点，加了不变差
+/// 實測（dev-scripts/groq-asr-punct-probe.mjs，打的是真實介面）：
+///   · 中文短句、不帶 prompt   → "語音輸入法測試成功"     一個標點都沒有
+///   · 中文短句、帶這個 prompt → "語音輸入法測試成功。"
+///   · 英文                   → 兩種情況都帶標點，加了不變差
 ///
-/// 为什么写成中英混排：默认语言是 auto。实测纯中文 prompt 并不会把英文音频带偏
-/// （输出仍是纯英文），而混排能让两种语言都拿到标点，且都不会被改写成另一种语言。
+/// 為什麼寫成中英混排：預設語言是 auto。實測純中文 prompt 並不會把英文音訊帶偏
+/// （輸出仍是純英文），而混排能讓兩種語言都拿到標點，且都不會被改寫成另一種語言。
 ///
-/// **它管不了全角还是半角。** 另一轮实测（groq-asr-comma-probe.mjs，用一段真的需要
-/// 逗号的中文语音）显示：四种 prompt 连同完全不给 prompt，输出一字不差 ——
-/// 逗号和问号是半角、句号是全角，混着来。那是模型自身行为，改 prompt 没有任何影响。
-/// 半角转全角在前端 textPostProcess.ts 的 normalizeChinesePunctuation 里做。
+/// **它管不了全形還是半形。** 另一輪實測（groq-asr-comma-probe.mjs，用一段真的需要
+/// 逗號的中文語音）顯示：四種 prompt 連同完全不給 prompt，輸出一字不差 ——
+/// 逗號和問號是半形、句號是全形，混著來。那是模型自身行為，改 prompt 沒有任何影響。
+/// 半形轉全形在前端 textPostProcess.ts 的 normalizeChinesePunctuation 裡做。
 ///
-/// 另外验证过静音不会把这段文字当成转写结果吐回来（那会被直接插进用户的文档）。
-const PUNCTUATION_PROMPT: &str = "以下是中文转写，使用全角标点，例如逗号、句号和问号。The following is an English transcript with half-width punctuation, such as commas, periods, and question marks.";
+/// 另外驗證過靜音不會把這段文字當成轉寫結果吐回來（那會被直接插進使用者的文件）。
+const PUNCTUATION_PROMPT: &str = "以下是中文轉寫，使用全形標點，例如逗號、句號和問號。The following is an English transcript with half-width punctuation, such as commas, periods, and question marks.";
 
-/// 将 16kHz 单声道 16-bit PCM 封装为 WAV 容器。
+/// 將 16kHz 單聲道 16-bit PCM 封裝為 WAV 容器。
 ///
-/// 前端一路传下来的都是裸 PCM（见 types.rs 的 CloudTranscribeRequest），而
-/// /audio/transcriptions 按文件名与内容嗅探格式，裸 PCM 它认不出来。
-/// 这 18 行与 asr_mimo.rs 里那份是同一个 WAV 头，刻意各留一份：抽成公共函数后
-/// 任何一家改采样格式都会牵动另一家，而它们本来毫无关系。
+/// 前端一路傳下來的都是裸 PCM（見 types.rs 的 CloudTranscribeRequest），而
+/// /audio/transcriptions 按檔名與內容嗅探格式，裸 PCM 它認不出來。
+/// 這 18 行與 asr_mimo.rs 裡那份是同一個 WAV 頭，刻意各留一份：抽成公共函式後
+/// 任何一家改取樣格式都會牽動另一家，而它們本來毫無關係。
 fn pcm_to_wav(pcm: &[u8], sr: u32) -> Vec<u8> {
     let ds = pcm.len() as u32;
     let mut w = Vec::with_capacity(44 + pcm.len());
@@ -223,11 +223,11 @@ fn pcm_to_wav(pcm: &[u8], sr: u32) -> Vec<u8> {
     w
 }
 
-/// 识别语言：设置里存的是 auto|zh|en，Whisper 只接受 ISO-639-1。
+/// 識別語言：設定裡存的是 auto|zh|en，Whisper 只接受 ISO-639-1。
 ///
-/// auto 必须**整个省略 language 字段**，不能传字符串 "auto" —— Whisper 会把它当成
-/// 一个不存在的语言代码，行为不确定（可能报 400，也可能默默按英语转写）。
-/// 返回 None 表示让服务端自己检测。
+/// auto 必須**整個省略 language 欄位**，不能傳字串 "auto" —— Whisper 會把它當成
+/// 一個不存在的語言代碼，行為不確定（可能報 400，也可能默默按英語轉寫）。
+/// 返回 None 表示讓服務端自己檢測。
 fn resolve_language(config: &AsrProviderConfig) -> Option<String> {
     let raw = config
         .extra
@@ -257,8 +257,8 @@ fn build_form(
     let mut form = reqwest::multipart::Form::new()
         .part("file", part)
         .text("model", model.to_string())
-        // 显式要 json：不少第三方实现的默认 response_format 不是 json
-        // （有的给纯文本、有的给 srt），不写这一行就得靠运气。
+        // 顯式要 json：不少第三方實現的預設 response_format 不是 json
+        // （有的給純文本、有的給 srt），不寫這一行就得靠運氣。
         .text("response_format", "json");
     if with_prompt {
         form = form.text("prompt", PUNCTUATION_PROMPT);
@@ -269,7 +269,7 @@ fn build_form(
     Ok(form)
 }
 
-/// 响应形状是 `{"text": "..."}`，比 chat/completions 简单得多。
+/// 響應形狀是 `{"text": "..."}`，比 chat/completions 簡單得多。
 fn extract_text(data: &serde_json::Value) -> String {
     data.get("text")
         .and_then(|t| t.as_str())
@@ -278,14 +278,14 @@ fn extract_text(data: &serde_json::Value) -> String {
         .to_string()
 }
 
-/// 同上，但响应不是 JSON 时按纯文本收。
+/// 同上，但響應不是 JSON 時按純文本收。
 ///
-/// 只给「地址由用户填」那一档用。第三方实现即使收到 `response_format=json` 也可能
-/// 回一段裸文本（whisper.cpp 的若干包装就是这样）。这时候硬报 parse_json 等于
-/// 把一次**成功的转写**说成失败，而用户看不出问题在哪一层。
+/// 只給「地址由使用者填」那一檔用。第三方實現即使收到 `response_format=json` 也可能
+/// 回一段裸文本（whisper.cpp 的若干包裝就是這樣）。這時候硬報 parse_json 等於
+/// 把一次**成功的轉寫**說成失敗，而使用者看不出問題在哪一層。
 ///
-/// 反过来不能对内置几家开这个口子：那边回非 JSON 说明出了真问题（网关错误页、
-/// 被劫持的响应），当成转写文本插进用户文档比报错糟得多。
+/// 反過來不能對內建幾家開這個口子：那邊回非 JSON 說明出了真問題（閘道器錯誤頁、
+/// 被劫持的響應），當成轉寫文本插進使用者文件比報錯糟得多。
 fn extract_text_or_plain(body: &str) -> String {
     match serde_json::from_str::<serde_json::Value>(body) {
         Ok(data) => extract_text(&data),
@@ -293,11 +293,11 @@ fn extract_text_or_plain(body: &str) -> String {
     }
 }
 
-/// 响应体像不像是在抱怨 `prompt` 这个字段。
+/// 響應體像不像是在抱怨 `prompt` 這個欄位。
 ///
-/// 只在这一个判据成立时才去掉 prompt 重试，不做「失败就重试」—— 密钥错、模型不存在
-/// 这类 400 一旦也触发重试，每次转写都要白发两遍（AI 润色那边的降级判定踩过同一个坑，
-/// 见 decisions.md「默认替所有 OpenAI 兼容端点关闭思考」）。
+/// 只在這一個判據成立時才去掉 prompt 重試，不做「失敗就重試」—— 金鑰錯、模型不存在
+/// 這類 400 一旦也觸發重試，每次轉寫都要白發兩遍（AI 潤色那邊的降級判定踩過同一個坑，
+/// 見 decisions.md「預設替所有 OpenAI 相容端點關閉思考」）。
 fn complains_about_prompt(body: &str) -> bool {
     let lower = body.to_lowercase();
     lower.contains("prompt")
@@ -318,13 +318,13 @@ pub async fn transcribe(
     let endpoint = endpoint_for(&config.provider);
     let scope = endpoint.scope;
 
-    // 这条路不把热词发给服务端 —— `prompt` 是它唯一能放词表的位置，而我们拿它做了
-    // 中文标点引导（见 PUNCTUATION_PROMPT，缺了它中文短句一个标点都没有）。
+    // 這條路不把熱詞發給服務端 —— `prompt` 是它唯一能放詞表的位置，而我們拿它做了
+    // 中文標點引導（見 PUNCTUATION_PROMPT，缺了它中文短句一個標點都沒有）。
     //
-    // 留这行日志的理由：热词被忽略时转写照样成功，用户只觉得"识别得不太准"，
-    // 而在这行存在之前**日志里一个字都查不到**。issue #67 是 FunASR 上游维护者
-    // 读源码发现的，不是从日志里看出来的 —— 那说明这个缺口对我们自己也是不可见的。
-    // 能力声明在 providers/capabilities.rs，这里只负责留痕。
+    // 留這行日誌的理由：熱詞被忽略時轉寫照樣成功，使用者只覺得"識別得不太準"，
+    // 而在這行存在之前**日誌裡一個字都查不到**。issue #67 是 FunASR 上游維護者
+    // 讀原始碼發現的，不是從日誌裡看出來的 —— 那說明這個缺口對我們自己也是不可見的。
+    // 能力宣告在 providers/capabilities.rs，這裡只負責留痕。
     if !hotwords.is_empty() {
         diag::log(
             scope,
@@ -369,8 +369,8 @@ pub async fn transcribe(
     let client = super::http_client::shared();
     let start = Instant::now();
 
-    // 第一次带 prompt（中文标点全靠它）。只有「地址由用户填」那一档、且服务端明确
-    // 抱怨 prompt 时，才去掉它重试一次 —— 判据见 complains_about_prompt。
+    // 第一次帶 prompt（中文標點全靠它）。只有「地址由使用者填」那一檔、且服務端明確
+    // 抱怨 prompt 時，才去掉它重試一次 —— 判據見 complains_about_prompt。
     let mut with_prompt = true;
     let (body_text, http_summary, elapsed_ms) = loop {
         let form = build_form(wav.clone(), &model, language.as_deref(), scope, with_prompt)?;
@@ -420,12 +420,12 @@ pub async fn transcribe(
         ));
     };
 
-    // 只有**协议卡**容忍裸文本响应，内置几家仍然要求 JSON（理由见函数注释）。
+    // 只有**協議卡**容忍裸文本響應，內建幾家仍然要求 JSON（理由見函式註釋）。
     //
-    // ⚠️ 这里判的是 requires_custom_url 而不是 allows_custom_url：后者现在对
-    // Groq / OpenAI 也是真的（它们支持换成中转站地址），拿它当判据会让这两家
-    // 也开始把非 JSON 响应当转写文本收 —— 那种响应在官方端点上意味着真出了问题
-    // （网关错误页、被劫持的响应），当成文本插进用户文档比报错糟得多。
+    // ⚠️ 這裡判的是 requires_custom_url 而不是 allows_custom_url：後者現在對
+    // Groq / OpenAI 也是真的（它們支援換成中轉站地址），拿它當判據會讓這兩家
+    // 也開始把非 JSON 響應當轉寫文本收 —— 那種響應在官方端點上意味著真出了問題
+    // （閘道器錯誤頁、被劫持的響應），當成文本插進使用者文件比報錯糟得多。
     let text = if endpoint.requires_custom_url {
         extract_text_or_plain(&body_text)
     } else {
@@ -444,8 +444,8 @@ pub async fn transcribe(
         extract_text(&data)
     };
     if text.is_empty() {
-        // 空结果走成功路径，前端只会显示「未检测到有效声音」。不留这条日志的话，
-        // 「真的没说话」和「这次调用其实失败了」就再也分不开（见 pitfalls #15）。
+        // 空結果走成功路徑，前端只會顯示「未檢測到有效聲音」。不留這條日誌的話，
+        // 「真的沒說話」和「這次呼叫其實失敗了」就再也分不開（見 pitfalls #15）。
         diag::empty_result(
             scope,
             &format!(
@@ -465,14 +465,14 @@ pub async fn transcribe(
 
 pub async fn test_connection(config: &AsrProviderConfig) -> TestResult {
     let endpoint = endpoint_for(&config.provider);
-    // 0.5s 静音：这些模型会返回空文本但 HTTP 200，足以验证密钥与网络是否可用。
-    // 音频再短会被服务端以「too short」拒掉，那就分不清是密钥问题还是音频问题了。
+    // 0.5s 靜音：這些模型會返回空文本但 HTTP 200，足以驗證金鑰與網路是否可用。
+    // 音訊再短會被服務端以「too short」拒掉，那就分不清是金鑰問題還是音訊問題了。
     let silence = vec![0u8; 16000];
     let wav = pcm_to_wav(&silence, 16000);
     let model = resolve_model(config, endpoint);
 
-    // 地址没填时在这里就给出明确结论，而不是拿一个空 URL 去发请求 ——
-    // 那会换来一条含义模糊的传输层错误。
+    // 地址沒填時在這裡就給出明確結論，而不是拿一個空 URL 去發請求 ——
+    // 那會換來一條含義模糊的傳輸層錯誤。
     let url = match resolve_url(config, endpoint) {
         Ok(u) => u,
         Err(e) => {
@@ -567,22 +567,22 @@ mod tests {
         }
     }
 
-    /// 用户填地址的三种常见写法都要接对。
+    /// 使用者填地址的三種常見寫法都要接對。
     ///
-    /// 接错的表现是 404，而 404 在这个场景下歧义极大 —— 用户会以为自己的服务没起来、
-    /// 或者模型名写错了，很难想到是客户端把路径拼坏了。
+    /// 接錯的表現是 404，而 404 在這個場景下歧義極大 —— 使用者會以為自己的服務沒起來、
+    /// 或者模型名寫錯了，很難想到是客戶端把路徑拼壞了。
     #[test]
     fn base_url_is_joined_into_a_transcriptions_path() {
         let expected = "http://127.0.0.1:8000/v1/audio/transcriptions";
         assert_eq!(join_transcriptions_url("http://127.0.0.1:8000/v1"), expected);
         assert_eq!(join_transcriptions_url("http://127.0.0.1:8000/v1/"), expected);
         assert_eq!(join_transcriptions_url("  http://127.0.0.1:8000/v1  "), expected);
-        // 已经是完整地址就别再接一层
+        // 已經是完整地址就別再接一層
         assert_eq!(join_transcriptions_url(expected), expected);
         assert_eq!(join_transcriptions_url(&format!("{expected}/")), expected);
     }
 
-    /// 地址没填时必须当场失败，而不是拿空 URL 去发请求。
+    /// 地址沒填時必須當場失敗，而不是拿空 URL 去發請求。
     #[test]
     fn a_custom_endpoint_without_an_address_fails_before_sending() {
         let missing = config_for("openai_compat_transcribe", serde_json::json!({}));
@@ -600,11 +600,11 @@ mod tests {
         );
     }
 
-    /// 内置几家：地址**空着用官方的、填了用用户的**。
+    /// 內建幾家：地址**空著用官方的、填了用使用者的**。
     ///
-    /// 允许覆盖是因为中转站 / 反代很常见（协议是官方那套，只换域名）。
-    /// 安全边界不在这里，在前端：只有标了 supportsCustomUrl 的模型才会把地址发下来，
-    /// 所以档案里的残留地址到不了这一层（见 asrEndpointUrl 的注释）。
+    /// 允許覆蓋是因為中轉站 / 反代很常見（協議是官方那套，只換域名）。
+    /// 安全邊界不在這裡，在前端：只有標了 supportsCustomUrl 的模型才會把地址發下來，
+    /// 所以檔案裡的殘留地址到不了這一層（見 asrEndpointUrl 的註釋）。
     #[test]
     fn builtin_endpoints_default_to_official_and_honor_an_override() {
         for (provider, official) in [
@@ -629,10 +629,10 @@ mod tests {
         }
     }
 
-    /// 流式那张卡回落到文件端点时**不**用用户地址。
+    /// 流式那張卡回落到檔案端點時**不**用使用者地址。
     ///
-    /// 前端没给那个模型标 supportsCustomUrl，所以正常路径上地址根本不会发下来；
-    /// 这里再关一道，免得「我没给这个模型填地址、它回落时却用了别处的地址」。
+    /// 前端沒給那個模型標 supportsCustomUrl，所以正常路徑上地址根本不會發下來；
+    /// 這裡再關一道，免得「我沒給這個模型填地址、它回落時卻用了別處的地址」。
     #[test]
     fn the_live_card_fallback_never_uses_a_custom_url() {
         let config = config_for(
@@ -643,9 +643,9 @@ mod tests {
         assert!(url.contains("api.openai.com"), "got {url}");
     }
 
-    /// 去掉 prompt 重试的判据要窄：只在服务端确实在抱怨这个字段时才重试。
+    /// 去掉 prompt 重試的判據要窄：只在服務端確實在抱怨這個欄位時才重試。
     ///
-    /// 放宽成「失败就重试」会让密钥错、模型不存在这类 400 每次都白发两遍请求。
+    /// 放寬成「失敗就重試」會讓金鑰錯、模型不存在這類 400 每次都白發兩遍請求。
     #[test]
     fn prompt_retry_only_triggers_on_complaints_about_prompt() {
         assert!(complains_about_prompt(
@@ -659,15 +659,15 @@ mod tests {
         assert!(!complains_about_prompt(r#"{"error":{"message":"Invalid API key"}}"#));
         assert!(!complains_about_prompt(r#"{"error":{"message":"model not found"}}"#));
         assert!(!complains_about_prompt("Internal Server Error"));
-        // 只提到 prompt、但没说它有问题的，也不该触发重试
+        // 只提到 prompt、但沒說它有問題的，也不該觸發重試
         assert!(!complains_about_prompt("your prompt was transcribed"));
     }
 
-    /// 只有**协议卡**才容忍裸文本响应，内置几家必须要求 JSON。
+    /// 只有**協議卡**才容忍裸文本響應，內建幾家必須要求 JSON。
     ///
-    /// 判据是 requires_custom_url，不是 allows_custom_url —— 后者现在对 Groq /
-    /// OpenAI 也是真的（它们支持换中转站地址）。搞混的后果是这两家也开始把
-    /// 网关错误页当成转写文本插进用户文档。
+    /// 判據是 requires_custom_url，不是 allows_custom_url —— 後者現在對 Groq /
+    /// OpenAI 也是真的（它們支援換中轉站地址）。搞混的後果是這兩家也開始把
+    /// 閘道器錯誤頁當成轉寫文本插進使用者文件。
     #[test]
     fn only_the_protocol_card_tolerates_a_plain_text_body() {
         assert!(endpoint_for("openai_compat_transcribe").requires_custom_url);
@@ -675,12 +675,12 @@ mod tests {
         assert!(!endpoint_for("openai_transcribe").requires_custom_url);
         assert!(!endpoint_for("openai_live_transcribe").requires_custom_url);
 
-        assert_eq!(extract_text_or_plain(r#"{"text":"来自 JSON"}"#), "来自 JSON");
-        assert_eq!(extract_text_or_plain("  裸文本响应  "), "裸文本响应");
+        assert_eq!(extract_text_or_plain(r#"{"text":"來自 JSON"}"#), "來自 JSON");
+        assert_eq!(extract_text_or_plain("  裸文本響應  "), "裸文本響應");
     }
 
-    /// 两家共用这份实现，分发只靠 provider id —— 认错一家就会把请求打到另一家的
-    /// 域名上，而拿到的只会是一个 401，看不出是路由错了。
+    /// 兩家共用這份實現，分發只靠 provider id —— 認錯一家就會把請求打到另一家的
+    /// 域名上，而拿到的只會是一個 401，看不出是路由錯了。
     #[test]
     fn provider_id_picks_the_right_endpoint() {
         let groq = endpoint_for("groq_whisper");
@@ -691,13 +691,13 @@ mod tests {
         assert!(openai.url.contains("api.openai.com"));
         assert_eq!(openai.default_model, "gpt-transcribe");
 
-        // 两家的日志作用域必须能区分，否则日志里看不出这次是打给谁的
+        // 兩家的日誌作用域必須能區分，否則日誌裡看不出這次是打給誰的
         assert_ne!(groq.scope, openai.scope);
     }
 
-    /// OpenAI 流式那张卡关掉字幕会回落到文件端点，而它选的模型
-    /// （gpt-live-transcribe）在那个端点上不存在 —— 必须被换成 gpt-transcribe。
-    /// 这条钉住的是「回落之后静默 400」这个坑。
+    /// OpenAI 流式那張卡關掉字幕會回落到檔案端點，而它選的模型
+    /// （gpt-live-transcribe）在那個端點上不存在 —— 必須被換成 gpt-transcribe。
+    /// 這條釘住的是「回落之後靜默 400」這個坑。
     #[test]
     fn live_card_falling_back_ignores_the_streaming_model() {
         let endpoint = endpoint_for("openai_live_transcribe");
@@ -715,8 +715,8 @@ mod tests {
         );
     }
 
-    /// 前端选定的模型要真的被用上。这条钉住的是用户报的那个缺口：
-    /// 目录里加了 whisper-large-v3，但如果这里仍用常量，选了也还是发 turbo。
+    /// 前端選定的模型要真的被用上。這條釘住的是使用者報的那個缺口：
+    /// 目錄裡加了 whisper-large-v3，但如果這裡仍用常量，選了也還是發 turbo。
     #[test]
     fn selected_model_overrides_the_default() {
         let groq = endpoint_for("groq_whisper");
@@ -731,8 +731,8 @@ mod tests {
         );
     }
 
-    /// 没选、空串、只有空白，一律回落到该家的默认，绝不把空模型名发出去
-    /// （服务端只会回一个含义模糊的 400）。
+    /// 沒選、空串、只有空白，一律回落到該家的預設，絕不把空模型名發出去
+    /// （服務端只會回一個含義模糊的 400）。
     #[test]
     fn blank_model_falls_back_to_default() {
         let groq = endpoint_for("groq_whisper");
@@ -750,7 +750,7 @@ mod tests {
         );
     }
 
-    /// auto 必须省略 language 字段，而不是把 "auto" 当语言代码发出去。
+    /// auto 必須省略 language 欄位，而不是把 "auto" 當語言代碼發出去。
     #[test]
     fn auto_language_is_omitted() {
         assert_eq!(resolve_language(&config_with_language(serde_json::json!({}))), None);
@@ -772,8 +772,8 @@ mod tests {
         );
     }
 
-    /// WAV 头必须是 44 字节，且长度字段要跟数据长度对得上 —— 写错的话服务端只会回
-    /// 一个含义模糊的 400，很难往回定位到这里。
+    /// WAV 頭必須是 44 位元組，且長度欄位要跟資料長度對得上 —— 寫錯的話服務端只會回
+    /// 一個含義模糊的 400，很難往回定位到這裡。
     #[test]
     fn wav_header_is_well_formed() {
         let pcm = vec![0u8; 320];
@@ -787,18 +787,18 @@ mod tests {
         assert_eq!(data_size as usize, pcm.len());
     }
 
-    /// 这个 prompt 是靠「示范」生效的：它自己不带标点就一点作用都没有，
-    /// 而少了其中一种文字，auto 路径下那种语言就会失去引导。
-    /// 有人图省事把它改短时，这条会拦住。
+    /// 這個 prompt 是靠「示範」生效的：它自己不帶標點就一點作用都沒有，
+    /// 而少了其中一種文字，auto 路徑下那種語言就會失去引導。
+    /// 有人圖省事把它改短時，這條會攔住。
     ///
-    /// 注意它**不负责**全角/半角 —— 实测改 prompt 对宽度毫无影响，
-    /// 那件事在前端 normalizeChinesePunctuation 里做。
+    /// 注意它**不負責**全形/半形 —— 實測改 prompt 對寬度毫無影響，
+    /// 那件事在前端 normalizeChinesePunctuation 裡做。
     #[test]
     fn punctuation_prompt_demonstrates_punctuation_in_both_scripts() {
-        assert!(PUNCTUATION_PROMPT.contains('。'), "缺中文句号，中文转写会没有标点");
-        assert!(PUNCTUATION_PROMPT.contains('，'), "缺中文逗号");
-        assert!(PUNCTUATION_PROMPT.contains('.'), "缺英文句号");
-        assert!(PUNCTUATION_PROMPT.contains(','), "缺英文逗号");
+        assert!(PUNCTUATION_PROMPT.contains('。'), "缺中文句號，中文轉寫會沒有標點");
+        assert!(PUNCTUATION_PROMPT.contains('，'), "缺中文逗號");
+        assert!(PUNCTUATION_PROMPT.contains('.'), "缺英文句號");
+        assert!(PUNCTUATION_PROMPT.contains(','), "缺英文逗號");
         assert!(
             PUNCTUATION_PROMPT.chars().any(|c| ('\u{4e00}'..='\u{9fff}').contains(&c)),
             "缺中文字符"

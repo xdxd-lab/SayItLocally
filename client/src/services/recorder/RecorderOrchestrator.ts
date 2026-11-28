@@ -91,21 +91,21 @@ const VALID_TRANSITIONS: StateTransition[] = [
 ]
 
 const LATE_FINAL_GRACE_MS = 15000
-/** 文本插入还没收尾时，超时定时器每次顺延多久。 */
+/** 文本插入還沒收尾時，超時定時器每次順延多久。 */
 const INSERTION_TIMEOUT_EXTENSION_MS = 5000
 /**
- * 插入阶段专属超时。见 armInsertionTimeout 的注释 —— 处理超时在 onFinal 里就被清掉了，
- * 管不到插入这一段，所以这一段必须自带一个。
+ * 插入階段專屬超時。見 armInsertionTimeout 的註釋 —— 處理超時在 onFinal 裡就被清掉了，
+ * 管不到插入這一段，所以這一段必須自帶一個。
  */
 const INSERTION_TIMEOUT_MS = 15000
-/** 顺延次数上限；用尽就强制把界面从「处理中」放出来。 */
+/** 順延次數上限；用盡就強制把介面從「處理中」放出來。 */
 const MAX_INSERTION_TIMEOUT_EXTENSIONS = 3
 const MODIFIER_PTT_RELEASE_GUARD_MS = 200
 /** [自訂] S40：停用使用統計 userStats 的保存（與 asrCorrection.ts 的 ASR_CORRECTION_DISABLED 同一寫法） */
 const USER_STATS_RECORDING_DISABLED = true as boolean
 
 function classifyHistoryProviderFailure(message: string): HistoryFailReasonCode {
-  // 录音中掉线要单列：这段语音从未送达服务端，跟「服务端处理失败」的排查方向完全不同。
+  // 錄音中掉線要單列：這段語音從未送達服務端，跟「服務端處理失敗」的排查方向完全不同。
   if (message === MID_SESSION_DISCONNECT_ERROR) return 'connection_lost'
   const code = describeProviderError(message).code
   switch (code) {
@@ -125,12 +125,12 @@ interface TimedOutProcessingContext {
   runId: number
   timedOutAt: number
   /**
-   * 这一代是否已经收尾（迟到 final 已被消费并落库）。
+   * 這一代是否已經收尾（遲到 final 已被消費並落庫）。
    *
-   * 宽限期兜底定时器**只认这个标志**，不再看 `timedOutProcessingContext` 还指着自己：
-   * 新一次录音会在 startRecording 里把那个字段清空，于是兜底定时器直接 return，
-   * 上一段录音的音频与历史一起消失（实测丢过 60 秒录音）。用户又按了一次热键，
-   * 不等于他放弃了上一段。
+   * 寬限期兜底定時器**只認這個標誌**，不再看 `timedOutProcessingContext` 還指著自己：
+   * 新一次錄音會在 startRecording 裡把那個欄位清空，於是兜底定時器直接 return，
+   * 上一段錄音的音訊與歷史一起消失（實測丟過 60 秒錄音）。使用者又按了一次熱鍵，
+   * 不等於他放棄了上一段。
    */
   settled: boolean
   audioDurationSec: number
@@ -150,7 +150,7 @@ interface ResetToIdleOptions {
 
 export class RecorderOrchestrator {
   private state: RecorderState = 'idle'
-  /** 本次录音的运行期数据（模块 6）。字段的复位时机与原来逐字段写时完全一致。 */
+  /** 本次錄音的執行期資料（模組 6）。欄位的復位時機與原來逐欄位寫時完全一致。 */
   private readonly run = new RunState()
   private onStateChange: ((s: RecorderState) => void) | null = null
   private initialized = false
@@ -162,40 +162,40 @@ export class RecorderOrchestrator {
   /**
    * 正在插入的那段文本。
    *
-   * 只为一件事存在：插入收尾卡死、顺延用尽时，把文字交还给用户（展示结果卡）。
-   * 那条路上文本已经识别出来了，历史也已落库，唯独没人知道它到底进没进输入框 ——
-   * 以前那里直接 resetToIdle()，界面凭空恢复空闲，用户什么也没拿到。
+   * 只為一件事存在：插入收尾卡死、順延用盡時，把文字交還給使用者（展示結果卡）。
+   * 那條路上文本已經識別出來了，歷史也已落庫，唯獨沒人知道它到底進沒進輸入框 ——
+   * 以前那裡直接 resetToIdle()，介面憑空恢復空閒，使用者什麼也沒拿到。
    */
   private textBeingInserted = ''
   /**
-   * 用户已明确放弃等待迟到结果（宽限期内按了 Esc，或关掉了失败卡）。
+   * 使用者已明確放棄等待遲到結果（寬限期內按了 Esc，或關掉了失敗卡）。
    *
-   * 置位后迟到的 final 只许落历史，**绝不自动插字**：界面已经告诉他"失败了"，
-   * 再往输入框里塞字是最让人措手不及的行为。
+   * 置位後遲到的 final 只許落歷史，**絕不自動插字**：介面已經告訴他"失敗了"，
+   * 再往輸入框裡塞字是最讓人措手不及的行為。
    */
   private lateResultAbandoned = false
   /**
-   * 正在"超时后等迟到结果"的那一代。
+   * 正在"超時後等遲到結果"的那一代。
    *
-   * 不能拿 `timedOutProcessingContext` 当这个判据：迟到 final 一到达就会被
-   * `consumeTimedOutProcessingContext()` 清成 null，而此后还要异步落历史、再插字。
-   * 那段时间里悬浮窗仍显示"仍在等结果"，用户按 Esc 却因为上下文没了被当成过期事件
-   * 丢掉 —— 提示关不掉，文字随后照样插进去。这个字段活到**真正收尾**为止。
+   * 不能拿 `timedOutProcessingContext` 當這個判據：遲到 final 一到達就會被
+   * `consumeTimedOutProcessingContext()` 清成 null，而此後還要非同步落歷史、再插字。
+   * 那段時間裡懸浮窗仍顯示"仍在等結果"，使用者按 Esc 卻因為上下文沒了被當成過期事件
+   * 丟掉 —— 提示關不掉，文字隨後照樣插進去。這個欄位活到**真正收尾**為止。
    */
   private lateResultRunId = 0
-  /** 迟到 final 正在完成历史/插入；此期间禁止新录音复用 Provider。 */
+  /** 遲到 final 正在完成歷史/插入；此期間禁止新錄音複用 Provider。 */
   private finalizingLateRunId = 0
-  /** 当前 fallback 卡片对应的 run token；用于拒绝队列中迟到的旧 dismiss。 */
+  /** 當前 fallback 卡片對應的 run token；用於拒絕佇列中遲到的舊 dismiss。 */
   private activeFallbackToken = 0
   /** Guard against re-entrant startRecording calls during async setup */
   private startRecordingLock = false
   private processingTimeoutId: ReturnType<typeof setTimeout> | null = null
-  /** 插入阶段专属超时；处理超时在 onFinal 里已被清掉，管不到这一段。 */
+  /** 插入階段專屬超時；處理超時在 onFinal 裡已被清掉，管不到這一段。 */
   private insertionTimeoutId: ReturnType<typeof setTimeout> | null = null
   private timedOutProcessingContext: TimedOutProcessingContext | null = null
-  /** 各代录音的音频存档（停止录音就落盘，不等识别结果）。 */
+  /** 各代錄音的音訊存檔（停止錄音就落盤，不等識別結果）。 */
   private audioArchive = new AudioArchiveService((runId) => this.overlayService.updateFailureRecovery('history', runId))
-  /** 历史记录的写入、取消后的清理，以及「哪些代被用户主动取消」。 */
+  /** 歷史記錄的寫入、取消後的清理，以及「哪些代被使用者主動取消」。 */
   private readonly history = new HistoryWriter(this.audioArchive)
 
   private handsFreeMode = false
@@ -204,25 +204,25 @@ export class RecorderOrchestrator {
   private lastPTTUpAt = 0
   private lastPTTUpUsedModifier = false
 
-  /** 录音要用的设置（麦克风、AI 整理、热词……），见 RecordingSettings。 */
+  /** 錄音要用的設定（麥克風、AI 整理、熱詞……），見 RecordingSettings。 */
   private settings: RecordingSettings = defaultRecordingSettings()
   /** Last successfully opened input route in this app process. Kept in memory on purpose. */
   private lastMicSourceIdentity: string | null = null
-  /** 本次录音实际打开的麦克风：真实名字 + 是否虚拟设备（null = 判断不了）。每次开录重置。 */
+  /** 本次錄音實際開啟的麥克風：真實名字 + 是否虛擬裝置（null = 判斷不了）。每次開錄重置。 */
   private activeMic: { label: string; isVirtual: boolean | null } | null = null
-  /** 标记本次录音是否已施加系统静音，用于配对恢复。 */
+  /** 標記本次錄音是否已施加系統靜音，用於配對恢復。 */
   private systemMuteApplied = false
-  /** 延迟静音定时器（等提示音播完再静音）。 */
+  /** 延遲靜音定時器（等提示音播完再靜音）。 */
   private systemMuteTimerId: ReturnType<typeof setTimeout> | null = null
   private clientRuntimeInfo: ClientRuntimeInfo | null = null
-  /** 客户端运行时信息是否已成功采集一次。它是进程内静态元数据（区域/内存/主机名等），
-   *  只需启动时取一次，不该挂在每次改设置都触发的刷新热路径上。失败时保持 false 以便重试。 */
+  /** 客戶端執行時資訊是否已成功採集一次。它是程序內靜態後設資料（區域/記憶體/主機名等），
+   *  只需啟動時取一次，不該掛在每次改設定都觸發的重新整理熱路徑上。失敗時保持 false 以便重試。 */
   private clientRuntimeInfoLoaded = false
   private userStats: UserStats = createDefaultUserStats()
 
   private readonly overlayWaveState = createWaveformBarState()
   private readonly overlayService = new OverlayService(() => this.getLiveElapsedSec())
-  /** 音量两档提醒、系统静音判定、本次录音的音频统计。 */
+  /** 音量兩檔提醒、系統靜音判定、本次錄音的音訊統計。 */
   private readonly micLevel = new MicLevelMonitor({
     overlay: this.overlayService,
     isRunCurrent: (runId) => this.isRunCurrent(runId),
@@ -232,13 +232,13 @@ export class RecorderOrchestrator {
     getSelectedMicId: () => this.settings.micId,
     cancelForMutedMic: (runId) => { void this.cancelRecording(runId, { showCanceled: false, reason: 'mic_muted_timeout' }) },
     isActiveMicVirtual: () => this.activeMic?.isVirtual === true,
-    // 只记真实麦克风：系统默认被换成虚拟声卡时，靠这条记录挑回用户平时用的那个。
+    // 只記真實麥克風：系統預設被換成虛擬音效卡時，靠這條記錄挑回使用者平時用的那個。
     onVoiceDetected: () => {
       const mic = this.activeMic
       if (mic && mic.isVirtual === false && mic.label) void rememberWorkingMic(mic.label)
     },
   })
-  /** 拿目标窗口、判断能不能写、粘贴、给结果分类。状态怎么变仍由编排器决定。 */
+  /** 拿目標視窗、判斷能不能寫、貼上、給結果分類。狀態怎麼變仍由編排器決定。 */
   private readonly insertion = new InsertionController(new PasteService())
   private get provider(): TranscriptionProvider { return getProvider() }
   /** 5-minute auto-stop timer for hands-free mode */
@@ -248,7 +248,7 @@ export class RecorderOrchestrator {
     this.onStateChange = cb
   }
 
-  /** 把 getUserMedia 实际打开的设备落到真实名字上，并对照原生端点清单判断它是不是虚拟设备。 */
+  /** 把 getUserMedia 實際開啟的裝置落到真實名字上，並對照原生端點清單判斷它是不是虛擬裝置。 */
   private describeActiveMic(
     active: ActiveMicrophoneInfo,
     endpoints: CaptureEndpoint[],
@@ -269,15 +269,15 @@ export class RecorderOrchestrator {
 
 
   /**
-   * 一次失败的统一收尾：**立刻**显示失败卡，随后按实际存档结果把恢复提示补上。
+   * 一次失敗的統一收尾：**立刻**顯示失敗卡，隨後按實際存檔結果把恢復提示補上。
    *
-   * 收口成一处的理由：失败有五条路（stop 没送出去、录音中报错、处理中报错、处理超时、
-   * 有录音却没结果），以前每条各自决定要不要提示、显示几秒、要不要留悬浮窗 —— 结果
-   * 其中两条完全静默，悬浮窗凭空消失，用户报的正是这个。再加一条失败路径时，只要
-   * 走这里就不会重犯。
+   * 收口成一處的理由：失敗有五條路（stop 沒送出去、錄音中報錯、處理中報錯、處理超時、
+   * 有錄音卻沒結果），以前每條各自決定要不要提示、顯示幾秒、要不要留懸浮窗 —— 結果
+   * 其中兩條完全靜默，懸浮窗憑空消失，使用者報的正是這個。再加一條失敗路徑時，只要
+   * 走這裡就不會重犯。
    *
-   * 两段式是刻意的：提示必须在失败那一刻出现（用户正盯着屏幕等结果），而存档结论是
-   * 异步的、最长能等 30 秒。先说"失败了"，再补"录音留下了"。
+   * 兩段式是刻意的：提示必須在失敗那一刻出現（使用者正盯著螢幕等結果），而存檔結論是
+   * 非同步的、最長能等 30 秒。先說"失敗了"，再補"錄音留下了"。
    */
   private async failRunWithCard(runId: number, params: {
     title: string
@@ -294,9 +294,9 @@ export class RecorderOrchestrator {
   }): Promise<void> {
     const showCard = this.isRunCurrent(runId)
     if (showCard) {
-      // 必须先认领 token，再显示卡片：Esc 的 dismiss_fallback 分支拿 activeFallbackToken
-      // 比对，不设的话按 Esc 会被当成"迟到的旧关闭请求"丢掉，卡片关不掉。
-      // （这个字段只在 startRecording 里清零，所以下面的 resetToIdle 不会把它弄丢。）
+      // 必須先認領 token，再顯示卡片：Esc 的 dismiss_fallback 分支拿 activeFallbackToken
+      // 比對，不設的話按 Esc 會被當成"遲到的舊關閉請求"丟掉，卡片關不掉。
+      // （這個欄位只在 startRecording 裡清零，所以下面的 resetToIdle 不會把它弄丟。）
       this.activeFallbackToken = runId
       this.overlayService.showFailure({
         title: params.title,
@@ -322,10 +322,10 @@ export class RecorderOrchestrator {
   }
 
   /**
-   * 已经确定不会有结果了：存历史 + 给出可读提示 + 立刻回 idle。
+   * 已經確定不會有結果了：存歷史 + 給出可讀提示 + 立刻回 idle。
    *
-   * 用于「请求根本没送出去」这类当场就能判定的失败。关键是**不进等待** —— 让悬浮条转满
-   * 一分钟再什么都不说，是最糟的处理方式，用户既不知道发生了什么，也不知道录音还在不在。
+   * 用於「請求根本沒送出去」這類當場就能判定的失敗。關鍵是**不進等待** —— 讓懸浮條轉滿
+   * 一分鐘再什麼都不說，是最糟的處理方式，使用者既不知道發生了什麼，也不知道錄音還在不在。
    */
   private async failRunWithoutResult(runId: number, params: {
     audioDurationSec: number
@@ -370,7 +370,7 @@ export class RecorderOrchestrator {
     void bridge.releaseRecordingFocus(token).catch(() => {})
   }
 
-  /** 幂等结束指定代次；所有清理都带 runId 条件，绝不清除随后创建的新代次。 */
+  /** 冪等結束指定代次；所有清理都帶 runId 條件，絕不清除隨後建立的新代次。 */
   private finishRun(runId: number) {
     if (runId === 0) return
     this.releaseRecordingFocus(runId)
@@ -384,14 +384,14 @@ export class RecorderOrchestrator {
     }
   }
 
-  /** 若已开启「录音时静音系统声音」，在就绪提示音播放之后再静音系统输出。
-   *  延迟略长于提示音时长（~150ms），避免把提示音也一起静掉。 */
+  /** 若已開啟「錄音時靜音系統聲音」，在就緒提示音播放之後再靜音系統輸出。
+   *  延遲略長於提示音時長（~150ms），避免把提示音也一起靜掉。 */
   private scheduleSystemMuteIfEnabled() {
     if (!this.settings.muteSystemAudio) return
     this.clearSystemMuteTimer()
     this.systemMuteTimerId = setTimeout(() => {
       this.systemMuteTimerId = null
-      // 若此时已不在录音（短按等），不再静音，避免残留
+      // 若此時已不在錄音（短按等），不再靜音，避免殘留
       if (this.state !== 'recording') return
       this.applySystemMute()
     }, 250)
@@ -413,7 +413,7 @@ export class RecorderOrchestrator {
     }
   }
 
-  /** 恢复系统输出到静音前的状态，并清除挂起的静音定时器。 */
+  /** 恢復系統輸出到靜音前的狀態，並清除掛起的靜音定時器。 */
   private restoreSystemMuteIfNeeded() {
     this.clearSystemMuteTimer()
     if (!this.systemMuteApplied) return
@@ -423,7 +423,7 @@ export class RecorderOrchestrator {
     })
   }
 
-  /** 未就绪时的简短提示文案（按当前工作模式区分）。 */
+  /** 未就緒時的簡短提示文案（按當前工作模式區分）。 */
   private notReadyMessage(): string {
     switch (this.provider.mode) {
       case 'server':
@@ -435,10 +435,10 @@ export class RecorderOrchestrator {
     }
   }
 
-  /** 通过快捷键切换当前润色模式，并在空闲时用悬浮窗提示。 */
+  /** 透過快捷鍵切換當前潤色模式，並在空閒時用懸浮窗提示。 */
   private async handlePresetSwitch(presetId: string) {
     try {
-      // 优先用已缓存的预设列表，避免 IPC 等待导致的延时
+      // 優先用已快取的預設列表，避免 IPC 等待導致的延時
       let target = this.settings.presets.find((p) => p.id === presetId)
       if (!target) {
         const presets = await getPromptPresets()
@@ -449,21 +449,21 @@ export class RecorderOrchestrator {
         addRuntimeEvent('warn', 'recorder', 'Failed to switch cleanup preset: preset not found', { presetId })
         return
       }
-      // 立即生效：更新录音器缓存 + 通知 UI + 悬浮窗提示（均无需等待 IPC）
+      // 立即生效：更新錄音器快取 + 通知 UI + 懸浮窗提示（均無需等待 IPC）
       this.settings.activePresetId = presetId
       setActivePresetKnown(presetId, target.name)
       if (this.state === 'idle') {
         this.overlayService.showPresetSwitched(target.name)
       }
       addRuntimeEvent('info', 'recorder', 'Cleanup preset switched by shortcut', { presetId, name: target.name })
-      // 持久化放到后台，不阻塞 UI 反馈
+      // 持久化放到後台，不阻塞 UI 反饋
       void setActivePresetId(presetId)
     } catch (error) {
       addRuntimeEvent('error', 'recorder', 'Cleanup preset switch failed', { error: String(error) })
     }
   }
 
-  /** 临时禁用/启用 PTT（用于欢迎向导热键确认步骤） */
+  /** 臨時停用/啟用 PTT（用於歡迎向導熱鍵確認步驟） */
   setPttSuppressed(suppressed: boolean) {
     this.pttSuppressed = suppressed
   }
@@ -474,11 +474,11 @@ export class RecorderOrchestrator {
 
     startInsertionTargetTracking()
     await this.refreshRuntimeSettings()
-    // 静态机器信息只在启动采集一次；不 await，避免拖慢建连（clientMeta 可空，采集期间为 null 无碍）。
+    // 靜態機器資訊只在啟動採集一次；不 await，避免拖慢建連（clientMeta 可空，採集期間為 null 無礙）。
     void this.ensureClientRuntimeInfo()
     this.ensureConnection()
 
-    // 快捷键切换润色模式（由 Rust global_shortcut 触发）
+    // 快捷鍵切換潤色模式（由 Rust global_shortcut 觸發）
     void bridge.listen('switch-preset', (event: unknown) => {
       const payload = (event as { payload?: { presetId?: string } })?.payload
       const presetId = payload?.presetId
@@ -487,8 +487,8 @@ export class RecorderOrchestrator {
 
     bridge.onEscapeAction(({ mode, token }) => {
       if (mode === 'cancel_recording') {
-        // Esc 可能在录音 stop 已发起、事件尚在 dispatcher 队列时到达；若此时已进入
-        // 可逆 processing，沿用同一 run token 取消，避免用户明明按了却被竞态吞掉。
+        // Esc 可能在錄音 stop 已發起、事件尚在 dispatcher 佇列時到達；若此時已進入
+        // 可逆 processing，沿用同一 run token 取消，避免使用者明明按了卻被競態吞掉。
         if (this.state === 'processing' && this.run.processingCancelable) {
           this.cancelProcessing(token)
         } else {
@@ -510,7 +510,7 @@ export class RecorderOrchestrator {
         }
         addRuntimeEvent('info', 'recorder', 'Card dismissed with Esc', { token })
         this.activeFallbackToken = 0
-        // 关掉失败卡也算"我不等了"：之后迟到的结果只许落历史，不许再插字。
+        // 關掉失敗卡也算"我不等了"：之後遲到的結果只許落歷史，不許再插字。
         if (token === this.lateResultRunId) {
           this.lateResultAbandoned = true
           this.releaseRecordingFocus(token)
@@ -519,14 +519,14 @@ export class RecorderOrchestrator {
         return
       }
       if (mode === 'abandon_late_result') {
-        // 处理已超时、正在宽限期里等迟到结果时按了 Esc。
+        // 處理已超時、正在寬限期裡等遲到結果時按了 Esc。
         //
-        // 只收起提示是不够的 —— 关键是让随后到达的 final **不再自动插字**。否则界面
-        // 上刚说完"不等了"，几秒后文字还是会自己出现在输入框里，那是最让人措手不及的
-        // 一种行为。音频和历史照常保留，用户仍可以去历史里重新识别。
-        // 判据是 lateResultRunId 而不是 timedOutProcessingContext：后者在迟到 final
-        // 到达那一刻就被消费掉了，而落历史 + 插字还要花时间，这段时间里用户的 Esc
-        // 会被当成过期事件丢掉（提示关不掉、文字照样插进去）。
+        // 只收起提示是不夠的 —— 關鍵是讓隨後到達的 final **不再自動插字**。否則介面
+        // 上剛說完"不等了"，幾秒後文字還是會自己出現在輸入框裡，那是最讓人措手不及的
+        // 一種行為。音訊和歷史照常保留，使用者仍可以去歷史裡重新識別。
+        // 判據是 lateResultRunId 而不是 timedOutProcessingContext：後者在遲到 final
+        // 到達那一刻就被消費掉了，而落歷史 + 插字還要花時間，這段時間裡使用者的 Esc
+        // 會被當成過期事件丟掉（提示關不掉、文字照樣插進去）。
         if (token === 0 || token !== this.lateResultRunId) {
           addRuntimeEvent('info', 'recorder', 'Ignored stale Esc for late-result abandonment', {
             token,
@@ -541,15 +541,15 @@ export class RecorderOrchestrator {
       }
     })
 
-    // 悬浮窗自己收起了卡片（点关闭按钮、或复制完成后自动收起）。必须在这里收尾，
-    // 否则 OverlayService 的续期定时器会在 8 秒后把按键接管重新注册一遍。
+    // 懸浮窗自己收起了卡片（點關閉按鈕、或複製完成後自動收起）。必須在這裡收尾，
+    // 否則 OverlayService 的續期定時器會在 8 秒後把按鍵接管重新註冊一遍。
     bridge.onCardDismissed(({ reason, token }) => {
       addRuntimeEvent('info', 'recorder', 'Overlay reported a dismissed card', { reason, token })
       this.overlayService.noteCardDismissed(token)
       if (token !== 0 && token === this.activeFallbackToken) {
         this.activeFallbackToken = 0
       }
-      // 关掉提示也算"我不等了"：随后到达的迟到结果只许落历史，不许再插字。
+      // 關掉提示也算"我不等了"：隨後到達的遲到結果只許落歷史，不許再插字。
       if (token !== 0 && token === this.lateResultRunId) {
         this.lateResultAbandoned = true
         this.releaseRecordingFocus(token)
@@ -650,8 +650,8 @@ export class RecorderOrchestrator {
     this.provider.disconnect()
   }
 
-  /** 仅更新 AI 整理开关的缓存值，无 IPC/热词/语言等全量刷新。
-   *  供标题栏/设置页的开关按钮使用，避免快速切换时卡顿。 */
+  /** 僅更新 AI 整理開關的快取值，無 IPC/熱詞/語言等全量重新整理。
+   *  供標題欄/設定頁的開關按鈕使用，避免快速切換時卡頓。 */
   setAiEnabledCache(next: boolean) {
     this.settings.aiEnabled = next
   }
@@ -660,30 +660,30 @@ export class RecorderOrchestrator {
     if (this.state === 'idle') this.overlayService.showAiCleanupToggled(enabled)
   }
 
-  /** 仅更新当前润色模式（preset）的缓存值，无 IPC/热词/语言等全量刷新。
-   *  供设置页点击切换润色模式使用，避免快速切换时卡顿。 */
+  /** 僅更新當前潤色模式（preset）的快取值，無 IPC/熱詞/語言等全量重新整理。
+   *  供設定頁點選切換潤色模式使用，避免快速切換時卡頓。 */
   setActivePresetCache(id: string) {
     this.settings.activePresetId = id
   }
 
-  /** 新建、编辑或删除预设后同步最新列表，避免 active id 指向尚未进入运行时缓存的新预设。 */
+  /** 新建、編輯或刪除預設後同步最新列表，避免 active id 指向尚未進入執行時快取的新預設。 */
   setPromptPresetsCache(presets: PromptPreset[]) {
     this.settings.presets = presets.map((preset) => ({ ...preset }))
   }
 
-  /** 热词变更后同步下一次录音使用的快照；当前录音仍使用开始时已捕获的 StartOptions。 */
+  /** 熱詞變更後同步下一次錄音使用的快照；當前錄音仍使用開始時已捕獲的 StartOptions。 */
   setHotwordsCache(words: string[]) {
     this.settings.hotwords = Array.from(new Set(words.map((word) => word.trim()).filter(Boolean)))
   }
 
-  /** 仅更新「流式实时显示」开关缓存，供外观设置切换后立即生效。 */
+  /** 僅更新「流式即時顯示」開關快取，供外觀設定切換後立即生效。 */
   setStreamingDisplayCache(next: boolean) {
     this.settings.streamingDisplay = next
   }
 
-  /** 录音开始时实时判定是否激活流式字幕气泡（读最新的开关/供应商/WorkspaceId，避免缓存过期）。
-   *  判据统一交给 isStreamingDisplayReady：doubao_v2 与 qwen_audio_stream 直接可用，
-   *  qwen_realtime 还要配 WorkspaceId；qwen3-asr-flash 等非流式模型不激活。 */
+  /** 錄音開始時即時判定是否啟用流式字幕氣泡（讀最新的開關/供應商/WorkspaceId，避免快取過期）。
+   *  判據統一交給 isStreamingDisplayReady：doubao_v2 與 qwen_audio_stream 直接可用，
+   *  qwen_realtime 還要配 WorkspaceId；qwen3-asr-flash 等非流式模型不啟用。 */
   private async applyStreamingActive(): Promise<void> {
     try {
       const [streamOn, provider, workspaceId] = await Promise.all([
@@ -697,7 +697,7 @@ export class RecorderOrchestrator {
         && isStreamingDisplayReady(String(provider || ''), String(workspaceId || ''))
       this.overlayService.setStreamingActive(active)
     } catch {
-      /* ignore — 气泡占位是锦上添花，读取失败不影响录音 */
+      /* ignore — 氣泡佔位是錦上添花，讀取失敗不影響錄音 */
     }
   }
 
@@ -753,10 +753,10 @@ export class RecorderOrchestrator {
     this.userStats = userStats
     await this.overlayService.refreshSettings()
 
-    // 热词 / 服务器语言彼此独立，并行加载而非依次 await，减少本函数的总耗时
-    // （每次切换 AI 整理开关等都会触发这里）。
-    // 客户端运行时信息（区域/内存/主机名等）是进程内静态元数据，已移出此热路径，
-    // 仅在启动时经 ensureClientRuntimeInfo() 采集一次，避免改任意设置都重新采集。
+    // 熱詞 / 伺服器語言彼此獨立，並行載入而非依次 await，減少本函式的總耗時
+    // （每次切換 AI 整理開關等都會觸發這裡）。
+    // 客戶端執行時資訊（區域/記憶體/主機名等）是程序內靜態後設資料，已移出此熱路徑，
+    // 僅在啟動時經 ensureClientRuntimeInfo() 採集一次，避免改任意設定都重新採集。
     const [hotwordsResult, languageResult] = await Promise.allSettled([
       Promise.all([
         getSetting(BUILTIN_SET_WORDS_KEY, {}),
@@ -784,9 +784,9 @@ export class RecorderOrchestrator {
     }
   }
 
-  /** 采集一次客户端运行时信息并缓存。静态元数据，进程内只成功采集一次；
-   *  失败不置位 loaded，留待下次重试（避免把 unknown/0 永久缓存）。
-   *  clientMeta 本就可空，采集期间为 null 不影响业务。 */
+  /** 採集一次客戶端執行時資訊並快取。靜態後設資料，程序內只成功採集一次；
+   *  失敗不置位 loaded，留待下次重試（避免把 unknown/0 永久快取）。
+   *  clientMeta 本就可空，採集期間為 null 不影響業務。 */
   async ensureClientRuntimeInfo() {
     if (this.clientRuntimeInfoLoaded) return
     try {
@@ -797,9 +797,9 @@ export class RecorderOrchestrator {
     }
   }
 
-  /** 工作模式或服务地址变更后强制重连 provider。
-   *  先断开旧连接再按新配置连接，确保连接状态与新地址一致（否则改错地址后仍显示"已连接"）。
-   *  录音进行中不强制断开，避免打断当前会话。 */
+  /** 工作模式或服務地址變更後強制重連 provider。
+   *  先斷開舊連線再按新配置連線，確保連線狀態與新地址一致（否則改錯地址後仍顯示"已連線"）。
+   *  錄音進行中不強制斷開，避免打斷當前會話。 */
   reconnectProvider() {
     if (this.state === 'idle') {
       this.provider.disconnect()
@@ -807,8 +807,8 @@ export class RecorderOrchestrator {
     this.ensureConnection()
   }
 
-  /** 仅刷新 overlay 显示设置（主题/长度/时长），不触碰录音相关缓存。
-   *  用于外观设置页面，避免改个颜色就触发十几个 IPC 调用。 */
+  /** 僅重新整理 overlay 顯示設定（主題/長度/時長），不觸碰錄音相關快取。
+   *  用於外觀設定頁面，避免改個顏色就觸發十幾個 IPC 呼叫。 */
   async refreshOverlaySettings() {
     await this.overlayService.refreshSettings()
   }
@@ -843,15 +843,15 @@ export class RecorderOrchestrator {
   }
 
   /**
-   * 插入阶段必须有自己的超时。
+   * 插入階段必須有自己的超時。
    *
-   * 为什么不能靠处理超时那一个：`onFinal` 收到结果时第一件事就是
-   * `clearProcessingTimeout()`，而插入发生在那之后。定时器已经没了，
-   * `onProcessingTimeout` 里那条"插入还在飞"的分支于是永远不会被触发 —— 粘贴真卡住
-   * 的时候（Rust SendInput 停在目标进程上）没有任何人来收尾，界面停在「处理中」。
+   * 為什麼不能靠處理超時那一個：`onFinal` 收到結果時第一件事就是
+   * `clearProcessingTimeout()`，而插入發生在那之後。定時器已經沒了，
+   * `onProcessingTimeout` 裡那條"插入還在飛"的分支於是永遠不會被觸發 —— 貼上真卡住
+   * 的時候（Rust SendInput 停在目標程序上）沒有任何人來收尾，介面停在「處理中」。
    *
-   * 时长取 15 秒：Rust 侧最坏是两次 SendMessageTimeoutW（各 2s）加上几次 sleep，
-   * 正常路径在几百毫秒内结束。到 15 秒还没回来就是真卡死了。
+   * 時長取 15 秒：Rust 側最壞是兩次 SendMessageTimeoutW（各 2s）加上幾次 sleep，
+   * 正常路徑在幾百毫秒內結束。到 15 秒還沒回來就是真卡死了。
    */
   private armInsertionTimeout(runId: number, text: string) {
     this.clearInsertionTimeout()
@@ -862,14 +862,14 @@ export class RecorderOrchestrator {
   }
 
   /**
-   * 插入卡死的唯一收尾实现：把文字交还给用户，而不是让界面凭空恢复空闲。
+   * 插入卡死的唯一收尾實現：把文字交還給使用者，而不是讓介面憑空恢復空閒。
    *
-   * 两个定时器都可能走到这里（插入专属超时、以及处理超时那条兜底），所以必须幂等 ——
-   * `textInsertionInFlight` 就是那把锁。
+   * 兩個定時器都可能走到這裡（插入專屬超時、以及處理超時那條兜底），所以必須冪等 ——
+   * `textInsertionInFlight` 就是那把鎖。
    *
-   * 文案刻意是「无法确认是否已写入」而不是「插入失败」：SendInput 是发出即忘，卡在
-   * 这里时目标程序**可能已经收到**那段文字（pitfalls 28：UIPI 拦截是静默的，成功与
-   * 失败在这一侧长得一样）。说"失败了"会让用户再粘一遍、多出一份重复。
+   * 文案刻意是「無法確認是否已寫入」而不是「插入失敗」：SendInput 是發出即忘，卡在
+   * 這裡時目標程式**可能已經收到**那段文字（pitfalls 28：UIPI 攔截是靜默的，成功與
+   * 失敗在這一側長得一樣）。說"失敗了"會讓使用者再粘一遍、多出一份重複。
    */
   private handleInsertionStuck(runId: number, text: string, waitedMs: number) {
     if (!this.textInsertionInFlight) return
@@ -922,7 +922,7 @@ export class RecorderOrchestrator {
     this.overlayService.stopListeningTicker()
     this.overlayService.resetWarnings()
     this.overlayService.resetStreamingText()
-    // 安全网：若仍处于我们施加的系统静音中，确保恢复
+    // 安全網：若仍處於我們施加的系統靜音中，確保恢復
     this.restoreSystemMuteIfNeeded()
     this.startRecordingLock = false
     this.run.pendingStopWhileStarting = false
@@ -972,8 +972,8 @@ export class RecorderOrchestrator {
     }
 
     const canceledRunId = this.activeRunId
-    // 在任何 await 之前离开 recording 并让 run 失效。这样同时到达的 PTT up 不会
-    // 再进入正常 stopRecording，Provider 的迟到 partial/error 也会被 run guard 丢弃。
+    // 在任何 await 之前離開 recording 並讓 run 失效。這樣同時到達的 PTT up 不會
+    // 再進入正常 stopRecording，Provider 的遲到 partial/error 也會被 run guard 丟棄。
     if (!this.transition('processing')) return
     this.history.markRunCanceled(canceledRunId)
     this.run.finalHandledInCurrentRun = true
@@ -996,8 +996,8 @@ export class RecorderOrchestrator {
     } catch (error) {
       addRuntimeEvent('warn', 'recorder', 'Failed to stop capture while canceling', { error: String(error) })
     } finally {
-      // state 在停止采集期间保持 processing，阻止新录音复用同一个 capture；确认旧
-      // capture 已结束后再回 idle。keepOverlay 保留短暂的“已取消”反馈。
+      // state 在停止採集期間保持 processing，阻止新錄音複用同一個 capture；確認舊
+      // capture 已結束後再回 idle。keepOverlay 保留短暫的“已取消”反饋。
       if (this.getState() === 'processing' && this.activeRunId === 0) {
         this.resetToIdle({ keepOverlay: showCanceled })
       }
@@ -1024,7 +1024,7 @@ export class RecorderOrchestrator {
     const canceledRunId = this.activeRunId
     const historyArtifact = this.history.getPending()
     this.clearProcessingTimeout()
-    // 用户明确按了 Esc：这一代的音频存档和历史都该消失。这是唯一允许丢弃录音的入口。
+    // 使用者明確按了 Esc：這一代的音訊存檔和歷史都該消失。這是唯一允許丟棄錄音的入口。
     this.history.markRunCanceled(canceledRunId)
     this.audioArchive.discard(canceledRunId)
     if (this.timedOutProcessingContext?.runId === canceledRunId) {
@@ -1039,7 +1039,7 @@ export class RecorderOrchestrator {
       void this.history.discard(historyArtifact)
     }
 
-    // token 与当前 run 在同一同步检查内通过后才允许提示“已取消”；旧队列动作不会影响新代次。
+    // token 與當前 run 在同一同步檢查內通過後才允許提示“已取消”；舊佇列動作不會影響新代次。
     addRuntimeEvent('info', 'recorder', 'Processing canceled by user', {
       runId: canceledRunId,
       mode: this.provider.mode,
@@ -1047,7 +1047,7 @@ export class RecorderOrchestrator {
     this.overlayService.showCanceled()
     this.resetToIdle({ keepOverlay: true })
 
-    // ServerProvider.cancel 会主动断开旧 socket，隔离可能迟到的服务端结果。
+    // ServerProvider.cancel 會主動斷開舊 socket，隔離可能遲到的服務端結果。
     if (this.provider.mode === 'server') this.ensureConnection()
   }
 
@@ -1056,7 +1056,7 @@ export class RecorderOrchestrator {
   private buildProviderCallbacks(): TranscriptionCallbacks {
     return {
       onPartialASR: (text) => {
-        // 仅在录音进行中把流式中间结果推给悬浮窗；下一次 listening 心跳会带上它一起渲染
+        // 僅在錄音進行中把流式中間結果推給懸浮窗；下一次 listening 心跳會帶上它一起渲染
         if (this.state !== 'recording') return
         this.overlayService.setStreamingText(text)
       },
@@ -1068,7 +1068,7 @@ export class RecorderOrchestrator {
 
         const runId = this.activeRunId
         if (!this.isRunCurrent(runId)) return
-        // 空 ASR 已是本代终态：同步阻止 timeout 与后续 final 再次收尾。
+        // 空 ASR 已是本代終態：同步阻止 timeout 與後續 final 再次收尾。
         this.run.finalHandledInCurrentRun = true
         this.clearProcessingTimeout()
 
@@ -1079,10 +1079,10 @@ export class RecorderOrchestrator {
           this.run.currentPromptResolution,
           this.run.currentActiveAppContext,
         )
-        // ASR 跑完了，只是一个字都没出。这**不等于**用户没说话 —— 热词回显被判定
-        // 清空、服务端提前收尾都会走到这里（pitfalls 15）。所以分两条说：
-        // 采集侧有近静音实证的，才敢说「未检测到有效声音」；没有实证的只说
-        // 「没有取得识别结果」，并给出可恢复的去处，别把人引去查麦克风。
+        // ASR 跑完了，只是一個字都沒出。這**不等於**使用者沒說話 —— 熱詞回顯被判定
+        // 清空、服務端提前收尾都會走到這裡（pitfalls 15）。所以分兩條說：
+        // 採集側有近靜音實證的，才敢說「未檢測到有效聲音」；沒有實證的只說
+        // 「沒有取得識別結果」，並給出可恢復的去處，別把人引去查麥克風。
         const silenceProven = this.micLevel.hasSilenceEvidence()
         const silenceDiagnostic = {
           reason: 'asr_empty',
@@ -1094,18 +1094,18 @@ export class RecorderOrchestrator {
           peakAmplitude: this.micLevel.roundedPeakAmplitude(),
           runId,
         }
-        // 识别没出文字一律只给 toast，不弹卡片。
+        // 識別沒出文字一律只給 toast，不彈卡片。
         //
-        // ⚠️ **同一个判据在 onFinal 的空结果分支里还有一份**（搜 showNoSpeech）。
-        // 2026-09-23 实测代价：只把那一份改成 toast，这条路照旧弹卡片，用户原样复现。
-        // 改任何一处都要同时改另一处；noTextNeverShowsCard 那条源码级断言钉着这件事。
+        // ⚠️ **同一個判據在 onFinal 的空結果分支裡還有一份**（搜 showNoSpeech）。
+        // 2026-09-23 實測代價：只把那一份改成 toast，這條路照舊彈卡片，使用者原樣復現。
+        // 改任何一處都要同時改另一處；noTextNeverShowsCard 那條原始碼級斷言釘著這件事。
         this.overlayService.showNoSpeech(silenceProven ? 'silent' : 'no_text', silenceDiagnostic)
         if (!silenceProven) {
           addRuntimeEvent('warn', 'recorder', 'ASR returned no text and there is no silence evidence', silenceDiagnostic)
         }
         void (async () => {
-          // 两条路的存档参数本来就完全一样（同一个 failReasonCode），合并掉那份
-          // 重复的 if/else —— 它正是上面那个漏改能发生的土壤。
+          // 兩條路的存檔引數本來就完全一樣（同一個 failReasonCode），合併掉那份
+          // 重複的 if/else —— 它正是上面那個漏改能發生的土壤。
           await this.history.writeFailedRun({
             runId,
             audioDurationSec: audioDur,
@@ -1137,14 +1137,14 @@ export class RecorderOrchestrator {
             asrMs: result.asrMs,
             llmMs: result.llmMs,
           })
-          // final 已经快照到前端，立即废弃旧 Provider 会话；尤其 Server 必须断开旧 socket，
-          // 防止随后迟到的 done/error 在下一代 start 后误清新会话。
+          // final 已經快照到前端，立即廢棄舊 Provider 會話；尤其 Server 必須斷開舊 socket，
+          // 防止隨後遲到的 done/error 在下一代 start 後誤清新會話。
           this.provider.cancel()
           if (this.provider.mode === 'server') this.ensureConnection()
           this.finalizingLateRunId = lateContext.runId
-          // 用户已经放弃等待（宽限期里按了 Esc，或关掉了失败卡）：结果照样落历史，
-          // 但**绝不自动插字**。界面上刚说完"不等了"，几秒后文字自己出现在输入框里，
-          // 是最让人措手不及的一种行为。
+          // 使用者已經放棄等待（寬限期裡按了 Esc，或關掉了失敗卡）：結果照樣落歷史，
+          // 但**絕不自動插字**。介面上剛說完"不等了"，幾秒後文字自己出現在輸入框裡，
+          // 是最讓人措手不及的一種行為。
           const abandoned = this.lateResultAbandoned
           if (abandoned) {
             addRuntimeEvent('warn', 'recorder', 'Late final arrived after the user abandoned it; saving without inserting', {
@@ -1157,7 +1157,7 @@ export class RecorderOrchestrator {
             source: 'late_after_timeout',
           }).finally(() => {
             if (this.finalizingLateRunId === lateContext.runId) this.finalizingLateRunId = 0
-            // 这一代彻底收尾了：再晚到的 Esc 不该还能改它的行为。
+            // 這一代徹底收尾了：再晚到的 Esc 不該還能改它的行為。
             if (this.lateResultRunId === lateContext.runId) {
               this.lateResultRunId = 0
               this.lateResultAbandoned = false
@@ -1170,7 +1170,7 @@ export class RecorderOrchestrator {
           return
         }
         this.run.finalHandledInCurrentRun = true
-        // 首个 processing final 在同步回调路径立即撤销 timeout，避免二者双收尾。
+        // 首個 processing final 在同步回撥路徑立即撤銷 timeout，避免二者雙收尾。
         this.clearProcessingTimeout()
         this.run.finalReceivedAt = Date.now()
 
@@ -1206,9 +1206,9 @@ export class RecorderOrchestrator {
         const runId = this.activeRunId
         this.clearProcessingTimeout()
 
-        // Provider 说本轮结束了，却一个结果都没给（协议异常：done 先于 final 到达、
-        // 或服务端只发了 done）。音频已经存档，别让它变成没人认领的孤儿文件 ——
-        // 补一条带原因的记录，用户至少还能回放和重新识别。
+        // Provider 說本輪結束了，卻一個結果都沒給（協議異常：done 先於 final 到達、
+        // 或服務端只發了 done）。音訊已經存檔，別讓它變成沒人認領的孤兒檔案 ——
+        // 補一條帶原因的記錄，使用者至少還能回放和重新識別。
         if (this.audioArchive.has(runId)) {
           const audioDur = this.getAudioDurationSec()
           const wallSec = this.run.wallTimeAtStopSec > 0 ? this.run.wallTimeAtStopSec : audioDur
@@ -1221,13 +1221,13 @@ export class RecorderOrchestrator {
             mode: this.provider.mode,
             audioSec: audioDur,
           })
-          // 协议没跑完（done 先于 final、或服务端只发了 done）。以前这里显示的是
-          // 「未检测到有效声音」—— 历史里记的却是 provider_failed，两边对不上，
-          // 而用户看到的那句话会把他引去查麦克风。这是调用失败，不是没说话。
-          // 这条路**保留卡片**：它不是「没识别出文字」，是协议没跑完 —— 服务端结束了
-          // 会话却什么都没回，属于确实出了错。文案也从 noResultTitle 换成专属的一条：
-          // 两种成因共用一个标题时，日志里根本分不清弹的是哪一张卡（查这个 bug 时
-          // 就被它误导过一次）。
+          // 協議沒跑完（done 先於 final、或服務端只發了 done）。以前這裡顯示的是
+          // 「未檢測到有效聲音」—— 歷史裡記的卻是 provider_failed，兩邊對不上，
+          // 而使用者看到的那句話會把他引去查麥克風。這是呼叫失敗，不是沒說話。
+          // 這條路**保留卡片**：它不是「沒識別出文字」，是協議沒跑完 —— 服務端結束了
+          // 會話卻什麼都沒回，屬於確實出了錯。文案也從 noResultTitle 換成專屬的一條：
+          // 兩種成因共用一個標題時，日誌裡根本分不清彈的是哪一張卡（查這個 bug 時
+          // 就被它誤導過一次）。
           void (async () => {
             await this.failRunWithCard(runId, {
               title: t('recorder.protocolIncompleteTitle'),
@@ -1261,7 +1261,7 @@ export class RecorderOrchestrator {
         void this.overlayService.disableEscapeAction()
         this.run.finalHandledInCurrentRun = true
 
-        // 停止音频采集，并进入不可再触发 stopRecording 的收尾状态。
+        // 停止音訊採集，並進入不可再觸發 stopRecording 的收尾狀態。
         const failedWhileRecording = this.state === 'recording'
         if (failedWhileRecording) {
           this.overlayService.stopListeningTicker()
@@ -1276,19 +1276,19 @@ export class RecorderOrchestrator {
           this.run.currentPromptResolution,
           this.run.currentActiveAppContext,
         )
-        // 错误在录音进行中到达时还没走过 stopRecording，音频尚未开始落盘 —— 在这里补上，
-        // 否则「说到一半连接断了」这段语音谁都没保存。
+        // 錯誤在錄音進行中到達時還沒走過 stopRecording，音訊尚未開始落盤 —— 在這裡補上，
+        // 否則「說到一半連線斷了」這段語音誰都沒儲存。
         if (audioDur >= 0.5 && this.run.recordedChunks.length > 0) {
           this.audioArchive.ensure(runId, this.run.recordedChunks.slice())
         }
         void (async () => {
           if (audioDur >= 0.5) {
-            // 供应商/后端给的原话（额度、资源未开通、连接被断都在这里）。
+            // 供應商/後端給的原話（額度、資源未開通、連線被斷都在這裡）。
             //
-            // ⚠️ 这里以前按 failedWhileRecording 分叉：只有**录音中**到达的错误才提示，
-            // 在「处理中」到达就一句话不说、悬浮窗凭空消失（resetToIdle 不带 keepOverlay
-            // 就会走到 overlayService.hide()）。而接口调用失败恰恰基本都发生在处理中 ——
-            // 这就是用户报的「识别失败没有任何提示」。两条路现在都显示失败卡。
+            // ⚠️ 這裡以前按 failedWhileRecording 分叉：只有**錄音中**到達的錯誤才提示，
+            // 在「處理中」到達就一句話不說、懸浮窗憑空消失（resetToIdle 不帶 keepOverlay
+            // 就會走到 overlayService.hide()）。而介面呼叫失敗恰恰基本都發生在處理中 ——
+            // 這就是使用者報的「識別失敗沒有任何提示」。兩條路現在都顯示失敗卡。
             await this.failRunWithCard(runId, {
               title: t('recorder.recognitionFailedTitle'),
               detail: friendlyFailure.message,
@@ -1299,7 +1299,7 @@ export class RecorderOrchestrator {
               historyMeta,
             })
           } else if (this.isRunCurrent(runId)) {
-            // 不足 0.5 秒：没有音频可存，也没什么可恢复的，只给一句短提示。
+            // 不足 0.5 秒：沒有音訊可存，也沒什麼可恢復的，只給一句短提示。
             this.overlayService.showError(friendlyFailure.message)
           }
 
@@ -1328,11 +1328,11 @@ export class RecorderOrchestrator {
       return
     }
 
-    // 用户放弃等待迟到结果 —— 这一刀必须扎在**真正插字之前**。
+    // 使用者放棄等待遲到結果 —— 這一刀必須紮在**真正插字之前**。
     //
-    // 只在 onFinal 那一刻判一次是不够的：结果到达之后还要落历史，那段时间里悬浮窗
-    // 仍显示"仍在等结果"，用户正是在那时按 Esc 的。判早了，他的按键全都白按，文字
-    // 照样出现在输入框里。
+    // 只在 onFinal 那一刻判一次是不夠的：結果到達之後還要落歷史，那段時間裡懸浮窗
+    // 仍顯示"仍在等結果"，使用者正是在那時按 Esc 的。判早了，他的按鍵全都白按，文字
+    // 照樣出現在輸入框裡。
     if (runId === this.lateResultRunId && this.lateResultAbandoned) {
       addRuntimeEvent('warn', 'recorder', 'Skipped text insertion because the user abandoned this late result', {
         runId,
@@ -1354,8 +1354,8 @@ export class RecorderOrchestrator {
       protectClipboard: this.settings.protectClipboard,
       isCurrent: () => this.isRunCurrent(runId),
       waitForModifierRelease: () => this.waitForModifierPTTReleaseIfNeeded(),
-      // pasteText 一旦进入 Rust SendInput 就无法撤销。先关闭本地取消屏障，再确认原生
-      // Esc 模式已关闭，最后验代；已排队的旧 cancel 因 processingCancelable=false 只能被忽略。
+      // pasteText 一旦進入 Rust SendInput 就無法撤銷。先關閉本地取消屏障，再確認原生
+      // Esc 模式已關閉，最後驗代；已排隊的舊 cancel 因 processingCancelable=false 只能被忽略。
       beforeIrreversiblePaste: async () => {
         this.run.processingCancelable = false
         await this.overlayService.disableEscapeAction()
@@ -1372,8 +1372,8 @@ export class RecorderOrchestrator {
         if (this.state === 'processing') {
           this.resetToIdle()
         } else {
-          // 迟到结果那条路进来时状态已经是 idle，resetToIdle 不会执行 —— 而"仍在等结果"
-          // 那条提示还挂在屏幕上。文字都插进去了，提示必须跟着收起来。
+          // 遲到結果那條路進來時狀態已經是 idle，resetToIdle 不會執行 —— 而"仍在等結果"
+          // 那條提示還掛在螢幕上。文字都插進去了，提示必須跟著收起來。
           this.overlayService.hide()
         }
         return
@@ -1392,7 +1392,7 @@ export class RecorderOrchestrator {
       textLen: text.length,
       stateBeforeReset: this.state,
     })
-    // 先发布带本代 token 的 fallback，再结束 run；后续旧 dismiss 只能匹配这张卡片。
+    // 先發布帶本代 token 的 fallback，再結束 run；後續舊 dismiss 只能匹配這張卡片。
     this.activeFallbackToken = runId
     this.overlayService.showFallback(text, reason, runId)
     this.finishRun(runId)
@@ -1407,8 +1407,8 @@ export class RecorderOrchestrator {
   private ensureConnection() {
     if (this.provider.isReady()) return
     this.provider.connect(this.buildProviderCallbacks()).catch((err) => {
-      // 服务器模式由 websocket.ts 的 onclose 按指数退避自动重连（3s→30s）。这里再每 5 秒
-      // 补一次，断网时（拒连秒失败）日志会刷屏；主动断开（cleanup/取消）后也会被它拉回来。
+      // 伺服器模式由 websocket.ts 的 onclose 按指數退避自動重連（3s→30s）。這裡再每 5 秒
+      // 補一次，斷網時（拒連秒失敗）日誌會刷屏；主動斷開（cleanup/取消）後也會被它拉回來。
       if (this.provider.mode === 'server') {
         addRuntimeEvent('warn', 'websocket', 'Preconnection failed; websocket auto-reconnect will retry', { error: String(err) })
         return
@@ -1421,12 +1421,12 @@ export class RecorderOrchestrator {
   // ── Recording lifecycle ──
 
   /**
-   * 开始录音的外层兜底。
+   * 開始錄音的外層兜底。
    *
-   * startRecordingInner 自己的 try 只包住「建连 + 开麦」那一段；在它之前还有取上下文、
-   * 提示词路由等十几步，都发生在 startRecordingLock 置位之后。那里抛的异常以前没人接
-   * （调用方是 `void this.startRecording()`），锁永远不释放，之后每次按热键都被当成
-   * 「正在启动」忽略 —— 热键全部失灵直到重启，悬浮窗停在「等待中」，日志里一个字都没有。
+   * startRecordingInner 自己的 try 只包住「建連 + 開麥」那一段；在它之前還有取上下文、
+   * 提示詞路由等十幾步，都發生在 startRecordingLock 置位之後。那裡拋的異常以前沒人接
+   * （呼叫方是 `void this.startRecording()`），鎖永遠不釋放，之後每次按熱鍵都被當成
+   * 「正在啟動」忽略 —— 熱鍵全部失靈直到重啟，懸浮窗停在「等待中」，日誌裡一個字都沒有。
    */
   private async startRecording() {
     try {
@@ -1466,7 +1466,7 @@ export class RecorderOrchestrator {
       return
     }
 
-    // 未就绪（如 server 模式后端未连接）：给出告警，不进入录音，避免悬浮窗卡住关不掉
+    // 未就緒（如 server 模式後端未連線）：給出告警，不進入錄音，避免懸浮窗卡住關不掉
     if (!this.provider.isReady()) {
       this.handsFreeMode = false
       addRuntimeEvent('warn', 'recorder', 'Provider not ready; ignored start-recording request', { mode: this.provider.mode })
@@ -1475,8 +1475,8 @@ export class RecorderOrchestrator {
       return
     }
 
-    // 新 run 创建前先废弃 timeout 宽限期的旧 provider 代次；后续原有 connect 流程
-    // 会为 ServerProvider 建立新 socket，Cloud/Local 也会因 cancel 丢弃旧回调。
+    // 新 run 建立前先廢棄 timeout 寬限期的舊 provider 代次；後續原有 connect 流程
+    // 會為 ServerProvider 建立新 socket，Cloud/Local 也會因 cancel 丟棄舊回撥。
     const timedOutContext = this.timedOutProcessingContext
     if (timedOutContext) {
       this.timedOutProcessingContext = null
@@ -1493,11 +1493,11 @@ export class RecorderOrchestrator {
     this.timedOutProcessingContext = null
     this.micLevel.resetMuteState()
 
-    // 先给用户即时视觉反馈；overlay 不聚焦，因此后续原生上下文捕获仍指向原目标窗口。
-    // 首次 WebView 已在启动空闲期预热，正常情况下这里只剩一次轻量 show + emit。
+    // 先給使用者即時視覺反饋；overlay 不聚焦，因此後續原生上下文捕獲仍指向原目標視窗。
+    // 首次 WebView 已在啟動空閒期預熱，正常情況下這裡只剩一次輕量 show + emit。
     this.overlayService.showWaiting()
-    // 不等待上下文捕获、Provider 建连或 AudioWorklet 初始化：提前拿到系统静音标志，
-    // 好让第一帧 PCM 一到就能立刻裁决（标志本身不足以判定，见 pendingOsMicMuted）。
+    // 不等待上下文捕獲、Provider 建連或 AudioWorklet 初始化：提前拿到系統靜音標誌，
+    // 好讓第一幀 PCM 一到就能立刻裁決（標誌本身不足以判定，見 pendingOsMicMuted）。
     void this.micLevel.checkConfiguredMicMuted(runId)
 
     const targetCapture = captureActiveInsertionTarget(undefined, {
@@ -1532,7 +1532,7 @@ export class RecorderOrchestrator {
       recordingContextFailed = true
     }
     const textContext = usableTextContext(activeAppContext?.textContext)
-    // 必须在下面 delete 之前算：选区太长的判据就在原始的 textContext 上
+    // 必須在下面 delete 之前算：選區太長的判據就在原始的 textContext 上
     const textContextLog = describeTextContextForLog({
       featureOn: this.settings.contextAwareWriting,
       aiOn: this.settings.aiEnabled,
@@ -1567,8 +1567,8 @@ export class RecorderOrchestrator {
         summary: `${this.run.currentPromptResolution.summary} | Text context: ${textContext.selectedText ? 'selection' : 'caret'}`,
       }
     }
-    // 原来这里另发一条 'Text context captured'，但它不在落盘白名单里，sayit.log 里从来看不到；
-    // 而且只在读到时才有。现在读没读到都并进下面那条一定落盘的 'Recording started'。
+    // 原來這裡另發一條 'Text context captured'，但它不在落盤白名單裡，sayit.log 裡從來看不到；
+    // 而且只在讀到時才有。現在讀沒讀到都並進下面那條一定落盤的 'Recording started'。
 
     addRuntimeEvent('info', 'recorder', 'Recording started', {
       micId: this.settings.micId || 'default',
@@ -1583,7 +1583,7 @@ export class RecorderOrchestrator {
         promptRuleId: this.run.currentPromptResolution.matchedRule?.id,
         summary: this.run.currentPromptResolution.summary,
       },
-      // 只有原因码和字数，见 describeTextContextForLog。查「上下文感知没生效」grep 这个字段。
+      // 只有原因碼和字數，見 describeTextContextForLog。查「上下文感知沒生效」grep 這個欄位。
       ...(textContextLog && { textContext: textContextLog }),
     })
     addRuntimeEvent('info', 'personalization', 'Prompt routing resolved', {
@@ -1597,8 +1597,8 @@ export class RecorderOrchestrator {
     })
 
     this.run.finalHandledInCurrentRun = false
-    // 只在开始新一次录音时清：resetToIdle 也会在超时路径上跑，那时宽限期才刚开始，
-    // 清掉它就等于把用户的"我不等了"忘掉。
+    // 只在開始新一次錄音時清：resetToIdle 也會在超時路徑上跑，那時寬限期才剛開始，
+    // 清掉它就等於把使用者的"我不等了"忘掉。
     this.lateResultAbandoned = false
     this.lateResultRunId = 0
     this.run.audioSentSamples = 0
@@ -1623,12 +1623,12 @@ export class RecorderOrchestrator {
             }
           }, RECORDING_COUNTDOWN_SEC * 1000)
         }
-        // 与上限统一由常量推导，避免"改了上限忘了改提醒时机"
+        // 與上限統一由常量推導，避免"改了上限忘了改提醒時機"
       }, (MAX_RECORDING_SEC - RECORDING_COUNTDOWN_SEC) * 1000)
     }
 
-    // 冻结本次的 AI 配置。理由是事后解释：用户录完之后改了设置（这次排查里他就把
-    // 门槛从 60 改成了 0），这一条的原因也不能跟着变。
+    // 凍結本次的 AI 配置。理由是事後解釋：使用者錄完之後改了設定（這次排查裡他就把
+    // 門檻從 60 改成了 0），這一條的原因也不能跟著變。
     this.run.currentAiConfig = {
       workMode: this.provider.mode,
       aiEnabled: this.settings.aiEnabled,
@@ -1637,10 +1637,10 @@ export class RecorderOrchestrator {
     }
     this.run.currentOperationId = `${runId}-${Date.now().toString(36)}`
 
-    // 选区编辑单独选了模型时，这次录音改由本机用那个模型整理（见 selectionAi.ts）。
-    // 读设置放进下面和建连、开麦并行的那一组里，不在这里 await：这一段处在
-    // startRecordingLock 置位之后、外层兜底之外，多一个 await 就多一处让热键卡死的
-    // 可能，开始录音也会慢一拍。没有选区时它不读设置，直接返回 null。
+    // 選區編輯單獨選了模型時，這次錄音改由本機用那個模型整理（見 selectionAi.ts）。
+    // 讀設定放進下面和建連、開麥並行的那一組裡，不在這裡 await：這一段處在
+    // startRecordingLock 置位之後、外層兜底之外，多一個 await 就多一處讓熱鍵卡死的
+    // 可能，開始錄音也會慢一拍。沒有選區時它不讀設定，直接返回 null。
     const selectionAiConfigPromise = this.settings.aiEnabled
       ? loadSelectionAiConfig(textContext)
       : Promise.resolve(null)
@@ -1709,27 +1709,27 @@ export class RecorderOrchestrator {
         this.settings.noiseSuppression,
       )
 
-      // 先决定打开哪个麦克风（系统默认被换成虚拟声卡时改用真实麦克风，见 micRouting.ts），
-      // 再开流。整段和 WebSocket 连接并行，不拖慢启动。
+      // 先決定開啟哪個麥克風（系統預設被換成虛擬音效卡時改用真實麥克風，見 micRouting.ts），
+      // 再開流。整段和 WebSocket 連線並行，不拖慢啟動。
       this.activeMic = null
       const captureTask = (async () => {
         const { plan, endpoints } = await resolveMicPlan(this.settings.micId)
         let finalPlan: MicPlan = plan
         let result = await openCapture(plan.deviceId)
-        // 开流前网页侧的设备名是空的（没有持久麦克风权限时会这样），对不上号。
-        // 现在流开着，名字拿得到了，再判一次；要换就重开一次流，此时还没发 start，丢不了音频。
+        // 開流前網頁側的裝置名是空的（沒有持久麥克風許可權時會這樣），對不上號。
+        // 現在流開著，名字拿得到了，再判一次；要換就重開一次流，此時還沒發 start，丟不了音訊。
         if (plan.reason === 'unmapped' && this.isRunCurrent(runId)) {
           const retry = await resolveMicPlan('', { endpoints, webDevices: result.devices })
           finalPlan = retry.plan
           if (retry.plan.reason === 'virtual_avoided') {
-            // 虚拟声卡那一小段（约百毫秒的全 0）不必清掉：服务端和本地存档拿到的是同一份
+            // 虛擬音效卡那一小段（約百毫秒的全 0）不必清掉：服務端和本地存檔拿到的是同一份
             result = await openCapture(retry.plan.deviceId)
           }
         }
         return { result, plan: finalPlan, endpoints }
       })()
 
-      // 并行执行 WebSocket 连接和麦克风采集，减少等待时间
+      // 並行執行 WebSocket 連線和麥克風採集，減少等待時間
       const [, captureTaskResult, selectionAiConfig] = await Promise.all([
         this.provider.connect(this.buildProviderCallbacks()),
         captureTask,
@@ -1743,8 +1743,8 @@ export class RecorderOrchestrator {
         return
       }
 
-      // 冻结的 AI 配置要带上 selectionAiOverride：停止录音时 aiPolicy 靠它判成本机整理，
-      // 服务器模式下才会让服务端只做识别。
+      // 凍結的 AI 配置要帶上 selectionAiOverride：停止錄音時 aiPolicy 靠它判成本機整理，
+      // 伺服器模式下才會讓服務端只做識別。
       let startOpts: typeof promptOpts & { selectionAiConfig?: typeof selectionAiConfig } = promptOpts
       if (selectionAiConfig && this.run.currentAiConfig) {
         this.run.currentAiConfig = { ...this.run.currentAiConfig, selectionAiOverride: true }
@@ -1773,8 +1773,8 @@ export class RecorderOrchestrator {
         return
       }
       this.startRecordingLock = false
-      // 若本次会走流式实时显示，录音一开始就让气泡显示占位，避免中途弹出+缩放导致的抖动。
-      // 实时读取供应商/WorkspaceId（避免切换供应商后缓存过期，导致非实时模型也弹气泡）。
+      // 若本次會走流式即時顯示，錄音一開始就讓氣泡顯示佔位，避免中途彈出+縮放導致的抖動。
+      // 即時讀取供應商/WorkspaceId（避免切換供應商後快取過期，導致非即時模型也彈氣泡）。
       void this.applyStreamingActive()
       this.overlayService.startListeningTicker(runId)
       if (micPlan.reason !== 'default' && micPlan.reason !== 'explicit') {
@@ -1795,8 +1795,8 @@ export class RecorderOrchestrator {
         captureResult.devices,
       )
       const avoidedVirtual = micPlan.reason === 'virtual_avoided'
-      // 跳过了虚拟声卡要说出来，否则用户会奇怪"系统默认明明是 A，怎么录的是 B"。
-      // identity 带上这个标记，同一个麦克风「直接用」和「跳过虚拟声卡后用」各提示一次。
+      // 跳過了虛擬音效卡要說出來，否則使用者會奇怪"系統預設明明是 A，怎麼錄的是 B"。
+      // identity 帶上這個標記，同一個麥克風「直接用」和「跳過虛擬音效卡後用」各提示一次。
       const micSourceIdentity = avoidedVirtual ? `${micSource.identity}:avoided-virtual` : micSource.identity
       const micSourceLabel = avoidedVirtual
         ? t('mic.avoidedVirtualHint', { device: micSource.label })
@@ -1804,9 +1804,9 @@ export class RecorderOrchestrator {
       if (micSourceChanged(this.lastMicSourceIdentity, micSourceIdentity)) {
         this.lastMicSourceIdentity = micSourceIdentity
         this.overlayService.showMicSourceHint({ mode: micSource.mode, label: micSourceLabel })
-        // rawLabel 与 endpointCount 是判断"这行字为什么显示成这样"的唯一依据：
-        // 显示名是由系统给的原始名 + 同一时刻有几个端点共同决定的，缺了这两个
-        // 就只能靠猜（audio.ts 里的 trackLabel 只有原始名，没有快照规模）。
+        // rawLabel 與 endpointCount 是判斷"這行字為什麼顯示成這樣"的唯一依據：
+        // 顯示名是由系統給的原始名 + 同一時刻有幾個端點共同決定的，缺了這兩個
+        // 就只能靠猜（audio.ts 裡的 trackLabel 只有原始名，沒有快照規模）。
         addRuntimeEvent('info', 'recorder', 'Input source reminder shown', {
           mode: micSource.mode,
           label: micSource.label,
@@ -1814,14 +1814,14 @@ export class RecorderOrchestrator {
           endpointCount: captureResult.devices.length,
         })
       }
-      // 录音一开始就查一次麦克风是否被系统静音，被静音则悬浮窗即时红色高警（不阻塞录音）
-      // 用 getUserMedia 实际打开的设备再复核；若系统在初始化期间切换了默认麦克风，以这里为准。
+      // 錄音一開始就查一次麥克風是否被系統靜音，被靜音則懸浮窗即時紅色高警（不阻塞錄音）
+      // 用 getUserMedia 實際開啟的裝置再複核；若系統在初始化期間切換了預設麥克風，以這裡為準。
       void this.micLevel.checkMicMuted(
         captureResult.label || null,
         runId,
         this.micLevel.nextProbeSequence(),
       )
-      // 就绪提示音已触发，稍后再静音系统输出（避免把提示音一起静掉）
+      // 就緒提示音已觸發，稍後再靜音系統輸出（避免把提示音一起靜掉）
       this.scheduleSystemMuteIfEnabled()
       armHandsFreeTimer()
 
@@ -1835,9 +1835,9 @@ export class RecorderOrchestrator {
 
     } catch (error) {
       resolveCaptureReady!()
-      // 这一代已被取消/替换（Esc、切换模式）时，连接随之被关掉也会走到这里。
-      // 锁、悬浮窗、provider 都归新的一代所有，按上面成功分支的 stale 处理只关采集，
-      // 否则会把新一代重置掉、还弹一条「启动失败」。
+      // 這一代已被取消/替換（Esc、切換模式）時，連線隨之被關掉也會走到這裡。
+      // 鎖、懸浮窗、provider 都歸新的一代所有，按上面成功分支的 stale 處理只關採集，
+      // 否則會把新一代重置掉、還彈一條「啟動失敗」。
       if (!this.isRunCurrent(runId)) {
         addRuntimeEvent('info', 'recorder', 'Start failed for a stale run; ignored', { runId, error: String(error) })
         await stopCapture().catch(() => { })
@@ -1845,15 +1845,15 @@ export class RecorderOrchestrator {
       }
       this.startRecordingLock = false
       this.run.pendingStopWhileStarting = false
-      // 录音启动失败也要恢复系统输出，避免系统一直静音
+      // 錄音啟動失敗也要恢復系統輸出，避免系統一直靜音
       this.restoreSystemMuteIfNeeded()
       addRuntimeEvent('error', 'recorder', 'Failed to start recording', { error: String(error) })
       try { await stopCapture() } catch { /* ignore */ }
       this.finishRun(runId)
       this.provider.cancel()
-      // 在悬浮窗显示错误信息，让用户知道发生了什么
+      // 在懸浮窗顯示錯誤資訊，讓使用者知道發生了什麼
       const errMsg = String(error)
-      if (errMsg.includes('麦克风') || errMsg.includes('microphone') || errMsg.includes('audio')) { // i18n-allow: 匹配底层中文错误串
+      if (errMsg.includes('\u9ea6\u514b\u98ce') || errMsg.includes('麥克風') || errMsg.includes('microphone') || errMsg.includes('audio')) { // i18n-allow: 匹配底層中文錯誤串
         this.overlayService.showError(t('recorder.microphoneUnavailable'))
       } else {
         this.overlayService.showError(t('recorder.startFailed'))
@@ -1891,10 +1891,10 @@ export class RecorderOrchestrator {
     try { await stopCapture() } catch (error) {
       addRuntimeEvent('error', 'recorder', 'Failed to stop audio capture', { error: String(error) })
     }
-    // stopCapture 等待期间用户可能按 Esc 使 run 失效；此时绝不能继续 provider.stop。
+    // stopCapture 等待期間使用者可能按 Esc 使 run 失效；此時絕不能繼續 provider.stop。
     if (this.state !== 'recording' || !this.isRunCurrent(runId)) return
 
-    // 采集已停止，恢复系统输出到静音前的状态
+    // 採集已停止，恢復系統輸出到靜音前的狀態
     this.restoreSystemMuteIfNeeded()
 
     const audioDur = this.getAudioDurationSec()
@@ -1908,7 +1908,7 @@ export class RecorderOrchestrator {
       durationRatio: pttHoldMs > 0 ? (audioDur / wallTimeSec).toFixed(3) : 'N/A',
     })
 
-    // 数据一致性检查：PCM 时长应接近实际按住时长
+    // 資料一致性檢查：PCM 時長應接近實際按住時長
     const durationRatio = wallTimeSec > 0 ? audioDur / wallTimeSec : 1
     if (wallTimeSec > 1 && (durationRatio > 2.0 || durationRatio < 0.3)) {
       addRuntimeEvent('warn', 'recorder', 'Unexpected audio byte count; sample rate may not match', {
@@ -1919,7 +1919,7 @@ export class RecorderOrchestrator {
         recordedChunksCount: this.run.recordedChunks.length,
         recordedChunksTotalBytes: this.run.recordedChunks.reduce((s, c) => s + c.byteLength, 0),
       })
-      // 不再丢弃音频，保留以便用户回放和重新识别
+      // 不再丟棄音訊，保留以便使用者回放和重新識別
     }
     if (audioDur < 0.5) {
       addRuntimeEvent('info', 'recorder', 'Recording shorter than 0.5s; canceled provider and discarded audio')
@@ -1930,15 +1930,15 @@ export class RecorderOrchestrator {
       return
     }
 
-    // 短语音门槛只能等到这里才判断：时长要录完才知道。audioDur 用的是边发边累计的
-    // 已发送采样数（不是本地攒下来的音频），所以不影响上传，服务器模式照旧流式。
+    // 短語音門檻只能等到這裡才判斷：時長要錄完才知道。audioDur 用的是邊發邊累計的
+    // 已傳送取樣數（不是本地攢下來的音訊），所以不影響上傳，伺服器模式照舊流式。
     //
-    // 本地/云 API 模式的 AI 是 Provider 在 ASR 之后自己另发的一次请求，它们在那时用
-    // 同一个时长自行判断；这里这份只给服务器模式用 —— 服务端的 AI 紧跟 ASR 执行，
-    // 客户端插不进中间，只能把结论随 stop 一起送过去。
-    // 判据收口到 aiPolicy：此前这里、clientAiPolish、History 的三条重跑路径各判一遍，
-    // 结论已经漂移（云 API 重跑漏了门槛、ollama 判据两处不一致）。
-    // audioDur 用的是已发送采样数换算的实际 PCM 秒数，不四舍五入。
+    // 本地/雲 API 模式的 AI 是 Provider 在 ASR 之後自己另發的一次請求，它們在那時用
+    // 同一個時長自行判斷；這裡這份只給伺服器模式用 —— 服務端的 AI 緊跟 ASR 執行，
+    // 客戶端插不進中間，只能把結論隨 stop 一起送過去。
+    // 判據收口到 aiPolicy：此前這裡、clientAiPolish、History 的三條重跑路徑各判一遍，
+    // 結論已經漂移（雲 API 重跑漏了門檻、ollama 判據兩處不一致）。
+    // audioDur 用的是已傳送取樣數換算的實際 PCM 秒數，不四捨五入。
     const aiPolicy = resolveAiPolicy({
       ...(this.run.currentAiConfig ?? {
         workMode: this.provider.mode,
@@ -1948,13 +1948,13 @@ export class RecorderOrchestrator {
       }),
       audioDurationSec: audioDur,
     })
-    // 线上那个布尔只表达「服务端要不要做整理」。自配 AI 路线也会是 false，
-    // 但那不是跳过——客户端接着会调。原因一律看 ai.outcome，别从这个布尔反推。
+    // 線上那個布林只表達「服務端要不要做整理」。自配 AI 路線也會是 false，
+    // 但那不是跳過——客戶端接著會調。原因一律看 ai.outcome，別從這個布林反推。
     const skipAiForShortSpeech = aiPolicy.reason === 'duration_below_min'
 
-    // 提出成局部变量：下面的 'Entered processing' 也要带上它。那条日志会落盘，
-    // 而 'Stop sent' 不会 —— peakAmplitude=0 是「麦克风一个字节都没收到」的铁证，
-    // 必须挂在一条真的进 sayit.log 的日志上，否则等于没记。
+    // 提出成區域性變數：下面的 'Entered processing' 也要帶上它。那條日誌會落盤，
+    // 而 'Stop sent' 不會 —— peakAmplitude=0 是「麥克風一個位元組都沒收到」的鐵證，
+    // 必須掛在一條真的進 sayit.log 的日誌上，否則等於沒記。
     const audioStats = this.micLevel.summary()
 
     const stopAccepted = this.provider.stop({
@@ -1978,13 +1978,13 @@ export class RecorderOrchestrator {
     }
     this.run.processingCancelable = true
 
-    // 音频先落盘，不等识别结果。此后无论超时、断连、还是进程被杀，这段录音都还在磁盘上。
+    // 音訊先落盤，不等識別結果。此後無論超時、斷連、還是程序被殺，這段錄音都還在磁碟上。
     this.audioArchive.begin(runId, this.run.recordedChunks.slice())
 
     if (!stopAccepted) {
-      // 请求根本没送出去（server 模式连接已断、或 provider 会话已失效）。以前这里照样
-      // 进 45 秒超时等待 + 15 秒宽限：悬浮条转整整一分钟「处理中」，而根本没有任何请求
-      // 在飞。实测 2026-09-07 两次长录音都是这条路（日志：Failed to send stop）。
+      // 請求根本沒送出去（server 模式連線已斷、或 provider 會話已失效）。以前這裡照樣
+      // 進 45 秒超時等待 + 15 秒寬限：懸浮條轉整整一分鐘「處理中」，而根本沒有任何請求
+      // 在飛。實測 2026-09-07 兩次長錄音都是這條路（日誌：Failed to send stop）。
       void this.failRunWithoutResult(runId, {
         audioDurationSec: audioDur,
         wallTimeSec,
@@ -2001,8 +2001,8 @@ export class RecorderOrchestrator {
       audioSec: audioDur,
       timeoutMs: processingTimeoutMs,
       mode: this.provider.mode,
-      // 这一段音频到底有没有声音，只记统计量、不记内容。读日志的判据：
-      // peakAmplitude=0 且 silenceRatio=1 → 麦克风送来的是纯静音，与 ASR/网络无关。
+      // 這一段音訊到底有沒有聲音，只記統計量、不記內容。讀日誌的判據：
+      // peakAmplitude=0 且 silenceRatio=1 → 麥克風送來的是純靜音，與 ASR/網路無關。
       audioStats,
     })
     this.overlayService.showThinking(audioDur, runId, { ai: aiPolicy.allowCall })
@@ -2012,9 +2012,9 @@ export class RecorderOrchestrator {
       if (this.textInsertionInFlight) {
         if (insertionExtensions < MAX_INSERTION_TIMEOUT_EXTENSIONS) {
           insertionExtensions++
-          // 插入已经在飞，给它一点时间；但**必须重新排一次定时器**。以前这里直接 return，
-          // 于是插入一旦卡住（Rust SendInput 停在目标进程上）就再没有人来收尾，
-          // 悬浮条无限停在「处理中」。
+          // 插入已經在飛，給它一點時間；但**必須重新排一次定時器**。以前這裡直接 return，
+          // 於是插入一旦卡住（Rust SendInput 停在目標程序上）就再沒有人來收尾，
+          // 懸浮條無限停在「處理中」。
           addRuntimeEvent('warn', 'recorder', 'Processing timed out while text insertion is active; extending wait', {
             runId,
             extension: insertionExtensions,
@@ -2023,9 +2023,9 @@ export class RecorderOrchestrator {
           this.processingTimeoutId = setTimeout(onProcessingTimeout, INSERTION_TIMEOUT_EXTENSION_MS)
           return
         }
-        // 顺延用尽：插入大概率卡死了。收尾走 handleInsertionStuck —— 与插入阶段专属
-        // 超时共用同一个实现（那个才是正常会触发的那条路，因为 onFinal 早就把这个
-        // 处理超时清掉了；这里只是"万一定时器还活着"的兜底）。两条路都幂等。
+        // 順延用盡：插入大機率卡死了。收尾走 handleInsertionStuck —— 與插入階段專屬
+        // 超時共用同一個實現（那個才是正常會觸發的那條路，因為 onFinal 早就把這個
+        // 處理超時清掉了；這裡只是"萬一定時器還活著"的兜底）。兩條路都冪等。
         this.handleInsertionStuck(
           runId,
           this.textBeingInserted,
@@ -2053,30 +2053,30 @@ export class RecorderOrchestrator {
         lateFinalGraceMs: LATE_FINAL_GRACE_MS,
       })
 
-      // 宽限期这 15 秒以前是**完全静默**的：悬浮窗当场消失，而迟到的 final 仍会自动
-      // 插字。用户看到的是"什么都没发生，然后文字忽然自己出现了"。现在明说仍在等，
-      // 并且给 Esc 一个放弃的机会（放弃后迟到结果只落历史、不插字）。
+      // 寬限期這 15 秒以前是**完全靜默**的：懸浮窗當場消失，而遲到的 final 仍會自動
+      // 插字。使用者看到的是"什麼都沒發生，然後文字忽然自己出現了"。現在明說仍在等，
+      // 並且給 Esc 一個放棄的機會（放棄後遲到結果只落歷史、不插字）。
       this.overlayService.showAwaitingLateResult(LATE_FINAL_GRACE_MS / 1000, runId)
 
-      // 安全网：宽限期内没等到迟到的 final，就把这段录音写进历史（空结果 + 明确原因），
-      // 用户可以在历史里回放和「重新识别」。音频本身已在 stopRecording 时落盘。
+      // 安全網：寬限期內沒等到遲到的 final，就把這段錄音寫進歷史（空結果 + 明確原因），
+      // 使用者可以在歷史裡回放和「重新識別」。音訊本身已在 stopRecording 時落盤。
       const historyMeta = this.buildHistoryMetadata(timedOutCtx.promptResolution, timedOutCtx.appContext)
       window.setTimeout(() => {
-        // 只认 settled：迟到 final 已接手收尾时让位，避免同一段录音写出两条记录。
-        // 绝不再判 isRunCurrent —— 用户又按了一次热键不等于放弃上一段（见 settled 注释）。
+        // 只認 settled：遲到 final 已接手收尾時讓位，避免同一段錄音寫出兩條記錄。
+        // 絕不再判 isRunCurrent —— 使用者又按了一次熱鍵不等於放棄上一段（見 settled 註釋）。
         if (timedOutCtx.settled) return
         timedOutCtx.settled = true
         this.releaseRecordingFocus(timedOutCtx.runId)
-        // 仍是当前代时才动 Provider：新录音已在 startRecording 里换过会话，这里再 cancel
-        // 会把用户正在录的这一段打断。
+        // 仍是當前代時才動 Provider：新錄音已在 startRecording 裡換過會話，這裡再 cancel
+        // 會把使用者正在錄的這一段打斷。
         if (this.timedOutProcessingContext === timedOutCtx) {
           this.timedOutProcessingContext = null
           this.provider.cancel()
           if (this.provider.mode === 'server') this.ensureConnection()
         }
         void (async () => {
-          // 等待终止之后才进失败卡 —— 宽限期里显示的是「仍在获取结果」，两者不能同时。
-          // 用户已经自己放弃（按过 Esc）时不要再弹一张卡片打扰他。
+          // 等待終止之後才進失敗卡 —— 寬限期裡顯示的是「仍在獲取結果」，兩者不能同時。
+          // 使用者已經自己放棄（按過 Esc）時不要再彈一張卡片打擾他。
           const stillWaiting = !this.lateResultAbandoned && this.isRunCurrent(timedOutCtx.runId)
           if (stillWaiting) {
             await this.failRunWithCard(timedOutCtx.runId, {
@@ -2099,7 +2099,7 @@ export class RecorderOrchestrator {
             })
           }
           this.finishRun(timedOutCtx.runId)
-          // 宽限期已经走完，这一代不会再有迟到结果了。
+          // 寬限期已經走完，這一代不會再有遲到結果了。
           if (this.lateResultRunId === timedOutCtx.runId) {
             this.lateResultRunId = 0
             this.lateResultAbandoned = false
@@ -2107,7 +2107,7 @@ export class RecorderOrchestrator {
         })()
       }, LATE_FINAL_GRACE_MS)
 
-      // keepOverlay：宽限期提示刚发出去，绝不能在这里把悬浮窗隐藏掉。
+      // keepOverlay：寬限期提示剛發出去，絕不能在這裡把懸浮窗隱藏掉。
       this.resetToIdle({ preserveLateFinalContext: true, keepOverlay: true })
     }
     this.processingTimeoutId = setTimeout(onProcessingTimeout, processingTimeoutMs)
@@ -2245,7 +2245,7 @@ export class RecorderOrchestrator {
     return {
       appId: resolved?.appId,
       appName: resolved?.appName,
-      // 录音时聚焦窗口的原始信息（用于反馈排错）
+      // 錄音時聚焦視窗的原始資訊（用於反饋排錯）
       windowTitle: ctx?.windowTitle || undefined,
       processName: ctx?.processName || undefined,
       windowClass: ctx?.windowClass || undefined,
@@ -2269,10 +2269,10 @@ export class RecorderOrchestrator {
       this.timedOutProcessingContext = null
       return null
     }
-    // 超过 15 秒时把 context 留给已排队的宽限期兜底定时器，避免双方都放弃收尾。
+    // 超過 15 秒時把 context 留給已排隊的寬限期兜底定時器，避免雙方都放棄收尾。
     if (Date.now() - context.timedOutAt > LATE_FINAL_GRACE_MS) return null
     this.timedOutProcessingContext = null
-    // 迟到 final 接手收尾，兜底定时器必须让位，否则同一段录音会写出两条记录。
+    // 遲到 final 接手收尾，兜底定時器必須讓位，否則同一段錄音會寫出兩條記錄。
     context.settled = true
     return context
   }
@@ -2285,8 +2285,8 @@ export class RecorderOrchestrator {
     const runId = context.runId
     if (!this.isRunCurrent(runId)) return
 
-    // llmText === asrText 说明这段没经过 AI 整理（极速模式，或后端未跑 LLM 直接回 asrText）。
-    // 此时文本仍是纯 ASR，「格式规范」由我们兜底；AI 整理过的文本则把格式交给 AI，只做文本替换。
+    // llmText === asrText 說明這段沒經過 AI 整理（極速模式，或後端未跑 LLM 直接回 asrText）。
+    // 此時文本仍是純 ASR，「格式規範」由我們兜底；AI 整理過的文本則把格式交給 AI，只做文本替換。
     // New clients may talk to an older server that does not understand text_context. In that case
     // contextApplied is absent: paste the original selection back unchanged instead of replacing it
     // with a spoken edit command.
@@ -2308,8 +2308,8 @@ export class RecorderOrchestrator {
         this.showFallbackAndReset(baseText, 'text_transform_failed', runId)
       } else {
         if (this.state === 'processing') {
-          // 后处理抛异常且没有可交付文本：识别本身是空的，所以用 'no_text'，
-          // 不能说「未检测到有效声音」。
+          // 後處理拋異常且沒有可交付文本：識別本身是空的，所以用 'no_text'，
+          // 不能說「未檢測到有效聲音」。
           this.overlayService.showNoSpeech('no_text', {
             reason: 'text_transform_failed',
             mode: this.provider.mode,
@@ -2353,13 +2353,13 @@ export class RecorderOrchestrator {
       wallTimeSec: wallSec,
       mode: () => this.provider.mode,
       isRunCurrent: () => this.isRunCurrent(runId),
-      // 与原来一样在写入那一刻才取：promptResolution 为空时会回落到「当前」的那份。
+      // 與原來一樣在寫入那一刻才取：promptResolution 為空時會回落到「當前」的那份。
       metadata: () => this.buildHistoryMetadata(promptResolution, appContext),
     })
     if (written.aborted) return
     historyArtifact = written.artifact
 
-    // 历史已经落定；下面是 UI 与文本插入，那些必须归当前代所有。
+    // 歷史已經落定；下面是 UI 與文本插入，那些必須歸當前代所有。
     if (!this.isRunCurrent(runId)) {
       if (this.history.isRunCanceled(runId) && historyArtifact) {
         await this.history.discard(historyArtifact)
@@ -2368,12 +2368,12 @@ export class RecorderOrchestrator {
     }
 
     if (!hasText) {
-      // 三种成因完全不同，以前共用一句「未检测到有效声音」：
-      //   · ASR 出了字、后处理把它清空了 —— 是我们自己的替换规则/格式化造成的
-      //   · ASR 没出字，且采集侧有近静音实证 —— 确实没说话
-      //   · ASR 没出字，但录到了声音 —— 调用侧的问题（额度、服务端提前断开、
-      //     热词回显被判空），说成"没声音"会把用户直接引去查麦克风
-      // asrLen / llmLen 只记长度不记内容。
+      // 三種成因完全不同，以前共用一句「未檢測到有效聲音」：
+      //   · ASR 出了字、後處理把它清空了 —— 是我們自己的替換規則/格式化造成的
+      //   · ASR 沒出字，且採集側有近靜音實證 —— 確實沒說話
+      //   · ASR 沒出字，但錄到了聲音 —— 呼叫側的問題（額度、服務端提前斷開、
+      //     熱詞回顯被判空），說成"沒聲音"會把使用者直接引去查麥克風
+      // asrLen / llmLen 只記長度不記內容。
       const asrHadText = Boolean(result.asrText?.trim())
       const silenceProven = !asrHadText && this.micLevel.hasSilenceEvidence()
       const diagnostic = {
@@ -2389,15 +2389,15 @@ export class RecorderOrchestrator {
         peakAmplitude: this.micLevel.roundedPeakAmplitude(),
         runId,
       }
-      // 只有「ASR 出了字、被后处理清空」才弹失败卡：那指向用户自己的文本替换规则配错了，
-      // 需要他去改一处设置，是一条待办。ASR 本身没出字（不管采集侧峰值高低）一律只给
-      // toast —— 拿峰值区分「没说话」和「调用失败」是行不通的，见 OverlayService.showNoSpeech。
+      // 只有「ASR 出了字、被後處理清空」才彈失敗卡：那指向使用者自己的文本替換規則配錯了，
+      // 需要他去改一處設定，是一條待辦。ASR 本身沒出字（不管採集側峰值高低）一律只給
+      // toast —— 拿峰值區分「沒說話」和「呼叫失敗」是行不通的，見 OverlayService.showNoSpeech。
       if (asrHadText) {
         addRuntimeEvent('warn', 'recorder', 'Text processing emptied the transcript', diagnostic)
         this.overlayService.showFailure({
           title: t('recorder.emptyAfterProcessingTitle'),
           detail: t('recorder.emptyAfterProcessingDetail'),
-          // 历史记录在上面已经写好了（含音频路径），所以这里能直接说去哪儿找。
+          // 歷史記錄在上面已經寫好了（含音訊路徑），所以這裡能直接說去哪兒找。
           recovery: historyArtifact?.audioFilePath ? 'history' : 'none',
           token: runId,
         })
@@ -2415,7 +2415,7 @@ export class RecorderOrchestrator {
     void this.updatePersonalizationFromFinal(runId, textToPaste, promptResolution, appContext)
 
     this.textInsertionInFlight = true
-    // 插入卡死时要把这段文字交还给用户（见 handleInsertionStuck）。
+    // 插入卡死時要把這段文字交還給使用者（見 handleInsertionStuck）。
     this.textBeingInserted = textToPaste
     this.armInsertionTimeout(runId, textToPaste)
     try {

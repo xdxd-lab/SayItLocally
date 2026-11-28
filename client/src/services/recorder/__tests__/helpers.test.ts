@@ -22,69 +22,69 @@ describe('hasSilenceEvidence', () => {
   }
 
   /**
-   * 回归钉：判据取「且」不取「或」。
+   * 迴歸釘：判據取「且」不取「或」。
    *
-   * 取或的版本会把这条判成"确实没声音"，于是界面告诉用户去检查麦克风，而真正的
-   * 失败原因（额度耗尽、服务端提前断开、热词回显被判空）被藏了起来。
+   * 取或的版本會把這條判成"確實沒聲音"，於是介面告訴使用者去檢查麥克風，而真正的
+   * 失敗原因（額度耗盡、服務端提前斷開、熱詞回顯被判空）被藏了起來。
    */
-  it('说了一句话再长时间沉默，不算没声音', () => {
+  it('說了一句話再長時間沉默，不算沒聲音', () => {
     expect(hasSilenceEvidence(stats(0.4, 996, 1000))).toBe(false)
   })
 
-  it('整段几乎全是静音帧、峰值也几乎为零，才算有实证', () => {
+  it('整段幾乎全是靜音幀、峰值也幾乎為零，才算有實證', () => {
     expect(hasSilenceEvidence(stats(0.004, 999, 1000))).toBe(true)
   })
 
-  it('峰值够低但静音帧不够多时不下结论', () => {
+  it('峰值夠低但靜音幀不夠多時不下結論', () => {
     expect(hasSilenceEvidence(stats(0.004, 900, 1000))).toBe(false)
   })
 
-  it('一帧都没统计到时不下结论——没有数据不等于没有声音', () => {
+  it('一幀都沒統計到時不下結論——沒有資料不等於沒有聲音', () => {
     expect(hasSilenceEvidence(stats(0, 0, 0))).toBe(false)
   })
 
-  it('峰值正好等于阈值也不算静音（阈值是严格小于）', () => {
+  it('峰值正好等於閾值也不算靜音（閾值是嚴格小於）', () => {
     expect(hasSilenceEvidence(stats(SILENCE_RMS_THRESHOLD, 1000, 1000))).toBe(false)
   })
 })
 
 describe('judgeOsMicMute', () => {
-  // 回归：Plantronics Blackwire 5220 停在 GetMute=true 但音频照常流动，
-  // 直接采信系统标志会导致每次按热键都先误报一次「麦克风已被静音」。
-  it('音频在流动时立刻丢弃系统的静音标志', () => {
+  // 迴歸：Plantronics Blackwire 5220 停在 GetMute=true 但音訊照常流動，
+  // 直接採信系統標誌會導致每次按熱鍵都先誤報一次「麥克風已被靜音」。
+  it('音訊在流動時立刻丟棄系統的靜音標誌', () => {
     expect(judgeOsMicMute(0, 'voiced', 1600)).toEqual({ verdict: 'dismissed' })
     expect(judgeOsMicMute(0, 'low', 1600)).toEqual({ verdict: 'dismissed' })
   })
 
-  it('已攒到快要确认时，一帧非零信号也能推翻它', () => {
+  it('已攢到快要確認時，一幀非零訊號也能推翻它', () => {
     expect(judgeOsMicMute(OS_MIC_MUTE_CONFIRM_SAMPLES - 1, 'low', 1600))
       .toEqual({ verdict: 'dismissed' })
   })
 
-  it('全 0 采样未达阈值时继续攒证据，不弹警告', () => {
+  it('全 0 取樣未達閾值時繼續攢證據，不彈警告', () => {
     expect(judgeOsMicMute(0, 'muted', 1600)).toEqual({ verdict: 'wait', silentSamples: 1600 })
     expect(judgeOsMicMute(1600, 'muted', 1600)).toEqual({ verdict: 'wait', silentSamples: 3200 })
   })
 
-  it('全 0 采样累计到阈值才确认真被静音', () => {
+  it('全 0 取樣累計到閾值才確認真被靜音', () => {
     expect(judgeOsMicMute(OS_MIC_MUTE_CONFIRM_SAMPLES - 1600, 'muted', 1600))
       .toEqual({ verdict: 'confirmed' })
   })
 })
 
 describe('classifyMicLevel', () => {
-  it('只有 PCM 峰值严格为 0 才判为 muted', () => {
+  it('只有 PCM 峰值嚴格為 0 才判為 muted', () => {
     expect(classifyMicLevel(0, 0)).toBe('muted')
     expect(classifyMicLevel(0.05, MIC_NO_SIGNAL_PEAK_THRESHOLD)).toBe('muted')
   })
 
-  it('任何非零输入即使极小也判为 low', () => {
+  it('任何非零輸入即使極小也判為 low', () => {
     expect(classifyMicLevel(Number.MIN_VALUE, Number.MIN_VALUE)).toBe('low')
     expect(classifyMicLevel(0.004, 0.05)).toBe('low')
     expect(classifyMicLevel(MIC_LOW_RMS_THRESHOLD - 0.0001, 1 / 32768)).toBe('low')
   })
 
-  it('RMS 达到正常水平 判为 voiced', () => {
+  it('RMS 達到正常水平 判為 voiced', () => {
     expect(classifyMicLevel(0.03, 0.2)).toBe('voiced')
     expect(classifyMicLevel(MIC_LOW_RMS_THRESHOLD, 0.1)).toBe('voiced')
   })
@@ -95,7 +95,7 @@ describe('summarizeAppContext', () => {
     expect(summarizeAppContext(null)).toBeNull()
   })
 
-  it('提取关键字段', () => {
+  it('提取關鍵欄位', () => {
     const result = summarizeAppContext({
       processName: 'code.exe',
       exePath: 'C:\\Program Files\\Code\\code.exe',
@@ -112,25 +112,25 @@ describe('summarizeAppContext', () => {
 })
 
 describe('buildStatsAppId', () => {
-  it('优先使用 processName', () => {
+  it('優先使用 processName', () => {
     expect(buildStatsAppId({ processName: 'code.exe' } as any)).toBe('code.exe')
   })
 
-  it('processName 为空时用 exePath 最后一段', () => {
+  it('processName 為空時用 exePath 最後一段', () => {
     expect(buildStatsAppId({ exePath: 'C:\\Apps\\notepad.exe' } as any)).toBe('notepad.exe')
   })
 
-  it('都为空时用 promptAppId', () => {
+  it('都為空時用 promptAppId', () => {
     expect(buildStatsAppId(null, 'my-app')).toBe('my-app')
   })
 
-  it('全部为空返回 unknown', () => {
+  it('全部為空返回 unknown', () => {
     expect(buildStatsAppId(null)).toBe('unknown')
   })
 })
 
 describe('isModifierPTTSetting', () => {
-  it('识别单个修饰键和组合中的任意修饰键', () => {
+  it('識別單個修飾鍵和組合中的任意修飾鍵', () => {
     expect(isModifierPTTSetting('AltLeft')).toBe(true)
     expect(isModifierPTTSetting('ControlRight')).toBe(true)
     expect(isModifierPTTSetting('ShiftLeft')).toBe(true)
@@ -138,7 +138,7 @@ describe('isModifierPTTSetting', () => {
     expect(isModifierPTTSetting('ControlLeft+MetaLeft')).toBe(true)
   })
 
-  it('非修饰键返回 false', () => {
+  it('非修飾鍵返回 false', () => {
     expect(isModifierPTTSetting('Space')).toBe(false)
     expect(isModifierPTTSetting('F1')).toBe(false)
     expect(isModifierPTTSetting('KeyK')).toBe(false)
@@ -147,7 +147,7 @@ describe('isModifierPTTSetting', () => {
 })
 
 describe('computeProcessingTimeoutMs', () => {
-  it('server 模式基础超时', () => {
+  it('server 模式基礎超時', () => {
     const ms = computeProcessingTimeoutMs(5, 'server')
     expect(ms).toBeGreaterThanOrEqual(15000)
     expect(ms).toBeLessThan(20000)
@@ -163,16 +163,16 @@ describe('computeProcessingTimeoutMs', () => {
     expect(ms).toBeGreaterThanOrEqual(30000)
   })
 
-  it('长音频超时更长', () => {
+  it('長音訊超時更長', () => {
     const short = computeProcessingTimeoutMs(5, 'server')
     const long = computeProcessingTimeoutMs(60, 'server')
     expect(long).toBeGreaterThan(short)
   })
 
-  it('local 长录音按时长放宽：5 分钟录音不会在识别跑完前超时', () => {
-    // 原来本地最多等 45 s，而 5 分钟的录音实测要 55 s 左右
+  it('local 長錄音按時長放寬：5 分鐘錄音不會在識別跑完前超時', () => {
+    // 原來本地最多等 45 s，而 5 分鐘的錄音實測要 55 s 左右
     expect(computeProcessingTimeoutMs(300, 'local')).toBeGreaterThanOrEqual(120000)
-    expect(computeProcessingTimeoutMs(60, 'local')).toBe(45000) // 中等长度维持原值
+    expect(computeProcessingTimeoutMs(60, 'local')).toBe(45000) // 中等長度維持原值
     expect(computeProcessingTimeoutMs(3000, 'local')).toBeLessThanOrEqual(180000)
   })
 
@@ -183,17 +183,17 @@ describe('computeProcessingTimeoutMs', () => {
 })
 
 describe('isUnconfirmedPaste', () => {
-  it('send_input 卡住（真实那次 2088ms）要弹兜底卡片', () => {
+  it('send_input 卡住（真實那次 2088ms）要彈兜底卡片', () => {
     expect(isUnconfirmedPaste('send_input', 2088)).toBe(true)
     expect(isUnconfirmedPaste('send_input', SLOW_SEND_INPUT_PASTE_MS)).toBe(true)
   })
 
-  it('正常的 send_input 仍按成功（日志里最慢 631ms）', () => {
+  it('正常的 send_input 仍按成功（日誌裡最慢 631ms）', () => {
     expect(isUnconfirmedPaste('send_input', 631)).toBe(false)
     expect(isUnconfirmedPaste('send_input', SLOW_SEND_INPUT_PASTE_MS - 1)).toBe(false)
   })
 
-  it('会核实结果或同步等目标的方式，慢也不弹', () => {
+  it('會核實結果或同步等目標的方式，慢也不彈', () => {
     expect(isUnconfirmedPaste('wm_paste', 5000)).toBe(false)
     expect(isUnconfirmedPaste('console_paste', 5000)).toBe(false)
     expect(isUnconfirmedPaste(undefined, 5000)).toBe(false)

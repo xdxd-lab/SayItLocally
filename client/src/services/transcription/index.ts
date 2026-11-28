@@ -1,4 +1,4 @@
-// Provider 管理器 — 根据 workMode 返回对应的 TranscriptionProvider
+// Provider 管理器 — 根據 workMode 返回對應的 TranscriptionProvider
 
 import { invoke } from '@tauri-apps/api/core'
 import { getSetting, setSetting } from '../store'
@@ -32,7 +32,7 @@ function createProvider(mode: WorkMode): TranscriptionProvider {
   return new LocalProvider()
 }
 
-/** 获取当前 Provider 实例（懒初始化） */
+/** 獲取當前 Provider 例項（懶初始化） */
 export function getProvider(): TranscriptionProvider {
   if (!currentProvider) {
     currentProvider = createProvider(currentMode)
@@ -40,15 +40,15 @@ export function getProvider(): TranscriptionProvider {
   return currentProvider
 }
 
-/** 获取当前工作模式 */
+/** 獲取當前工作模式 */
 export function getWorkMode(): WorkMode {
   return currentMode
 }
 
 /**
- * 切换工作模式。
- * 会断开旧 Provider 并创建新的。
- * 调用方需要重新 connect。
+ * 切換工作模式。
+ * 會斷開舊 Provider 並建立新的。
+ * 呼叫方需要重新 connect。
  */
 export async function switchProvider(_requested: WorkMode): Promise<TranscriptionProvider> {
   const mode: WorkMode = 'local' // [自訂 local-only]
@@ -58,7 +58,7 @@ export async function switchProvider(_requested: WorkMode): Promise<Transcriptio
 
   addRuntimeEvent('info', 'transcription', 'Processing mode changed', { from: currentMode, to: mode })
 
-  // 断开旧 Provider
+  // 斷開舊 Provider
   if (currentProvider) {
     try {
       currentProvider.disconnect()
@@ -67,8 +67,8 @@ export async function switchProvider(_requested: WorkMode): Promise<Transcriptio
     }
   }
 
-  // 离开本地模式时释放 sherpa-onnx recognizer 占用的内存（几百 MB ~ 数 GB），
-  // 否则切到云 API / 服务器模式后本地模型仍常驻到应用退出。
+  // 離開本地模式時釋放 sherpa-onnx recognizer 佔用的記憶體（幾百 MB ~ 數 GB），
+  // 否則切到雲 API / 伺服器模式後本地模型仍常駐到應用退出。
   if (currentMode === 'local' && mode !== 'local') {
     try {
       await invoke('unload_local_model')
@@ -82,7 +82,7 @@ export async function switchProvider(_requested: WorkMode): Promise<Transcriptio
   return currentProvider
 }
 
-/** 从 store 读取保存的 workMode 并初始化 */
+/** 從 store 讀取儲存的 workMode 並初始化 */
 export async function initProviderFromStore(): Promise<void> {
   // [自訂 local-only] 不論儲存值為何，一律 local，並寫回設定。
   // [自訂] S29：無條件寫入（原本只有「讀到的值不是 local」才寫；未設定時 getSetting 回傳預設 'local'，

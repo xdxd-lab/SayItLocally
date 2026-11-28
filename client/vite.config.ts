@@ -7,19 +7,19 @@ import fs from 'fs'
 const host = process.env.TAURI_DEV_HOST
 const defaultServerUrl = process.env.SAYIT_DEFAULT_SERVER_URL || 'https://sayitapp.site'
 
-// 从 tauri.conf.json 读取版本号
+// 從 tauri.conf.json 讀取版本號
 const tauriConf = JSON.parse(
   fs.readFileSync(path.resolve(__dirname, 'src-tauri/tauri.conf.json'), 'utf-8')
 )
-// SAYIT_FAKE_APP_VERSION：只为「在真机上测自动更新」存在。
-// 把前端自报的版本压低（如 0.1.5），线上 manifest 的 0.1.6 就成了"新版本"，
-// 整条链路（检查 → 下载 → SHA-512 校验 → 提醒图标 → 安装）都能真跑一遍，
-// 不用先发一个假包上去。发版前必须测自更新（见 .kiro/steering/pitfalls.md #3），
-// 而更新器的改动没法用自己验证自己，这个口子是那道验证的入口。
-// 正式构建不会设这个变量；设了会打一行醒目的警告。
+// SAYIT_FAKE_APP_VERSION：只為「在真機上測自動更新」存在。
+// 把前端自報的版本壓低（如 0.1.5），線上 manifest 的 0.1.6 就成了"新版本"，
+// 整條鏈路（檢查 → 下載 → SHA-512 校驗 → 提醒圖示 → 安裝）都能真跑一遍，
+// 不用先發一個假包上去。發版前必須測自更新（見 .kiro/steering/pitfalls.md #3），
+// 而更新器的改動沒法用自己驗證自己，這個口子是那道驗證的入口。
+// 正式構建不會設這個變數；設了會打一行醒目的警告。
 const fakeVersion = process.env.SAYIT_FAKE_APP_VERSION
 if (fakeVersion) {
-  console.warn(`\n[vite] SAYIT_FAKE_APP_VERSION=${fakeVersion} — 应用会自报这个版本（真实版本 ${tauriConf.version}）。仅用于测更新，别拿来打包。\n`)
+  console.warn(`\n[vite] SAYIT_FAKE_APP_VERSION=${fakeVersion} — 應用會自報這個版本（真實版本 ${tauriConf.version}）。僅用於測更新，別拿來打包。\n`)
 }
 const appVersion = fakeVersion || tauriConf.version || '0.0.0'
 
@@ -51,7 +51,7 @@ export default defineConfig({
     include: ['src/**/*.test.ts'],
   },
   build: {
-    // 生产构建移除 console.log 和 debugger（保留 console.warn/error）
+    // 生產構建移除 console.log 和 debugger（保留 console.warn/error）
     minify: 'esbuild',
     rollupOptions: {
       input: {

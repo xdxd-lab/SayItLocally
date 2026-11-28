@@ -3,7 +3,7 @@ import type { MicEndpoint } from '@/services/audio'
 
 export type { OverlayWaveTheme } from '@/lib/overlayWaveColors'
 
-// 快捷键映射已收敛到 @/lib/shortcutKeys（单一数据源），这里透传导出以保持既有引用不变。
+// 快捷鍵對映已收斂到 @/lib/shortcutKeys（單一資料來源），這裡透傳匯出以保持既有引用不變。
 export {
   displayAccelerator,
   eventToAccelerator,
@@ -15,37 +15,37 @@ export {
 export interface MicOption {
   value: string
   label: string
-  /** 与 label 同一串。设备名常常长到被 truncate 截掉，而截掉的那段（USB 后缀）
-   *  恰好是辨认设备的依据，所以完整名字必须能悬停看到。 */
+  /** 與 label 同一串。裝置名常常長到被 truncate 截掉，而截掉的那段（USB 字尾）
+   *  恰好是辨認裝置的依據，所以完整名字必須能懸停看到。 */
   title: string
 }
 
-/** 只有 `default` 那条伪设备代表「系统默认」；`communications` 是通信用的另一路。 */
+/** 只有 `default` 那條偽裝置代表「系統預設」；`communications` 是通訊用的另一路。 */
 const SYSTEM_DEFAULT_PSEUDO_ID = 'default'
 
 /**
- * 麦克风下拉的选项。第一项永远是「系统默认」（value 为空串）。
+ * 麥克風下拉的選項。第一項永遠是「系統預設」（value 為空串）。
  *
- * 三条刻意的取舍：
+ * 三條刻意的取捨：
  *
- * 1. **设备名保留型号，只剥掉 USB 标识。** 这里和悬浮窗那行提示的目标不同：悬浮窗是
- *    一瞬而过的确认，只要主名；这里是用户主动辨认设备的地方，括号里的型号
- *    （`Plantronics Blackwire 5220 Series`）必须留着，那是区分设备的依据。
- *    结尾的 `(047f:c053)` 例外 —— 见 stripUsbIds，它连同型号都区分不了。
- *    宽度不够时截断，完整名字放在 title 里。
+ * 1. **裝置名保留型號，只剝掉 USB 標識。** 這裡和懸浮窗那行提示的目標不同：懸浮窗是
+ *    一瞬而過的確認，只要主名；這裡是使用者主動辨認裝置的地方，括號裡的型號
+ *    （`Plantronics Blackwire 5220 Series`）必須留著，那是區分裝置的依據。
+ *    結尾的 `(047f:c053)` 例外 —— 見 stripUsbIds，它連同型號都區分不了。
+ *    寬度不夠時截斷，完整名字放在 title 裡。
  *
- * 2. **「系统默认」要写明它当前指向谁。** 光写「系统默认」等于没说，用户看不出录音会
- *    走哪个麦克风。Chromium 的 `default` 伪设备就携带这条信息（label 是
- *    `<本地化前缀> - <真实端点名>`、groupId 指向那个端点），用 matchRealEndpoint 落地。
+ * 2. **「系統預設」要寫明它當前指向誰。** 光寫「系統預設」等於沒說，使用者看不出錄音會
+ *    走哪個麥克風。Chromium 的 `default` 偽裝置就攜帶這條資訊（label 是
+ *    `<本地化字首> - <真實端點名>`、groupId 指向那個端點），用 matchRealEndpoint 落地。
  *
- * 3. **伪设备不单独成项。** 它们和第一项是同一件事的两种写法，列出来的话一个麦克风会
- *    占掉三四个选项，选哪个都一样却看着像不同设备。
+ * 3. **偽裝置不單獨成項。** 它們和第一項是同一件事的兩種寫法，列出來的話一個麥克風會
+ *    佔掉三四個選項，選哪個都一樣卻看著像不同裝置。
  *
- * 选中的 deviceId 不在列表里时补一条占位项：不补的话 Select 找不到选中值，会退回占位符
- * 文案 —— 界面看起来像"没有选择麦克风"，而用户其实选过，也就无从知道该改什么。走到这里
- * 的真实场景是设备被拔掉、换了机器、清过 WebView 缓存（Chromium 的 deviceId 按 origin
- * 加盐，清掉之后全部变号）。刻意**不自动改回系统默认**：那会静默替掉用户的选择，
- * 这里只负责把状态说出来。
+ * 選中的 deviceId 不在列表裡時補一條佔位項：不補的話 Select 找不到選中值，會退回佔位符
+ * 文案 —— 介面看起來像"沒有選擇麥克風"，而使用者其實選過，也就無從知道該改什麼。走到這裡
+ * 的真實場景是裝置被拔掉、換了機器、清過 WebView 快取（Chromium 的 deviceId 按 origin
+ * 加鹽，清掉之後全部變號）。刻意**不自動改回系統預設**：那會靜默替掉使用者的選擇，
+ * 這裡只負責把狀態說出來。
  */
 export function buildMicOptions(
   devices: MicEndpoint[],
@@ -69,7 +69,7 @@ export function buildMicOptions(
     withTitle('', resolvedName ? labels.systemDefaultWith(resolvedName) : labels.systemDefault),
     ...realInputEndpoints(devices).map((device) => withTitle(
       device.deviceId,
-      // 设备名来自系统，不翻译；只有"读不到名字"时的兜底标签跟界面语言。
+      // 裝置名來自系統，不翻譯；只有"讀不到名字"時的兜底標籤跟介面語言。
       stripUsbIds(device.label) || labels.unnamed(device.deviceId.slice(0, 8)),
     )),
   ]

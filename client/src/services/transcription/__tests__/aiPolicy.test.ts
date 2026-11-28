@@ -31,16 +31,16 @@ function policy(over: Partial<Parameters<typeof resolveAiPolicy>[0]> = {}) {
   return resolveAiPolicy({ ...SERVER_MANAGED, audioDurationSec: 10, ...over })
 }
 
-describe('resolveAiPolicy：路由与是否允许调用', () => {
-  it('服务器 + 内置 AI → managed，允许调用', () => {
+describe('resolveAiPolicy：路由與是否允許呼叫', () => {
+  it('伺服器 + 內建 AI → managed，允許呼叫', () => {
     const p = policy()
     expect(p.route).toBe('managed')
     expect(p.allowCall).toBe(true)
     expect(p.reason).toBeUndefined()
   })
 
-  it('服务器 + 自配 AI → custom，仍然允许调用', () => {
-    // custom 只表示"服务端不做整理"，客户端会接着调。它永远不是跳过原因。
+  it('伺服器 + 自配 AI → custom，仍然允許呼叫', () => {
+    // custom 只表示"服務端不做整理"，客戶端會接著調。它永遠不是跳過原因。
     const p = policy({ serverAiSource: 'custom' })
     expect(p.route).toBe('custom')
     expect(p.allowCall).toBe(true)
@@ -48,19 +48,19 @@ describe('resolveAiPolicy：路由与是否允许调用', () => {
   })
 
   it.each(['local', 'cloud_api'] as const)('%s 模式一律 custom 路由', (workMode) => {
-    // 这两种模式没有服务端 AI，serverAiSource 是残留值也不该影响路由
+    // 這兩種模式沒有服務端 AI，serverAiSource 是殘留值也不該影響路由
     expect(policy({ workMode, serverAiSource: 'managed' }).route).toBe('custom')
   })
 
-  it('总开关关闭 → route=none / reason=ai_off', () => {
+  it('總開關關閉 → route=none / reason=ai_off', () => {
     const p = policy({ aiEnabled: false, aiMinDurationSec: 60, audioDurationSec: 4.8 })
     expect(p.route).toBe('none')
     expect(p.allowCall).toBe(false)
-    // 同时低于门槛时也要报总开关：让用户去调一个根本不生效的门槛是误导
+    // 同時低於門檻時也要報總開關：讓使用者去調一個根本不生效的門檻是誤導
     expect(p.reason).toBe('ai_off')
   })
 
-  it('低于门槛 → reason=duration_below_min，但路由仍保留', () => {
+  it('低於門檻 → reason=duration_below_min，但路由仍保留', () => {
     const p = policy({ aiMinDurationSec: 60, audioDurationSec: 4.8, serverAiSource: 'custom' })
     expect(p.allowCall).toBe(false)
     expect(p.reason).toBe('duration_below_min')
@@ -69,17 +69,17 @@ describe('resolveAiPolicy：路由与是否允许调用', () => {
     expect(p.minAudioMs).toBe(60000)
   })
 
-  it('门槛为 0 表示不设限', () => {
+  it('門檻為 0 表示不設限', () => {
     expect(policy({ aiMinDurationSec: 0, audioDurationSec: 0.2 }).allowCall).toBe(true)
   })
 
-  it('时长恰好等于门槛时允许调用', () => {
-    // 判据是 <，不是 <=。用毫秒整数比较，避免浮点误差把这一档判反。
+  it('時長恰好等於門檻時允許呼叫', () => {
+    // 判據是 <，不是 <=。用毫秒整數比較，避免浮點誤差把這一檔判反。
     expect(policy({ aiMinDurationSec: 2, audioDurationSec: 2 }).allowCall).toBe(true)
     expect(policy({ aiMinDurationSec: 2, audioDurationSec: 1.999 }).allowCall).toBe(false)
   })
 
-  it('识别引擎自带整理 → reason=integrated_asr，不冒充用户预设已执行', () => {
+  it('識別引擎自帶整理 → reason=integrated_asr，不冒充使用者預設已執行', () => {
     const p = policy({ workMode: 'cloud_api', integratedAsr: true })
     expect(p.route).toBe('integrated_asr')
     expect(p.allowCall).toBe(false)
@@ -87,7 +87,7 @@ describe('resolveAiPolicy：路由与是否允许调用', () => {
   })
 })
 
-describe('serverShouldPolish：压成线上那个布尔', () => {
+describe('serverShouldPolish：壓成線上那個布林', () => {
   it.each(['local', 'cloud_api', 'server'] as const)('routes a separate selection model through client AI in %s mode', (workMode) => {
     const result = policy({ workMode, selectionAiOverride: true, integratedAsr: true })
     expect(result).toMatchObject({ route: 'custom', allowCall: true })
@@ -104,7 +104,7 @@ describe('serverShouldPolish：压成线上那个布尔', () => {
     })
   })
 
-  it('只有 managed 且允许调用时才让服务端整理', () => {
+  it('只有 managed 且允許呼叫時才讓服務端整理', () => {
     expect(serverShouldPolish(policy())).toBe(true)
     expect(serverShouldPolish(policy({ serverAiSource: 'custom' }))).toBe(false)
     expect(serverShouldPolish(policy({ aiEnabled: false }))).toBe(false)
@@ -112,40 +112,40 @@ describe('serverShouldPolish：压成线上那个布尔', () => {
   })
 })
 
-describe('resolveAiOutcome：结果与原因', () => {
-  it('空识别优先于一切：没文本时答案是 empty_asr', () => {
+describe('resolveAiOutcome：結果與原因', () => {
+  it('空識別優先於一切：沒文本時答案是 empty_asr', () => {
     const o = resolveAiOutcome(policy({ aiMinDurationSec: 60, audioDurationSec: 1 }), { asrTextEmpty: true })
     expect(o).toMatchObject({ source: 'none', status: 'skipped', reason: 'empty_asr', attempted: false })
   })
 
-  it('策略不允许调用 → 原因直接沿用 policy 的，且 attempted=false', () => {
+  it('策略不允許呼叫 → 原因直接沿用 policy 的，且 attempted=false', () => {
     const o = resolveAiOutcome(policy({ aiMinDurationSec: 60, audioDurationSec: 4.8 }))
     expect(o).toMatchObject({ status: 'skipped', reason: 'duration_below_min', attempted: false, llmMs: 0 })
   })
 
-  it('managed：服务端回了 error → failed，不是 unavailable', () => {
-    // 这是本轮修的核心错判：服务端异常时返回原文 + llm_ms=0，
-    // 旧代码按耗时判断，把"调用失败"记成了"不可用"。
+  it('managed：服務端回了 error → failed，不是 unavailable', () => {
+    // 這是本輪修的核心錯判：服務端異常時返回原文 + llm_ms=0，
+    // 舊程式碼按耗時判斷，把"呼叫失敗"記成了"不可用"。
     const o = resolveAiOutcome(policy(), { serverError: 'HTTP 400 temperature', llmMs: 0 })
     expect(o).toMatchObject({ source: 'server', status: 'failed', reason: 'call_failed', attempted: true })
   })
 
-  it('managed：有 provider 证据即算执行过，哪怕耗时为 0', () => {
+  it('managed：有 provider 證據即算執行過，哪怕耗時為 0', () => {
     const o = resolveAiOutcome(policy(), { serverProvider: 'openai', llmMs: 0 })
     expect(o).toMatchObject({ status: 'applied', attempted: true, provider: 'server' })
   })
 
-  it('managed：只有耗时 > 0 也算执行过（兼容不带 provider 的服务器）', () => {
+  it('managed：只有耗時 > 0 也算執行過（相容不帶 provider 的伺服器）', () => {
     expect(resolveAiOutcome(policy(), { llmMs: 1228 }).status).toBe('applied')
   })
 
-  it('managed：既无 provider 也无耗时 → no_evidence，不得断言 failed', () => {
+  it('managed：既無 provider 也無耗時 → no_evidence，不得斷言 failed', () => {
     const o = resolveAiOutcome(policy(), { llmMs: 0 })
     expect(o).toMatchObject({ status: 'unavailable', reason: 'no_evidence', attempted: false })
     expect(o.status).not.toBe('failed')
   })
 
-  it('custom：配置不完整 → unavailable / config_incomplete，未尝试', () => {
+  it('custom：配置不完整 → unavailable / config_incomplete，未嘗試', () => {
     const o = resolveAiOutcome(policy({ serverAiSource: 'custom' }), {
       configComplete: false,
       provider: 'zhipu',
@@ -155,7 +155,7 @@ describe('resolveAiOutcome：结果与原因', () => {
     })
   })
 
-  it('custom：超时与调用失败分开记', () => {
+  it('custom：超時與呼叫失敗分開記', () => {
     const p = policy({ serverAiSource: 'custom' })
     expect(resolveAiOutcome(p, { clientFailure: 'timeout' }).reason).toBe('call_timeout')
     expect(resolveAiOutcome(p, { clientFailure: 'error' }).reason).toBe('call_failed')
@@ -167,7 +167,7 @@ describe('resolveAiOutcome：结果与原因', () => {
     expect(o).toMatchObject({ status: 'failed', reason: 'empty_output', attempted: true, llmMs: 90 })
   })
 
-  it('custom：成功 → applied，并带上供应商与模型', () => {
+  it('custom：成功 → applied，並帶上供應商與模型', () => {
     const o = resolveAiOutcome(policy({ serverAiSource: 'custom' }), {
       llmMs: 680, provider: 'zhipu', model: 'GLM-5.3-Flash',
     })
@@ -177,15 +177,15 @@ describe('resolveAiOutcome：结果与原因', () => {
     expect(o.reason).toBeUndefined()
   })
 
-  it('不拿文本相等当判据：整理成功但文本没变化仍算成功', () => {
-    // 判据里压根没有文本参数，这条钉的是"以后也不许加进来"
+  it('不拿文本相等當判據：整理成功但文本沒變化仍算成功', () => {
+    // 判據裡壓根沒有文本引數，這條釘的是"以後也不許加進來"
     const o = resolveAiOutcome(policy(), { serverProvider: 'openai', llmMs: 5 })
     expect(o.status).toBe('applied')
   })
 })
 
-describe('policyFromSnapshot：缓冲型 Provider 复原策略', () => {
-  it('快照存在时按快照判，不读当前设置', () => {
+describe('policyFromSnapshot：緩衝型 Provider 復原策略', () => {
+  it('快照存在時按快照判，不讀當前設定', () => {
     const p = policyFromSnapshot(
       { workMode: 'server', aiEnabled: true, aiMinDurationSec: 60, serverAiSource: 'custom' },
       'local',
@@ -196,39 +196,39 @@ describe('policyFromSnapshot：缓冲型 Provider 复原策略', () => {
   })
 
   // [自訂] S23：快照缺失時預設關閉 AI（原為「開啟、無門檻」）
-  it('快照缺失时兜底为关闭 AI', () => {
+  it('快照缺失時兜底為關閉 AI', () => {
     const p = policyFromSnapshot(undefined, 'cloud_api', 1)
     expect(p.allowCall).toBe(false)
     expect(p.reason).toBe('ai_off')
   })
 })
 
-describe('extractServerAiEvidence：只摘结论，不带调试正文', () => {
-  it('摘出 error 与 provider', () => {
+describe('extractServerAiEvidence：只摘結論，不帶除錯正文', () => {
+  it('摘出 error 與 provider', () => {
     expect(extractServerAiEvidence({ error: 'boom', provider: 'openai' }))
       .toEqual({ error: 'boom', provider: 'openai' })
   })
 
-  it('丢弃 messages / raw_output 等可能含 prompt 与正文的字段', () => {
+  it('丟棄 messages / raw_output 等可能含 prompt 與正文的欄位', () => {
     const evidence = extractServerAiEvidence({
       provider: 'openai',
       model: 'gpt-x',
-      messages: [{ role: 'system', content: '用户的预设正文' }],
-      raw_output: '整理后的正文',
+      messages: [{ role: 'system', content: '使用者的預設正文' }],
+      raw_output: '整理後的正文',
     })
     expect(evidence).toEqual({ provider: 'openai' })
-    expect(JSON.stringify(evidence)).not.toContain('预设')
-    expect(JSON.stringify(evidence)).not.toContain('整理后')
+    expect(JSON.stringify(evidence)).not.toContain('預設')
+    expect(JSON.stringify(evidence)).not.toContain('整理後')
   })
 
-  it('空对象 / 非对象 → undefined', () => {
+  it('空物件 / 非物件 → undefined', () => {
     expect(extractServerAiEvidence({})).toBeUndefined()
     expect(extractServerAiEvidence(undefined)).toBeUndefined()
     expect(extractServerAiEvidence('nope')).toBeUndefined()
   })
 })
 
-describe('resolveAndLogAiOutcome：每次处理恰好一条，且不含正文', () => {
+describe('resolveAndLogAiOutcome：每次處理恰好一條，且不含正文', () => {
   beforeEach(() => {
     mocks.addRuntimeEvent.mockClear()
     __resetAiOutcomeLogDedupe()
@@ -236,7 +236,7 @@ describe('resolveAndLogAiOutcome：每次处理恰好一条，且不含正文', 
 
   const ctx = { operationId: 'op-1', trigger: 'live' as const, serverRef: 'cid-abc' }
 
-  it('落一条 ai.outcome，字段齐全且 route 与 reason 并存', () => {
+  it('落一條 ai.outcome，欄位齊全且 route 與 reason 並存', () => {
     resolveAndLogAiOutcome(
       ctx,
       policy({ serverAiSource: 'custom', aiMinDurationSec: 60, audioDurationSec: 4.8 }),
@@ -261,21 +261,21 @@ describe('resolveAndLogAiOutcome：每次处理恰好一条，且不含正文', 
     })
   })
 
-  it('同一个 operationId 第二次调用不再落盘（asr/final/done 各写一次的结构性防护）', () => {
+  it('同一個 operationId 第二次呼叫不再落盤（asr/final/done 各寫一次的結構性防護）', () => {
     resolveAndLogAiOutcome(ctx, policy())
     const second = resolveAndLogAiOutcome(ctx, policy())
     expect(mocks.addRuntimeEvent).toHaveBeenCalledTimes(1)
-    // 但返回值仍然正确，调用方不必关心去重
+    // 但返回值仍然正確，呼叫方不必關心去重
     expect(second.status).toBeDefined()
   })
 
-  it('不同 operationId 各记一条', () => {
+  it('不同 operationId 各記一條', () => {
     resolveAndLogAiOutcome({ ...ctx, operationId: 'a' }, policy())
     resolveAndLogAiOutcome({ ...ctx, operationId: 'b' }, policy())
     expect(mocks.addRuntimeEvent).toHaveBeenCalledTimes(2)
   })
 
-  it('日志里不出现任何识别或整理正文字段', () => {
+  it('日誌裡不出現任何識別或整理正文欄位', () => {
     resolveAndLogAiOutcome(ctx, policy(), { serverProvider: 'openai', llmMs: 30 })
     const detail = mocks.addRuntimeEvent.mock.calls[0][3] as Record<string, unknown>
     for (const forbidden of ['asrText', 'llmText', 'text', 'messages', 'systemPrompt', 'raw_output']) {

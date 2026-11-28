@@ -9,7 +9,7 @@ export const MAX_DIAGNOSTIC_IMAGE_SIZE = 5 * 1024 * 1024
 export const MAX_DIAGNOSTIC_TOTAL_IMAGE_SIZE = 20 * 1024 * 1024
 
 export interface DiagnosticsSubmission {
-  /** 用户的补充说明。选了问题类型后它就是可选的 —— 逼用户写作文只会换来「不好用」。 */
+  /** 使用者的補充說明。選了問題型別後它就是可選的 —— 逼使用者寫作文只會換來「不好用」。 */
   description: string
   issueType: DiagnosticIssueType
   issueOccurrence: DiagnosticOccurrence
@@ -62,7 +62,7 @@ export async function getDiagnosticsPreview(issueOccurrence: DiagnosticOccurrenc
   return preview
 }
 
-/** 打包诊断：截图以原始字节发给 Rust（不再转成 JSON 数字数组）。 */
+/** 打包診斷：截圖以原始位元組發給 Rust（不再轉成 JSON 數字陣列）。 */
 async function buildDiagnosticsZip(data: DiagnosticsSubmission): Promise<string> {
   const rawSettings = await bridge.collectSettings()
   const settings = sanitizeObject(rawSettings || {})

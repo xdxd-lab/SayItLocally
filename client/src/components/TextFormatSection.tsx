@@ -1,4 +1,4 @@
-// 文本格式规范开关 — 不依赖 AI 的客户端文本处理
+// 文本格式規範開關 — 不依賴 AI 的客戶端文本處理
 
 import { useEffect, useRef, useState } from 'react'
 import { Switch } from '@/components/ui/switch'
@@ -19,17 +19,17 @@ import { useT } from '@/i18n/useT'
 interface ToggleDef {
   key: keyof TextPostProcessOptions
   titleKey: TranslationKey
-  /** 行内可见的简短说明 */
+  /** 行內可見的簡短說明 */
   hintKey: TranslationKey
-  /** hover 问号显示的详细说明 + 例子（换行用 \n） */
+  /** hover 問號顯示的詳細說明 + 例子（換行用 \n） */
   detailKey: TranslationKey
 }
 
 /**
  * 存 key 而不是文案。
  *
- * 这里的 detail 是「说明 + 例子 + AI 生效条件」三段拼起来的，所以拼接也放到渲染期，
- * 否则模块加载时就把当时的语言固化下来了。
+ * 這裡的 detail 是「說明 + 例子 + AI 生效條件」三段拼起來的，所以拼接也放到渲染期，
+ * 否則模組載入時就把當時的語言固化下來了。
  */
 const TOGGLES: ToggleDef[] = [
   {
@@ -62,18 +62,18 @@ export default function TextFormatSection() {
   const t = useT()
   const [opts, setOpts] = useState<TextPostProcessOptions>(DEFAULT_POST_PROCESS)
   const initialized = useRef(false)
-  // 开着 AI 整理时，被 APPLIES_WITH_AI 判为不执行的项要置灰 —— 否则用户点一个
-  // 不起作用的开关，会以为功能坏了。aiReady 一起等：AI 开关的初值也是异步读回的，
-  // 不等它就会先画出"未置灰"再跳到"已置灰"。
+  // 開著 AI 整理時，被 APPLIES_WITH_AI 判為不執行的項要置灰 —— 否則使用者點一個
+  // 不起作用的開關，會以為功能壞了。aiReady 一起等：AI 開關的初值也是非同步讀回的，
+  // 不等它就會先畫出"未置灰"再跳到"已置灰"。
   const aiEnabled = useAiEnabled()
   const aiReady = useAiEnabledReady()
-  // 读到已保存值之前，开关先隐藏、且不放动画：避免先画出默认值再跳到已保存值（闪一下）。
-  // 用 finally 兜底，读取失败也让开关出现（呈默认值），不至于一直隐藏。
+  // 讀到已儲存值之前，開關先隱藏、且不放動畫：避免先畫出預設值再跳到已儲存值（閃一下）。
+  // 用 finally 兜底，讀取失敗也讓開關出現（呈預設值），不至於一直隱藏。
   const [ready, setReady] = useState(false)
-  // animate 与 ready 分开：ready 决定何时显示，animate 决定何时允许过渡。
-  // 若在揭开/赋值的同一帧就把 transition 加回来，按 CSS 规范浏览器会认为
-  // 「有过渡且值变了」，于是把「默认值→已保存值」真的动画一遍（看起来就是闪一下）。
-  // 所以揭开那一帧仍不带过渡，隔两帧待值稳定后才开过渡。
+  // animate 與 ready 分開：ready 決定何時顯示，animate 決定何時允許過渡。
+  // 若在揭開/賦值的同一幀就把 transition 加回來，按 CSS 規範瀏覽器會認為
+  // 「有過渡且值變了」，於是把「預設值→已儲存值」真的動畫一遍（看起來就是閃一下）。
+  // 所以揭開那一幀仍不帶過渡，隔兩幀待值穩定後才開過渡。
   const [animate, setAnimate] = useState(false)
 
   useEffect(() => {
@@ -97,23 +97,23 @@ export default function TextFormatSection() {
     setOpts((prev) => ({ ...prev, [key]: !prev[key] }))
   }
 
-  /** 此刻这一项是不是不会执行（开着 AI 且该项不穿透）。置灰与文案都以它为准。 */
+  /** 此刻這一項是不是不會執行（開著 AI 且該項不穿透）。置灰與文案都以它為準。 */
   const isInert = (key: keyof TextPostProcessOptions) =>
     aiReady && aiEnabled && !APPLIES_WITH_AI[key]
 
   return (
-    // 卡片样式与其他页统一（原来是小一号标题 + 分隔线头部，边距也不同）；开关放在右侧，和全软件一致
+    // 卡片樣式與其他頁統一（原來是小一號標題 + 分隔線頭部，邊距也不同）；開關放在右側，和全軟體一致
     <Card className="mb-6">
       <CardContent className="p-6">
         <h2 className="text-lg font-semibold">{t('textFormat.title')}</h2>
-        {/* 说清生效条件：这几项是"没有 AI 时我们自己做的排版兜底"。开了 AI 整理，
-            排版就归 AI 管，置灰的项不生效——两边都做会互相打架。文本替换不在此列，见热词页的「文本替换」。
-            AI 开着时换成一句更直接的话，并指出去哪表达同样的诉求（输出约束在 AI 整理页）。 */}
+        {/* 說清生效條件：這幾項是"沒有 AI 時我們自己做的排版兜底"。開了 AI 整理，
+            排版就歸 AI 管，置灰的項不生效——兩邊都做會互相打架。文本替換不在此列，見熱詞頁的「文本替換」。
+            AI 開著時換成一句更直接的話，並指出去哪表達同樣的訴求（輸出約束在 AI 整理頁）。 */}
         <p className="mt-1 text-xs text-muted-foreground">
           {aiReady && aiEnabled ? t('textFormat.descAiOn') : t('textFormat.desc')}
         </p>
       <div className="mt-2 divide-y divide-border">
-        {/* 变量名从 t 改成 def：t 现在是翻译函数，同名会被遮蔽掉 */}
+        {/* 變數名從 t 改成 def：t 現在是翻譯函式，同名會被遮蔽掉 */}
         {TOGGLES.map((def) => {
           const inert = isInert(def.key)
           return (
@@ -123,14 +123,14 @@ export default function TextFormatSection() {
                   <span className={cn('text-sm font-medium', inert && 'text-muted-foreground')}>
                     {t(def.titleKey)}
                   </span>
-                  {/* aiNote 只加在"确实会被 AI 接管"的项上；穿透 AI 的项不该声称自己会失效。
-                      AI 已经开着时也不重复——下面那句已经说了。 */}
+                  {/* aiNote 只加在"確實會被 AI 接管"的項上；穿透 AI 的項不該聲稱自己會失效。
+                      AI 已經開著時也不重複——下面那句已經說了。 */}
                   <InfoTip
                     content={`${t(def.detailKey)}${!APPLIES_WITH_AI[def.key] && !inert ? t('textFormat.aiNote') : ''}`}
                     label={t(def.titleKey)}
                   />
                 </div>
-                {/* 不生效时把说明换成原因，而不是再加一段文字：原因就落在用户此刻正在看的位置。 */}
+                {/* 不生效時把說明換成原因，而不是再加一段文字：原因就落在使用者此刻正在看的位置。 */}
                 <p className={cn('text-xs', inert ? 'italic text-muted-foreground/70' : 'text-muted-foreground')}>
                   {inert ? t('textFormat.inertByAi') : t(def.hintKey)}
                 </p>

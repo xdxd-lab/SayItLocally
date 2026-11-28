@@ -1,5 +1,5 @@
-// 「热词注入提示词」开关卡片
-// 开启后，AI 整理阶段会把用户热词表注入系统提示词，帮助纠正/保留专有名词。默认关闭。
+// 「熱詞注入提示詞」開關卡片
+// 開啟後，AI 整理階段會把使用者熱詞表注入系統提示詞，幫助糾正/保留專有名詞。預設關閉。
 
 import { useEffect, useState } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
@@ -12,13 +12,13 @@ export default function HotwordPromptInjectToggle() {
   const t = useT()
   const aiEnabled = useAiEnabled()
   const [enabled, setEnabled] = useState(false)
-  // 读到已保存值之前，开关先隐藏、且不放动画：避免先画出默认值再跳到已保存值（闪一下）。
-  // 用 finally 兜底，读取失败也让开关出现（呈默认值），不至于一直隐藏。
+  // 讀到已儲存值之前，開關先隱藏、且不放動畫：避免先畫出預設值再跳到已儲存值（閃一下）。
+  // 用 finally 兜底，讀取失敗也讓開關出現（呈預設值），不至於一直隱藏。
   const [ready, setReady] = useState(false)
-  // animate 与 ready 分开：ready 决定何时显示，animate 决定何时允许过渡。
-  // 若在揭开/赋值的同一帧就把 transition 加回来，按 CSS 规范浏览器会认为
-  // 「有过渡且值变了」，于是把「默认值→已保存值」真的动画一遍（看起来就是闪一下）。
-  // 所以揭开那一帧仍不带过渡，隔两帧待值稳定后才开过渡。
+  // animate 與 ready 分開：ready 決定何時顯示，animate 決定何時允許過渡。
+  // 若在揭開/賦值的同一幀就把 transition 加回來，按 CSS 規範瀏覽器會認為
+  // 「有過渡且值變了」，於是把「預設值→已儲存值」真的動畫一遍（看起來就是閃一下）。
+  // 所以揭開那一幀仍不帶過渡，隔兩幀待值穩定後才開過渡。
   const [animate, setAnimate] = useState(false)
 
   useEffect(() => {
@@ -46,8 +46,8 @@ export default function HotwordPromptInjectToggle() {
               {aiEnabled ? t('hotwordInject.desc') : t('aiInstructions.requiresAiCleanup')}
             </p>
           </div>
-          {/* 热词只注入 AI 整理的提示词，AI 整理关着时这项不生效：画成关闭 + 禁用，
-              不显示"开着却不生效"。保存的值不动，AI 整理打开后照旧。 */}
+          {/* 熱詞只注入 AI 整理的提示詞，AI 整理關著時這項不生效：畫成關閉 + 停用，
+              不顯示"開著卻不生效"。儲存的值不動，AI 整理開啟後照舊。 */}
           <Switch checked={enabled && aiEnabled} onChange={toggle} disabled={!aiEnabled} noAnimation={!animate} hidden={!ready} />
         </div>
       </CardContent>

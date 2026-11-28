@@ -4,10 +4,10 @@ import { Tooltip } from '@/components/ui/tooltip'
 import { t } from '@/i18n'
 
 /**
- * 标题旁的 ⓘ：说明文字平时收起，鼠标移上去才显示。
+ * 標題旁的 ⓘ：說明文字平時收起，滑鼠移上去才顯示。
  *
- * 界面上大段灰字压缩以后，原来那些解释不能直接删（用户遇到不懂的地方要有地方查），
- * 统一挪到这里。提示框是 pointer-events-none 的，里面放不了可点的链接 —— 链接要留在正文里。
+ * 介面上大段灰字壓縮以後，原來那些解釋不能直接刪（使用者遇到不懂的地方要有地方查），
+ * 統一挪到這裡。提示框是 pointer-events-none 的，裡面放不了可點的連結 —— 連結要留在正文裡。
  */
 export function InfoTip({ content, label }: { content: ReactNode; label: string }) {
   return (
@@ -20,7 +20,7 @@ export function InfoTip({ content, label }: { content: ReactNode; label: string 
   )
 }
 
-/** 页面大标题。原来标题下面都跟一句副标题，现在副标题收进 ⓘ。 */
+/** 頁面大標題。原來標題下面都跟一句副標題，現在副標題收進 ⓘ。 */
 export function PageTitle({ title, info }: { title: string; info?: ReactNode }) {
   return (
     <div className="mb-6 flex items-center gap-2">

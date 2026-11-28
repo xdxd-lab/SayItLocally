@@ -35,21 +35,21 @@ export default function About() {
   //   const checking = phase === 'checking'
   //   const downloading = phase === 'downloading'
   //   const installing = phase === 'installing'
-  //   // 「有包等着装」与 phase 正交：后台每 6 小时会跑一次检查，那期间 phase 是 'checking'，
-  //   // 但安装按钮该一直在。别把这个条件写成 phase === 某个值（那正是卡住过的写法）。
+  //   // 「有包等著裝」與 phase 正交：後台每 6 小時會跑一次檢查，那期間 phase 是 'checking'，
+  //   // 但安裝按鈕該一直在。別把這個條件寫成 phase === 某個值（那正是卡住過的寫法）。
   //   const ready = !!pending && !installing
   //   const hasUpdate = !!versionInfo?.hasUpdate
 
   //   const updateStatusText = (() => {
   //     if (installing) return t('about.installing')
-  //     // ready 排在检查/下载之前：待安装的包可能是上次运行下载的，此时 versionInfo 还没回来；
-  //     // 而且后台周期检查不该把"已经下载好了"这条更重要的信息挤掉。
+  //     // ready 排在檢查/下載之前：待安裝的包可能是上次執行下載的，此時 versionInfo 還沒回來；
+  //     // 而且後台週期檢查不該把"已經下載好了"這條更重要的資訊擠掉。
   //     if (ready) return t('about.downloaded', { version: String(pending?.version) })
   //     if (checking) return t('about.checking')
   //     if (!versionInfo) return null
   //     if (versionInfo.error) return t('about.checkFailed')
-  //     // String() 而不是 ?? ''：保持与改造前 `${...}` 完全一致的输出，
-  //     // 这轮只做翻译，不顺手改 latestVersion 为空时的表现。
+  //     // String() 而不是 ?? ''：保持與改造前 `${...}` 完全一致的輸出，
+  //     // 這輪只做翻譯，不順手改 latestVersion 為空時的表現。
   //     if (downloading) return t('about.downloading', { version: String(versionInfo.latestVersion), percent: Math.round(state.downloadPercent ?? 0) })
   //     if (hasUpdate) return t('about.updateAvailable', { version: String(versionInfo.latestVersion) })
   //     return t('about.upToDate')
@@ -74,8 +74,8 @@ export default function About() {
               <p className="text-sm text-muted-foreground">{t('about.tagline')}</p>
               <p className="mt-0.5 text-xs text-muted-foreground/60">by Liu Qianglong & Claude</p>
               <div className="mt-1.5 flex items-center gap-2">
-                {/* 版本号做成和右边 GitHub 图标同一种药丸按钮：点开 releases 页，
-                    想看历史版本或某一版改了什么的人第一反应就是点这里的版本号。 */}
+                {/* 版本號做成和右邊 GitHub 圖示同一種藥丸按鈕：點開 releases 頁，
+                    想看歷史版本或某一版改了什麼的人第一反應就是點這裡的版本號。 */}
                 <button
                   type="button"
                   onClick={() => void shellOpen(RELEASES_URL)}
@@ -140,7 +140,7 @@ export default function About() {
 //                 {error && (
 //                   <p className="text-xs text-red-500">{error}</p>
 //                 )}
-//                 {/* 待安装时补一句"不装也会装上"：用户在这一页才有机会知道退出兜底那条路 */}
+//                 {/* 待安裝時補一句"不裝也會裝上"：使用者在這一頁才有機會知道退出兜底那條路 */}
 //                 {ready && (
 //                   <p className="text-xs text-muted-foreground/60">{t('about.readyHint')}</p>
 //                 )}
@@ -149,17 +149,17 @@ export default function About() {
 //                 )}
 //               </div>
 //               <div className="flex items-center gap-2">
-//                 {/* 点了就直接装，不再叠一层确认框：用户是被侧栏那枚变绿的图标引到这一页、
-//                     看完状态说明之后才按下这个按钮的，「立即安装」四个字本身就是确认。
-//                     上方 about.readyHint 已经说过"不装的话关闭应用时也会自动完成"。 */}
+//                 {/* 點了就直接裝，不再疊一層確認框：使用者是被側欄那枚變綠的圖示引到這一頁、
+//                     看完狀態說明之後才按下這個按鈕的，「立即安裝」四個字本身就是確認。
+//                     上方 about.readyHint 已經說過"不裝的話關閉應用時也會自動完成"。 */}
 //                 {ready && (
 //                   <Button size="sm" onClick={() => void installPendingUpdate()}>
 //                     <CheckCircle className="mr-1.5 h-3.5 w-3.5" aria-hidden />
 //                     {t('about.installNow')}
 //                   </Button>
 //                 )}
-//                 {/* 下载中。没有单独的「下载更新」按钮了：发现新版就自动下载，
-//                     下载失败时按「检查更新」会重来一遍。 */}
+//                 {/* 下載中。沒有單獨的「下載更新」按鈕了：發現新版就自動下載，
+//                     下載失敗時按「檢查更新」會重來一遍。 */}
 //                 {downloading && (
 //                   <Button size="sm" disabled>
 //                     <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />

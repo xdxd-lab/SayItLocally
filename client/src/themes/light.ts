@@ -2,8 +2,8 @@ import type { ThemeDefinition } from './types'
 import { t } from '@/i18n'
 
 /**
- * 默认亮色主题 — 简洁黑白灰
- * 干净的无色调设计，经典 shadcn/ui 风格
+ * 預設亮色主題 — 簡潔黑白灰
+ * 乾淨的無色調設計，經典 shadcn/ui 風格
  */
 const light: ThemeDefinition = {
   id: 'light',
@@ -16,7 +16,7 @@ const light: ThemeDefinition = {
     accent: '#f4f4f5',
   },
   vars: {
-    // 基础色 — 纯净黑白灰
+    // 基礎色 — 純淨黑白灰
     '--background': '0 0% 100%',
     '--foreground': '240 10% 3.9%',
     '--card': '0 0% 100%',
@@ -37,7 +37,7 @@ const light: ThemeDefinition = {
     '--ring': '240 5.9% 10%',
     '--radius': '0.5rem',
 
-    // 区域色
+    // 區域色
     '--sidebar-bg': '0 0% 100%',
     '--sidebar-border': '240 5.9% 90%',
     '--sidebar-item-active-bg': '240 4.8% 95.9%',
@@ -49,14 +49,14 @@ const light: ThemeDefinition = {
     '--titlebar-close-hover-bg': '0 84.2% 60.2%',
     '--titlebar-close-hover-text': '0 0% 100%',
 
-    // 表单控件
+    // 表單控制元件
     '--input-bg': '0 0% 100%',
     '--input-border': '240 5.9% 90%',
     '--input-focus-border': '240 5.9% 10%',
     '--input-focus-ring': '240 5.9% 10%',
     '--input-placeholder': '240 4% 65%',
 
-    // 状态色（-strong 为白底上达标的文字色，见 types.ts 的说明）
+    // 狀態色（-strong 為白底上達標的文字色，見 types.ts 的說明）
     '--success': '142 76% 36%',
     '--success-foreground': '0 0% 100%',
     '--success-strong': '142 72% 29%',     // 白底 5.1:1

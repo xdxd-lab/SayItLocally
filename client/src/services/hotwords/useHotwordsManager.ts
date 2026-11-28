@@ -25,7 +25,7 @@ import {
 import { t } from '@/i18n'
 import { hotwordsReducer, initialHotwordsState } from './stateMachine'
 
-/** 内置分类的词表一律经这里写：用户自加的词要同时写进单独那份（原因见 BUILTIN_SET_EXTRA_WORDS_KEY）。 */
+/** 內建分類的詞表一律經這裡寫：使用者自加的詞要同時寫進單獨那份（原因見 BUILTIN_SET_EXTRA_WORDS_KEY）。 */
 function persistBuiltinWords(wordsMap: Record<string, string[]>) {
   return Promise.all([
     setSetting(BUILTIN_SET_WORDS_KEY, wordsMap),
@@ -33,7 +33,7 @@ function persistBuiltinWords(wordsMap: Record<string, string[]>) {
   ])
 }
 
-/** 内置分类的添加框在 themeInputs 里用的键，加前缀免得和自建分类的 id 撞上 */
+/** 內建分類的新增框在 themeInputs 裡用的鍵，加字首免得和自建分類的 id 撞上 */
 export function builtinInputKey(setKey: string) {
   return `builtin:${setKey}`
 }
@@ -78,7 +78,7 @@ export function useHotwordsManager() {
   }, [])
 
   const syncToBackend = useCallback(async (words: string[]) => {
-    // 热词不再写入后端全局文件；直接刷新录音器快照，由下一次会话随 start 消息传递。
+    // 熱詞不再寫入後端全域性檔案；直接重新整理錄音器快照，由下一次會話隨 start 訊息傳遞。
     setHotwordsCache(words)
   }, [])
 
@@ -100,9 +100,9 @@ export function useHotwordsManager() {
         getSetting<string[]>(LEGACY_MANUAL_WORDS_KEY, []),
       ])
 
-      // 热词全部从本地 store 加载，不依赖远程服务器
+      // 熱詞全部從本地 store 載入，不依賴遠端伺服器
       const savedSetWords = normalizeBuiltinSetWords(rawSetWords, rawSetExtraWords)
-      // 判断「要不要首次落盘」只看默认词那份；合进自加词后它可能非空，会漏掉首次落盘
+      // 判斷「要不要首次落盤」只看預設詞那份；合進自加詞後它可能非空，會漏掉首次落盤
       const storedSetWords = normalizeBuiltinSetWords(rawSetWords)
       const savedSetActive = normalizeBuiltinSetActive(rawSetActive)
 
@@ -139,7 +139,7 @@ export function useHotwordsManager() {
           : false
       }
 
-      // 从本地状态组合出当前生效的热词列表
+      // 從本地狀態組合出當前生效的熱詞列表
       const composed = composeHotwords(
         [],
         nextSetWords,
@@ -262,7 +262,7 @@ export function useHotwordsManager() {
     themeInputs,
   ])
 
-  /** 往内置分类里加词。加进来的词和默认词一样受分类开关控制，「恢复默认」会把它们清掉。 */
+  /** 往內建分類裡加詞。加進來的詞和預設詞一樣受分類開關控制，「恢復預設」會把它們清掉。 */
   const addWordsToBuiltinSet = useCallback(async (setKey: string) => {
     if (!BUILTIN_SETS[setKey]) return
     const inputKey = builtinInputKey(setKey)
@@ -309,9 +309,9 @@ export function useHotwordsManager() {
   ])
 
   /**
-   * 拖拽调整自定义热词分类的顺序。
-   * 顺序不只是好看：合并后的热词表会按顺序截断到 MAX_HOTWORDS，且部分模型只吃前一小段，
-   * 所以越靠前的分类越容易真正生效。
+   * 拖拽調整自定義熱詞分類的順序。
+   * 順序不只是好看：合併後的熱詞表會按順序截斷到 MAX_HOTWORDS，且部分模型只吃前一小段，
+   * 所以越靠前的分類越容易真正生效。
    */
   const moveTheme = useCallback(async (from: number, to: number) => {
     if (from === to || from < 0 || to < 0 || from >= customThemes.length || to >= customThemes.length) return

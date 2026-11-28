@@ -1,31 +1,31 @@
-// OpenRouter 转写 — 一把 key 通往多家 STT 模型
+// OpenRouter 轉寫 — 一把 key 通往多家 STT 模型
 //
-// 走 OpenRouter 自己的 `POST /api/v1/audio/transcriptions`：**JSON body + base64 音频**
+// 走 OpenRouter 自己的 `POST /api/v1/audio/transcriptions`：**JSON body + base64 音訊**
 // （`input_audio: { data, format }`），不是 multipart。
 //
-// ⚠️ 别改成复用 asr_groq.rs。OpenRouter 确实**也**接受 OpenAI 风格的 multipart
-// （官方说把 base_url 指过来就能用 OpenAI SDK），但那条路上 `prompt` 字段是
-// **「接受后忽略」**的 —— 而 asr_groq.rs 全靠那个 prompt 给中文短句加标点
-// （见它的 PUNCTUATION_PROMPT，缺了它中文转写一个标点都没有）。
-// 复用等于悄悄丢掉标点，所以这里独立一份，走原生 JSON 形态。
+// ⚠️ 別改成複用 asr_groq.rs。OpenRouter 確實**也**接受 OpenAI 風格的 multipart
+// （官方說把 base_url 指過來就能用 OpenAI SDK），但那條路上 `prompt` 欄位是
+// **「接受後忽略」**的 —— 而 asr_groq.rs 全靠那個 prompt 給中文短句加標點
+// （見它的 PUNCTUATION_PROMPT，缺了它中文轉寫一個標點都沒有）。
+// 複用等於悄悄丟掉標點，所以這裡獨立一份，走原生 JSON 形態。
 //
-// ── 关于标点这件事（这是选模型的关键，不是小事）──
-// OpenRouter 的两种形态都没有 prompt 通道（JSON 的参数表里也没有），所以
-// **Whisper 系模型在这里没法做标点引导**。默认模型因此选 `openai/gpt-transcribe`：
-// 新一代 token 计费的模型自带标点，不依赖「拿带标点的句子做示范」那套。
-// 用户要选 whisper-1 / whisper-large-v3 也可以，只是中文短句可能没有句尾标点。
-// 半角转全角在前端 textPostProcess.ts 的 normalizeChinesePunctuation 里做，
-// 那解决的是宽度不是有无。
+// ── 關於標點這件事（這是選模型的關鍵，不是小事）──
+// OpenRouter 的兩種形態都沒有 prompt 通道（JSON 的參數列裡也沒有），所以
+// **Whisper 系模型在這裡沒法做標點引導**。預設模型因此選 `openai/gpt-transcribe`：
+// 新一代 token 計費的模型自帶標點，不依賴「拿帶標點的句子做示範」那套。
+// 使用者要選 whisper-1 / whisper-large-v3 也可以，只是中文短句可能沒有句尾標點。
+// 半形轉全形在前端 textPostProcess.ts 的 normalizeChinesePunctuation 裡做，
+// 那解決的是寬度不是有無。
 //
-// ── 模型 slug 必须带厂商前缀 ──
-// `openai/whisper-1` 而不是 `whisper-1`。写错会得到一个 404 "model not found"。
-// 可用清单在前端目录里（asrProviderCatalog.ts 的 openrouter_transcribe.models），
-// 想拿到当前完整清单跑
+// ── 模型 slug 必須帶廠商字首 ──
+// `openai/whisper-1` 而不是 `whisper-1`。寫錯會得到一個 404 "model not found"。
+// 可用清單在前端目錄裡（asrProviderCatalog.ts 的 openrouter_transcribe.models），
+// 想拿到當前完整清單跑
 // `python dev-scripts/probe_new_asr_providers.py --target openrouter --list-models`
 // （它打的是 /api/v1/models?output_modalities=transcription）。
 //
-// ── 未经真实接口验证 ──
-// 照官方文档实现，没有 OpenRouter key。用
+// ── 未經真實介面驗證 ──
+// 照官方文件實現，沒有 OpenRouter key。用
 // `python dev-scripts/probe_new_asr_providers.py --target openrouter` 打一次真接口。
 
 use super::diag;
@@ -35,23 +35,23 @@ use std::time::Instant;
 const API_URL: &str = "https://openrouter.ai/api/v1/audio/transcriptions";
 const SCOPE: &str = "openrouter/asr";
 
-/// 默认模型。选自带标点的那一代，理由见文件头「关于标点这件事」。
+/// 預設模型。選自帶標點的那一代，理由見檔案頭「關於標點這件事」。
 const DEFAULT_MODEL: &str = "openai/gpt-transcribe";
 
-/// 我们送的音频容器。裸 PCM 对方认不出来，要封 WAV。
+/// 我們送的音訊容器。裸 PCM 對方認不出來，要封 WAV。
 const AUDIO_FORMAT: &str = "wav";
 
-/// 可选的排名归属头。OpenRouter 用它在自己站上做调用量榜单，纯自愿。
+/// 可選的排名歸屬頭。OpenRouter 用它在自己站上做呼叫量榜單，純自願。
 ///
-/// 带上是为了让 SayIt 的调用量归到项目名下（对项目有点好处，对用户无成本）；
-/// 它们与鉴权、计费、路由都无关，去掉也一样能用。
+/// 帶上是為了讓 SayIt 的呼叫量歸到專案名下（對專案有點好處，對使用者無成本）；
+/// 它們與鑑權、計費、路由都無關，去掉也一樣能用。
 const REFERER: &str = "https://sayitapp.site";
 const TITLE: &str = "SayIt";
 
-/// 将 16kHz 单声道 16-bit PCM 封装为 WAV 容器。
+/// 將 16kHz 單聲道 16-bit PCM 封裝為 WAV 容器。
 ///
-/// 与 asr_groq / asr_mimo / asr_gemini 里那几份是同一个 WAV 头，刻意各留一份：
-/// 抽成公共函数后任何一家改采样格式都会牵动其余几家，而它们本来毫无关系。
+/// 與 asr_groq / asr_mimo / asr_gemini 裡那幾份是同一個 WAV 頭，刻意各留一份：
+/// 抽成公共函式後任何一家改取樣格式都會牽動其餘幾家，而它們本來毫無關係。
 fn pcm_to_wav(pcm: &[u8], sr: u32) -> Vec<u8> {
     let ds = pcm.len() as u32;
     let mut w = Vec::with_capacity(44 + pcm.len());
@@ -82,9 +82,9 @@ fn resolve_model(config: &AsrProviderConfig) -> String {
         .to_string()
 }
 
-/// 识别语言：设置里存的是 auto|zh|en|…，auto 必须**整个省略 language 字段**。
+/// 識別語言：設定裡存的是 auto|zh|en|…，auto 必須**整個省略 language 欄位**。
 ///
-/// 不能传字符串 "auto" —— 文档要的是 ISO-639-1 码，省略才代表自动检测。
+/// 不能傳字串 "auto" —— 文件要的是 ISO-639-1 碼，省略才代表自動檢測。
 fn resolve_language(config: &AsrProviderConfig) -> Option<String> {
     let raw = config
         .extra
@@ -107,11 +107,11 @@ fn build_body(
     let mut body = serde_json::json!({
         "model": model,
         "input_audio": { "data": wav_b64, "format": AUDIO_FORMAT },
-        // temperature 0：转写要照实还原，不要多样性。
+        // temperature 0：轉寫要照實還原，不要多樣性。
         "temperature": 0,
-        // 只要 text 一个字段。verbose_json 能给时间戳，但部分模型会**直接 400 拒掉**
-        // （文档点名 openai/gpt-4o-transcribe 与 microsoft/mai-transcribe-1.5），
-        // 而我们一个时间戳都不用 —— 为了用不上的字段换一类模型失效不值得。
+        // 只要 text 一個欄位。verbose_json 能給時間戳，但部分模型會**直接 400 拒掉**
+        // （文件點名 openai/gpt-4o-transcribe 與 microsoft/mai-transcribe-1.5），
+        // 而我們一個時間戳都不用 —— 為了用不上的欄位換一類模型失效不值得。
         "response_format": "json",
     });
     if let Some(lang) = language {
@@ -120,7 +120,7 @@ fn build_body(
     body
 }
 
-/// 响应形状是 `{"text": "...", "usage": {...}}`。
+/// 響應形狀是 `{"text": "...", "usage": {...}}`。
 fn extract_text(data: &serde_json::Value) -> String {
     data.get("text")
         .and_then(|t| t.as_str())
@@ -129,11 +129,11 @@ fn extract_text(data: &serde_json::Value) -> String {
         .to_string()
 }
 
-/// 这次调用花了多少、走的哪家 —— OpenRouter 会在 usage 里回报。
+/// 這次呼叫花了多少、走的哪家 —— OpenRouter 會在 usage 裡回報。
 ///
-/// 值得记：OpenRouter 是个路由层，同一个模型可能由不同上游承载，
-/// 出问题时「花了多少钱」和「实际耗时」是判断打到哪一家的线索。
-/// **只记数字，不记文本。**
+/// 值得記：OpenRouter 是個路由層，同一個模型可能由不同上游承載，
+/// 出問題時「花了多少錢」和「實際耗時」是判斷打到哪一家的線索。
+/// **只記數字，不記文本。**
 fn describe_usage(data: &serde_json::Value) -> String {
     let usage = match data.get("usage") {
         Some(u) => u,
@@ -156,7 +156,7 @@ fn describe_usage(data: &serde_json::Value) -> String {
     }
 }
 
-/// 生成 ID，出问题时拿它去 OpenRouter 后台查这一次调用。
+/// 生成 ID，出問題時拿它去 OpenRouter 後台查這一次呼叫。
 fn generation_id(headers: &reqwest::header::HeaderMap) -> String {
     headers
         .get("x-generation-id")
@@ -171,9 +171,9 @@ pub async fn transcribe(
     config: &AsrProviderConfig,
     hotwords: &[String],
 ) -> Result<AsrResult, String> {
-    // OpenRouter 这条路没有任何地方能放热词：原生 JSON 的参数表里没有 prompt，
-    // 它也接受的那套 multipart 里 prompt 是「收下后忽略」（见文件头）。
-    // 所以 capabilities.rs 把它记作 ProtocolHasNoSlot —— 和「我们没接」是两件事。
+    // OpenRouter 這條路沒有任何地方能放熱詞：原生 JSON 的參數列裡沒有 prompt，
+    // 它也接受的那套 multipart 裡 prompt 是「收下後忽略」（見檔案頭）。
+    // 所以 capabilities.rs 把它記作 ProtocolHasNoSlot —— 和「我們沒接」是兩件事。
     // 留痕理由同 asr_groq.rs。
     if !hotwords.is_empty() {
         diag::log(
@@ -238,7 +238,7 @@ pub async fn transcribe(
         .header("HTTP-Referer", REFERER)
         .header("X-Title", TITLE)
         .json(&build_body(&model, wav_b64, language.as_deref()))
-        // 上游对每个请求有 60s 超时，我们留够余量再加上传时间
+        // 上游對每個請求有 60s 超時，我們留夠餘量再加上傳時間
         .timeout(std::time::Duration::from_secs(120))
         .send()
         .await
@@ -283,9 +283,9 @@ pub async fn transcribe(
 
     let text = extract_text(&data);
     if text.is_empty() {
-        // 空结果走成功路径，前端只会显示「未检测到有效声音」。不留这条日志的话，
-        // 「真的没说话」和「这次调用其实失败了」就再也分不开（见 pitfalls 第 15 条）。
-        // gen_id 尤其要记：OpenRouter 是路由层，拿它才能查到究竟是哪家上游返回了空。
+        // 空結果走成功路徑，前端只會顯示「未檢測到有效聲音」。不留這條日誌的話，
+        // 「真的沒說話」和「這次呼叫其實失敗了」就再也分不開（見 pitfalls 第 15 條）。
+        // gen_id 尤其要記：OpenRouter 是路由層，拿它才能查到究竟是哪家上游返回了空。
         diag::empty_result(
             SCOPE,
             &format!(
@@ -313,7 +313,7 @@ pub async fn transcribe(
 
 pub async fn test_connection(config: &AsrProviderConfig) -> TestResult {
     let model = resolve_model(config);
-    // 0.5s 静音：能过鉴权与模型解析就够了，转写结果为空是预期的。
+    // 0.5s 靜音：能過鑑權與模型解析就夠了，轉寫結果為空是預期的。
     let silence = vec![0u8; 16000];
     let wav = pcm_to_wav(&silence, 16000);
     let wav_b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &wav);
@@ -398,14 +398,14 @@ mod tests {
         );
     }
 
-    /// 默认模型必须带厂商前缀 —— 不带会得到 404 "model not found"。
+    /// 預設模型必須帶廠商字首 —— 不帶會得到 404 "model not found"。
     #[test]
     fn default_model_is_namespaced() {
         assert!(DEFAULT_MODEL.contains('/'), "slug must be vendor-prefixed");
     }
 
-    /// body 的形状是这份实现的全部前提。尤其 input_audio 是**对象**（data + format），
-    /// 不是 OpenAI 那种 multipart 的 file 字段。
+    /// body 的形狀是這份實現的全部前提。尤其 input_audio 是**物件**（data + format），
+    /// 不是 OpenAI 那種 multipart 的 file 欄位。
     #[test]
     fn body_matches_the_documented_shape() {
         let body = build_body(DEFAULT_MODEL, "QUJD".to_string(), None);
@@ -413,9 +413,9 @@ mod tests {
         assert_eq!(body["input_audio"]["data"], "QUJD");
         assert_eq!(body["input_audio"]["format"], "wav");
         assert_eq!(body["temperature"], 0);
-        // json 而不是 verbose_json：后者会被一部分模型直接 400 拒掉
+        // json 而不是 verbose_json：後者會被一部分模型直接 400 拒掉
         assert_eq!(body["response_format"], "json");
-        // auto 时绝不能出现 language 字段
+        // auto 時絕不能出現 language 欄位
         assert!(body.get("language").is_none());
     }
 
@@ -436,14 +436,14 @@ mod tests {
 
     #[test]
     fn extracts_text_field() {
-        let data = serde_json::json!({ "text": "  语音输入法测试成功。  " });
-        assert_eq!(extract_text(&data), "语音输入法测试成功。");
+        let data = serde_json::json!({ "text": "  語音輸入法測試成功。  " });
+        assert_eq!(extract_text(&data), "語音輸入法測試成功。");
         assert_eq!(extract_text(&serde_json::json!({})), "");
     }
 
-    /// 实测（2026-09-16）：余额不足时 OpenRouter 返回 402，而 402 以前一条分类都
-    /// 没命中，界面显示成「连接失败」—— 真实原因是账户没钱，用户看不出该干什么。
-    /// 这条钉住 diag 侧的分类（前端那半在 errorMessages.test.ts）。
+    /// 實測（2026-09-16）：餘額不足時 OpenRouter 返回 402，而 402 以前一條分類都
+    /// 沒命中，介面顯示成「連線失敗」—— 真實原因是帳戶沒錢，使用者看不出該幹什麼。
+    /// 這條釘住 diag 側的分類（前端那半在 errorMessages.test.ts）。
     #[test]
     fn payment_required_is_classified_as_insufficient_balance() {
         let message = super::super::diag::fail(
@@ -458,16 +458,16 @@ mod tests {
             "402 must not fall back to connect_failed: {}",
             message
         );
-        // 服务商给的具体金额要留在消息里，用户才知道要充多少
+        // 服務商給的具體金額要留在訊息裡，使用者才知道要充多少
         assert!(message.contains("$0.50"));
     }
 
-    /// usage 只记数字。这条同时挡住「有人往这里加 text 字段」——
-    /// diag 的硬约束是绝不记识别文本。
+    /// usage 只記數字。這條同時擋住「有人往這裡加 text 欄位」——
+    /// diag 的硬約束是絕不記識別文本。
     #[test]
     fn usage_reports_numbers_only() {
         let data = serde_json::json!({
-            "text": "秘密内容",
+            "text": "秘密內容",
             "usage": { "seconds": 3.05, "total_tokens": 143, "cost": 0.00012 }
         });
         let summary = describe_usage(&data);

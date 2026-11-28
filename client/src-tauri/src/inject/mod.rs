@@ -15,7 +15,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 #[cfg(windows)]
 use std::time::Instant;
 
-/// 每次剪贴板粘贴递增。旧恢复线程看到新一代粘贴后会放弃，避免覆盖新内容。
+/// 每次剪貼簿貼上遞增。舊恢復執行緒看到新一代貼上後會放棄，避免覆蓋新內容。
 #[cfg(windows)]
 static PASTE_GENERATION: AtomicU64 = AtomicU64::new(0);
 
@@ -23,7 +23,7 @@ static PASTE_GENERATION: AtomicU64 = AtomicU64::new(0);
 struct ClipboardRestoreGuard {
     enabled: bool,
     previous_text: Option<String>,
-    /// 插入前剪贴板的全部格式。None = 没拍成（超预算 / 打不开），退回只还原文字。
+    /// 插入前剪貼簿的全部格式。None = 沒拍成（超預算 / 打不開），退回只還原文字。
     previous_snapshot: Option<ClipboardSnapshot>,
     injected_text: String,
     paste_id: u64,
@@ -48,27 +48,27 @@ impl ClipboardRestoreGuard {
     }
 }
 
-/// 插入前剪贴板里的全部内容：每种能按字节复制的格式各一份。
+/// 插入前剪貼簿裡的全部內容：每種能按位元組複製的格式各一份。
 ///
-/// 原来只存文字（CF_UNICODETEXT），用户刚复制的截图、文件、带格式的文本在口述一次之后
-/// 就没了，或者被降级成纯文本。
+/// 原來只存文字（CF_UNICODETEXT），使用者剛複製的截圖、檔案、帶格式的文本在口述一次之後
+/// 就沒了，或者被降級成純文本。
 #[cfg(windows)]
 #[derive(Default)]
 struct ClipboardSnapshot {
     formats: Vec<(u32, Vec<u8>)>,
 }
 
-/// 拍快照的预算：超了就放弃，退回只还原文字。
+/// 拍快照的預算：超了就放棄，退回只還原文字。
 ///
-/// 有些程序是延迟渲染（Excel 复制一大片区域时，读取那一刻才现场生成几十种格式），
-/// 读起来可能很慢，而这一步在插字的关键路径上，不能为了还原剪贴板把插字拖慢。
+/// 有些程式是延遲渲染（Excel 複製一大片區域時，讀取那一刻才現場生成幾十種格式），
+/// 讀起來可能很慢，而這一步在插字的關鍵路徑上，不能為了還原剪貼簿把插字拖慢。
 #[cfg(windows)]
 const CLIPBOARD_SNAPSHOT_BUDGET_MS: u128 = 150;
 #[cfg(windows)]
 const CLIPBOARD_SNAPSHOT_MAX_BYTES: usize = 64 * 1024 * 1024;
 
-/// 这些格式的句柄不是 HGLOBAL（位图、调色板、元文件、自绘、私有/GDI 对象区间），不能按字节复制。
-/// 图片靠 CF_DIB / CF_DIBV5 保存，系统会从它们合成 CF_BITMAP。
+/// 這些格式的控制代碼不是 HGLOBAL（點陣圖、調色盤、元檔案、自繪、私有/GDI 物件區間），不能按位元組複製。
+/// 圖片靠 CF_DIB / CF_DIBV5 儲存，系統會從它們合成 CF_BITMAP。
 #[cfg(windows)]
 fn clipboard_format_is_copyable(format: u32) -> bool {
     const CF_BITMAP: u32 = 2;
@@ -93,7 +93,7 @@ impl Drop for ClipboardRestoreGuard {
         let paste_id = self.paste_id;
         let scheduled_at = Instant::now();
 
-        // Drop 发生在 WM_PASTE/SendInput 已执行之后，因此 400ms 从实际粘贴触发时开始计算。
+        // Drop 發生在 WM_PASTE/SendInput 已執行之後，因此 400ms 從實際貼上觸發時開始計算。
         std::thread::spawn(move || {
             std::thread::sleep(std::time::Duration::from_millis(400));
             let elapsed_ms = scheduled_at.elapsed().as_millis();
@@ -107,7 +107,7 @@ impl Drop for ClipboardRestoreGuard {
             }
 
             unsafe {
-                // 用户或目标程序若已改写剪贴板，不再用旧内容覆盖它。
+                // 使用者或目標程式若已改寫剪貼簿，不再用舊內容覆蓋它。
                 let current_text = native_get_clipboard_text();
                 if current_text.as_deref() != Some(injected_text.as_str()) {
                     crate::commands::system::write_log_line(&format!(
@@ -203,9 +203,9 @@ pub fn inject_text(text: &str, restore_clipboard: bool) -> InjectResult {
     let ctx = context::capture_context("inject");
 
     if ctx.hwnd.is_empty() || ctx.hwnd == "0" {
-        // 这个分支此前一行日志都不写，于是「插不进去」的排查里它是个盲区：用户看到
-        // 兜底卡片，日志里却只有前端那条 reason=no_foreground_window，说不清是真的
-        // 没有前台窗口，还是捕获本身失败了。
+        // 這個分支此前一行日誌都不寫，於是「插不進去」的排查裡它是個盲區：使用者看到
+        // 兜底卡片，日誌裡卻只有前端那條 reason=no_foreground_window，說不清是真的
+        // 沒有前台視窗，還是捕獲本身失敗了。
         crate::commands::system::write_log_line(&format!(
             "[RUST] [inject] no foreground window hwnd={:?} focusHwnd={:?} process={:?}",
             ctx.hwnd, ctx.focus_hwnd, ctx.process_name
@@ -223,9 +223,9 @@ pub fn inject_text(text: &str, restore_clipboard: bool) -> InjectResult {
             ok: false,
             strategy: Some("overlay_fallback".to_string()),
             reason: Some("not_editable".to_string()),
-            // gate 说明结论是哪一层判据给出的，后面四项是那四层各自的输入。缺了它们，
-            // 日志只能说明"被拦了"，说不出是哪一层落空，排查得另跑一遍探测脚本
-            // （2026-09 查微信 4.1 改名时吃过这个亏）。
+            // gate 說明結論是哪一層判據給出的，後面四項是那四層各自的輸入。缺了它們，
+            // 日誌只能說明"被攔了"，說不出是哪一層落空，排查得另跑一遍探測指令碼
+            // （2026-09 查微信 4.1 改名時吃過這個虧）。
             detail: Some(describe_editability(&ctx, gate)),
             uncertain: false,
         };
@@ -245,34 +245,34 @@ pub fn inject_text(_text: &str, _restore_clipboard: bool) -> InjectResult {
     InjectResult { ok: false, strategy: None, reason: Some("not_windows".to_string()), detail: None, uncertain: false }
 }
 
-/// 「这里能不能打字」的结论，外加**是哪一层判据给出的**。
+/// 「這裡能不能打字」的結論，外加**是哪一層判據給出的**。
 ///
-/// 为什么要带上「哪一层」而不只是 bool：判据一共四层（caret / 原生控件类名 / UIA /
-/// 进程名白名单），任何一层都会因为第三方应用换 UI 框架、改进程名而失效，而失效的
-/// 表现完全一样 —— 插字退化成兜底卡片，不报错。只有 bool 的话日志只能说明「被拦
-/// 了」，说不出是哪一层落空，排查得另跑一遍 `dev-scripts/probe-foreground-target.ps1`
-/// 才能定性（2026-09 微信 4.1 把 WeChat.exe 改名成 Weixin.exe 那次就是这么查的）。
+/// 為什麼要帶上「哪一層」而不只是 bool：判據一共四層（caret / 原生控制元件類名 / UIA /
+/// 程序名白名單），任何一層都會因為第三方應用換 UI 框架、改程序名而失效，而失效的
+/// 表現完全一樣 —— 插字退化成兜底卡片，不報錯。只有 bool 的話日誌只能說明「被攔
+/// 了」，說不出是哪一層落空，排查得另跑一遍 `dev-scripts/probe-foreground-target.ps1`
+/// 才能定性（2026-09 微信 4.1 把 WeChat.exe 改名成 Weixin.exe 那次就是這麼查的）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EditableGate {
-    /// explorer 的桌面图标列表：明确拒绝，优先级高于 caret
+    /// explorer 的桌面圖示列表：明確拒絕，優先順序高於 caret
     ExplorerDesktopReject,
-    /// 系统报告了文本光标，最可靠的信号
+    /// 系統報告了文本游標，最可靠的訊號
     Caret,
-    /// 焦点或窗口类名命中原生可编辑控件（Edit / RichEdit / Scintilla / Word）
+    /// 焦點或視窗類名命中原生可編輯控制元件（Edit / RichEdit / Scintilla / Word）
     NativeClass,
-    /// UIA 报了 Edit / Document / ComboBox
+    /// UIA 報了 Edit / Document / ComboBox
     UiaEditableControl,
-    /// UIA 报了 Custom/Group/Pane 且有 ValuePattern，即富文本编辑器
+    /// UIA 報了 Custom/Group/Pane 且有 ValuePattern，即富文本編輯器
     UiaRichEditor,
-    /// UIA 说这个可编辑控件是只读的
+    /// UIA 說這個可編輯控制元件是唯讀的
     UiaReadOnly,
-    /// Chromium 窗口且能获得键盘焦点，乐观放行
+    /// Chromium 視窗且能獲得鍵盤焦點，樂觀放行
     ChromiumOptimistic,
-    /// 前面几层都没信号，靠进程名白名单放行
+    /// 前面幾層都沒訊號，靠程序名白名單放行
     ProcessAllowlist,
-    /// 四层判据全部落空
+    /// 四層判據全部落空
     NoSignal,
-    /// macOS：辅助功能没给出否定信号（拿不到焦点元素，或焦点不是按钮/菜单这类控件），乐观放行
+    /// macOS：輔助功能沒給出否定訊號（拿不到焦點元素，或焦點不是按鈕/選單這類控制元件），樂觀放行
     #[cfg(target_os = "macos")]
     AxOptimistic,
 }
@@ -285,7 +285,7 @@ impl EditableGate {
         )
     }
 
-    /// 写进日志和探测结果的稳定标识。改名等于改日志契约，排查脚本会对不上。
+    /// 寫進日誌和探測結果的穩定標識。改名等於改日誌契約，排查指令碼會對不上。
     pub fn as_str(self) -> &'static str {
         match self {
             Self::ExplorerDesktopReject => "explorer_desktop_reject",
@@ -303,18 +303,18 @@ impl EditableGate {
     }
 }
 
-/// `editability_gate` 的 bool 视图，只给测试用。
+/// `editability_gate` 的 bool 檢視，只給測試用。
 ///
-/// 加 `#[cfg(test)]` 是因为生产代码一处都不调它（真正的调用方要的是 gate 本身，
-/// 好把"是哪一层放行的"写进日志），于是 release 构建每次都报一条 dead_code 警告。
-/// 不删掉它是因为测试确实要断言"最终结论是可编辑"这一面 —— 见下面注释说的漂移风险。
+/// 加 `#[cfg(test)]` 是因為生產程式碼一處都不調它（真正的呼叫方要的是 gate 本身，
+/// 好把"是哪一層放行的"寫進日誌），於是 release 構建每次都報一條 dead_code 警告。
+/// 不刪掉它是因為測試確實要斷言"最終結論是可編輯"這一面 —— 見下面註釋說的漂移風險。
 #[cfg(test)]
 pub fn is_likely_editable_pub(ctx: &context::AppContext) -> bool {
     windows_editability_gate(ctx).is_editable()
 }
 
-/// 判据只有这一份实现。别再复制一份出来只为了拿一个 bool 结论 —— 两份判据迟早漂移，
-/// 而漂移的症状是「改了一处，另一条路径照旧」。需要 bool 就 `.is_editable()`。
+/// 判據只有這一份實現。別再複製一份出來只為了拿一個 bool 結論 —— 兩份判據遲早漂移，
+/// 而漂移的症狀是「改了一處，另一條路徑照舊」。需要 bool 就 `.is_editable()`。
 pub fn editability_gate(ctx: &context::AppContext) -> EditableGate {
     #[cfg(target_os = "macos")]
     {
@@ -326,17 +326,17 @@ pub fn editability_gate(ctx: &context::AppContext) -> EditableGate {
     }
 }
 
-/// Windows 的四层判据（caret / 原生控件类名 / UIA / 进程名白名单）。
-/// 纯逻辑、不调系统 API，所以在 mac 上也编译，单测照样跑。
+/// Windows 的四層判據（caret / 原生控制元件類名 / UIA / 程序名白名單）。
+/// 純邏輯、不調系統 API，所以在 mac 上也編譯，單測照樣跑。
 #[cfg_attr(target_os = "macos", allow(dead_code))]
 fn windows_editability_gate(ctx: &context::AppContext) -> EditableGate {
     let fc = ctx.focus_class.to_lowercase();
     let wc = ctx.window_class.to_lowercase();
     let proc = ctx.process_name.to_lowercase();
 
-    // Windows 桌面也属于 explorer.exe，但 Progman / WorkerW 下的图标列表不是文本
-    // 输入目标。必须在 caret/进程兜底之前明确拒绝，否则 SendInput 只会报告“按键已
-    // 入队”，前端会误以为粘贴成功而不展示兜底卡片。
+    // Windows 桌面也屬於 explorer.exe，但 Progman / WorkerW 下的圖示列表不是文本
+    // 輸入目標。必須在 caret/程序兜底之前明確拒絕，否則 SendInput 只會報告“按鍵已
+    // 入隊”，前端會誤以為貼上成功而不展示兜底卡片。
     let explorer_desktop_classes = ["progman", "workerw", "shelldll_defview", "syslistview32"];
     if proc.contains("explorer")
         && explorer_desktop_classes
@@ -425,16 +425,16 @@ fn windows_editability_gate(ctx: &context::AppContext) -> EditableGate {
     let editable_procs = [
         "notepad", "winword", "excel", "powerpnt", "outlook",
         "code", "devenv", "idea64",
-        // VS Code 派生的 AI IDE：焦点常报为 Pane 且无 ValuePattern，
-        // 与 code/devenv 同类，文本区可编辑，按进程名兜底放行
+        // VS Code 派生的 AI IDE：焦點常報為 Pane 且無 ValuePattern，
+        // 與 code/devenv 同類，文本區可編輯，按程序名兜底放行
         "trae", "cursor", "windsurf", "kiro",
         "chrome", "msedge", "firefox", "opera", "brave",
-        // 微信自 4.x 起整个界面用 Qt 重写（窗口类 Qt51514QWindowIcon，输入框自绘）：
-        // 没有 Win32 caret、没有子控件 HWND（focusClass 就等于窗口类）、UIA 只能看到
-        // 顶层 Window 且无 ValuePattern —— 上面三层判据对它全部为空，进程名是唯一
-        // 的放行依据。而 4.1 又把 exe 从 WeChat.exe 改名成 Weixin.exe（装到
-        // Tencent\Weixin\），只写 "wechat" 的话用户升级后就静默退化成兜底卡片
-        // （2026-09-20 实测 4.1.13.65）。两个名字都要留：3.9 老版本和微信开发者
+        // 微信自 4.x 起整個介面用 Qt 重寫（視窗類 Qt51514QWindowIcon，輸入框自繪）：
+        // 沒有 Win32 caret、沒有子控制元件 HWND（focusClass 就等於視窗類）、UIA 只能看到
+        // 頂層 Window 且無 ValuePattern —— 上面三層判據對它全部為空，程序名是唯一
+        // 的放行依據。而 4.1 又把 exe 從 WeChat.exe 改名成 Weixin.exe（裝到
+        // Tencent\Weixin\），只寫 "wechat" 的話使用者升級後就靜默退化成兜底卡片
+        // （2026-09-20 實測 4.1.13.65）。兩個名字都要留：3.9 老版本和微信開發者
         // 工具（wechatdevtools.exe）仍然叫 wechat。
         "teams", "wechat", "weixin", "dingtalk", "slack",
         "windowsterminal", "cmd", "powershell",
@@ -446,11 +446,11 @@ fn windows_editability_gate(ctx: &context::AppContext) -> EditableGate {
     EditableGate::NoSignal
 }
 
-/// 把结论和四层判据各自的输入拼成一行，日志与探测结果共用同一份格式。
+/// 把結論和四層判據各自的輸入拼成一行，日誌與探測結果共用同一份格式。
 ///
-/// 刻意不含窗口标题和 exe 全路径：这行会进 sayit.log，而日志整份跟着诊断包发给
-/// 开发者。类名、控件类型、进程名足够定位「为什么判成不可输入」，标题里的聊天
-/// 对象名和路径里的 Windows 用户名对排查没有任何作用。
+/// 刻意不含視窗標題和 exe 全路徑：這行會進 sayit.log，而日誌整份跟著診斷包發給
+/// 開發者。類名、控制元件型別、程序名足夠定位「為什麼判成不可輸入」，標題裡的聊天
+/// 物件名和路徑裡的 Windows 使用者名稱對排查沒有任何作用。
 pub fn describe_editability(ctx: &context::AppContext, gate: EditableGate) -> String {
     format!(
         "gate={} editable={} class={} focusClass={} hasCaret={} controlType={} valuePattern={} kbFocusable={} enabled={} readOnly={} process={}",
@@ -478,22 +478,22 @@ const WM_PASTE: u32 = 0x0302;
 #[cfg(windows)]
 const WM_COMMAND: u32 = 0x0111;
 
-/// conhost 系统菜单「粘贴」命令 ID（内置于 conhost）。
-/// 参考：0xFFF0=复制 0xFFF1=粘贴 0xFFF2=滚动 0xFFF3=标记 0xFFF5=全选
+/// conhost 系統選單「貼上」命令 ID（內建於 conhost）。
+/// 參考：0xFFF0=複製 0xFFF1=貼上 0xFFF2=滾動 0xFFF3=標記 0xFFF5=全選
 #[cfg(windows)]
 const ID_CONSOLE_PASTE: usize = 0xFFF1;
 
 /// Main injection: try WM_PASTE first, then SendInput Ctrl+V as fallback.
 ///
-/// `restore_clipboard`: 若为 true，在写入文本前先保存剪贴板原有文本内容，
-/// 待粘贴指令发出、目标程序有机会读取剪贴板之后（延迟一小段时间，在独立线程里），
-/// 再把剪贴板还原为原内容，避免用户之前复制的东西被覆盖丢失。
+/// `restore_clipboard`: 若為 true，在寫入文本前先儲存剪貼簿原有文本內容，
+/// 待貼上指令發出、目標程式有機會讀取剪貼簿之後（延遲一小段時間，在獨立執行緒裡），
+/// 再把剪貼簿還原為原內容，避免使用者之前複製的東西被覆蓋丟失。
 #[cfg(windows)]
 unsafe fn do_inject(target: HWND, focus: HWND, text: &str, restore_clipboard: bool) -> InjectResult {
     let paste_id = PASTE_GENERATION.fetch_add(1, Ordering::AcqRel) + 1;
 
-    // 保存原剪贴板内容（在写入新文本之前）。剪贴板本来为空/非文本时为 None，
-    // 还原时会清空剪贴板而不是留着我们刚插入的文本。
+    // 儲存原剪貼簿內容（在寫入新文本之前）。剪貼簿本來為空/非文本時為 None，
+    // 還原時會清空剪貼簿而不是留著我們剛插入的文本。
     let previous_clipboard_text = if restore_clipboard {
         native_get_clipboard_text()
     } else {
@@ -508,8 +508,8 @@ unsafe fn do_inject(target: HWND, focus: HWND, text: &str, restore_clipboard: bo
     // Step 1: Write text to clipboard
     let clipboard_ok = set_clipboard_with_retry(text, 5, 30);
     if !clipboard_ok {
-        // 连 5 次都写不进剪贴板，基本就是被安全软件的剪贴板保护挡着。
-        // 把命中的软件名写进日志和 detail，用户才知道该去哪儿加信任。
+        // 連 5 次都寫不進剪貼簿，基本就是被安全軟體的剪貼簿保護擋著。
+        // 把命中的軟體名寫進日誌和 detail，使用者才知道該去哪兒加信任。
         let guards = detect_input_guard_software();
         crate::commands::system::write_log_line(&format!(
             "[RUST] [inject] clipboard write failed pasteId={} utf8Len={} utf16Len={} inputGuards={} {}",
@@ -541,8 +541,8 @@ unsafe fn do_inject(target: HWND, focus: HWND, text: &str, restore_clipboard: bo
         restore_clipboard
     ));
 
-    // 守卫在函数返回时才启动恢复计时，确保恢复延迟从实际粘贴触发之后开始。
-    // generation 与剪贴板内容复核可阻止旧线程覆盖后续粘贴或用户新复制的内容。
+    // 守衛在函式返回時才啟動恢復計時，確保恢復延遲從實際貼上觸發之後開始。
+    // generation 與剪貼簿內容複核可阻止舊執行緒覆蓋後續貼上或使用者新複製的內容。
     let _clipboard_restore_guard = ClipboardRestoreGuard::new(
         restore_clipboard,
         previous_clipboard_text,
@@ -551,14 +551,14 @@ unsafe fn do_inject(target: HWND, focus: HWND, text: &str, restore_clipboard: bo
         paste_id,
     );
 
-    // Step 1.5: 经典控制台窗口（conhost，类名 ConsoleWindowClass）——用控制台
-    // 宿主自带的「粘贴」命令，而不是模拟 Ctrl+V 按键。
+    // Step 1.5: 經典控制台視窗（conhost，類名 ConsoleWindowClass）——用控制台
+    // 宿主自帶的「貼上」命令，而不是模擬 Ctrl+V 按鍵。
     //
-    // 原因：当控制台里运行 TUI 程序（如 Claude Code）时，控制台被切到 raw 模式，
-    // 合成的 Ctrl+V 按键会被该程序当作普通按键吃掉，不会触发粘贴，导致剪贴板内容
-    // 根本没插入（但 SendInput 仍返回“成功”，形成假成功）。
-    // WM_COMMAND + ID_CONSOLE_PASTE 由 conhost 自身处理，不经过子程序的按键流，
-    // 且会遵循控制台当前输入模式（含 bracketed paste），因此 raw 模式下依然有效。
+    // 原因：當控制台裡執行 TUI 程式（如 Claude Code）時，控制台被切到 raw 模式，
+    // 合成的 Ctrl+V 按鍵會被該程式當作普通按鍵吃掉，不會觸發貼上，導致剪貼簿內容
+    // 根本沒插入（但 SendInput 仍返回“成功”，形成假成功）。
+    // WM_COMMAND + ID_CONSOLE_PASTE 由 conhost 自身處理，不經過子程式的按鍵流，
+    // 且會遵循控制台當前輸入模式（含 bracketed paste），因此 raw 模式下依然有效。
     let target_class = crate::context::read_class_name(target).to_lowercase();
     if target_class.contains("consolewindowclass") {
         crate::commands::system::write_log_line(
@@ -566,7 +566,7 @@ unsafe fn do_inject(target: HWND, focus: HWND, text: &str, restore_clipboard: bo
                 target.0 as isize, target_class, text.len())
         );
 
-        // 先把控制台置前台，确保粘贴落在正确的窗口上
+        // 先把控制台置前台，確保貼上落在正確的視窗上
         let fg_ok = force_foreground(target);
 
         let mut result_val: usize = 0;
@@ -604,9 +604,9 @@ unsafe fn do_inject(target: HWND, focus: HWND, text: &str, restore_clipboard: bo
     // window handle, so it works even if the target is not the foreground
     // window. Most native Win32 controls (Edit, RichEdit) handle it.
     let probed_paste_target = if focus.0 != std::ptr::null_mut() { focus } else { target };
-    // 焦点是录音开始时抓的。若那个控件此刻已经不可见（比如 Everything 原地重命名用的
-    // 临时 Edit），WM_PASTE 照样返回成功、文本却进了看不见的地方，长度核实也会误判为
-    // 成功 —— 所以先换到目标线程此刻真正的焦点上，前提是它仍在同一个顶层窗口里。
+    // 焦點是錄音開始時抓的。若那個控制元件此刻已經不可見（比如 Everything 原地重新命名用的
+    // 臨時 Edit），WM_PASTE 照樣返回成功、文本卻進了看不見的地方，長度核實也會誤判為
+    // 成功 —— 所以先換到目標執行緒此刻真正的焦點上，前提是它仍在同一個頂層視窗裡。
     let paste_target = rebind_invisible_focus(target, probed_paste_target);
     let focus_class = crate::context::read_class_name(paste_target).to_lowercase();
 
@@ -648,9 +648,9 @@ unsafe fn do_inject(target: HWND, focus: HWND, text: &str, restore_clipboard: bo
         make_key_input(vk_ctrl, KEYEVENTF_KEYUP),
     ];
     let sent = SendInput(&inputs, std::mem::size_of::<INPUT>() as i32);
-    // 立刻抓 GetLastError（后面的 sleep/release_modifiers 会把它冲掉）。
-    // sent=0 且 err=5(ERROR_ACCESS_DENIED) => UIPI 拦截：目标窗口权限比 SayIt 高
-    // （目标以管理员运行而 SayIt 没有），解决办法是让 SayIt 以管理员身份运行。
+    // 立刻抓 GetLastError（後面的 sleep/release_modifiers 會把它沖掉）。
+    // sent=0 且 err=5(ERROR_ACCESS_DENIED) => UIPI 攔截：目標視窗許可權比 SayIt 高
+    // （目標以管理員執行而 SayIt 沒有），解決辦法是讓 SayIt 以管理員身份執行。
     let last_err = windows::Win32::Foundation::GetLastError().0;
 
     std::thread::sleep(std::time::Duration::from_millis(10));
@@ -677,12 +677,12 @@ unsafe fn do_inject(target: HWND, focus: HWND, text: &str, restore_clipboard: bo
         };
     }
 
-    // ── SendInput 没被完整接受：模拟按键被挡在了 OS 层 ──
+    // ── SendInput 沒被完整接受：模擬按鍵被擋在了 OS 層 ──
     //
-    // err=5(ERROR_ACCESS_DENIED) 有两个常见来源，对用户来说解法不同：
-    //   ① UIPI：目标程序以管理员运行、SayIt 没有 → SayIt 也要以管理员运行
-    //   ② 安全软件的「防键盘模拟」拦截 → 要在那边给 SayIt 加信任
-    // 两者都只能靠日志区分，所以把进程扫描结果一起记下来。
+    // err=5(ERROR_ACCESS_DENIED) 有兩個常見來源，對使用者來說解法不同：
+    //   ① UIPI：目標程式以管理員執行、SayIt 沒有 → SayIt 也要以管理員執行
+    //   ② 安全軟體的「防鍵盤模擬」攔截 → 要在那邊給 SayIt 加信任
+    // 兩者都只能靠日誌區分，所以把程序掃描結果一起記下來。
     const ERROR_ACCESS_DENIED: u32 = 5;
     let guards = detect_input_guard_software();
     crate::commands::system::write_log_line(&format!(
@@ -690,9 +690,9 @@ unsafe fn do_inject(target: HWND, focus: HWND, text: &str, restore_clipboard: bo
         detail, guards
     ));
 
-    // 最后一搏：改用 WM_PASTE。它是发给窗口的消息，不经过模拟输入那条通道，
-    // 因此「按键被拦但消息能过」的情况下还能救回来。
-    // 只在 SendInput 已经失败时做 —— 那时什么都没粘上，误伤的风险远小于彻底失败。
+    // 最後一搏：改用 WM_PASTE。它是發給視窗的訊息，不經過模擬輸入那條通道，
+    // 因此「按鍵被攔但訊息能過」的情況下還能救回來。
+    // 只在 SendInput 已經失敗時做 —— 那時什麼都沒粘上，誤傷的風險遠小於徹底失敗。
     if !try_wm_paste {
         let mut result_val: usize = 0;
         let send_ok = SendMessageTimeoutW(
@@ -754,14 +754,14 @@ const ES_MULTILINE: i32 = 0x0004;
 #[cfg(windows)]
 const ES_READONLY: i32 = 0x0800;
 
-/// 核实用查询的超时。只取一个数字，正常目标 1ms 内就回；超时说明目标卡住，当作「核实不了」。
+/// 核實用查詢的超時。只取一個數字，正常目標 1ms 內就回；超時說明目標卡住，當作「核實不了」。
 #[cfg(windows)]
 const VERIFY_QUERY_TIMEOUT_MS: u32 = 150;
-/// 每次 WM_PASTE 之后等长度变化的上限。WM_PASTE 是同步消息，标准 Edit 返回时文本已经
-/// 进去了；多等这一会儿是防「目标自己异步处理粘贴」—— 没等够就重试，文本会插两遍。
+/// 每次 WM_PASTE 之後等長度變化的上限。WM_PASTE 是同步訊息，標準 Edit 返回時文本已經
+/// 進去了；多等這一會兒是防「目標自己非同步處理貼上」—— 沒等夠就重試，文本會插兩遍。
 #[cfg(windows)]
 const VERIFY_WAIT_MS: u64 = 150;
-/// 第 2、3 次 WM_PASTE 之前的等待，给正占着剪贴板的程序（剪贴板管理器等）让出时间。
+/// 第 2、3 次 WM_PASTE 之前的等待，給正佔著剪貼簿的程式（剪貼簿管理器等）讓出時間。
 #[cfg(windows)]
 const WM_PASTE_RETRY_DELAYS_MS: [u64; 2] = [40, 120];
 
@@ -800,18 +800,18 @@ mod ffi {
     }
 }
 
-/// 发 WM_PASTE 并核实文本确实进了输入框。
+/// 發 WM_PASTE 並核實文本確實進了輸入框。
 ///
-/// 为什么要核实：WM_PASTE 返回成功只说明消息被收下了。Edit 控件处理它时自己去
-/// OpenClipboard，那一刻剪贴板若被别的程序占着就**静默什么都不做**。2026-09 有用户在
-/// Everything 里连续几次日志都是 `WM_PASTE ok`，窗口标题（= 搜索框内容）却一个字没变；
-/// 不核实的话这类失败日志里看不出来，用户也看不到兜底卡片。
+/// 為什麼要核實：WM_PASTE 返回成功只說明訊息被收下了。Edit 控制元件處理它時自己去
+/// OpenClipboard，那一刻剪貼簿若被別的程式佔著就**靜默什麼都不做**。2026-09 有使用者在
+/// Everything 裡連續幾次日誌都是 `WM_PASTE ok`，視窗標題（= 搜尋框內容）卻一個字沒變；
+/// 不核實的話這類失敗日誌裡看不出來，使用者也看不到兜底卡片。
 ///
-/// 核实只用 WM_GETTEXTLENGTH：它只回一个数字、不复制内容，Edit / Scintilla 内部存着这个数，
-/// 10MB 的文档也是直接返回（WM_GETTEXT 才会复制全文，别换成它）。判据只能是「长度变没变」，
-/// 不能是「涨了插入的字数」—— 单行框会截断换行、有选区时是替换、还有 EM_LIMITTEXT 上限。
+/// 核實只用 WM_GETTEXTLENGTH：它只回一個數字、不複製內容，Edit / Scintilla 內部存著這個數，
+/// 10MB 的文件也是直接返回（WM_GETTEXT 才會複製全文，別換成它）。判據只能是「長度變沒變」，
+/// 不能是「漲了插入的字數」—— 單行框會截斷換行、有選區時是替換、還有 EM_LIMITTEXT 上限。
 ///
-/// 返回 None 表示 WM_PASTE 消息本身没送达，调用方照旧走 SendInput。
+/// 返回 None 表示 WM_PASTE 訊息本身沒送達，呼叫方照舊走 SendInput。
 #[cfg(windows)]
 unsafe fn wm_paste_verified(
     target: HWND,
@@ -857,8 +857,8 @@ unsafe fn wm_paste_verified(
         }
     };
 
-    // 读不到长度（目标不回这条查询）或者没有可插的字：没法核实，退回老行为 ——
-    // 发一次、信任返回值。这里绝不重试，否则一旦其实粘上了就是两遍。
+    // 讀不到長度（目標不回這條查詢）或者沒有可插的字：沒法核實，退回老行為 ——
+    // 發一次、信任返回值。這裡絕不重試，否則一旦其實粘上了就是兩遍。
     let before = match len_before {
         Some(n) if utf16_len > 0 => n,
         _ => {
@@ -873,7 +873,7 @@ unsafe fn wm_paste_verified(
     for attempt in 0..=WM_PASTE_RETRY_DELAYS_MS.len() {
         if attempt > 0 {
             std::thread::sleep(std::time::Duration::from_millis(WM_PASTE_RETRY_DELAYS_MS[attempt - 1]));
-            // 上一次没粘上的这段时间里，剪贴板可能被别的程序改写；重试前确认粘的还是我们的文本
+            // 上一次沒粘上的這段時間裡，剪貼簿可能被別的程式改寫；重試前確認粘的還是我們的文本
             if native_get_clipboard_text().as_deref() != Some(text) {
                 let rewritten = set_clipboard_with_retry(text, 3, 20);
                 crate::commands::system::write_log_line(&format!(
@@ -911,11 +911,11 @@ unsafe fn wm_paste_verified(
         ));
 
         match after {
-            // 发出去之后反而读不到了：不知道进没进，不能重试
+            // 發出去之後反而讀不到了：不知道進沒進，不能重試
             None => return Some(succeeded("wm_paste", "unreadable", attempts)),
             Some(n) if n != before => return Some(succeeded("wm_paste", "changed", attempts)),
             Some(_) => {
-                // 选中的字数恰好等于插入字数时，替换成功长度也不变 —— 分不清就不重试
+                // 選中的字數恰好等於插入字數時，替換成功長度也不變 —— 分不清就不重試
                 if selection_len_matches(sel_before, before, utf16_len) {
                     return Some(succeeded("wm_paste", "ambiguous_same_length", attempts));
                 }
@@ -923,9 +923,9 @@ unsafe fn wm_paste_verified(
         }
     }
 
-    // WM_PASTE 反复无效，多半是剪贴板这条路本身被卡住了。纯 Edit 控件还能用 EM_REPLACESEL
-    // 把文字直接写进选区，完全不经过剪贴板。只限类名正好是 "edit"：系统会替它跨进程
-    // 转送字符串参数（与 WM_SETTEXT 同理）；RichEdit / Scintilla / 各种改名的子类不保证。
+    // WM_PASTE 反覆無效，多半是剪貼簿這條路本身被卡住了。純 Edit 控制元件還能用 EM_REPLACESEL
+    // 把文字直接寫進選區，完全不經過剪貼簿。只限類名正好是 "edit"：系統會替它跨程序
+    // 轉送字串引數（與 WM_SETTEXT 同理）；RichEdit / Scintilla / 各種改名的子類不保證。
     if focus_class == "edit" {
         let multiline = ffi::GetWindowLongW(paste_target, GWL_STYLE) & ES_MULTILINE != 0;
         let normalized = normalize_for_edit(text, multiline);
@@ -934,7 +934,7 @@ unsafe fn wm_paste_verified(
         let send_ok = SendMessageTimeoutW(
             paste_target,
             EM_REPLACESEL,
-            windows::Win32::Foundation::WPARAM(1), // 可撤销
+            windows::Win32::Foundation::WPARAM(1), // 可撤銷
             windows::Win32::Foundation::LPARAM(wide.as_ptr() as isize),
             SMTO_ABORTIFHUNG,
             2000,
@@ -954,7 +954,7 @@ unsafe fn wm_paste_verified(
         }
     }
 
-    // 确认没插进去：如实报失败，让前端弹兜底卡片。以前这里会报成功，用户什么都看不到。
+    // 確認沒插進去：如實報失敗，讓前端彈兜底卡片。以前這裡會報成功，使用者什麼都看不到。
     let detail = format!(
         "{} verify=no_effect attempts={} lenBefore={} sel={} {}",
         base_detail,
@@ -1002,7 +1002,7 @@ unsafe fn send_wm_paste(hwnd: HWND, paste_id: u64, attempt: usize) -> bool {
     true
 }
 
-/// 文本长度（UTF-16 单位）。只取长度不取内容；拿不到返回 None，调用方当作「核实不了」。
+/// 文本長度（UTF-16 單位）。只取長度不取內容；拿不到返回 None，呼叫方當作「核實不了」。
 #[cfg(windows)]
 unsafe fn query_text_len(hwnd: HWND) -> Option<usize> {
     let mut out: usize = 0;
@@ -1018,8 +1018,8 @@ unsafe fn query_text_len(hwnd: HWND) -> Option<usize> {
     if ok.0 == 0 { None } else { Some(out) }
 }
 
-/// 选区 (start, end)。用的是返回值那种形式：两端各只有 16 位，超过 65535 字会被截断；
-/// 指针参数那种形式跨进程不一定被转送，不敢用。所以它只进日志、只在短文本里参与判断。
+/// 選區 (start, end)。用的是返回值那種形式：兩端各只有 16 位，超過 65535 字會被截斷；
+/// 指標引數那種形式跨程序不一定被轉送，不敢用。所以它只進日誌、只在短文本裡參與判斷。
 #[cfg(windows)]
 unsafe fn query_selection(hwnd: HWND) -> Option<(usize, usize)> {
     let mut out: usize = 0;
@@ -1051,7 +1051,7 @@ unsafe fn wait_for_text_len_change(hwnd: HWND, before: usize) -> (Option<usize>,
 }
 
 #[cfg(any(windows, test))]
-/// 替换选区时长度不变的那种情况。选区位置只有 16 位，文本超过 0xFFFF 时位置不可信，一律不认。
+/// 替換選區時長度不變的那種情況。選區位置只有 16 位，文本超過 0xFFFF 時位置不可信，一律不認。
 fn selection_len_matches(sel: Option<(usize, usize)>, text_len: usize, inserted_len: usize) -> bool {
     match sel {
         Some((start, end)) if text_len < 0xFFFF && end > start => end - start == inserted_len,
@@ -1060,7 +1060,7 @@ fn selection_len_matches(sel: Option<(usize, usize)>, text_len: usize, inserted_
 }
 
 #[cfg(any(windows, test))]
-/// EM_REPLACESEL 不像粘贴那样替你处理换行：多行框要 CRLF，单行框遇到换行会显示成乱码，换成空格。
+/// EM_REPLACESEL 不像貼上那樣替你處理換行：多行框要 CRLF，單行框遇到換行會顯示成亂碼，換成空格。
 fn normalize_for_edit(text: &str, multiline: bool) -> String {
     let unified = text.replace("\r\n", "\n");
     if multiline {
@@ -1070,7 +1070,7 @@ fn normalize_for_edit(text: &str, multiline: bool) -> String {
     }
 }
 
-/// 录音开始时抓到的焦点若已不可见，换成目标线程此刻的焦点（限同一个顶层窗口内）。
+/// 錄音開始時抓到的焦點若已不可見，換成目標執行緒此刻的焦點（限同一個頂層視窗內）。
 #[cfg(windows)]
 unsafe fn rebind_invisible_focus(target: HWND, probed: HWND) -> HWND {
     if probed == target || ffi::IsWindowVisible(probed) != 0 {
@@ -1109,8 +1109,8 @@ unsafe fn current_focus_of(target: HWND) -> Option<HWND> {
     Some(info.hwndFocus)
 }
 
-/// 粘贴目标控件此刻的状态。用来区分「粘进了看不见的控件」「焦点在录音期间换了」
-/// 「控件只读 / 被禁用」这几种同样表现为"日志成功、框里没字"的情况。
+/// 貼上目標控制元件此刻的狀態。用來區分「粘進了看不見的控制元件」「焦點在錄音期間換了」
+/// 「控制元件只讀 / 被停用」這幾種同樣表現為"日誌成功、框裡沒字"的情況。
 #[cfg(windows)]
 unsafe fn describe_paste_target(target: HWND, paste_target: HWND) -> String {
     let style = ffi::GetWindowLongW(paste_target, GWL_STYLE);
@@ -1133,8 +1133,8 @@ unsafe fn describe_paste_target(target: HWND, paste_target: HWND) -> String {
     )
 }
 
-/// SayIt 与目标进程是否以管理员运行。目标权限更高时往往连它的令牌都打不开，记成 "?"
-/// —— 此时 "selfElevated=false targetElevated=?" 本身就强烈暗示目标是管理员进程。
+/// SayIt 與目標程序是否以管理員執行。目標許可權更高時往往連它的令牌都打不開，記成 "?"
+/// —— 此時 "selfElevated=false targetElevated=?" 本身就強烈暗示目標是管理員程序。
 #[cfg(windows)]
 fn describe_elevation(target: HWND) -> String {
     use std::sync::OnceLock;
@@ -1305,16 +1305,16 @@ unsafe fn release_modifiers() {
 
 // ─── Clipboard helpers ───
 
-/// 指认「现在是谁占着剪贴板」。
+/// 指認「現在是誰佔著剪貼簿」。
 ///
-/// 这是排查安全软件（360 安全卫士、火绒、QQ 电脑管家等）拦截剪贴板最直接的手段：
-/// 它们的剪贴板保护会先把剪贴板打开，我们的 `OpenClipboard` 就拿不到、只能拿到一个
-/// 含义模糊的 ERROR_ACCESS_DENIED。`GetOpenClipboardWindow` 能给出持有者窗口，
-/// 顺着它拿到进程名，日志里就直接写着是哪个程序，不用再靠猜或者让用户逐个关软件。
+/// 這是排查安全軟體（360 安全衛士、火絨、QQ 電腦管家等）攔截剪貼簿最直接的手段：
+/// 它們的剪貼簿保護會先把剪貼簿開啟，我們的 `OpenClipboard` 就拿不到、只能拿到一個
+/// 含義模糊的 ERROR_ACCESS_DENIED。`GetOpenClipboardWindow` 能給出持有者視窗，
+/// 順著它拿到程序名，日誌裡就直接寫著是哪個程式，不用再靠猜或者讓使用者逐個關軟體。
 #[cfg(windows)]
 unsafe fn describe_clipboard_holder() -> String {
-    // 拿不到持有者（Err 或空 HWND）却仍然打不开剪贴板：通常是驱动层/钩子拦截，
-    // 而不是正常的「另一个程序刚好占着」的竞争
+    // 拿不到持有者（Err 或空 HWND）卻仍然打不開剪貼簿：通常是驅動層/鉤子攔截，
+    // 而不是正常的「另一個程式剛好佔著」的競爭
     let holder = match GetOpenClipboardWindow() {
         Ok(h) if !h.0.is_null() => h,
         _ => return "holder=<none>".to_string(),
@@ -1331,27 +1331,27 @@ unsafe fn describe_clipboard_holder() -> String {
     )
 }
 
-/// 已知会拦截模拟按键 / 剪贴板的安全软件进程名（小写）。
+/// 已知會攔截模擬按鍵 / 剪貼簿的安全軟體程序名（小寫）。
 ///
-/// **只用于日志**：命中了不改任何行为，仅在插入失败时把它写进日志，让「文本插不进去」
-/// 一眼能看出环境里有这类软件。绝不能拿它做拉黑或者绕过 —— 那既不可靠，也会让我们
-/// 更像恶意程序（本来就已经有误报问题了）。
+/// **只用於日誌**：命中了不改任何行為，僅在插入失敗時把它寫進日誌，讓「文本插不進去」
+/// 一眼能看出環境裡有這類軟體。絕不能拿它做拉黑或者繞過 —— 那既不可靠，也會讓我們
+/// 更像惡意程式（本來就已經有誤報問題了）。
 #[cfg(windows)]
 const INPUT_GUARD_PROCESSES: &[&str] = &[
     // 360
     "360tray.exe", "360safe.exe", "zhudongfangyu.exe", "360sd.exe", "360rp.exe",
-    // 火绒
+    // 火絨
     "hipstray.exe", "usysdiag.exe", "wsctrlsvc.exe",
-    // 腾讯电脑管家
+    // 騰訊電腦管家
     "qqpctray.exe", "qqpcmgr.exe", "qqpcrtp.exe",
     // 金山毒霸
     "kxetray.exe", "kislive.exe", "kwsprotect64.exe",
-    // 联想电脑管家 / 其他常见国产安全套件
+    // 聯想電腦管家 / 其他常見國產安全套件
     "lavasoft.exe", "baidusdtray.exe", "avp.exe",
 ];
 
-/// 扫一遍进程，列出命中的安全软件。结果缓存 —— 这些软件不会在一次会话中途装上，
-/// 而插入失败可能连续发生，没必要每次都枚举全部进程。
+/// 掃一遍程序，列出命中的安全軟體。結果快取 —— 這些軟體不會在一次會話中途裝上，
+/// 而插入失敗可能連續發生，沒必要每次都列舉全部程序。
 #[cfg(windows)]
 fn detect_input_guard_software() -> &'static str {
     use std::sync::OnceLock;
@@ -1399,8 +1399,8 @@ unsafe fn set_clipboard_with_retry(text: &str, max_retries: u32, retry_delay_ms:
         match native_set_clipboard_text(text) {
             Ok(()) => return true,
             Err(why) => {
-                // 每次都记：能区分「被占用一下、重试就成了」和「一直被拦」，
-                // 这两种给用户的建议完全不同
+                // 每次都記：能區分「被佔用一下、重試就成了」和「一直被攔」，
+                // 這兩種給使用者的建議完全不同
                 crate::commands::system::write_log_line(&format!(
                     "[RUST] [inject] clipboard set attempt {}/{} failed {}",
                     attempt + 1,
@@ -1416,8 +1416,8 @@ unsafe fn set_clipboard_with_retry(text: &str, max_retries: u32, retry_delay_ms:
     false
 }
 
-/// 写剪贴板。失败时返回**具体卡在哪一步**，而不是一个笼统的 false ——
-/// OpenClipboard 被拦、内存分配失败、SetClipboardData 被拒，三者成因完全不同。
+/// 寫剪貼簿。失敗時返回**具體卡在哪一步**，而不是一個籠統的 false ——
+/// OpenClipboard 被攔、記憶體分配失敗、SetClipboardData 被拒，三者成因完全不同。
 #[cfg(windows)]
 unsafe fn native_set_clipboard_text(text: &str) -> Result<(), String> {
     if OpenClipboard(HWND(std::ptr::null_mut())).is_err() {
@@ -1453,9 +1453,9 @@ unsafe fn native_set_clipboard_text(text: &str) -> Result<(), String> {
             return Err(format!("step=SetClipboardData err={} detail={}", err, e));
         }
 
-        // 标记本次剪贴板内容「不进入 Win+V 历史 / 不上传云剪贴板」。
-        // 否则每次插入文本都会往剪贴板历史里塞一条（配合「保护剪贴板」还原时甚至塞两条）。
-        // 与浏览器无痕模式、密码管理器用的是同一套机制。失败不影响粘贴，忽略即可。
+        // 標記本次剪貼簿內容「不進入 Win+V 歷史 / 不上傳雲剪貼簿」。
+        // 否則每次插入文本都會往剪貼簿歷史裡塞一條（配合「保護剪貼簿」還原時甚至塞兩條）。
+        // 與瀏覽器無痕模式、密碼管理器用的是同一套機制。失敗不影響貼上，忽略即可。
         mark_clipboard_history_excluded();
 
         Ok(())
@@ -1465,14 +1465,14 @@ unsafe fn native_set_clipboard_text(text: &str) -> Result<(), String> {
     result
 }
 
-/// 往当前剪贴板会话写入排除标记，阻止内容进入剪贴板历史(Win+V)与云剪贴板。
-/// 必须在 OpenClipboard/EmptyClipboard 之后、CloseClipboard 之前调用。
+/// 往當前剪貼簿會話寫入排除標記，阻止內容進入剪貼簿歷史(Win+V)與雲剪貼簿。
+/// 必須在 OpenClipboard/EmptyClipboard 之後、CloseClipboard 之前呼叫。
 #[cfg(windows)]
 unsafe fn mark_clipboard_history_excluded() {
     use windows::core::PCWSTR;
     use windows::Win32::System::DataExchange::RegisterClipboardFormatW;
 
-    // 写一个 4 字节值为 0 的 DWORD 到指定格式。
+    // 寫一個 4 位元組值為 0 的 DWORD 到指定格式。
     let write_dword_format = |format_name: &[u16], value: u32| {
         let fmt = RegisterClipboardFormatW(PCWSTR(format_name.as_ptr()));
         if fmt == 0 { return; }
@@ -1484,30 +1484,30 @@ unsafe fn mark_clipboard_history_excluded() {
         if locked.is_null() { return; }
         std::ptr::copy_nonoverlapping(&value as *const u32 as *const u8, locked as *mut u8, 4);
         let _ = GlobalUnlock(hmem);
-        // 标记写失败几乎不会发生；与上面 CF_UNICODETEXT 的处理一致，失败时不额外释放。
+        // 標記寫失敗幾乎不會發生；與上面 CF_UNICODETEXT 的處理一致，失敗時不額外釋放。
         let _ = SetClipboardData(fmt, HANDLE(hmem.0 as *mut _));
     };
 
-    // "CanIncludeInClipboardHistory" = 0 → 不进 Win+V 历史
+    // "CanIncludeInClipboardHistory" = 0 → 不進 Win+V 歷史
     let hist: Vec<u16> = "CanIncludeInClipboardHistory\0".encode_utf16().collect();
     write_dword_format(&hist, 0);
 
-    // "CanUploadToCloudClipboard" = 0 → 不同步到云剪贴板
+    // "CanUploadToCloudClipboard" = 0 → 不同步到雲剪貼簿
     let cloud: Vec<u16> = "CanUploadToCloudClipboard\0".encode_utf16().collect();
     write_dword_format(&cloud, 0);
 
-    // "ExcludeClipboardContentFromMonitorProcessing" → 兜底：整体排除监控处理
-    // 该格式只要存在即生效，值内容不限，这里同样写 0。
+    // "ExcludeClipboardContentFromMonitorProcessing" → 兜底：整體排除監控處理
+    // 該格式只要存在即生效，值內容不限，這裡同樣寫 0。
     let exclude: Vec<u16> = "ExcludeClipboardContentFromMonitorProcessing\0".encode_utf16().collect();
     write_dword_format(&exclude, 0);
 
-    // "Clipboard Viewer Ignore" → 给第三方剪贴板管理器看的，KeePass 2.x 用的也是它。
-    // 上面三个是微软的约定，Ditto 的正式版（截至 3.25.113，2025-09）一个都不认，只认这个。
-    // 它的源码 2025-12 才补上微软那两个，2026-01 又挂到一个可关的选项后面；而这个格式
-    // 一直是无条件跳过（ClipboardViewer.cpp 的 GetIgnoreClipboardChange）。所以别以为
-    // 有了上面三个就可以删掉它。只要存在就生效，值不限。KeePass 早年默认不开它，是因为
-    // 配 .NET/OLE 剪贴板接口时会让 Office 剪贴板扩展崩溃；我们走原生 SetClipboardData，
-    // 不是那条路。（issue #84）
+    // "Clipboard Viewer Ignore" → 給第三方剪貼簿管理器看的，KeePass 2.x 用的也是它。
+    // 上面三個是微軟的約定，Ditto 的正式版（截至 3.25.113，2025-09）一個都不認，只認這個。
+    // 它的原始碼 2025-12 才補上微軟那兩個，2026-01 又掛到一個可關的選項後面；而這個格式
+    // 一直是無條件跳過（ClipboardViewer.cpp 的 GetIgnoreClipboardChange）。所以別以為
+    // 有了上面三個就可以刪掉它。只要存在就生效，值不限。KeePass 早年預設不開它，是因為
+    // 配 .NET/OLE 剪貼簿介面時會讓 Office 剪貼簿擴充套件崩潰；我們走原生 SetClipboardData，
+    // 不是那條路。（issue #84）
     let viewer_ignore: Vec<u16> = "Clipboard Viewer Ignore\0".encode_utf16().collect();
     write_dword_format(&viewer_ignore, 0);
 }
@@ -1517,7 +1517,7 @@ pub unsafe fn set_clipboard_with_retry_pub(text: &str, max_retries: u32, retry_d
     set_clipboard_with_retry(text, max_retries, retry_delay_ms)
 }
 
-/// 给剪贴板拍快照。超预算、打不开时返回 None（调用方退回只还原文字）；剪贴板为空时返回空快照。
+/// 給剪貼簿拍快照。超預算、打不開時返回 None（呼叫方退回只還原文字）；剪貼簿為空時返回空快照。
 #[cfg(windows)]
 unsafe fn snapshot_clipboard(paste_id: u64) -> Option<ClipboardSnapshot> {
     use windows::Win32::System::DataExchange::EnumClipboardFormats;
@@ -1577,7 +1577,7 @@ unsafe fn snapshot_clipboard(paste_id: u64) -> Option<ClipboardSnapshot> {
     }
 }
 
-/// 把快照整份写回剪贴板。剪贴板被别的程序占着时按 retry 重试。
+/// 把快照整份寫回剪貼簿。剪貼簿被別的程式佔著時按 retry 重試。
 #[cfg(windows)]
 unsafe fn restore_clipboard_snapshot(snapshot: &ClipboardSnapshot, max_retries: u32, retry_delay_ms: u64) -> bool {
     use windows::Win32::Foundation::GlobalFree;
@@ -1600,7 +1600,7 @@ unsafe fn restore_clipboard_snapshot(snapshot: &ClipboardSnapshot, max_retries: 
                     let _ = GlobalFree(hmem);
                 }
             }
-            // 还原的是用户自己复制的内容，它进剪贴板历史那一次已经记过了，别再记一条。
+            // 還原的是使用者自己複製的內容，它進剪貼簿歷史那一次已經記過了，別再記一條。
             mark_clipboard_history_excluded();
             let _ = CloseClipboard();
             return written > 0;
@@ -1612,7 +1612,7 @@ unsafe fn restore_clipboard_snapshot(snapshot: &ClipboardSnapshot, max_retries: 
     false
 }
 
-/// 清空剪贴板（还原场景：插入前剪贴板本来就没有文本内容）。
+/// 清空剪貼簿（還原場景：插入前剪貼簿本來就沒有文本內容）。
 #[cfg(windows)]
 unsafe fn native_clear_clipboard() -> bool {
     if OpenClipboard(HWND(std::ptr::null_mut())).is_err() { return false; }
@@ -1621,9 +1621,9 @@ unsafe fn native_clear_clipboard() -> bool {
     ok
 }
 
-/// 读取剪贴板当前的 Unicode 文本内容（CF_UNICODETEXT=13）。
-/// 用于「插入前保存、插入后还原」——避免用户之前复制的内容被覆盖丢失。
-/// 剪贴板为空、或内容不是文本（图片/文件等）时返回 None，不做处理即等价于「插入前剪贴板本来就没有可还原的文本」。
+/// 讀取剪貼簿當前的 Unicode 文本內容（CF_UNICODETEXT=13）。
+/// 用於「插入前儲存、插入後還原」——避免使用者之前複製的內容被覆蓋丟失。
+/// 剪貼簿為空、或內容不是文本（圖片/檔案等）時返回 None，不做處理即等價於「插入前剪貼簿本來就沒有可還原的文本」。
 #[cfg(windows)]
 unsafe fn native_get_clipboard_text() -> Option<String> {
     if OpenClipboard(HWND(std::ptr::null_mut())).is_err() { return None; }
@@ -1634,13 +1634,13 @@ unsafe fn native_get_clipboard_text() -> Option<String> {
         let locked = GlobalLock(hmem);
         if locked.is_null() { return None; }
 
-        // Unicode 文本以 NUL 结尾，逐 u16 扫描找长度（内存块可能比字符串长）
+        // Unicode 文本以 NUL 結尾，逐 u16 掃描找長度（記憶體塊可能比字串長）
         let mut len = 0usize;
         let ptr = locked as *const u16;
         loop {
             if *ptr.add(len) == 0 { break; }
             len += 1;
-            if len > 10_000_000 { break; } // 防御性上限，避免异常内存导致死循环
+            if len > 10_000_000 { break; } // 防禦性上限，避免異常記憶體導致死迴圈
         }
         let slice = std::slice::from_raw_parts(ptr, len);
         let text = String::from_utf16_lossy(slice);
@@ -1658,7 +1658,7 @@ mod clipboard_format_tests {
 
     #[test]
     fn byte_copyable_formats_are_kept_and_gdi_handles_skipped() {
-        // 文字、DIB 图片、文件列表、注册格式（HTML / PNG 之类）都保留
+        // 文字、DIB 圖片、檔案列表、註冊格式（HTML / PNG 之類）都保留
         for keep in [1u32, 7, 8, 13, 15, 16, 17, 0xC000, 0xC1A3] {
             assert!(clipboard_format_is_copyable(keep), "{keep:#x}");
         }
@@ -1676,13 +1676,13 @@ mod tests {
     };
     use crate::context::AppContext;
 
-    /// 这条判据决定「长度没变」时要不要重试。认错成「替换成功」只是少救一次；
-    /// 认错成「没粘上」会重试，文本就插两遍 —— 所以边界都往「分不清、不重试」那边收。
+    /// 這條判據決定「長度沒變」時要不要重試。認錯成「替換成功」只是少救一次；
+    /// 認錯成「沒粘上」會重試，文本就插兩遍 —— 所以邊界都往「分不清、不重試」那邊收。
     #[test]
     fn same_length_replacement_is_treated_as_ambiguous() {
-        // 选中 3 个字、插入 3 个字：替换成功长度也不变
+        // 選中 3 個字、插入 3 個字：替換成功長度也不變
         assert!(selection_len_matches(Some((2, 5)), 100, 3));
-        // 没有选区时长度不变就是真没粘上
+        // 沒有選區時長度不變就是真沒粘上
         assert!(!selection_len_matches(Some((5, 5)), 100, 3));
         assert!(!selection_len_matches(Some((2, 4)), 100, 3));
         assert!(!selection_len_matches(None, 100, 3));
@@ -1690,7 +1690,7 @@ mod tests {
 
     #[test]
     fn selection_positions_are_distrusted_beyond_16_bits() {
-        // EM_GETSEL 返回值两端各只有 16 位，长文本里位置被截断，不能据此下结论
+        // EM_GETSEL 返回值兩端各只有 16 位，長文本裡位置被截斷，不能據此下結論
         assert!(!selection_len_matches(Some((2, 5)), 0x1_0000, 3));
     }
 
@@ -1700,16 +1700,16 @@ mod tests {
         assert_eq!(normalize_for_edit("a\nb\r\nc", false), "a b c");
     }
 
-    /// 微信 4.1.13.65 的真实取值，来自 dev-scripts/probe-foreground-target.ps1：
-    /// Qt 自绘窗口，caret / 原生类名 / UIA 三层判据全部为空，只有进程名能放行它。
+    /// 微信 4.1.13.65 的真實取值，來自 dev-scripts/probe-foreground-target.ps1：
+    /// Qt 自繪視窗，caret / 原生類名 / UIA 三層判據全部為空，只有程序名能放行它。
     fn weixin_4x_ctx(process_name: &str) -> AppContext {
         AppContext {
             process_name: process_name.to_string(),
             window_class: "Qt51514QWindowIcon".to_string(),
-            // Qt 整个窗口只有一个 HWND，GetFocus 返回的就是顶层窗口本身
+            // Qt 整個視窗只有一個 HWND，GetFocus 返回的就是頂層視窗本身
             focus_class: "Qt51514QWindowIcon".to_string(),
             has_caret: false,
-            // UIA 只能看到顶层窗口，看不到自绘的输入框
+            // UIA 只能看到頂層視窗，看不到自繪的輸入框
             control_type: "Window".to_string(),
             is_value_pattern_available: false,
             is_keyboard_focusable: false,
@@ -1720,12 +1720,12 @@ mod tests {
 
     #[test]
     fn weixin_4x_is_editable_via_process_allowlist() {
-        // 4.1 起 exe 叫 Weixin.exe。这条 2026-09-20 之前是 false，表现为用户升级微信后
-        // 插不进文本、只能从兜底卡片手动复制。
+        // 4.1 起 exe 叫 Weixin.exe。這條 2026-09-20 之前是 false，表現為使用者升級微信後
+        // 插不進文本、只能從兜底卡片手動複製。
         //
-        // 断言的是 gate 而不只是"能插"：前三层判据对 Qt 自绘窗口全都是空的，唯一放行
-        // 它的是进程名白名单。只断言 bool 的话，将来若有人给 Qt 类名开了个后门，结论
-        // 照样是 true，测试照样全绿，而真正在起作用的机制已经换了。
+        // 斷言的是 gate 而不只是"能插"：前三層判據對 Qt 自繪視窗全都是空的，唯一放行
+        // 它的是程序名白名單。只斷言 bool 的話，將來若有人給 Qt 類名開了個後門，結論
+        // 照樣是 true，測試照樣全綠，而真正在起作用的機制已經換了。
         let ctx = weixin_4x_ctx("Weixin.exe");
         assert_eq!(editability_gate(&ctx), EditableGate::ProcessAllowlist);
         assert!(is_likely_editable_pub(&ctx));
@@ -1733,7 +1733,7 @@ mod tests {
 
     #[test]
     fn wechat_3x_name_still_editable() {
-        // 老版本与微信开发者工具仍然叫 WeChat.exe，改名后不能把它们丢掉
+        // 老版本與微信開發者工具仍然叫 WeChat.exe，改名後不能把它們丟掉
         assert_eq!(
             editability_gate(&weixin_4x_ctx("WeChat.exe")),
             EditableGate::ProcessAllowlist
@@ -1744,20 +1744,20 @@ mod tests {
         );
     }
 
-    /// 明确否掉的方案：不能因为"Qt 窗口拿不到 UIA 信息"就把所有 Qt 应用当成可编辑。
-    /// 判错的代价不对称 —— 漏判只是让用户从兜底卡片手动粘一次，误判会让前端报
-    /// 插入成功而目标一个字都没收到（SendInput 成功不等于插进去了，见 pitfalls #28）。
+    /// 明確否掉的方案：不能因為"Qt 視窗拿不到 UIA 資訊"就把所有 Qt 應用當成可編輯。
+    /// 判錯的代價不對稱 —— 漏判只是讓使用者從兜底卡片手動粘一次，誤判會讓前端報
+    /// 插入成功而目標一個字都沒收到（SendInput 成功不等於插進去了，見 pitfalls #28）。
     #[test]
     fn unknown_qt_app_falls_through_all_gates() {
         let ctx = weixin_4x_ctx("qbittorrent.exe");
-        // 与上面那条微信用例唯一的差别就是进程名，所以这一对测试合起来证明：
-        // 放行微信的确实是进程名那一层，不是别的判据顺手放过去的。
+        // 與上面那條微信用例唯一的差別就是程序名，所以這一對測試合起來證明：
+        // 放行微信的確實是程序名那一層，不是別的判據順手放過去的。
         assert_eq!(editability_gate(&ctx), EditableGate::NoSignal);
         assert!(!is_likely_editable_pub(&ctx));
     }
 
-    /// 桌面图标重命名时 explorer 确实有 caret，但那里不是文本注入目标；
-    /// 这条钉住 caret 之前的那道明确拒绝没有被后来的放宽绕过。
+    /// 桌面圖示重新命名時 explorer 確實有 caret，但那裡不是文本注入目標；
+    /// 這條釘住 caret 之前的那道明確拒絕沒有被後來的放寬繞過。
     #[test]
     fn explorer_desktop_is_rejected_before_caret() {
         let ctx = AppContext {
@@ -1768,25 +1768,25 @@ mod tests {
             is_enabled: true,
             ..Default::default()
         };
-        // has_caret=true 却仍然拒绝，说明那道明确拒绝排在 caret 之前 —— 这正是它存在
-        // 的理由，改动判据顺序会让它失效。
+        // has_caret=true 卻仍然拒絕，說明那道明確拒絕排在 caret 之前 —— 這正是它存在
+        // 的理由，改動判據順序會讓它失效。
         assert_eq!(editability_gate(&ctx), EditableGate::ExplorerDesktopReject);
         assert!(!is_likely_editable_pub(&ctx));
     }
 
-    /// 这行诊断串会进 sayit.log，而日志整份跟着诊断包发给开发者。窗口标题里可能是
-    /// 聊天对象名或文档名，exe 路径里带 Windows 用户名，两者对排查毫无作用。
+    /// 這行診斷串會進 sayit.log，而日誌整份跟著診斷包發給開發者。視窗標題裡可能是
+    /// 聊天物件名或文件名，exe 路徑裡帶 Windows 使用者名稱，兩者對排查毫無作用。
     #[test]
     fn describe_editability_never_leaks_title_or_path() {
         let mut ctx = weixin_4x_ctx("Weixin.exe");
-        ctx.window_title = "文件传输助手 - 季度奖金方案".to_string();
+        ctx.window_title = "檔案傳輸助手 - 季度獎金方案".to_string();
         ctx.exe_path = r"C:\Users\zhangsan\AppData\Local\Programs\Weixin.exe".to_string();
 
         let line = describe_editability(&ctx, editability_gate(&ctx));
 
-        assert!(!line.contains("季度奖金"), "window title leaked: {line}");
+        assert!(!line.contains("季度獎金"), "window title leaked: {line}");
         assert!(!line.contains("zhangsan"), "exe path leaked: {line}");
-        // 同时确认该有的还在，别把这条测试变成"什么都不记也能过"
+        // 同時確認該有的還在，別把這條測試變成"什麼都不記也能過"
         assert!(line.contains("gate=process_allowlist"), "{line}");
         assert!(line.contains("process=Weixin.exe"), "{line}");
         assert!(line.contains("focusClass=Qt51514QWindowIcon"), "{line}");

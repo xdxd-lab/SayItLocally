@@ -1,9 +1,9 @@
-//! macOS 隐私权限：辅助功能、麦克风、安全输入状态，以及打开对应的系统设置页。
+//! macOS 隱私許可權：輔助功能、麥克風、安全輸入狀態，以及開啟對應的系統設定頁。
 //!
-//! SayIt 在 mac 上需要两项授权：
-//! - **辅助功能**：能吞键的全局热键（CGEventTap）、模拟 ⌘V、读取光标附近文字都靠它。
-//!   系统不会弹窗直接授予，只能引导用户去「系统设置 → 隐私与安全性 → 辅助功能」勾选。
-//! - **麦克风**：第一次 getUserMedia 时系统自动弹窗（Info.plist 里有用途说明）。
+//! SayIt 在 mac 上需要兩項授權：
+//! - **輔助功能**：能吞鍵的全域性熱鍵（CGEventTap）、模擬 ⌘V、讀取游標附近文字都靠它。
+//!   系統不會彈窗直接授予，只能引導使用者去「系統設定 → 隱私與安全性 → 輔助功能」勾選。
+//! - **麥克風**：第一次 getUserMedia 時系統自動彈窗（Info.plist 裡有用途說明）。
 
 use objc2::rc::autoreleasepool;
 use objc2::{class, msg_send};
@@ -24,7 +24,7 @@ fn describe_av_status(status: isize) -> &'static str {
     }
 }
 
-/// 麦克风授权状态：not_determined / restricted / denied / authorized。
+/// 麥克風授權狀態：not_determined / restricted / denied / authorized。
 pub fn microphone_status() -> &'static str {
     autoreleasepool(|_| unsafe {
         // AVMediaTypeAudio 的值就是 "soun"
@@ -34,8 +34,8 @@ pub fn microphone_status() -> &'static str {
     })
 }
 
-/// 是否有程序打开了「安全输入」（密码框、终端的「安全键盘输入」等）。
-/// 打开期间 event tap 收不到键盘事件，键盘热键会失灵（鼠标键不受影响）。
+/// 是否有程式開啟了「安全輸入」（密碼框、終端的「安全鍵盤輸入」等）。
+/// 開啟期間 event tap 收不到鍵盤事件，鍵盤熱鍵會失靈（滑鼠鍵不受影響）。
 pub fn secure_input_enabled() -> bool {
     unsafe { super::ffi::IsSecureEventInputEnabled() != 0 }
 }
@@ -44,14 +44,14 @@ pub fn secure_input_enabled() -> bool {
 #[serde(rename_all = "camelCase")]
 pub struct PermissionStatus {
     pub platform: &'static str,
-    /// 辅助功能是否已授权
+    /// 輔助功能是否已授權
     pub accessibility: bool,
-    /// 全局热键的 event tap 是否已经装上并处于启用状态
+    /// 全域性熱鍵的 event tap 是否已經裝上並處於啟用狀態
     pub hotkey_active: bool,
     pub microphone: &'static str,
     pub secure_input: bool,
-    /// App 是否在被「App Translocation」随机路径里运行（直接在 DMG / 下载目录里打开时会这样），
-    /// 这种情况下自动更新会失败，应提示用户把 SayIt 拖进「应用程序」。
+    /// App 是否在被「App Translocation」隨機路徑裡執行（直接在 DMG / 下載目錄裡開啟時會這樣），
+    /// 這種情況下自動更新會失敗，應提示使用者把 SayIt 拖進「應用程式」。
     pub translocated: bool,
     pub bundle_path: String,
 }
@@ -69,7 +69,7 @@ pub fn status(hotkey_active: bool) -> PermissionStatus {
     }
 }
 
-/// 当前运行的 `.app` 包路径（开发模式下是可执行文件所在目录）。
+/// 當前執行的 `.app` 包路徑（開發模式下是執行檔所在目錄）。
 pub fn current_bundle_path() -> Option<String> {
     let exe = std::env::current_exe().ok()?;
     let mut path = exe.as_path();
@@ -82,7 +82,7 @@ pub fn current_bundle_path() -> Option<String> {
     exe.parent().map(|p| p.to_string_lossy().into_owned())
 }
 
-/// 系统设置里的隐私面板。
+/// 系統設定裡的隱私面板。
 pub fn open_privacy_pane(pane: &str) -> Result<(), String> {
     let anchor = match pane {
         "accessibility" => "Privacy_Accessibility",
@@ -98,8 +98,8 @@ pub fn open_privacy_pane(pane: &str) -> Result<(), String> {
         .map_err(|e| format!("failed to open System Settings: {e}"))
 }
 
-/// 请求辅助功能授权：没授权时系统会弹出「SayIt 想控制这台电脑」的对话框，
-/// 带「打开系统设置」按钮。返回当前是否已授权。
+/// 請求輔助功能授權：沒授權時系統會彈出「SayIt 想控制這台電腦」的對話方塊，
+/// 帶「開啟系統設定」按鈕。返回當前是否已授權。
 pub fn request_accessibility() -> bool {
     super::ax::is_trusted_with_prompt(true)
 }

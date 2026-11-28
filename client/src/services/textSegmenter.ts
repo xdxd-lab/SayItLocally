@@ -1,32 +1,33 @@
 /**
- * 纯 ASR 文本智能分段
+ * 純 ASR 文本智慧分段
  *
- * 仅在极速模式（无 AI 校对）下使用。
- * LLM 校对后的文本已经有自然分段，不需要再处理。
+ * 僅在極速模式（無 AI 校對）下使用。
+ * LLM 校對後的文本已經有自然分段，不需要再處理。
  *
- * 核心逻辑：在句末标点之后，检测话题转换信号来决定是否插入换行。
- * 不以字数为主要依据，而是以语义转换为驱动。
+ * 核心邏輯：在句末標點之後，檢測話題轉換訊號來決定是否插入換行。
+ * 不以字數為主要依據，而是以語義轉換為驅動。
  */
 
-// 话题转换词（出现在句末标点之后，表示新话题开始）
-// 按优先级排列，长词优先匹配
-// i18n-allow-start: 中文 ASR 分段算法的词表与标点数据
+// 話題轉換詞（出現在句末標點之後，表示新話題開始）
+// 按優先順序排列，長詞優先匹配
+// i18n-allow-start: 中文 ASR 分段演算法的詞表與標點資料
+// 簡體寫法以 Unicode 跳脫保存（原始碼不含簡體字），正體寫法列在各表後段。
 const TOPIC_SHIFT_PHRASES = [
-  // 序号类
-  '第一个', '第二个', '第三个', '第四个', '第五个',
-  '第一点', '第二点', '第三点',
+  // 序號類
+  '第一\u4e2a', '第二\u4e2a', '第三\u4e2a', '第四\u4e2a', '第五\u4e2a',
+  '第一\u70b9', '第二\u70b9', '第三\u70b9',
   '第一,', '第二,', '第三,',
   '第一，', '第二，', '第三，',
   '首先', '其次',
-  // 转折/递进类
+  // 轉折/遞進類
   '另外呢', '另外,', '另外，', '另外就是', '另外我',
-  '还有就是', '还有一个', '还有呢',
-  '再就是', '再一个',
+  '\u8fd8有就是', '\u8fd8有一\u4e2a', '\u8fd8有呢',
+  '再就是', '再一\u4e2a',
   '此外',
-  '接下来',
-  '最后呢', '最后,', '最后，', '最后就是',
-  // 总结类
-  '总之', '总的来说',
+  '接下\u6765',
+  '最\u540e呢', '最\u540e,', '最\u540e，', '最\u540e就是',
+  // 總結類
+  '\u603b之', '\u603b的\u6765\u8bf4',
   // [自訂] SC-67：辨識輸出已轉成台灣正體，正體寫法也要認得（上面的簡體寫法保留，供舊文字使用）。
   '第一個', '第二個', '第三個', '第四個', '第五個',
   '第一點', '第二點', '第三點',
@@ -37,26 +38,26 @@ const TOPIC_SHIFT_PHRASES = [
   '總之', '總的來說',
 ]
 
-// 语气词开头模式：句末标点后跟 "嗯，/呃，/嗯" + 转换信号
-// 这类需要前段足够长（≥ 80 字）才触发，避免误切口头禅
+// 語氣詞開頭模式：句末標點後跟 "嗯，/呃，/嗯" + 轉換訊號
+// 這類需要前段足夠長（≥ 80 字）才觸發，避免誤切口頭禪
 const FILLER_THEN_SHIFT = [
-  '嗯，所以', '嗯，我觉得', '嗯，我发现',
-  '嗯，现在', '嗯，目前', '嗯，如果',
-  '嗯，这样', '嗯，还有', '嗯，另外',
-  '呃，所以', '呃，我觉得', '呃，然后',
+  '嗯，所以', '嗯，我\u89c9得', '嗯，我\u53d1\u73b0',
+  '嗯，\u73b0在', '嗯，目前', '嗯，如果',
+  '嗯，\u8fd9\u6837', '嗯，\u8fd8有', '嗯，另外',
+  '呃，所以', '呃，我\u89c9得', '呃，然\u540e',
   // [自訂] SC-67：正體寫法
-  '嗯，我覺得', '嗯，現在', '嗯，這樣', '嗯，還有', '呃，我覺得', '呃，然後',
+  '嗯，我覺得', '嗯，我發現', '嗯，現在', '嗯，這樣', '嗯，還有', '呃，我覺得', '呃，然後',
 ]
 
-// 句末标点
+// 句末標點
 const SENTENCE_END_RE = /[。？！]/
 // i18n-allow-end
 
 /**
- * 对纯 ASR 输出的文本进行智能分段，插入换行符。
+ * 對純 ASR 輸出的文本進行智慧分段，插入換行符。
  *
- * @param text - ASR 原始文本（一整段无换行）
- * @returns 分段后的文本（用 \n\n 分隔段落）
+ * @param text - ASR 原始文本（一整段無換行）
+ * @returns 分段後的文字（用 \n\n 分隔段落）
  */
 export function segmentAsrText(text: string): string {
   if (!text || text.length < 40) return text
@@ -66,16 +67,16 @@ export function segmentAsrText(text: string): string {
   let i = 0
 
   while (i < text.length) {
-    // 找到句末标点
+    // 找到句末標點
     if (!SENTENCE_END_RE.test(text[i])) {
       i++
       continue
     }
 
-    // 找到了句末标点，位置 i
+    // 找到了句末標點，位置 i
     const afterPunc = i + 1
     if (afterPunc >= text.length) {
-      // 文本结束，不需要切
+      // 文本結束，不需要切
       i++
       continue
     }
@@ -83,7 +84,7 @@ export function segmentAsrText(text: string): string {
     const currentLen = afterPunc - currentStart
     const remaining = text.slice(afterPunc)
 
-    // 检查 1：直接话题转换词（前段 ≥ 20 字即可触发）
+    // 檢查 1：直接話題轉換詞（前段 ≥ 20 字即可觸發）
     if (currentLen >= 20 && startsWithAny(remaining, TOPIC_SHIFT_PHRASES)) {
       segments.push(text.slice(currentStart, afterPunc))
       currentStart = afterPunc
@@ -91,7 +92,7 @@ export function segmentAsrText(text: string): string {
       continue
     }
 
-    // 检查 2：语气词 + 转换信号（前段 ≥ 60 字才触发，避免误切）
+    // 檢查 2：語氣詞 + 轉換訊號（前段 ≥ 60 字才觸發，避免誤切）
     if (currentLen >= 60 && startsWithAny(remaining, FILLER_THEN_SHIFT)) {
       segments.push(text.slice(currentStart, afterPunc))
       currentStart = afterPunc
@@ -99,7 +100,7 @@ export function segmentAsrText(text: string): string {
       continue
     }
 
-    // 检查 3：兜底——超过 250 字在句末标点处强制切
+    // 檢查 3：兜底——超過 250 字在句末標點處強制切
     if (currentLen >= 250) {
       segments.push(text.slice(currentStart, afterPunc))
       currentStart = afterPunc
@@ -110,7 +111,7 @@ export function segmentAsrText(text: string): string {
     i++
   }
 
-  // 收尾：剩余文本作为最后一段
+  // 收尾：剩餘文本作為最後一段
   if (currentStart < text.length) {
     segments.push(text.slice(currentStart))
   }

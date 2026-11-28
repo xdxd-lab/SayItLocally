@@ -4,11 +4,11 @@ import type { PromptResolution } from '../personalization/types'
 import type { ProbeResult } from './PasteService'
 
 /**
- * 一次录音的运行期数据，从 RecorderOrchestrator 的散字段收拢而来（模块 6 第二步）。
+ * 一次錄音的執行期資料，從 RecorderOrchestrator 的散欄位收攏而來（模組 6 第二步）。
  *
- * 这一步只是把字段搬到一处：每个字段在编排器里什么时候复位，和原来逐字段写时一模一样。
- * 「插入中」「正在插入的文字」和迟到结果相关的字段**不在这里**：超时后的迟到结果会在
- * 空闲状态下插字，那时它们属于上一代，不能跟着新一次录音一起复位。
+ * 這一步只是把欄位搬到一處：每個欄位在編排器裡什麼時候復位，和原來逐欄位寫時一模一樣。
+ * 「插入中」「正在插入的文字」和遲到結果相關的欄位**不在這裡**：超時後的遲到結果會在
+ * 空閒狀態下插字，那時它們屬於上一代，不能跟著新一次錄音一起復位。
  */
 export class RunState {
   recordStartPerf = 0
@@ -17,7 +17,7 @@ export class RunState {
    *  matches what the user saw on the overlay (not inflated by backend latency). */
   wallTimeAtStopSec = 0
   finalHandledInCurrentRun = false
-  /** Esc 仅在 processing 的可逆阶段允许取消；进入系统粘贴前永久关闭。 */
+  /** Esc 僅在 processing 的可逆階段允許取消；進入系統貼上前永久關閉。 */
   processingCancelable = false
   /** PTT up arrived while startRecording was still initializing — stop immediately after setup */
   pendingStopWhileStarting = false
@@ -25,10 +25,10 @@ export class RunState {
   recordedChunks: ArrayBuffer[] = []
   captureReadyPromise: Promise<void> | null = null
   /**
-   * 本次录音开始时冻结的 AI 配置与日志关联标识。
+   * 本次錄音開始時凍結的 AI 配置與日誌關聯標識。
    *
-   * 不直接用 cached* 那几个字段算策略：它们会被设置页的改动随时刷新，用户录完之后
-   * 改一下门槛，这一条的原因就跟着变了 —— 事后没法解释历史记录。
+   * 不直接用 cached* 那幾個欄位算策略：它們會被設定頁的改動隨時重新整理，使用者錄完之後
+   * 改一下門檻，這一條的原因就跟著變了 —— 事後沒法解釋歷史記錄。
    */
   currentAiConfig: AiConfigSnapshot | undefined
   currentOperationId: string | undefined

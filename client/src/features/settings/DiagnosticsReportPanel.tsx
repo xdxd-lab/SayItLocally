@@ -35,12 +35,12 @@ export default function DiagnosticsReportPanel({ embedded = false }: Diagnostics
   const locale = useLocale()
   const [description, setDescription] = useState('')
   const [issueType, setIssueType] = useState<DiagnosticIssueType | null>(null)
-  // 默认「今天」而不是「1 小时内」：用户往往过了一阵才来反馈，1 小时的窗口经常把
-  // 出问题那段日志切在外面，于是包里干干净净什么都没有。
+  // 預設「今天」而不是「1 小時內」：使用者往往過了一陣才來反饋，1 小時的視窗經常把
+  // 出問題那段日誌切在外面，於是包裡乾乾淨淨什麼都沒有。
   const [issueOccurrence, setIssueOccurrence] = useState<DiagnosticOccurrence>('today')
-  // 时间范围、补充说明、截图默认收起：默认路径就该是「选一个问题 → 点发送」两步。
+  // 時間範圍、補充說明、截圖預設收起：預設路徑就該是「選一個問題 → 點傳送」兩步。
   const [showMore, setShowMore] = useState(false)
-  // 打包内容默认收起：那张表（版本、平台、扫了几个文件、时间范围…）是给我们看的。
+  // 打包內容預設收起：那張表（版本、平台、掃了幾個檔案、時間範圍…）是給我們看的。
   const [showContents, setShowContents] = useState(false)
   const [images, setImages] = useState<File[]>([])
   const [submitting, setSubmitting] = useState(false)
@@ -58,8 +58,8 @@ export default function DiagnosticsReportPanel({ embedded = false }: Diagnostics
     { value: 'today', label: t('diagnosticsReport.today') },
     { value: 'older', label: t('diagnosticsReport.older') },
   ]
-  // 选类型代替写描述：用户遇到问题时不想写作文，硬要求描述换来的多半是「不好用」
-  // 这种帮不上忙的话。类型码还会进 manifest，收到 ticket 就知道该看日志哪一段。
+  // 選型別代替寫描述：使用者遇到問題時不想寫作文，硬要求描述換來的多半是「不好用」
+  // 這種幫不上忙的話。型別碼還會進 manifest，收到 ticket 就知道該看日誌哪一段。
   const issueTypeOptions: Array<{ value: DiagnosticIssueType; label: string }> = [
     { value: 'insert_failed', label: t('diagnosticsReport.issue.insertFailed') },
     { value: 'no_text', label: t('diagnosticsReport.issue.noText') },
@@ -184,7 +184,7 @@ export default function DiagnosticsReportPanel({ embedded = false }: Diagnostics
       })
 
       if (!dest) {
-        // 用户取消了保存对话框
+        // 使用者取消了儲存對話方塊
         await bridge.discardDiagnosticsZip(zipPath).catch(() => {}) // [自訂] S45
         setDownloading(false)
         return
@@ -209,8 +209,8 @@ export default function DiagnosticsReportPanel({ embedded = false }: Diagnostics
   const busy = submitting || downloading
 
   /**
-   * 拦住提交的原因，没有就返回空串。选了类型即可提交 —— 只有「其他」还需要一句话，
-   * 因为那时我们连该看日志哪一段都不知道。
+   * 攔住提交的原因，沒有就返回空串。選了型別即可提交 —— 只有「其他」還需要一句話，
+   * 因為那時我們連該看日誌哪一段都不知道。
    */
   function describeBlocker(): string {
     if (!issueType) return t('diagnosticsReport.issueTypeRequired')
@@ -219,8 +219,8 @@ export default function DiagnosticsReportPanel({ embedded = false }: Diagnostics
   }
 
   const blocker = describeBlocker()
-  // 选了「其他」必须展开：那时描述是必填的，藏在折叠里会让用户对着一个点不动的
-  // 发送按钮找不到原因。
+  // 選了「其他」必須展開：那時描述是必填的，藏在摺疊裡會讓使用者對著一個點不動的
+  // 傳送按鈕找不到原因。
   const moreOpen = showMore || issueType === 'other'
   const downloadBtn = (
     <Button variant="outline" size="sm" disabled={busy || Boolean(blocker)} onClick={handleDownload}>
@@ -259,9 +259,9 @@ export default function DiagnosticsReportPanel({ embedded = false }: Diagnostics
               <label className="mb-2 block text-sm font-medium">
                 {t('diagnosticsReport.issueType')}<span className="ml-0.5 text-red-500">*</span>
               </label>
-              {/* 用 aria-pressed 的切换按钮组，而不是 role="radiogroup" —— 后者的交互
-                  契约是「Tab 进入组、方向键切换」，这里没实现方向键，声明了反而会让
-                  读屏用户按方向键无反应。aria-pressed 的 Tab 逐个遍历是自洽的。 */}
+              {/* 用 aria-pressed 的切換按鈕組，而不是 role="radiogroup" —— 後者的互動
+                  契約是「Tab 進入組、方向鍵切換」，這裡沒實現方向鍵，宣告了反而會讓
+                  讀屏使用者按方向鍵無反應。aria-pressed 的 Tab 逐個遍歷是自洽的。 */}
               <div className="flex flex-wrap gap-2">
                 {issueTypeOptions.map((option) => {
                   const selected = issueType === option.value
@@ -283,8 +283,8 @@ export default function DiagnosticsReportPanel({ embedded = false }: Diagnostics
               </div>
             </div>
 
-            {/* 折叠时右侧摘要写着当前时间范围，所以不展开也知道要发的是哪段日志。
-                选了「其他」时强制展开（描述必填），此时按钮置灰而不是点了没反应。 */}
+            {/* 摺疊時右側摘要寫著當前時間範圍，所以不展開也知道要發的是哪段日誌。
+                選了「其他」時強制展開（描述必填），此時按鈕置灰而不是點了沒反應。 */}
             <button
               type="button"
               disabled={issueType === 'other'}
@@ -449,8 +449,8 @@ export default function DiagnosticsReportPanel({ embedded = false }: Diagnostics
               </div>
             )}
 
-            {/* 非服务器模式没有「发送」按钮 —— 不解释的话用户只会以为按钮坏了。
-                选了问题类型才提示：一进页面就挂一条提示纯属噪音。 */}
+            {/* 非伺服器模式沒有「傳送」按鈕 —— 不解釋的話使用者只會以為按鈕壞了。
+                選了問題型別才提示：一進頁面就掛一條提示純屬噪音。 */}
             {!isServerMode && issueType && (
               <div className="flex items-start gap-2 rounded-md border border-border bg-muted/40 px-3 py-2 text-xs leading-relaxed text-muted-foreground">
                 <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />

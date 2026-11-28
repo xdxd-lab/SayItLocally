@@ -46,7 +46,7 @@ export default function AIInstructionsPage() {
   const activePresetId = activePreset.id
   const [editingPreset, setEditingPreset] = useState<PromptPreset | null>(null)
   const [appPromptRules, setAppPromptRules] = useState<AppPromptRule[]>([])
-  // 编辑中的快捷键草稿：保存时才落库（取消不留痕，见 PromptPresetSection 的说明）
+  // 編輯中的快捷鍵草稿：儲存時才落庫（取消不留痕，見 PromptPresetSection 的說明）
   const [editingShortcut, setEditingShortcut] = useState('')
   const [presetShortcuts, setPresetShortcutsState] = useState<Record<string, string>>({})
 
@@ -88,8 +88,8 @@ export default function AIInstructionsPage() {
     }
   }
 
-  // 预设切换快捷键不能和录音热键（免提 / 按住说话）相同，否则一次按键触发两个功能。
-  // 预设之间的重复不在这里拦：handleSetPresetShortcut 会自动把旧的清掉（后设的赢）。
+  // 預設切換快捷鍵不能和錄音熱鍵（免持 / 按住說話）相同，否則一次按鍵觸發兩個功能。
+  // 預設之間的重複不在這裡攔：handleSetPresetShortcut 會自動把舊的清掉（後設的贏）。
   const validatePresetShortcut = async (value: string): Promise<string | null> => {
     if (!value) return null
     const ptt = await getSetting('shortcutPTT', 'AltRight') as string
@@ -104,7 +104,7 @@ export default function AIInstructionsPage() {
     if (!accel) {
       delete next[presetId]
     } else {
-      // 保证组合键唯一：若其它预设已占用同一组合键，先清除，避免注册冲突
+      // 保證組合鍵唯一：若其它預設已佔用同一組合鍵，先清除，避免註冊衝突
       for (const key of Object.keys(next)) {
         if (next[key] === accel) delete next[key]
       }
@@ -116,7 +116,7 @@ export default function AIInstructionsPage() {
   }
 
   const handleSelectPreset = (id: string) => {
-    // 立即更新 UI 与录音器缓存（无 IPC），持久化写入放到后台，避免快速切换时卡顿
+    // 立即更新 UI 與錄音器快取（無 IPC），持久化寫入放到後台，避免快速切換時卡頓
     const target = presets.find((p) => p.id === id)
     setActivePresetKnown(id, target?.name || '')
     setActivePresetCache(id)
@@ -125,7 +125,7 @@ export default function AIInstructionsPage() {
 
   const handleSavePreset = async (preset: PromptPreset) => {
     await savePromptPreset(preset)
-    // 快捷键在这一刻才写入：草稿期间不动库，取消就当没发生过
+    // 快捷鍵在這一刻才寫入：草稿期間不動庫，取消就當沒發生過
     if ((presetShortcuts[preset.id] || '') !== editingShortcut) {
       await handleSetPresetShortcut(preset.id, editingShortcut)
     }
@@ -134,7 +134,7 @@ export default function AIInstructionsPage() {
     setPromptPresetsCache(nextPresets)
     setEditingPreset(null)
     setEditingShortcut('')
-    // 名称可能已修改，刷新当前预设状态（标题栏/高亮）
+    // 名稱可能已修改，重新整理當前預設狀態（標題欄/高亮）
     await refreshActivePreset()
   }
 
@@ -143,7 +143,7 @@ export default function AIInstructionsPage() {
     const nextPresets = await getPromptPresets()
     setPresets(nextPresets)
     setPromptPresetsCache(nextPresets)
-    // 清除该预设的快捷键映射，避免残留注册
+    // 清除該預設的快捷鍵對映，避免殘留註冊
     if (presetShortcuts[id]) {
       const next = { ...presetShortcuts }
       delete next[id]
@@ -167,7 +167,7 @@ export default function AIInstructionsPage() {
     setEditingShortcut('')
   }
 
-  /** 开始编辑：把该模式已有的快捷键读进草稿 */
+  /** 開始編輯：把該模式已有的快捷鍵讀進草稿 */
   const handleStartEditing = (preset: PromptPreset) => {
     setEditingPreset(preset)
     setEditingShortcut(presetShortcuts[preset.id] || '')
@@ -186,8 +186,8 @@ export default function AIInstructionsPage() {
   }
 
   /**
-   * 应用规则的唯一写入口：先更新界面，再落库，最后刷新录音器缓存。
-   * 数组顺序就是命中优先级（见 AppPromptRule 的注释），所以这里绝不排序。
+   * 應用規則的唯一寫入口：先更新介面，再落庫，最後重新整理錄音器快取。
+   * 陣列順序就是命中優先順序（見 AppPromptRule 的註釋），所以這裡絕不排序。
    */
   const applyAppRules = async (nextRules: AppPromptRule[]) => {
     setAppPromptRules(nextRules)
@@ -200,12 +200,12 @@ export default function AIInstructionsPage() {
   }
 
   /**
-   * 开关即时生效，并且**启用时把规则挪到最前面**。
+   * 開關即時生效，並且**啟用時把規則挪到最前面**。
    *
-   * 一是它这就成了优先级最高的规则（刚打开的那条最该说话）；二是内置规则有 9 条、
-   * 默认全关，用户启用靠底部的一条（比如 QQ）后，它仍埋在一堆没启用的规则中间，
-   * 得翻半页才找得到。置顶后"启用中的规则"自然聚在顶部。
-   * 关闭不挪位置：让刚关掉的那条留在原处，方便反悔。
+   * 一是它這就成了優先順序最高的規則（剛開啟的那條最該說話）；二是內建規則有 9 條、
+   * 預設全關，使用者啟用靠底部的一條（比如 QQ）後，它仍埋在一堆沒啟用的規則中間，
+   * 得翻半頁才找得到。置頂後"啟用中的規則"自然聚在頂部。
+   * 關閉不挪位置：讓剛關掉的那條留在原處，方便反悔。
    */
   const handleToggleAppRule = async (ruleId: string, enabled: boolean) => {
     const target = appPromptRules.find((rule) => rule.id === ruleId)
@@ -239,7 +239,7 @@ export default function AIInstructionsPage() {
       promptAppend: draft.promptAppend,
       matcher: { processNames: draft.processNames, windowTitleIncludes: [], windowClasses: [], automationIds: [] },
     }
-    // 新建即启用，因此放到最前面（与"启用置顶"一致），也免得新规则被内置规则抢先命中
+    // 新建即啟用，因此放到最前面（與"啟用置頂"一致），也免得新規則被內建規則搶先命中
     await applyAppRules([rule, ...appPromptRules])
   }
 
@@ -250,7 +250,7 @@ export default function AIInstructionsPage() {
   const handleResetAppRule = async (ruleId: string) => {
     const fallback = BUILTIN_APP_RULES.find((rule) => rule.id === ruleId)
     if (!fallback) return
-    // 只恢复内容，不动它在列表里的位置 —— 用户排好的顺序不该被"恢复默认"顺手打乱
+    // 只恢復內容，不動它在列表裡的位置 —— 使用者排好的順序不該被"恢復預設"順手打亂
     await applyAppRules(appPromptRules.map((rule) => (
       rule.id === ruleId ? { ...fallback, matcher: { ...fallback.matcher } } : rule
     )))

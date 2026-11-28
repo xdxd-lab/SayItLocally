@@ -1,5 +1,5 @@
-// 豆包流式语音识别 2.0 — 使用流式输入模式（bigmodel_nostream）
-// 录完后一次性发送 PCM 音频，等最终结果返回
+// 豆包流式語音識別 2.0 — 使用流式輸入模式（bigmodel_nostream）
+// 錄完後一次性傳送 PCM 音訊，等最終結果返回
 
 use super::diag;
 use super::doubao_auth::{self, DoubaoAuth};
@@ -12,10 +12,10 @@ use tokio_tungstenite::tungstenite;
 const WS_URL: &str = "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_nostream";
 const SCOPE: &str = "doubao/nostream";
 
-/// 建立 nostream 连接：按「小时版 → 并发版」依次试资源 ID。
+/// 建立 nostream 連線：按「小時版 → 併發版」依次試資源 ID。
 ///
-/// 之前这里写死小时版，而双向流式路径早就在两者间兜底了 —— 于是只开通并发版的账号
-/// 出现「实时字幕能用、普通录音识别连不上」这种自相矛盾的现象。两条路径口径统一。
+/// 之前這裡寫死小時版，而雙向流式路徑早就在兩者間兜底了 —— 於是只開通併發版的帳號
+/// 出現「即時字幕能用、普通錄音識別連不上」這種自相矛盾的現象。兩條路徑口徑統一。
 async fn connect(
     auth: &DoubaoAuth<'_>,
     scope: &str,
@@ -51,8 +51,8 @@ async fn connect(
             }
             Err(e) => {
                 last_err = e.to_string();
-                // 逐个资源都记：只开通了并发版的账号会在小时版这一轮失败一次再成功，
-                // 看到这条不代表最终失败，但它是判断「账号开的是哪种计费」的直接证据。
+                // 逐個資源都記：只開通了併發版的帳號會在小時版這一輪失敗一次再成功，
+                // 看到這條不代表最終失敗，但它是判斷「帳號開的是哪種計費」的直接證據。
                 diag::log(
                     scope,
                     "connect_attempt_failed",
@@ -101,8 +101,8 @@ pub async fn transcribe(
     }
     let uid = auth.uid().to_string();
 
-    // 进门先记「送出去的是什么」：音频多长、采样率、几个热词、哪套鉴权。
-    // 长音频失败而短音频正常这类问题，第一步要确认的就是客户端确实把整段音频发了出去。
+    // 進門先記「送出去的是什麼」：音訊多長、取樣率、幾個熱詞、哪套鑑權。
+    // 長音訊失敗而短音訊正常這類問題，第一步要確認的就是客戶端確實把整段音訊發了出去。
     let audio_sec = pcm_data.len() as f64 / (sample_rate.max(1) as f64 * 2.0);
     diag::log(
         SCOPE,
@@ -121,7 +121,7 @@ pub async fn transcribe(
 
     let (mut ws, resource_id) = connect(&auth, SCOPE).await?;
 
-    // 1. 发送 full client request
+    // 1. 傳送 full client request
     let mut request_params = serde_json::json!({
         "model_name": "bigmodel",
         "enable_itn": true,
@@ -129,7 +129,7 @@ pub async fn transcribe(
         "result_type": "full",
         "show_utterances": true
     });
-    // 注入热词（如果有）：流式接口热词须放在 request.corpus.context
+    // 注入熱詞（如果有）：流式介面熱詞須放在 request.corpus.context
     if let Some(ctx) = doubao_protocol::build_hotword_context(hotwords) {
         request_params["corpus"] = serde_json::json!({ "context": ctx });
     }
@@ -152,7 +152,7 @@ pub async fn transcribe(
         .await
         .map_err(|e| diag::fail(SCOPE, "send_request", format!("Failed to send request: {}", e)))?;
 
-    // 等待服务端确认
+    // 等待服務端確認
     if let Some(msg) = ws.next().await {
         let msg =
             msg.map_err(|e| diag::fail(SCOPE, "recv_ack", format!("Failed to receive acknowledgement: {}", e)))?;
@@ -160,7 +160,7 @@ pub async fn transcribe(
             let resp = doubao_protocol::parse_server_response(&data)
                 .map_err(|e| diag::fail(SCOPE, "parse_ack", e))?;
             if resp.is_error {
-                // 这里的 payload 是服务端的错误说明（额度/资源/鉴权），不是识别文本
+                // 這裡的 payload 是服務端的錯誤說明（額度/資源/鑑權），不是識別文本
                 return Err(diag::fail(
                     SCOPE,
                     "server_error_on_ack",
@@ -174,20 +174,20 @@ pub async fn transcribe(
         }
     }
 
-    // 2. 发送音频数据（直接发 PCM，不转 WAV）
-    // nostream 模式下服务端等最后一包才处理，一次性发完最快
+    // 2. 傳送音訊資料（直接發 PCM，不轉 WAV）
+    // nostream 模式下服務端等最後一包才處理，一次性發完最快
     let audio_frame = doubao_protocol::build_audio_request(&pcm_data, true);
     ws.send(tungstenite::Message::Binary(audio_frame.into()))
         .await
         .map_err(|e| diag::fail(SCOPE, "send_audio", format!("Failed to send audio: {}", e)))?;
 
-    // 3. 接收结果（bigmodel_async 双向流式：每包输入对应一包返回，取最终结果）
+    // 3. 接收結果（bigmodel_async 雙向流式：每包輸入對應一包返回，取最終結果）
     let mut final_text = String::new();
-    // 有没有收到「最后一包」标记。这个标记是区分下面两种情况的唯一依据：
-    //   收到了 + 文本为空 = 服务端确实没听出内容（用户可能真的没说话）
-    //   没收到 + 文本为空 = 这次调用失败了，服务端在给结果前就断开
-    // 以前两种都返回 Ok(空文本)，于是失败被显示成「未检测到有效声音」，
-    // 日志里一个字都没有 —— 排查一次要来回问用户好几轮。
+    // 有沒有收到「最後一包」標記。這個標記是區分下面兩種情況的唯一依據：
+    //   收到了 + 文本為空 = 服務端確實沒聽出內容（使用者可能真的沒說話）
+    //   沒收到 + 文本為空 = 這次呼叫失敗了，服務端在給結果前就斷開
+    // 以前兩種都返回 Ok(空文本)，於是失敗被顯示成「未檢測到有效聲音」，
+    // 日誌裡一個字都沒有 —— 排查一次要來回問使用者好幾輪。
     let mut saw_last = false;
     let mut last_payload_desc = String::from("(no result packet received)");
 
@@ -211,7 +211,7 @@ pub async fn transcribe(
 
                 last_payload_desc = diag::describe_json(&resp.payload);
 
-                // 解析 JSON 结果，持续更新 final_text
+                // 解析 JSON 結果，持續更新 final_text
                 if let Ok(json) = serde_json::from_str::<serde_json::Value>(&resp.payload) {
                     if let Some(text) = json.get("result").and_then(|r| r.get("text")).and_then(|t| t.as_str()) {
                         if !text.is_empty() {
@@ -231,8 +231,8 @@ pub async fn transcribe(
                     .unwrap_or_else(|| "No details".to_string());
                 if !saw_last {
                     let _ = ws.close(None).await;
-                    // 服务端主动断开且没给最终结果 —— 额度耗尽、资源未开通、超限都长这样。
-                    // 必须报错，不能假装识别成功却没内容。
+                    // 服務端主動斷開且沒給最終結果 —— 額度耗盡、資源未開通、超限都長這樣。
+                    // 必須報錯，不能假裝識別成功卻沒內容。
                     return Err(diag::fail(
                         SCOPE,
                         "closed_before_result",
@@ -246,12 +246,12 @@ pub async fn transcribe(
         }
     }
 
-    // 关闭连接
+    // 關閉連線
     let _ = ws.close(None).await;
 
     let elapsed_ms = start.elapsed().as_millis() as u64;
 
-    // 流结束了却始终没见到最后一包，同样是没跑完的调用
+    // 流結束了卻始終沒見到最後一包，同樣是沒跑完的呼叫
     if !saw_last {
         return Err(diag::fail(
             SCOPE,
@@ -303,7 +303,7 @@ pub async fn test_connection(config: &AsrProviderConfig) -> TestResult {
                 ok: true,
                 message: format!("Connection successful ({}ms)", elapsed_ms),
                 elapsed_ms,
-                // 资源 ID 决定计费方式（小时版/并发版），测通了顺手告诉用户命中的是哪个
+                // 資源 ID 決定計費方式（小時版/併發版），測通了順手告訴使用者命中的是哪個
                 detail: format!("Resource: {}", resource_id),
             }
         }

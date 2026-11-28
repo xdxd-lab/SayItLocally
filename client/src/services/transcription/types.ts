@@ -1,5 +1,5 @@
-// 转写 Provider 抽象层类型定义
-// 所有工作模式（服务器 / 云 API / 本地）共享此接口
+// 轉寫 Provider 抽象層型別定義
+// 所有工作模式（伺服器 / 雲 API / 本地）共享此介面
 
 import type { ActiveAppContext, TextContext } from '../../types/appContext'
 import type { ClientRuntimeInfo } from '../../types/appApi'
@@ -11,11 +11,11 @@ export type WorkMode = 'server' | 'cloud_api' | 'local'
 export type ProviderState = 'disconnected' | 'connecting' | 'connected' | 'error'
 
 /**
- * 一次录音进行中连接掉线的哨兵错误。
+ * 一次錄音進行中連線掉線的哨兵錯誤。
  *
- * 走 onError 的统一失败通道（这样音频存档/历史/提示都复用同一条路），但录音器要能把它
- * 单独归类成 connection_lost —— 这段语音是**从未送达**服务端，跟「服务端处理失败」
- * 不是一回事，用户看到的解释也不该相同。
+ * 走 onError 的統一失敗通道（這樣音訊存檔/歷史/提示都複用同一條路），但錄音器要能把它
+ * 單獨歸類成 connection_lost —— 這段語音是**從未送達**服務端，跟「服務端處理失敗」
+ * 不是一回事，使用者看到的解釋也不該相同。
  */
 export const MID_SESSION_DISCONNECT_ERROR
   = 'sayit_error:server_unreachable:websocket disconnected mid-session'
@@ -27,7 +27,7 @@ export interface ASRResult {
   text: string
   asrMs: number
   durationSec: number
-  /** 空 ASR 会先于 final 触发专用收尾，执行元数据必须随它一起落库。 */
+  /** 空 ASR 會先於 final 觸發專用收尾，執行後設資料必須隨它一起落庫。 */
   aiSource?: AiExecutionSource
   aiStatus?: AiExecutionStatus
 }
@@ -48,19 +48,19 @@ export interface FinalResult {
   aiProvider?: string
   aiModel?: string
   /**
-   * 跳过 / 失败的稳定原因码（AiReason）。
+   * 跳過 / 失敗的穩定原因碼（AiReason）。
    *
-   * 声明在这里是因为它**运行时已经**通过 `...polish` 流到录音器了（spread 不触发
-   * TS 的多余属性检查，不声明只会让它成为一个看不见的隐式字段）。
-   * 第 1a 批只保证日志有它，写进历史记录是第 2 批的事。
+   * 宣告在這裡是因為它**執行時已經**透過 `...polish` 流到錄音器了（spread 不觸發
+   * TS 的多餘屬性檢查，不宣告只會讓它成為一個看不見的隱式欄位）。
+   * 第 1a 批只保證日誌有它，寫進歷史記錄是第 2 批的事。
    */
   aiReason?: string
   /**
-   * 服务端 AI 的执行证据，从 llm_debug 里**只取结论性字段**。
+   * 服務端 AI 的執行證據，從 llm_debug 裡**只取結論性欄位**。
    *
-   * 不透传整个 llm_debug：它在服务器开了 debug_llm 时会带完整 prompt 与原始输出，
-   * 顺着结果对象传播出去早晚会被某处日志整条打出来。
-   * 有它才能把「服务端跑了但很快」和「服务端压根没跑」分开 —— 光看 llm_ms=0 分不出来。
+   * 不透傳整個 llm_debug：它在伺服器開了 debug_llm 時會帶完整 prompt 與原始輸出，
+   * 順著結果物件傳播出去早晚會被某處日誌整條打出來。
+   * 有它才能把「服務端跑了但很快」和「服務端壓根沒跑」分開 —— 光看 llm_ms=0 分不出來。
    */
   serverAi?: { error?: string; provider?: string }
 }
@@ -68,7 +68,7 @@ export interface FinalResult {
 export interface TranscriptionCallbacks {
   onStateChange?: (state: ProviderState) => void
   onReady?: (info: { connectionId?: string; asr: boolean; llm: boolean }) => void
-  /** 流式识别过程中的中间结果（实时上屏用），text 为到目前为止的累计文本 */
+  /** 流式識別過程中的中間結果（即時上屏用），text 為到目前為止的累計文本 */
   onPartialASR?: (text: string) => void
   onASR?: (result: ASRResult) => void
   onFinal?: (result: FinalResult) => void
@@ -77,20 +77,20 @@ export interface TranscriptionCallbacks {
 }
 
 export interface StartOptions {
-  /** 当前录音代次；取消或开始下一次后，旧代次的异步结果必须全部丢弃。 */
+  /** 當前錄音代次；取消或開始下一次後，舊代次的非同步結果必須全部丟棄。 */
   runId: number
-  /** 本次处理的日志关联标识。历史重跑必须新建，不能复用被重跑那条记录的旧标识。 */
+  /** 本次處理的日誌關聯標識。歷史重跑必須新建，不能複用被重跑那條記錄的舊標識。 */
   operationId?: string
   /**
-   * 本次冻结的 AI 相关配置。冻结的理由是事后解释：用户录完之后改了设置，
-   * 这条记录的原因也不能跟着变。
+   * 本次凍結的 AI 相關配置。凍結的理由是事後解釋：使用者錄完之後改了設定，
+   * 這條記錄的原因也不能跟著變。
    */
   aiConfig?: AiConfigSnapshot
   /** Frozen selection-edit credentials for this run only. Never serialize to logs or history. */
   selectionAiConfig?: ClientAiConfig | null
   systemPrompt?: string
   disableAi?: boolean
-  /** 录音未达到该时长时只做识别，不调用 AI。0 / undefined = 不设门槛。 */
+  /** 錄音未達到該時長時只做識別，不呼叫 AI。0 / undefined = 不設門檻。 */
   aiMinDurationSec?: number
   clientMeta?: ClientRuntimeInfo | null
   appContext?: ActiveAppContext | null
@@ -99,23 +99,23 @@ export interface StartOptions {
   source?: 'live' | 'history_reprocess'
   hotwords?: string[]
   language?: string
-  /** 是否开启流式实时显示：识别过程中把中间结果实时推给悬浮窗 */
+  /** 是否開啟流式即時顯示：識別過程中把中間結果即時推給懸浮窗 */
   streamingDisplay?: boolean
 }
 
 export interface StopOptions {
   pttHoldMs?: number
   /**
-   * 松键时才知道的「这次别做 AI 整理」。录音时长要等录完才知道，而服务器模式的 AI
-   * 在服务端紧跟 ASR 执行，start 时来不及决定。
+   * 鬆鍵時才知道的「這次別做 AI 整理」。錄音時長要等錄完才知道，而伺服器模式的 AI
+   * 在服務端緊跟 ASR 執行，start 時來不及決定。
    *
-   * 这是 policy 压成的布尔，只给线上协议用。**压完的值不要再回头当跳过原因**
-   * ——自配 AI 路线也会发 true（服务端不做、客户端做），把它解释成"整次跳过"是错的。
+   * 這是 policy 壓成的布林，只給線上協議用。**壓完的值不要再回頭當跳過原因**
+   * ——自配 AI 路線也會發 true（服務端不做、客戶端做），把它解釋成"整次跳過"是錯的。
    */
   disableAi?: boolean
   /**
-   * 本次的完整策略（含路由与原因）。松键时由录音器用实际 PCM 时长算出，
-   * 随 stop 一起交给 Provider，保证「线上那个布尔」和「日志里记的原因」出自同一次判断。
+   * 本次的完整策略（含路由與原因）。鬆鍵時由錄音器用實際 PCM 時長算出，
+   * 隨 stop 一起交給 Provider，保證「線上那個布林」和「日誌裡記的原因」出自同一次判斷。
    */
   aiPolicy?: AiPolicy
   audioStats?: {
@@ -128,31 +128,31 @@ export interface StopOptions {
 }
 
 /**
- * 转写 Provider 接口。
- * RecorderOrchestrator 通过此接口与具体的转写实现交互，
- * 不再直接依赖 WebSocket 或任何特定的后端协议。
+ * 轉寫 Provider 介面。
+ * RecorderOrchestrator 透過此介面與具體的轉寫實現互動，
+ * 不再直接依賴 WebSocket 或任何特定的後端協議。
  */
 export interface TranscriptionProvider {
   readonly mode: WorkMode
 
-  /** 建立连接 / 初始化 */
+  /** 建立連線 / 初始化 */
   connect(callbacks: TranscriptionCallbacks): Promise<void>
 
-  /** 开始一次转写会话 */
+  /** 開始一次轉寫會話 */
   start(opts: StartOptions): boolean
 
-  /** 立即取消当前会话；允许底层任务自然结束，但之后不得再上抛任何结果。 */
+  /** 立即取消當前會話；允許底層任務自然結束，但之後不得再上拋任何結果。 */
   cancel(): void
 
-  /** 发送音频数据（流式，PCM Int16 ArrayBuffer） */
+  /** 傳送音訊資料（流式，PCM Int16 ArrayBuffer） */
   sendAudio(buffer: ArrayBuffer): void
 
-  /** 结束录音，触发处理 */
+  /** 結束錄音，觸發處理 */
   stop(opts?: StopOptions): boolean
 
-  /** 断开连接 / 释放资源 */
+  /** 斷開連線 / 釋放資源 */
   disconnect(): void
 
-  /** 是否已就绪可以开始转写 */
+  /** 是否已就緒可以開始轉寫 */
   isReady(): boolean
 }

@@ -11,13 +11,13 @@ import { useUpdateState } from '@/features/update/useUpdateState'
 import type { TranslationKey } from '@/i18n'
 import { useT } from '@/i18n/useT'
 import { IS_MAC } from '@/lib/platform'
-// mac 侧栏顶部的品牌图标：从 src-tauri/icons/icon.png（256px）按精确尺寸高质量缩出来的 1 倍 / 2 倍图。
-// 让浏览器把大图现场缩到 28px 会发虚，图标里那行 SayItLocally 就看不清了。
+// mac 側欄頂部的品牌圖示：從 src-tauri/icons/icon.png（256px）按精確尺寸高質量縮出來的 1 倍 / 2 倍圖。
+// 讓瀏覽器把大圖現場縮到 28px 會發虛，圖示裡那行 SayItLocally 就看不清了。
 import macIcon from '@/assets/app-icon-28.png'
 import macIcon2x from '@/assets/app-icon-28@2x.png'
 
-// 导航项存 key 而不是文案：切语言时这些常量不会重新求值（模块级只算一次），
-// 存成中文串就会永远停在启动时那个语言。
+// 導航項存 key 而不是文案：切語言時這些常量不會重新求值（模組級只算一次），
+// 存成中文串就會永遠停在啟動時那個語言。
 const dailyNavItems = [
   { to: '/', icon: Home, labelKey: 'nav.home' },
   { to: '/history', icon: Clock, labelKey: 'nav.history' },
@@ -55,8 +55,8 @@ function NavItem({
       to={to}
       className={({ isActive }) =>
         cn(
-          // 选中底色由组里的滑块画（见 Sidebar 里的 useSlidingIndicator），这里只管文字。
-          // relative z-[1]：滑块是组里最后一个子元素（space-y 的缘故），不抬一层会盖住文字。
+          // 選中底色由組裡的滑塊畫（見 Sidebar 裡的 useSlidingIndicator），這裡只管文字。
+          // relative z-[1]：滑塊是組裡最後一個子元素（space-y 的緣故），不抬一層會蓋住文字。
           'relative z-[1] flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors',
           isActive ? 'font-medium text-sidebar-text-active' : 'text-sidebar-text hover:bg-sidebar-item-hover hover:text-sidebar-text-active',
         )
@@ -77,14 +77,14 @@ function IconOnlyNavItem({
   to: string
   icon: typeof Home
   label: string
-  /** 覆盖图标自身的颜色/动效（如「有更新」时的绿色闪烁） */
+  /** 覆蓋圖示自身的顏色/動效（如「有更新」時的綠色閃爍） */
   iconClassName?: string
 }) {
   return (
     <Tooltip content={label}>
       <NavLink
         to={to}
-        // 这里只有图标、没有文字，不给 aria-label 的话读屏用户听到的是空按钮
+        // 這裡只有圖示、沒有文字，不給 aria-label 的話讀屏使用者聽到的是空按鈕
         aria-label={label}
         className={({ isActive }) =>
           cn(
@@ -100,17 +100,17 @@ function IconOnlyNavItem({
 }
 
 /**
- * 侧栏底部那排图标。
+ * 側欄底部那排圖示。
  *
- * 有更新待安装时**不新增图标** —— 让「关于」这一枚自己变绿闪烁，悬停提示换成
- * 「新版本已下载好」。关于页就是更新所在的地方，点它正好到达能看到版本说明和
- * 「立即安装」的位置；多一枚图标既挤又需要用户先学会它是什么意思。
+ * 有更新待安裝時**不新增圖示** —— 讓「關於」這一枚自己變綠閃爍，懸停提示換成
+ * 「新版本已下載好」。關於頁就是更新所在的地方，點它正好到達能看到版本說明和
+ * 「立即安裝」的位置；多一枚圖示既擠又需要使用者先學會它是什麼意思。
  *
- * 后台下载期间**故意毫无变化**：那会儿没有任何需要用户知道的事，静默才是本意。
+ * 後台下載期間**故意毫無變化**：那會兒沒有任何需要使用者知道的事，靜默才是本意。
  *
- * ⚠ 这里用绿色不违反下面 ModeIndicator 那条"不给任何好颜色"的规矩：那条针对的是
- * 我们没验证过的事（配置填完了 ≠ 真能用）。而"包已下载完、哈希校验过、随时可装"
- * 是确定的事实。别顺手把它改回中性色。
+ * ⚠ 這裡用綠色不違反下面 ModeIndicator 那條"不給任何好顏色"的規矩：那條針對的是
+ * 我們沒驗證過的事（配置填完了 ≠ 真能用）。而"包已下載完、雜湊校驗過、隨時可裝"
+ * 是確定的事實。別順手把它改回中性色。
  */
 function FooterIcons() {
   const t = useT()
@@ -142,11 +142,11 @@ function FooterIcons() {
 }
 
 /**
- * 服务器模式的连接状态。
+ * 伺服器模式的連線狀態。
  *
- * 只有这一个模式配得上"状态指示"：它有一条真在跑的连接（30s 心跳），所以图标能诚实地
- * 报出此刻通不通——信号图标 + 颜色，断线换成带斜杠的那只。
- * 本地/云 API 没有这种持续探测，见 ModeIndicator 的注释。
+ * 只有這一個模式配得上"狀態指示"：它有一條真在跑的連線（30s 心跳），所以圖示能誠實地
+ * 報出此刻通不通——訊號圖示 + 顏色，斷線換成帶斜槓的那隻。
+ * 本地/雲 API 沒有這種持續探測，見 ModeIndicator 的註釋。
  */
 const statusConfig = {
   connected: { icon: Wifi, color: 'text-success', labelKey: 'connection.connected' },
@@ -156,16 +156,16 @@ const statusConfig = {
 } as const satisfies Record<string, { icon: typeof Wifi; color: string; labelKey: TranslationKey }>
 
 /**
- * 左下角的引擎指示：始终只占一个图标位，细节全在悬停提示里。
+ * 左下角的引擎指示：始終只佔一個圖示位，細節全在懸停提示裡。
  *
- * 这里和「语音引擎」页那三张模式卡**不是同一件事**，所以图标也不必事事对齐：
- * 卡片上的图标是在给模式起名（Cpu / Cloud / Server，一个静态属性）；
- * 这里报的是"此刻怎么样"。于是只有服务器模式换成信号图标——它有一条真在跑的连接可报。
+ * 這裡和「語音引擎」頁那三張模式卡**不是同一件事**，所以圖示也不必事事對齊：
+ * 卡片上的圖示是在給模式起名（Cpu / Cloud / Server，一個靜態屬性）；
+ * 這裡報的是"此刻怎麼樣"。於是只有伺服器模式換成訊號圖示——它有一條真在跑的連線可報。
  *
- * 本地 / 云 API 一律是中性单色，**不给任何"好"的颜色**：我们唯一知道的事实是
- * "配置填完了没有"，而填完 ≠ 真的能用（模型能不能加载、密钥有没有被吊销，都没验过）。
- * 所以只有确定的坏消息（缺东西）才转 warning 色，其余保持沉默——
- * 曾经在这里点过绿灯，等于替一件没测过的事作保。
+ * 本地 / 雲 API 一律是中性單色，**不給任何"好"的顏色**：我們唯一知道的事實是
+ * "配置填完了沒有"，而填完 ≠ 真的能用（模型能不能載入、金鑰有沒有被吊銷，都沒驗過）。
+ * 所以只有確定的壞訊息（缺東西）才轉 warning 色，其餘保持沉默——
+ * 曾經在這裡點過綠燈，等於替一件沒測過的事作保。
  */
 function ModeIndicator() {
   const t = useT()
@@ -188,8 +188,8 @@ function ModeIndicator() {
   const Icon = mode === 'local' ? Cpu : Cloud
   const title = mode === 'local' ? t('mode.local') : t('mode.cloudApi')
   const notReady = ready === false
-  // blockedReason 目前是 Rust/服务层给的中文串（P2-1 会改成 code 再本地化）。
-  // 这里只保证**外壳**跟随语言，不假装里面那句已经翻好了。
+  // blockedReason 目前是 Rust/服務層給的中文串（P2-1 會改成 code 再本地化）。
+  // 這裡只保證**外殼**跟隨語言，不假裝裡面那句已經翻好了。
   const tip = notReady
     ? t('mode.tooltipNotReady', { mode: title, reason: blockedReason || t('mode.notReadyFallback') })
     : detail ? t('mode.tooltipDetail', { mode: title, detail }) : title
@@ -207,12 +207,12 @@ export default function Sidebar() {
   const t = useT()
   const { pathname } = useLocation()
   const navGroupRef = useRef<HTMLDivElement>(null)
-  // 当前页在底部那排（设置 / 关于）时这一组没有选中项，滑块淡出；从那边切回来时原地出现，不跨组滑。
+  // 當前頁在底部那排（設定 / 關於）時這一組沒有選中項，滑塊淡出；從那邊切回來時原地出現，不跨組滑。
   const navIndicatorRef = useSlidingIndicator(navGroupRef, pathname, { activeSelector: '[aria-current="page"]' })
   return (
     <nav className="flex w-48 flex-col border-r border-sidebar-border bg-sidebar py-4">
-      {/* mac：标题栏左边归系统红绿灯，图标和名字放在侧栏最上面、「首页」上方（Windows 的在标题栏里）。
-          图标中心对齐下面导航项的图标列（距侧栏左边 32px）。 */}
+      {/* mac：標題欄左邊歸系統紅綠燈，圖示和名字放在側欄最上面、「首頁」上方（Windows 的在標題欄裡）。
+          圖示中心對齊下面導航項的圖示列（距側欄左邊 32px）。 */}
       {IS_MAC && (
         <div className="mb-3 flex items-center gap-2.5 pl-[18px] pr-3">
           <img src={macIcon} srcSet={`${macIcon} 1x, ${macIcon2x} 2x`} width={28} height={28}
@@ -231,7 +231,7 @@ export default function Sidebar() {
         {configNavItems.map(({ to, icon, labelKey }) => (
           <NavItem key={to} to={to} icon={icon} label={t(labelKey)} />
         ))}
-        {/* 滑块放最后：放第一个的话 space-y-1 会给"首页"加一个 margin-top，整列下移 4px。 */}
+        {/* 滑塊放最後：放第一個的話 space-y-1 會給"首頁"加一個 margin-top，整列下移 4px。 */}
         <span ref={navIndicatorRef} aria-hidden className="sliding-indicator rounded-lg bg-sidebar-item-active" />
       </div>
 

@@ -38,7 +38,7 @@ describe('ServerProvider audio batching', () => {
   it('sends 200 ms batches instead of every frame, in order', () => {
     const provider = new ServerProvider()
     provider.start({ runId: 1 } as never)
-    // 256 字节一帧（AudioWorklet 一个渲染块），25 帧正好 6400 字节 = 200 ms
+    // 256 位元組一幀（AudioWorklet 一個渲染塊），25 幀正好 6400 位元組 = 200 ms
     for (let i = 0; i < 24; i++) provider.sendAudio(frame(256, i))
     expect(wsMock.sent).toHaveLength(0)
     provider.sendAudio(frame(256, 24))

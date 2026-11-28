@@ -1,6 +1,6 @@
 /**
- * Uint8Array → base64 编码
- * 分块处理避免超长字符串拼接导致的性能问题
+ * Uint8Array → base64 編碼
+ * 分塊處理避免超長字串拼接導致的效能問題
  */
 export function uint8ArrayToBase64(bytes: Uint8Array): string {
   const CHUNK_SIZE = 8192

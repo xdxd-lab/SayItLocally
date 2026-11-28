@@ -1,4 +1,4 @@
-// 使用统计页面
+// 使用統計頁面
 
 import { useEffect, useMemo, useState } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
@@ -47,7 +47,7 @@ function formatDate(ts: number | undefined) {
   return new Date(ts).toLocaleDateString(getLocale(), { year: 'numeric', month: 'long', day: 'numeric' })
 }
 
-/** 计算两个时间戳之间的天数 */
+/** 計算兩個時間戳之間的天數 */
 function daysBetween(a: number, b: number) {
   return Math.max(1, Math.ceil(Math.abs(b - a) / 86400000))
 }
@@ -96,7 +96,7 @@ function computeFullStats(records: HistoryRecord[], rangeDays: number): FullStat
       presetCount.set(presetName, (presetCount.get(presetName) || 0) + 1)
     }
 
-    // 应用统计放在 isEmpty 之前，确保所有记录都计入
+    // 應用統計放在 isEmpty 之前，確保所有記錄都計入
     if (r.appName || r.appId) {
       const fallback = r.appName || r.appId || t('stats.unknown')
       const name = recordedAppDisplayName(r.appId, fallback).replace(/\.exe$/i, '')
@@ -130,7 +130,7 @@ function computeFullStats(records: HistoryRecord[], rangeDays: number): FullStat
   }
 }
 
-/** 时段分布柱状图 */
+/** 時段分佈柱狀圖 */
 function HourChart({ buckets }: { buckets: number[] }) {
   const max = Math.max(...buckets, 1)
   const periods = [
@@ -172,7 +172,7 @@ function HourChart({ buckets }: { buckets: number[] }) {
   )
 }
 
-/** 分布列表（统一柔和色调） */
+/** 分佈列表（統一柔和色調） */
 function DistributionList({ entries }: { entries: [string, number][] }) {
   const maxCount = entries.length > 0 ? entries[0][1] : 1
 
@@ -218,8 +218,8 @@ export default function PersonalizationPage() {
   const rangeDays = range === 'today' ? 1 : range === '7d' ? 7 : range === '30d' ? 30 : 0
   const stats = useMemo(() => {
     const computed = computeFullStats(filteredRecords, rangeDays)
-    // 「全部」的总量用首页那个累加计数器，否则两处同名的数字对不上（实测口述时长差了 20 多分钟：
-    // 逐条重算用的时长口径和入库时累加的不完全一样）。分时段统计没有计数器，只能逐条算。
+    // 「全部」的總量用首頁那個累加計數器，否則兩處同名的數字對不上（實測口述時長差了 20 多分鐘：
+    // 逐條重算用的時長口徑和入庫時累加的不完全一樣）。分時段統計沒有計數器，只能逐條算。
     if (range !== 'all' || (allStats.totalChars === 0 && allStats.totalDurationSec === 0)) return computed
     const totalChars = allStats.totalChars
     const totalDurationSec = Math.round(allStats.totalDurationSec)
@@ -232,7 +232,7 @@ export default function PersonalizationPage() {
     }
   }, [filteredRecords, rangeDays, range, allStats])
 
-  // "全部"模式下合并 userStats 中的应用数据（历史记录可能缺少早期的 appName 字段）
+  // "全部"模式下合併 userStats 中的應用資料（歷史記錄可能缺少早期的 appName 欄位）
   const appUsageEntries = useMemo(() => {
     const merged = new Map(stats.appUsage)
     if (range === 'all') {
@@ -251,7 +251,7 @@ export default function PersonalizationPage() {
 
   const presetEntries = [...stats.presetCount.entries()].sort(([, a], [, b]) => b - a)
 
-  // 首次使用距今天数
+  // 首次使用距今天數
   const usageDays = userStats.firstUsedAt ? daysBetween(userStats.firstUsedAt, Date.now()) : 0
 
   return (
@@ -275,10 +275,10 @@ export default function PersonalizationPage() {
       </div>
 
       <div className="space-y-5">
-        {/* 核心数据 4 列 */}
+        {/* 核心資料 4 列 */}
         <Card>
           <CardContent className="p-6">
-            {/* 首次使用提示（仅全部模式，融入顶部） */}
+            {/* 首次使用提示（僅全部模式，融入頂部） */}
             {range === 'all' && userStats.firstUsedAt && (
               <p className="mb-4 text-xs text-muted-foreground">
                 {t('stats.sinceHint', { date: formatDate(userStats.firstUsedAt), days: usageDays })}
@@ -325,7 +325,7 @@ export default function PersonalizationPage() {
           </CardContent>
         </Card>
 
-        {/* 使用时段分布 */}
+        {/* 使用時段分佈 */}
         {stats.recordCount > 0 && (
           <Card>
             <CardContent className="p-6">
@@ -335,7 +335,7 @@ export default function PersonalizationPage() {
           </Card>
         )}
 
-        {/* 工作模式 & Prompt 预设 并排 */}
+        {/* 工作模式 & Prompt 預設 並排 */}
         {(workModeEntries.length > 0 || presetEntries.length > 0) && (
           <div className="grid gap-5 sm:grid-cols-2">
             {workModeEntries.length > 0 && (
@@ -357,7 +357,7 @@ export default function PersonalizationPage() {
           </div>
         )}
 
-        {/* 应用使用次数 */}
+        {/* 應用使用次數 */}
         {appUsageEntries.length > 0 && (
           <Card>
             <CardContent className="p-6">

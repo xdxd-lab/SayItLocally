@@ -1,4 +1,4 @@
-// 转写供应商模块 — ASR 和 AI 的 trait 定义及具体实现
+// 轉寫供應商模組 — ASR 和 AI 的 trait 定義及具體實現
 
 pub mod types;
 pub mod prompt;

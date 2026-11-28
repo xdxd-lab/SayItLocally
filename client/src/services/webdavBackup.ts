@@ -1,27 +1,27 @@
-// WebDAV 备份的前端封装。
+// WebDAV 備份的前端封裝。
 //
-// 备份档位（是否含历史/音频）**只存在设置里**，不作为参数传给 Rust：手动「立即备份」
-// 和后台定时备份走同一个命令、读同一份设置，界面上勾了什么就一定是上传的内容。
+// 備份檔位（是否含歷史/音訊）**只存在設定裡**，不作為引數傳給 Rust：手動「立即備份」
+// 和後台定時備份走同一個命令、讀同一份設定，介面上勾了什麼就一定是上傳的內容。
 //
-// 错误处理约定：Rust 对可预期的用户输入/服务器问题返回大写错误码（WEBDAV_*），
-// 其余返回带 HTTP 状态码的英文说明。`describeWebDavError` 把前者翻成本地化文案，
-// 后者原样透出——那类信息（状态码、响应体片段）才是排查时真正需要的。
+// 錯誤處理約定：Rust 對可預期的使用者輸入/伺服器問題返回大寫錯誤碼（WEBDAV_*），
+// 其餘返回帶 HTTP 狀態碼的英文說明。`describeWebDavError` 把前者翻成本地化文案，
+// 後者原樣透出——那類資訊（狀態碼、響應體片段）才是排查時真正需要的。
 
 import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { t, type TranslationKey } from '@/i18n'
 import { describeBackupTransferError } from './backup'
 
-/** 坚果云的 WebDAV 根地址。 */
+/** 堅果雲的 WebDAV 根地址。 */
 export const JIANGUOYUN_DAV_BASE = 'https://dav.jianguoyun.com/dav'
 
 /**
- * 地址栏的预填值。
+ * 位址列的預填值。
  *
- * **必须是 `/dav` 下的一个子目录，不能是 `/dav` 本身。** 坚果云的 `/dav` 根只列同步
- * 文件夹，往根上 PUT 文件会被拒 —— 各家 WebDAV 客户端的坚果云配置说明都要求先建
- * 一个一级目录再把地址指向它。目录不存在时我们自己 MKCOL 出来，所以用户不用先去
- * 网页上手动建。
+ * **必須是 `/dav` 下的一個子目錄，不能是 `/dav` 本身。** 堅果雲的 `/dav` 根只列同步
+ * 資料夾，往根上 PUT 檔案會被拒 —— 各家 WebDAV 客戶端的堅果雲配置說明都要求先建
+ * 一個一級目錄再把地址指向它。目錄不存在時我們自己 MKCOL 出來，所以使用者不用先去
+ * 網頁上手動建。
  */
 export const DEFAULT_DAV_URL = `${JIANGUOYUN_DAV_BASE}/SayIt`
 
@@ -42,11 +42,11 @@ export interface WebDavBackupResult {
   includeHistory: boolean
   includeAudio: boolean
   finishedAt: number
-  /** 本次清理掉的旧备份份数 */
+  /** 本次清理掉的舊備份份數 */
   pruned: number
 }
 
-/** 上次备份的结果。失败也会记 —— 静默失败的备份比没有备份更糟。 */
+/** 上次備份的結果。失敗也會記 —— 靜默失敗的備份比沒有備份更糟。 */
 export interface WebDavLastResult {
   at: number
   ok: boolean
@@ -76,7 +76,7 @@ export interface WebDavProgress {
   error: string | null
 }
 
-/** Rust 侧返回的错误码 → 文案键。没登记的码按原样显示。 */
+/** Rust 側返回的錯誤碼 → 文案鍵。沒登記的碼按原樣顯示。 */
 const ERROR_KEYS: Record<string, TranslationKey> = {
   WEBDAV_URL_EMPTY: 'webdav.error.urlEmpty',
   WEBDAV_URL_INSECURE: 'webdav.error.urlInsecure',
@@ -91,10 +91,10 @@ const ERROR_KEYS: Record<string, TranslationKey> = {
 }
 
 /**
- * 把 Rust 抛出的错误变成可以直接显示的一句话。
+ * 把 Rust 丟擲的錯誤變成可以直接顯示的一句話。
  *
- * invoke 抛出的是字符串本身（Tauri 把 Err(String) 原样传过来），但外面可能已经被
- * 包成 Error，所以两种都要认。
+ * invoke 丟擲的是字串本身（Tauri 把 Err(String) 原樣傳過來），但外面可能已經被
+ * 包成 Error，所以兩種都要認。
  */
 export function describeWebDavError(error: unknown): string {
   const raw = error instanceof Error ? error.message : String(error)
@@ -106,16 +106,16 @@ export function describeWebDavError(error: unknown): string {
 }
 
 /**
- * 请求根本没发出去（DNS、断网、超时、被拦）时，Rust 侧是「MKCOL failed: error sending request
- * for url (https://…)」这种 reqwest 原文。这一类对用户只有一个意思：连不上服务器。
- * 返回地址里的主机名；不是这一类返回 null。
+ * 請求根本沒發出去（DNS、斷網、超時、被攔）時，Rust 側是「MKCOL failed: error sending request
+ * for url (https://…)」這種 reqwest 原文。這一類對使用者只有一個意思：連不上伺服器。
+ * 返回地址裡的主機名；不是這一類返回 null。
  */
 function unreachableHost(raw: string): string | null {
   const match = /failed: error sending request for url \(https?:\/\/([^/)\s:]+)/i.exec(raw)
   return match ? match[1] : null
 }
 
-/** 翻译过的错误，原文留给「详情」（排查时要看）；本来就按原样显示的返回 null。 */
+/** 翻譯過的錯誤，原文留給「詳情」（排查時要看）；本來就按原樣顯示的返回 null。 */
 export function webDavErrorDetail(error: unknown): string | null {
   const raw = (error instanceof Error ? error.message : String(error)).trim()
   return raw && describeWebDavError(raw) !== raw ? raw : null
@@ -127,22 +127,22 @@ export function onWebDavBackupProgress(
   return listen<WebDavProgress>('webdav-backup-progress', (event) => handler(event.payload))
 }
 
-/** 连接测试。返回服务器上已有的备份份数。 */
+/** 連線測試。返回伺服器上已有的備份份數。 */
 export function testWebDavConnection(config: WebDavConfig): Promise<number> {
   return invoke<number>('webdav_test', { config })
 }
 
-/** 列出服务器上的备份，从新到旧。 */
+/** 列出伺服器上的備份，從新到舊。 */
 export function listWebDavBackups(): Promise<WebDavEntry[]> {
   return invoke<WebDavEntry[]>('webdav_list')
 }
 
-/** 立即备份一次。档位取自设置。 */
+/** 立即備份一次。檔位取自設定。 */
 export function runWebDavBackup(): Promise<WebDavBackupResult> {
   return invoke<WebDavBackupResult>('webdav_backup_now')
 }
 
-/** 从服务器恢复。完成后需要由调用方触发重启（与本地导入一致）。 */
+/** 從伺服器恢復。完成後需要由呼叫方觸發重啟（與本地匯入一致）。 */
 export function restoreWebDavBackup(name: string): Promise<void> {
   return invoke('webdav_restore', { name })
 }

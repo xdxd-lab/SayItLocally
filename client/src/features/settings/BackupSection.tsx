@@ -121,11 +121,11 @@ export default function BackupSection() {
   const [fullPath, setFullPath] = useState('')
   const [fullProgress, setFullProgress] = useState<BackupExportProgress | null>(null)
   const [configExportOpen, setConfigExportOpen] = useState(false)
-  // 导入确认（配置先预检并展示变更；全部数据保持覆盖确认）
+  // 匯入確認（配置先預檢並展示變更；全部資料保持覆蓋確認）
   const [importConfirm, setImportConfirm] = useState<ImportConfirmation | null>(null)
-  // 导入成功后展示提示并自动重启
+  // 匯入成功後展示提示並自動重啟
   const [importDone, setImportDone] = useState(false)
-  // 导出/导入的错误提示，改为应用内内联横幅
+  // 匯出/匯入的錯誤提示，改為應用內內聯橫幅
   const [actionError, setActionError] = useState('')
 
   useEffect(() => {
@@ -175,7 +175,7 @@ export default function BackupSection() {
     }
   }
 
-  // 第一步：选文件。配置文件先自动识别并计算变更预览，全部数据沿用覆盖确认。
+  // 第一步：選檔案。配置檔案先自動識別並計算變更預覽，全部資料沿用覆蓋確認。
   const handleImport = async (kind: ImportKind) => {
     setBusyAction(kind === 'config' ? 'importConfig' : 'importFull')
     setActionError('')
@@ -195,7 +195,7 @@ export default function BackupSection() {
     }
   }
 
-  // 第二步：确认覆盖后执行导入，成功则展示提示并自动重启
+  // 第二步：確認覆蓋後執行匯入，成功則展示提示並自動重啟
   const confirmImport = async () => {
     if (!importConfirm) return
     const { kind, path } = importConfirm
@@ -208,7 +208,7 @@ export default function BackupSection() {
     try {
       await runImport(kind, path, importToken)
       setImportDone(true)
-      // 略作停留让用户看到提示，再自动重启使更改生效
+      // 略作停留讓使用者看到提示，再自動重啟使更改生效
       setTimeout(() => { void restartApp() }, 1500)
     } catch (error) {
       setActionError(t('backup.importFailed', { message: describeBackupTransferError(error) }))

@@ -9,12 +9,12 @@ export interface AppPromptMatcher {
 }
 
 /**
- * 一条应用规则。
+ * 一條應用規則。
  *
- * **顺序即优先级**：数组下标越小越先命中（见 promptRouter.resolvePromptRouting），
- * 界面上就是自上而下。以前这里有个 `priority` 数字，界面按它排序 —— 用户看得见顺序、
- * 却改不了顺序；现在顺序由用户拖动决定，就不能再留一个会跟顺序打架的字段。
- * 旧存档里的 `priority` 读取时忽略（当时存下来的数组本身已经是按它排好序的）。
+ * **順序即優先順序**：陣列下標越小越先命中（見 promptRouter.resolvePromptRouting），
+ * 介面上就是自上而下。以前這裡有個 `priority` 數字，介面按它排序 —— 使用者看得見順序、
+ * 卻改不了順序；現在順序由使用者拖動決定，就不能再留一個會跟順序打架的欄位。
+ * 舊存檔裡的 `priority` 讀取時忽略（當時存下來的陣列本身已經是按它排好序的）。
  */
 export interface AppPromptRule {
   id: string
@@ -51,8 +51,8 @@ export interface PromptRoutingInput {
   activePresetId: string
   appRules: AppPromptRule[]
   userStats: UserStats
-  /** 生效的热词列表（用于可选的"注入 AI 提示词"功能） */
+  /** 生效的熱詞列表（用於可選的"注入 AI 提示詞"功能） */
   hotwords?: string[]
-  /** 是否把热词注入到 AI 系统提示词，帮助 AI 纠正专有名词。默认关闭。 */
+  /** 是否把熱詞注入到 AI 系統提示詞，幫助 AI 糾正專有名詞。預設關閉。 */
   injectHotwords?: boolean
 }

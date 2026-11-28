@@ -22,25 +22,25 @@ function includesAny(value: string, patterns?: string[]) {
 }
 
 /**
- * 判断一条应用规则是否命中当前窗口。
+ * 判斷一條應用規則是否命中當前視窗。
  *
- * 进程名是硬证据，窗口标题只是软线索 —— 所以**只要规则写了进程名、且这次确实拿到了
- * 进程名，就只按进程名判定**，标题不再独立触发。
+ * 程序名是硬證據，視窗標題只是軟線索 —— 所以**只要規則寫了程序名、且這次確實拿到了
+ * 程序名，就只按程序名判定**，標題不再獨立觸發。
  *
- * 原来两者是「或」的关系，而标题是「包含即命中」，一个标题能同时命中多条规则：
- * 在 Outlook 里写一封标题为「Teams 会议纪要 - Outlook」的邮件时，Teams 规则也会命中，
- * 又因为 Teams 优先级更高，最终按"即时聊天短消息"来整理这封正式邮件。
+ * 原來兩者是「或」的關係，而標題是「包含即命中」，一個標題能同時命中多條規則：
+ * 在 Outlook 裡寫一封標題為「Teams 會議紀要 - Outlook」的郵件時，Teams 規則也會命中，
+ * 又因為 Teams 優先順序更高，最終按"即時聊天短訊息"來整理這封正式郵件。
  *
- * 保留标题/类名/控件 ID 的能力，是给"进程名区分不了"的场景兜底：
- *   · 规则本身没写进程名（如网页版应用，进程都是浏览器，只能靠标题区分）；
- *   · 少数窗口拿不到进程名（此时不能因为进程名为空就直接判不命中）。
+ * 保留標題/類名/控制元件 ID 的能力，是給"程序名區分不了"的場景兜底：
+ *   · 規則本身沒寫程序名（如網頁版應用，程序都是瀏覽器，只能靠標題區分）；
+ *   · 少數視窗拿不到程序名（此時不能因為程序名為空就直接判不命中）。
  */
 export function matchesAppPromptRule(rule: AppPromptRule, context: ActiveAppContext | null) {
   if (!context) return false
 
   const processName = normalizeProcessName(context)
-  // macOS 的可执行文件名不可靠（VS Code 叫 Electron、很多程序同名），规则里的
-  // 「进程名」同时拿来比 Bundle ID，内置规则因此可以把 Windows 进程名和 mac Bundle ID 写在一起。
+  // macOS 的執行檔名不可靠（VS Code 叫 Electron、很多程式同名），規則裡的
+  // 「程序名」同時拿來比 Bundle ID，內建規則因此可以把 Windows 程序名和 mac Bundle ID 寫在一起。
   const bundleId = normalizeText(context.bundleId)
 
   if (rule.matcher.processNames.length > 0 && (processName || bundleId)) {
@@ -75,17 +75,17 @@ function summarizeResolution(parts: string[]) {
   return parts.filter(Boolean).join(' | ')
 }
 
-/** 构造"热词注入 AI 提示词"的段落；无热词时返回 null。供实时与重新识别两条路径共用。 */
+/** 構造"熱詞注入 AI 提示詞"的段落；無熱詞時返回 null。供即時與重新識別兩條路徑共用。 */
 export function buildHotwordInjectionPart(hotwords: string[] | undefined): string | null {
   if (!hotwords || hotwords.length === 0) return null
   const terms = Array.from(new Set(hotwords.map((w) => w.trim()).filter(Boolean)))
   if (terms.length === 0) return null
-  return `用户术语表：以下是用户常用的专有名词/术语，整理时若遇到读音相近或明显误识的词，请优先纠正为下列正确写法（保持其大小写），并原样保留：\n${terms.join('、')}` // i18n-allow: 中文口述整理 Prompt
+  return `使用者術語表：以下是使用者常用的專有名詞/術語，整理時若遇到讀音相近或明顯誤識的詞，請優先糾正為下列正確寫法（保持其大小寫），並原樣保留：\n${terms.join('、')}` // i18n-allow: 中文口述整理 Prompt
 }
 
 export function resolvePromptRouting(input: PromptRoutingInput): PromptResolution {
-  // 顺序即优先级：取列表里第一条「已启用且命中」的规则，也就是界面上自上而下的第一条。
-  // 顺序完全由用户在界面上排（启用一条会自动置顶），这里不要再重排。
+  // 順序即優先順序：取列表裡第一條「已啟用且命中」的規則，也就是介面上自上而下的第一條。
+  // 順序完全由使用者在介面上排（啟用一條會自動置頂），這裡不要再重排。
   const matchedRule = input.appRules
     .find((rule) => rule.enabled && matchesAppPromptRule(rule, input.appContext))
 
@@ -94,15 +94,15 @@ export function resolvePromptRouting(input: PromptRoutingInput): PromptResolutio
   const dominantScene = summarizeDomainScenes(input.userStats, 1)[0]
 
   if (matchedRule?.promptAppend) {
-    systemPromptParts.push(`应用场景补充：\n${matchedRule.promptAppend.trim()}`) // i18n-allow: 中文口述整理 Prompt
+    systemPromptParts.push(`應用場景補充：\n${matchedRule.promptAppend.trim()}`) // i18n-allow: 中文口述整理 Prompt
   }
 
   const dynamicIdentityPrompt = buildDynamicIdentityPrompt(input.userStats)
   if (dynamicIdentityPrompt) {
-    systemPromptParts.push(`用户画像补充：\n${dynamicIdentityPrompt}`) // i18n-allow: 中文口述整理 Prompt
+    systemPromptParts.push(`使用者畫像補充：\n${dynamicIdentityPrompt}`) // i18n-allow: 中文口述整理 Prompt
   }
 
-  // 可选：把热词表注入系统提示词，帮助 AI 在整理时纠正/保留专有名词（默认关闭）。
+  // 可選：把熱詞表注入系統提示詞，幫助 AI 在整理時糾正/保留專有名詞（預設關閉）。
   let hotwordInjected = false
   if (input.injectHotwords) {
     const part = buildHotwordInjectionPart(input.hotwords)

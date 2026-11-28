@@ -1,12 +1,12 @@
-// 本地 ASR 的命令层 —— 推理本身在 gguf_asr.rs（transcribe.cpp / ggml / GGUF）。
+// 本地 ASR 的命令層 —— 推理本身在 gguf_asr.rs（transcribe.cpp / ggml / GGUF）。
 //
-// 这里负责：解 base64 → i16 转 f32 → Silero VAD 确认存在人声并裁剪首尾
-// → 交给引擎；以及回收上一代 ONNX 模型。原始录音不会被修改。
+// 這裡負責：解 base64 → i16 轉 f32 → Silero VAD 確認存在人聲並裁剪首尾
+// → 交給引擎；以及回收上一代 ONNX 模型。原始錄音不會被修改。
 //
-// 历史：0.1.3 之前本地识别走 sherpa-onnx（ONNX Runtime，纯 CPU、INT8 动态量化）。
-// Qwen3-ASR 这类自回归模型在那条路上慢一个量级，已整体换成 GGUF/ggml，
-// sherpa-onnx 依赖连同 Whisper/Paraformer/FireRed/FunASR 的加载器一并删除。
-// 原因与实测数字见 dev-docs/local-asr-ggml-migration.md。
+// 歷史：0.1.3 之前本地識別走 sherpa-onnx（ONNX Runtime，純 CPU、INT8 動態量化）。
+// Qwen3-ASR 這類自迴歸模型在那條路上慢一個量級，已整體換成 GGUF/ggml，
+// sherpa-onnx 依賴連同 Whisper/Paraformer/FireRed/FunASR 的載入器一併刪除。
+// 原因與實測數字見 dev-docs/local-asr-ggml-migration.md。
 
 use serde::Serialize;
 use std::path::Path;
@@ -15,17 +15,17 @@ use std::time::Instant;
 use super::downloader;
 use super::gguf_asr;
 
-/// 采样率固定 16 kHz —— 前端采集就重采样到这个值，引擎也只接受这个值。
+/// 取樣率固定 16 kHz —— 前端採集就重取樣到這個值，引擎也只接受這個值。
 const SR: usize = 16000;
 
-/// 一次交给模型的最长音频。超过就在停顿处切块、逐块识别再拼起来。
+/// 一次交給模型的最長音訊。超過就在停頓處切塊、逐塊識別再拼起來。
 ///
-/// 原来是「模型吃得下多长就一次喂多长」（Qwen3-ASR 上限约 87 分钟），结果 220 秒的
-/// 录音在集成显卡上一次跑太久，触发 Windows 显卡看门狗、显卡被重置，之后本地识别
-/// 全部失败（见 local_vad::plan_chunks 的说明）。30 秒：日常口述基本不切、结果与原来
-/// 一致；实测 1.7B 在 Arc 140T 上 30 s 一块约 5 s，单个任务离 2 秒上限很远；
-/// 也正好是 SenseVoice 的上限，那边不再走按固定长度硬切的旧分段。
-/// 代价：块与块之间互相看不到上下文，切口两边的标点、专有名词偶尔会受影响。
+/// 原來是「模型吃得下多長就一次喂多長」（Qwen3-ASR 上限約 87 分鐘），結果 220 秒的
+/// 錄音在整合顯示卡上一次跑太久，觸發 Windows 顯示卡看門狗、顯示卡被重置，之後本地識別
+/// 全部失敗（見 local_vad::plan_chunks 的說明）。30 秒：日常口述基本不切、結果與原來
+/// 一致；實測 1.7B 在 Arc 140T 上 30 s 一塊約 5 s，單個任務離 2 秒上限很遠；
+/// 也正好是 SenseVoice 的上限，那邊不再走按固定長度硬切的舊分段。
+/// 代價：塊與塊之間互相看不到上下文，切口兩邊的標點、專有名詞偶爾會受影響。
 const MAX_CHUNK_SEC: usize = 30;
 
 #[derive(Debug, Clone, Serialize)]
@@ -60,7 +60,7 @@ pub async fn local_transcribe(
     model_id: String,
     language: Option<String>,
     accelerator: Option<String>,
-    // gpu_device：用户指定的显卡（`GgufDevice::id`）。缺省 / 空 = 交给库自动挑。
+    // gpu_device：使用者指定的顯示卡（`GgufDevice::id`）。預設 / 空 = 交給庫自動挑。
     gpu_device: Option<String>,
 ) -> Result<LocalAsrResult, String> {
     let samples = decode_pcm(&audio_b64).map_err(|e| {
@@ -78,7 +78,7 @@ pub struct LocalTranscribeMeta {
     gpu_device: Option<String>,
 }
 
-/// 同 local_transcribe，但 PCM 以原始字节发过来（见 ipc_body），省掉网页里的 base64 转码。
+/// 同 local_transcribe，但 PCM 以原始位元組發過來（見 ipc_body），省掉網頁裡的 base64 轉碼。
 #[tauri::command]
 pub async fn local_transcribe_raw(request: tauri::ipc::Request<'_>) -> Result<LocalAsrResult, String> {
     let (meta, pcm): (LocalTranscribeMeta, Vec<u8>) = crate::ipc_body::split_framed(&request)?;
@@ -116,13 +116,13 @@ async fn transcribe_samples(
                 model_id, accel, lang, audio_sec
             ),
         );
-        // 先砍掉首尾静音：解码耗时基本与音频长度成正比，两头的空白是纯浪费。
-        // 长录音再按停顿切块（MAX_CHUNK_SEC），短录音只有一块，等同于只裁首尾。
+        // 先砍掉首尾靜音：解碼耗時基本與音訊長度成正比，兩頭的空白是純浪費。
+        // 長錄音再按停頓切塊（MAX_CHUNK_SEC），短錄音只有一塊，等同於只裁首尾。
         let segments = match super::local_vad::detect_speech_segments(&samples, SR) {
             Ok(segments) if !segments.is_empty() => segments,
             Ok(_) => {
-                // 这是「真的没人说话」，与识别失败要分得清 —— 前端两种都显示
-                // 「未检测到有效声音」，只有日志能区分
+                // 這是「真的沒人說話」，與識別失敗要分得清 —— 前端兩種都顯示
+                // 「未檢測到有效聲音」，只有日誌能區分
                 diag::empty_result(
                     "local/asr",
                     &format!("VAD detected no speech; model inference was skipped audio_sec={:.1}", audio_sec),
@@ -133,8 +133,8 @@ async fn transcribe_samples(
                 });
             }
             Err(e) => {
-                // 防幻觉是硬约束：无法可靠判断是否有人声时，绝不能回退到会把静音
-                // 送进生成式模型的旧路径。保留错误便于诊断 VAD/本机环境问题。
+                // 防幻覺是硬約束：無法可靠判斷是否有人聲時，絕不能回退到會把靜音
+                // 送進生成式模型的舊路徑。保留錯誤便於診斷 VAD/本機環境問題。
                 return Err(diag::fail(
                     "local/asr",
                     "vad",
@@ -144,7 +144,7 @@ async fn transcribe_samples(
         };
         let chunks = super::local_vad::plan_chunks(&samples, &segments, MAX_CHUNK_SEC * SR);
         if chunks.len() > 1 {
-            // 排查「长录音为什么慢 / 切口处丢字」时先看这一行：有它才说明走了切块
+            // 排查「長錄音為什麼慢 / 切口處丟字」時先看這一行：有它才說明走了切塊
             diag::log(
                 "local/asr",
                 "chunked",
@@ -168,7 +168,7 @@ async fn transcribe_samples(
             })?;
         let elapsed_ms = start.elapsed().as_millis() as u64;
         if text.trim().is_empty() {
-            // VAD 认定有人声、模型却什么都没输出 —— 模型/量化档/加速器组合有问题的信号
+            // VAD 認定有人聲、模型卻什麼都沒輸出 —— 模型/量化檔/加速器組合有問題的訊號
             diag::empty_result(
                 "local/asr",
                 &format!(
@@ -187,8 +187,8 @@ async fn transcribe_samples(
     })?
 }
 
-/// 逐块识别再按顺序拼接。任何一块失败整次算失败：拼出半段文字插进去，
-/// 比明确报错更难让用户发现少了内容。
+/// 逐塊識別再按順序拼接。任何一塊失敗整次算失敗：拼出半段文字插進去，
+/// 比明確報錯更難讓使用者發現少了內容。
 fn transcribe_chunks(
     model_id: &str,
     lang: &str,
@@ -218,7 +218,7 @@ fn assemble_transcript(parts: &[String], lang: &str) -> String {
 pub async fn preload_local_model(
     model_id: String,
     accelerator: Option<String>,
-    // gpu_device：用户指定的显卡（`GgufDevice::id`）。缺省 / 空 = 交给库自动挑。
+    // gpu_device：使用者指定的顯示卡（`GgufDevice::id`）。預設 / 空 = 交給庫自動挑。
     gpu_device: Option<String>,
 ) -> Result<String, String> {
     tokio::task::spawn_blocking(move || {
@@ -232,8 +232,8 @@ pub async fn preload_local_model(
     .map_err(|e| format!("Preload task failed: {}", e))?
 }
 
-/// 释放本地 ASR 模型占用的内存。切换到云 API / 服务器模式时调用，
-/// 否则常驻的权重（几百 MB ~ 数 GB）会一直占用到应用退出。
+/// 釋放本地 ASR 模型佔用的記憶體。切換到雲 API / 伺服器模式時呼叫，
+/// 否則常駐的權重（幾百 MB ~ 數 GB）會一直佔用到應用退出。
 #[tauri::command]
 pub async fn unload_local_model() -> Result<(), String> {
     tokio::task::spawn_blocking(gguf_asr::unload)
@@ -241,8 +241,8 @@ pub async fn unload_local_model() -> Result<(), String> {
         .map_err(|e| format!("Release task failed: {}", e))
 }
 
-/// 动态调整本地模型的空闲卸载时间。0 = 常驻；其余值由设置页限制为
-/// 10 / 30 / 60 分钟。守护线程只启动一次，这里仅更新它读取的原子配置。
+/// 動態調整本地模型的空閒解除安裝時間。0 = 常駐；其餘值由設定頁限制為
+/// 10 / 30 / 60 分鐘。守護執行緒只啟動一次，這裡僅更新它讀取的原子配置。
 #[tauri::command]
 pub fn set_local_model_idle_unload(idle_minutes: u64) -> Result<(), String> {
     if !matches!(idle_minutes, 0 | 10 | 30 | 60) {
@@ -329,7 +329,7 @@ fn reclaim_legacy_models(default: &Path, is_custom: bool) -> u64 {
     freed
 }
 
-/// 供前端查询本次启动回收了多少空间（可用于提示"已释放 XXX MB"）。
+/// 供前端查詢本次啟動回收了多少空間（可用於提示"已釋放 XXX MB"）。
 #[tauri::command]
 pub fn legacy_models_reclaimed_bytes() -> u64 {
     RECLAIMED.load(std::sync::atomic::Ordering::Relaxed)
@@ -337,7 +337,7 @@ pub fn legacy_models_reclaimed_bytes() -> u64 {
 
 static RECLAIMED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
-/// 启动时在后台回收旧模型（几百 MB 的删除别卡启动路径）。
+/// 啟動時在後台回收舊模型（幾百 MB 的刪除別卡啟動路徑）。
 /// [自訂] SC-55：記憶體庫或讀不到模型目錄設定時，無法確認使用者是否自選，不刪任何檔。
 /// [自訂] SC-56：本次啟動經過任何復原（含換新庫，舊的自選設定已隨舊庫移走）也跳過。
 pub fn spawn_legacy_reclaim(storage: &crate::storage::Storage) -> Option<std::thread::JoinHandle<u64>> {
@@ -477,11 +477,11 @@ mod tests {
     }
 
     fn run_local_transcribe(audio_b64: String, model_id: &str) -> Result<LocalAsrResult, String> {
-        // 与 main.rs 保持同一启动顺序；dynamic-backends 模式必须先注册 GGML 后端。
+        // 與 main.rs 保持同一啟動順序；dynamic-backends 模式必須先註冊 GGML 後端。
         super::super::gguf_asr::init_backends();
         tokio::runtime::Builder::new_current_thread()
             .build()
-            .expect("创建测试 runtime 失败")
+            .expect("建立測試 runtime 失敗")
             .block_on(local_transcribe(
                 audio_b64,
                 model_id.to_string(),
@@ -657,16 +657,16 @@ mod tests {
         assert!(models > 0, "no downloaded model found");
     }
 
-    /// 走真实生产路径：base64 → i16→f32 → Silero VAD → GGUF 引擎。
+    /// 走真實生產路徑：base64 → i16→f32 → Silero VAD → GGUF 引擎。
     #[test]
     fn end_to_end_base64_to_text() {
         let model_id = "sensevoice-small-gguf";
         if !super::super::gguf_asr::model_is_downloaded(model_id) {
-            eprintln!("skip: {model_id} 未下载");
+            eprintln!("skip: {model_id} 未下載");
             return;
         }
 
-        // 前后各加 2s 静音，验证 VAD 裁剪后仍能识别中间的真实语音。
+        // 前後各加 2s 靜音，驗證 VAD 裁剪後仍能識別中間的真實語音。
         let wav = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("resources/test_zh.wav");
         let bytes = std::fs::read(&wav).unwrap();
         let speech = &bytes[44..];
@@ -683,48 +683,48 @@ mod tests {
         let result = run_local_transcribe(b64, model_id).unwrap();
         assert!(
             !result.text.trim().is_empty(),
-            "VAD 后仍应识别出内容，got {:?}",
+            "VAD 後仍應識別出內容，got {:?}",
             result.text
         );
         super::super::gguf_asr::unload();
     }
 
-    /// 220 秒的长录音走真实路径：按停顿切块、逐块上显卡，而不是一次喂整段。
+    /// 220 秒的長錄音走真實路徑：按停頓切塊、逐塊上顯示卡，而不是一次喂整段。
     ///
-    /// 2026-10-19 一段 220 秒的录音一次喂进 Qwen3-ASR 1.7B，把集成显卡跑到被 Windows
-    /// 看门狗重置（LiveKernelEvent 141）。这条要几十秒、会占满显卡，平时不跑：
+    /// 2026-10-19 一段 220 秒的錄音一次喂進 Qwen3-ASR 1.7B，把整合顯示卡跑到被 Windows
+    /// 看門狗重置（LiveKernelEvent 141）。這條要幾十秒、會佔滿顯示卡，平時不跑：
     /// `cargo test --bins long_audio_is_chunked -- --ignored --nocapture`
     #[test]
     #[ignore]
     fn long_audio_is_chunked_and_transcribed_on_gpu() {
         let model_id = "qwen3-asr-1.7b-gguf";
         if !super::super::gguf_asr::model_is_downloaded(model_id) {
-            eprintln!("skip: {model_id} 未下载");
+            eprintln!("skip: {model_id} 未下載");
             return;
         }
         let wav = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("resources/test_zh.wav");
         let bytes = std::fs::read(&wav).unwrap();
         let speech = &bytes[44..];
-        let pause = vec![0u8; SR * 2]; // 1 s 静音，够 VAD 认作停顿
+        let pause = vec![0u8; SR * 2]; // 1 s 靜音，夠 VAD 認作停頓
         let mut pcm_bytes = Vec::new();
         while pcm_bytes.len() < 220 * SR * 2 {
             pcm_bytes.extend_from_slice(speech);
             pcm_bytes.extend_from_slice(&pause);
         }
 
-        // 判据先钉「切块真的发生了」，再看结果：只断言有文字的话，一次喂整段侥幸没出事也会绿
+        // 判據先釘「切塊真的發生了」，再看結果：只斷言有文字的話，一次喂整段僥倖沒出事也會綠
         let samples: Vec<f32> = pcm_bytes
             .chunks_exact(2)
             .map(|c| i16::from_le_bytes([c[0], c[1]]) as f32 / 32768.0)
             .collect();
         let segments = super::super::local_vad::detect_speech_segments(&samples, SR).unwrap();
         let chunks = super::super::local_vad::plan_chunks(&samples, &segments, MAX_CHUNK_SEC * SR);
-        assert!(chunks.len() >= 7, "220 s 应切成至少 7 块，实际 {}", chunks.len());
+        assert!(chunks.len() >= 7, "220 s 應切成至少 7 塊，實際 {}", chunks.len());
         assert!(chunks.iter().all(|c| c.end - c.start <= MAX_CHUNK_SEC * SR));
 
         let b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &pcm_bytes);
         let t0 = std::time::Instant::now();
-        let result = run_local_transcribe(b64, model_id).expect("长录音识别失败");
+        let result = run_local_transcribe(b64, model_id).expect("長錄音識別失敗");
         let backend = super::super::gguf_asr::current_backend().unwrap_or_default();
         eprintln!(
             "[long-audio] audio={:.1}s chunks={} elapsed={:.1}s chars={} backend={}",
@@ -734,24 +734,24 @@ mod tests {
             result.text.chars().count(),
             backend,
         );
-        assert!(result.text.chars().count() > 200, "长录音识别结果太短：{:?}", result.text);
-        // 机器上有显卡时，必须是在显卡上跑完的：落到 CPU 说明中途出了后端错误
+        assert!(result.text.chars().count() > 200, "長錄音識別結果太短：{:?}", result.text);
+        // 機器上有顯示卡時，必須是在顯示卡上跑完的：落到 CPU 說明中途出了後端錯誤
         let has_gpu = transcribe_cpp::devices().iter().any(|d| d.kind != "cpu");
         if has_gpu {
-            assert!(!backend.to_lowercase().contains("cpu"), "显卡中途失败、回落到了 CPU：{backend}");
+            assert!(!backend.to_lowercase().contains("cpu"), "顯示卡中途失敗、回落到了 CPU：{backend}");
         }
         super::super::gguf_asr::unload();
     }
 
     #[test]
     fn silence_short_circuits_before_loading_model() {
-        let pcm_bytes = vec![0u8; SR * 2 * 3]; // 3s、16-bit PCM 纯静音
+        let pcm_bytes = vec![0u8; SR * 2 * 3]; // 3s、16-bit PCM 純靜音
         let b64 = base64::Engine::encode(
             &base64::engine::general_purpose::STANDARD,
             &pcm_bytes,
         );
 
-        // 故意传不存在的模型：若 VAD 没有先短路，这里会因模型不存在而报错。
+        // 故意傳不存在的模型：若 VAD 沒有先短路，這裡會因模型不存在而報錯。
         let result = run_local_transcribe(b64, "model-that-must-not-be-loaded").unwrap();
         assert!(result.text.is_empty());
     }

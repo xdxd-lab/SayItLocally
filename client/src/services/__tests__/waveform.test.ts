@@ -2,14 +2,14 @@ import { describe, it, expect } from 'vitest'
 import { computeBarsFromPCM, createWaveformBarState, resetWaveformBarState } from '../waveform'
 
 describe('computeBarsFromPCM', () => {
-  it('空 PCM 返回上一帧的高度', () => {
+  it('空 PCM 返回上一幀的高度', () => {
     const state = createWaveformBarState()
     const bars = computeBarsFromPCM(new Int16Array(0), state)
-    expect(bars).toHaveLength(24) // 默认 barCount
-    expect(bars.every((h) => h === 2)).toBe(true) // 默认 minHeight
+    expect(bars).toHaveLength(24) // 預設 barCount
+    expect(bars.every((h) => h === 2)).toBe(true) // 預設 minHeight
   })
 
-  it('静音 PCM 返回最小高度附近的值', () => {
+  it('靜音 PCM 返回最小高度附近的值', () => {
     const state = createWaveformBarState()
     const silent = new Int16Array(1600) // 100ms of silence
     const bars = computeBarsFromPCM(silent, state)
@@ -20,9 +20,9 @@ describe('computeBarsFromPCM', () => {
     })
   })
 
-  it('有声音的 PCM 产生更高的 bar', () => {
+  it('有聲音的 PCM 產生更高的 bar', () => {
     const state = createWaveformBarState()
-    // 生成一个有声音的 PCM（正弦波）
+    // 生成一個有聲音的 PCM（正弦波）
     const samples = 1600
     const pcm = new Int16Array(samples)
     for (let i = 0; i < samples; i++) {
@@ -34,16 +34,16 @@ describe('computeBarsFromPCM', () => {
     expect(maxBar).toBeGreaterThan(5)
   })
 
-  it('自定义 barCount 生效', () => {
+  it('自定義 barCount 生效', () => {
     const state = createWaveformBarState()
     const pcm = new Int16Array(1600)
     const bars = computeBarsFromPCM(pcm, state, { barCount: 12 })
     expect(bars).toHaveLength(12)
   })
 
-  it('resetWaveformBarState 重置状态', () => {
+  it('resetWaveformBarState 重置狀態', () => {
     const state = createWaveformBarState()
-    // 先喂一些数据改变状态
+    // 先喂一些資料改變狀態
     const pcm = new Int16Array(1600)
     for (let i = 0; i < 1600; i++) pcm[i] = Math.round(Math.sin(i * 0.1) * 16000)
     computeBarsFromPCM(pcm, state)

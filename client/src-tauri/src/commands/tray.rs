@@ -1,25 +1,25 @@
-//! 托盘（Windows）/ 菜单栏（macOS）图标和它的原生菜单，外加 macOS 顶部的应用菜单。
+//! 托盤（Windows）/ 選單欄（macOS）圖示和它的原生選單，外加 macOS 頂部的應用選單。
 //!
-//! Windows 上曾经用一个预创建、隐藏的 WebView 窗口自绘托盘菜单（为了绕开原生菜单的
-//! 系统最小宽度、做出带开关的样式）。2026-10 去掉了：那个窗口常驻一个 WebView2 渲染进程，
-//! 只为一个三项菜单，内存不值；还额外背着 CSS 缩放、跨屏定位、失焦收起这些自己造的轮子。
-//! 现在两个平台都用原生菜单，别为了样式再改回网页菜单（见 .kiro/decisions.md）。
+//! Windows 上曾經用一個預建立、隱藏的 WebView 視窗自繪托盤選單（為了繞開原生選單的
+//! 系統最小寬度、做出帶開關的樣式）。2026-10 去掉了：那個視窗常駐一個 WebView2 渲染程序，
+//! 只為一個三項選單，記憶體不值；還額外揹著 CSS 縮放、跨屏定位、失焦收起這些自己造的輪子。
+//! 現在兩個平台都用原生選單，別為了樣式再改回網頁選單（見 .kiro/decisions.md）。
 
 use crate::storage::Storage;
 use serde_json::json;
 use tauri::{AppHandle, Emitter, Manager};
 
-/// 托盘菜单里各项的句柄：「AI 整理」状态变化时更新勾选，切换界面语言时改文字。
+/// 托盤選單裡各項的控制代碼：「AI 整理」狀態變化時更新勾選，切換介面語言時改文字。
 pub struct TrayMenu {
     open_item: tauri::menu::MenuItem<tauri::Wry>,
     ai_item: tauri::menu::CheckMenuItem<tauri::Wry>,
     quit_item: tauri::menu::MenuItem<tauri::Wry>,
 }
 
-/// 三项：打开、AI 整理、退出。
+/// 三項：開啟、AI 整理、退出。
 ///
-/// 「AI 整理」两套文字都要：原生勾选项关闭时只是**没有对勾**，一眼看不出是关着还是
-/// 这一项本来就没有勾选状态（用户反馈）。所以文字里再写明状态，勾 + 括号两个信号。
+/// 「AI 整理」兩套文字都要：原生勾選項關閉時只是**沒有對勾**，一眼看不出是關著還是
+/// 這一項本來就沒有勾選狀態（使用者反饋）。所以文字裡再寫明狀態，勾 + 括號兩個訊號。
 struct TrayLabels {
     open: &'static str,
     ai_on: &'static str,
@@ -51,7 +51,7 @@ fn show_main(app: &AppHandle) {
     }
 }
 
-/// 勾选和括号里的状态文字一起更新，两者必须同源，否则会出现「打着勾、写着已关闭」。
+/// 勾選和括號裡的狀態文字一起更新，兩者必須同源，否則會出現「打著勾、寫著已關閉」。
 fn sync_ai_item(app: &AppHandle, enabled: bool) {
     if let Some(menu) = app.try_state::<TrayMenu>() {
         let labels = tray_labels(app.state::<Storage>().inner());
@@ -60,8 +60,8 @@ fn sync_ai_item(app: &AppHandle, enabled: bool) {
     }
 }
 
-/// 原生菜单的文字跟随界面语言设置（`ui.language`：auto 时跟系统）。
-/// 原生菜单不在网页里，前端的 i18n 管不到它，所以 Rust 自己判一次。
+/// 原生選單的文字跟隨介面語言設定（`ui.language`：auto 時跟系統）。
+/// 原生選單不在網頁裡，前端的 i18n 管不到它，所以 Rust 自己判一次。
 fn ui_is_chinese(storage: &Storage) -> bool {
     let setting = storage.get("ui.language", None);
     ui_lang_is_chinese(setting.as_str(), crate::locale::system_ui_lang)
@@ -80,9 +80,9 @@ fn tray_labels(storage: &Storage) -> TrayLabels {
     tray_labels_for(ui_is_chinese(storage), cfg!(target_os = "macos"))
 }
 
-/// 系统匣选单文字（纯函式，便于测试）。
+/// 系統匣選單文字（純函式，便於測試）。
 fn tray_labels_for(zh: bool, macos: bool) -> TrayLabels {
-    // mac 菜单的惯例是「結束 SayItLocally」；Windows 托盘菜单惯例只写「結束」，与原来的网页菜单一致。
+    // mac 選單的慣例是「結束 SayItLocally」；Windows 托盤選單慣例只寫「結束」，與原來的網頁選單一致。
     let quit = match (zh, macos) {
         (true, true) => "結束 SayItLocally",
         (true, false) => "結束",
@@ -96,14 +96,14 @@ fn tray_labels_for(zh: bool, macos: bool) -> TrayLabels {
     }
 }
 
-/// 主窗口里切换「AI 整理」后，同步托盘菜单的勾选（主窗口的开关已经负责落库）。
+/// 主視窗裡切換「AI 整理」後，同步托盤選單的勾選（主視窗的開關已經負責落庫）。
 #[tauri::command]
 pub fn set_tray_ai_enabled(app: AppHandle, enabled: bool) -> Result<(), String> {
     sync_ai_item(&app, enabled);
     Ok(())
 }
 
-/// 托盘里切换 AI 整理：落库并通知主窗口（主窗口 store 同步内存与录音器缓存）。
+/// 托盤裡切換 AI 整理：落庫並通知主視窗（主視窗 store 同步記憶體與錄音器快取）。
 fn toggle_ai_enabled(app: &AppHandle, storage: &Storage) -> Result<bool, String> {
     let next = !current_ai_enabled(storage);
     storage
@@ -115,8 +115,8 @@ fn toggle_ai_enabled(app: &AppHandle, storage: &Storage) -> Result<bool, String>
     Ok(next)
 }
 
-/// 托盘图标。Windows：由 256px 原图直接生成的几档尺寸，按主窗所在屏幕的缩放比例选最接近
-/// 托盘槽位的那张，避免 256 → 32 → 系统实际尺寸的二次缩放（小图做过轻微锐化）。
+/// 托盤圖示。Windows：由 256px 原圖直接生成的幾檔尺寸，按主窗所在螢幕的縮放比例選最接近
+/// 托盤槽位的那張，避免 256 → 32 → 系統實際尺寸的二次縮放（小圖做過輕微銳化）。
 #[cfg(not(target_os = "macos"))]
 fn tray_icon(app: &AppHandle) -> tauri::Result<tauri::image::Image<'static>> {
     let tray_scale = app
@@ -136,16 +136,16 @@ fn tray_icon(app: &AppHandle) -> tauri::Result<tauri::image::Image<'static>> {
     tauri::image::Image::from_bytes(bytes)
 }
 
-/// macOS：单色模板图，系统按浅色/深色菜单栏自动着色。
+/// macOS：單色模板圖，系統按淺色/深色選單欄自動著色。
 #[cfg(target_os = "macos")]
 fn tray_icon(_app: &AppHandle) -> tauri::Result<tauri::image::Image<'static>> {
     tauri::image::Image::from_bytes(include_bytes!("../../icons/tray-template.png"))
 }
 
-/// 建托盘图标和原生菜单。
+/// 建托盤圖示和原生選單。
 ///
-/// - Windows：左键打开主窗口，右键弹菜单（系统托盘的惯例）。
-/// - macOS：点一下就弹菜单（菜单栏图标的惯例），打开主窗口走菜单第一项。
+/// - Windows：左鍵開啟主視窗，右鍵彈選單（系統托盤的慣例）。
+/// - macOS：點一下就彈選單（選單欄圖示的慣例），開啟主視窗走選單第一項。
 pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
     use tauri::menu::{CheckMenuItemBuilder, MenuBuilder, MenuItemBuilder};
     use tauri::tray::TrayIconBuilder;
@@ -158,8 +158,8 @@ pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
         .checked(ai_enabled)
         .build(app)?;
     let quit_builder = MenuItemBuilder::with_id(TRAY_QUIT, labels.quit);
-    // mac 菜单的惯例是在「退出」旁标出 ⌘Q（只在菜单展开时生效，和顶部应用菜单的 ⌘Q 不冲突）。
-    // Windows 托盘菜单没有这个惯例，标了反而像是全局快捷键。
+    // mac 選單的慣例是在「退出」旁標出 ⌘Q（只在選單展開時生效，和頂部應用選單的 ⌘Q 不衝突）。
+    // Windows 托盤選單沒有這個慣例，標了反而像是全域性快捷鍵。
     #[cfg(target_os = "macos")]
     let quit_builder = quit_builder.accelerator("CmdOrCtrl+Q");
     let quit = quit_builder.build(app)?;
@@ -182,7 +182,7 @@ pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
                 let storage = app.state::<Storage>();
                 if let Err(error) = toggle_ai_enabled(app, storage.inner()) {
                     log::warn!("[tray-menu] toggle AI cleanup failed: {error}");
-                    // 原生勾选项点一下就会自己翻转，失败时要翻回去
+                    // 原生勾選項點一下就會自己翻轉，失敗時要翻回去
                     sync_ai_item(app, current_ai_enabled(storage.inner()));
                 }
             }
@@ -210,17 +210,17 @@ pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
     Ok(())
 }
 
-// ─── macOS 顶部菜单栏里的应用菜单 ───
+// ─── macOS 頂部選單欄裡的應用選單 ───
 
 #[cfg(target_os = "macos")]
 const APP_MENU_ABOUT: &str = "app-about";
 #[cfg(target_os = "macos")]
 const APP_MENU_SETTINGS: &str = "app-settings";
 
-/// macOS 屏幕顶部菜单栏里本程序的菜单（SayItLocally / 编辑 / 窗口），文字跟随界面语言。
+/// macOS 螢幕頂部選單欄裡本程式的選單（SayItLocally / 編輯 / 視窗），文字跟隨介面語言。
 ///
-/// 不用 Tauri 的默认菜单：那套是英文的，还带着用不上的「File」「View」「Help」。
-/// 「编辑」菜单不能省：WKWebView 里输入框的 ⌘C / ⌘V / ⌘X / ⌘A / ⌘Z 要靠它的快捷键才生效。
+/// 不用 Tauri 的預設選單：那套是英文的，還帶著用不上的「File」「View」「Help」。
+/// 「編輯」選單不能省：WKWebView 裡輸入框的 ⌘C / ⌘V / ⌘X / ⌘A / ⌘Z 要靠它的快捷鍵才生效。
 /// macOS 頂部 App 選單的全部文字。
 ///
 /// [自訂] SC-65：中文用台灣 macOS 的慣用詞（結束、還原、剪下、拷貝、貼上、縮到最小…）。
@@ -337,7 +337,7 @@ fn build_macos_app_menu(app: &AppHandle) -> tauri::Result<tauri::menu::Menu<taur
         .build()
 }
 
-/// 装上 macOS 应用菜单，并处理「关于」「设置…」两项（其余是系统自带的标准项）。
+/// 裝上 macOS 應用選單，並處理「關於」「設定…」兩項（其餘是系統自帶的標準項）。
 #[cfg(target_os = "macos")]
 pub fn install_macos_app_menu(app: &AppHandle) -> tauri::Result<()> {
     app.set_menu(build_macos_app_menu(app)?)?;
@@ -353,7 +353,7 @@ pub fn install_macos_app_menu(app: &AppHandle) -> tauri::Result<()> {
     Ok(())
 }
 
-/// 界面语言切换后刷新原生菜单：托盘菜单（两个平台），以及 mac 的顶部应用菜单。
+/// 介面語言切換後重新整理原生選單：托盤選單（兩個平台），以及 mac 的頂部應用選單。
 #[tauri::command]
 pub fn refresh_native_menus(app: AppHandle) {
     if let Some(menu) = app.try_state::<TrayMenu>() {

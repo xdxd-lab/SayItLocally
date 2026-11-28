@@ -5,9 +5,9 @@ const base = { id: 'notice-1', level: 'info' as const }
 
 describe('normalizeRemoteNotice', () => {
   it('keeps legacy single-language notices compatible', () => {
-    const result = normalizeRemoteNotice({ ...base, title: '旧公告', body: '旧正文' }, 'en')
-    expect(result?.title).toBe('旧公告')
-    expect(result?.body).toBe('旧正文')
+    const result = normalizeRemoteNotice({ ...base, title: '舊公告', body: '舊正文' }, 'en')
+    expect(result?.title).toBe('舊公告')
+    expect(result?.body).toBe('舊正文')
   })
 
   it('selects title, body, and link label for the active locale', () => {

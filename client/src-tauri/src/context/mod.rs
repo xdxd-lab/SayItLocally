@@ -43,28 +43,28 @@ pub struct TextContext {
     pub selection_truncated: bool,
 }
 
-/// 读正文这一步的诊断：读到没有、没读到卡在哪一步、花了多久。
-/// 只有原因码和计数，**绝不含正文**——它会原样进 sayit.log。
+/// 讀正文這一步的診斷：讀到沒有、沒讀到卡在哪一步、花了多久。
+/// 只有原因碼和計數，**絕不含正文**——它會原樣進 sayit.log。
 ///
-/// `result` 取值（稳定，日志按它 grep，别改字面量）：
-/// - `captured`：读到了（是否真被采用还要过前端的 usableTextContext）
-/// - `no_foreground`：没有前台窗口 / 前台应用
-/// - `no_permission`：macOS 没给辅助功能授权
-/// - `uia_unavailable`：UI Automation / AX 本身起不来
-/// - `no_focused_element`：拿不到焦点元素（焦点在桌面、任务栏，或应用没暴露）
-/// - `password`：密码框，按设计不读
-/// - `element_disabled`：焦点元素报告为禁用（或读不到启用状态）
-/// - `no_text_pattern`：焦点元素和往外 4 层都没有可读文字的接口（终端、自绘 UI 常见）
-/// - `no_caret`：有接口，但拿不到光标或选区位置
-/// - `empty`：读到了，但光标前后和选区都是空的（空文档）
+/// `result` 取值（穩定，日誌按它 grep，別改字面量）：
+/// - `captured`：讀到了（是否真被採用還要過前端的 usableTextContext）
+/// - `no_foreground`：沒有前台視窗 / 前台應用
+/// - `no_permission`：macOS 沒給輔助功能授權
+/// - `uia_unavailable`：UI Automation / AX 本身起不來
+/// - `no_focused_element`：拿不到焦點元素（焦點在桌面、工作列，或應用沒暴露）
+/// - `password`：密碼框，按設計不讀
+/// - `element_disabled`：焦點元素報告為停用（或讀不到啟用狀態）
+/// - `no_text_pattern`：焦點元素和往外 4 層都沒有可讀文字的介面（終端、自繪 UI 常見）
+/// - `no_caret`：有介面，但拿不到游標或選區位置
+/// - `empty`：讀到了，但游標前後和選區都是空的（空文件）
 #[derive(Debug, Clone, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct TextContextDiag {
     pub result: String,
-    /// 在焦点元素往外第几层读到的（0 = 焦点元素本身；Chromium、Office 常在外层的 Document 上）
+    /// 在焦點元素往外第幾層讀到的（0 = 焦點元素本身；Chromium、Office 常在外層的 Document 上）
     #[serde(skip_serializing_if = "Option::is_none")]
     pub depth: Option<u8>,
-    /// 读正文花的毫秒数。UIA 在部分应用里很慢，开录变慢时看这个数就知道是不是它。
+    /// 讀正文花的毫秒數。UIA 在部分應用裡很慢，開錄變慢時看這個數就知道是不是它。
     pub elapsed_ms: u64,
 }
 
@@ -116,19 +116,19 @@ pub struct AppContext {
     pub is_read_only: Option<bool>,
     #[serde(rename = "isPassword")]
     pub is_password: bool,
-    /// macOS 的 Bundle ID（如 `com.tencent.xinWeChat`）。Windows 上为空，不进载荷。
+    /// macOS 的 Bundle ID（如 `com.tencent.xinWeChat`）。Windows 上為空，不進載荷。
     #[serde(rename = "bundleId", skip_serializing_if = "String::is_empty")]
     pub bundle_id: String,
     /// Present only when the user explicitly enabled context-aware writing. Ordinary foreground
     /// tracking and diagnostics never read or retain editor text.
     #[serde(rename = "textContext", skip_serializing_if = "Option::is_none")]
     pub text_context: Option<TextContext>,
-    /// 只在这次请求了正文时有值，读到或没读到都有。见 TextContextDiag。
+    /// 只在這次請求了正文時有值，讀到或沒讀到都有。見 TextContextDiag。
     #[serde(rename = "textContextDiag", skip_serializing_if = "Option::is_none")]
     pub text_context_diag: Option<TextContextDiag>,
 }
 
-/// 前台窗口所在显示器的物理工作区，已排除任务栏。
+/// 前台視窗所在顯示器的物理工作區，已排除工作列。
 #[derive(Debug, Clone)]
 pub struct MonitorBounds {
     pub left: i32,
@@ -163,13 +163,13 @@ impl ContextDetector {
         capture_context_with_text(reason, include_text_context)
     }
 
-    /// 监听前台窗口切换：切换后若悬浮窗正显示，把它重新顶回最上层
-    /// （用户切到 PotPlayer 这类置顶程序时，悬浮窗会被压下去）。
+    /// 監聽前台視窗切換：切換後若懸浮窗正顯示，把它重新頂回最上層
+    /// （使用者切到 PotPlayer 這類置頂程式時，懸浮窗會被壓下去）。
     ///
-    /// 只做这一件事。原来这里还挂了 EVENT_OBJECT_FOCUS，并且每次切换都完整采集一遍
-    /// 前台上下文（进程路径 + UI Automation）再广播给全部 webview —— 可前端没有任何
-    /// 地方订阅那个事件，录音和插字时都会重新采集。代价却不小：方向键在列表里移动都会触发，
-    /// 而 UIA 查询会让 Chrome / VS Code / 微信这类程序打开自己的无障碍树，跟着多耗 CPU 和内存。
+    /// 只做這一件事。原來這裡還掛了 EVENT_OBJECT_FOCUS，並且每次切換都完整採集一遍
+    /// 前台上下文（程序路徑 + UI Automation）再廣播給全部 webview —— 可前端沒有任何
+    /// 地方訂閱那個事件，錄音和插字時都會重新採集。代價卻不小：方向鍵在列表裡移動都會觸發，
+    /// 而 UIA 查詢會讓 Chrome / VS Code / 微信這類程式開啟自己的無障礙樹，跟著多耗 CPU 和記憶體。
     #[cfg(windows)]
     pub fn start_winevent_hook(&self, app: &AppHandle) {
         if self.winevent_running.swap(true, Ordering::SeqCst) {
@@ -207,8 +207,8 @@ impl ContextDetector {
                     if !state.overlay_visible() {
                         return;
                     }
-                    // 等新前台窗口自己完成置顶再顶回来，否则会被它随后的 SetWindowPos 压回去。
-                    // 这 50ms 是原来就有的节奏，只在悬浮窗显示时才等。
+                    // 等新前台視窗自己完成置頂再頂回來，否則會被它隨後的 SetWindowPos 壓回去。
+                    // 這 50ms 是原來就有的節奏，只在懸浮窗顯示時才等。
                     std::thread::sleep(std::time::Duration::from_millis(50));
                     state.reassert_overlay_topmost_if_visible(&app);
                 });
@@ -297,7 +297,7 @@ fn capture_context_with_text(reason: &str, include_text_context: bool) -> AppCon
     ctx
 }
 
-/// 捕获当前前台窗口所在显示器的物理工作区。
+/// 捕獲當前前台視窗所在顯示器的物理工作區。
 #[cfg(windows)]
 pub fn capture_foreground_monitor() -> Option<MonitorBounds> {
     unsafe {
@@ -450,7 +450,7 @@ unsafe fn populate_uia_fields(ctx: &mut AppContext, include_text_context: bool) 
             } else if !ctx.is_enabled {
                 ctx.text_context_diag = Some(text_diag("element_disabled", None, started));
             } else {
-                // 计时只算读正文这一段，前面那些属性查询无论开不开上下文感知都要做
+                // 計時只算讀正文這一段，前面那些屬性查詢無論開不開上下文感知都要做
                 let text_started = std::time::Instant::now();
                 let (text, result, depth) = capture_uia_text_context(&uia, &focused);
                 ctx.text_context = text;
@@ -482,7 +482,7 @@ const SELECTED_TEXT_LIMIT: i32 = 6000;
 /// Document element. ValuePattern is a conservative fallback for simple inputs and is treated as
 /// text-before-caret only (most such controls expose no selection/caret API through UIA).
 ///
-/// 返回 (正文, TextContextDiag 的 result 码, 在第几层读到)。
+/// 返回 (正文, TextContextDiag 的 result 碼, 在第幾層讀到)。
 #[cfg(windows)]
 unsafe fn capture_uia_text_context(
     uia: &windows::Win32::UI::Accessibility::IUIAutomation,
@@ -505,7 +505,7 @@ unsafe fn capture_uia_text_context(
         .map(|value| sanitize_uia_text(&value.to_string()))
         .filter(|value| !value.is_empty());
 
-    // 各层都没读到时报哪个原因：只要有一层是「空」，文档就是空的，比「没光标」更接近真相
+    // 各層都沒讀到時報哪個原因：只要有一層是「空」，文件就是空的，比「沒游標」更接近真相
     let mut pattern_failure: Option<&'static str> = None;
     let mut note = |reason: &'static str| {
         if pattern_failure != Some("empty") {
@@ -522,7 +522,7 @@ unsafe fn capture_uia_text_context(
                 .GetCaretRange(&mut active)
                 .ok()
                 .filter(|_| active.as_bool());
-            // 以前这里转换失败会直接 `?` 返回整个函数，外层和 ValuePattern 兜底都不再尝试
+            // 以前這裡轉換失敗會直接 `?` 返回整個函式，外層和 ValuePattern 兜底都不再嘗試
             if let Ok(base) = pattern2.cast::<IUIAutomationTextPattern>() {
                 match text_context_from_pattern(&base, caret, "text_pattern2") {
                     Ok(context) => return (Some(context), "captured", Some(depth)),
@@ -756,7 +756,7 @@ pub(crate) fn capture_recording_with_focus(include_text_context: bool) -> (
     macos::capture_recording_with_focus(include_text_context)
 }
 
-/// macOS 返回的是前台窗口矩形（逻辑点），不是显示器工作区，见 context/macos.rs。
+/// macOS 返回的是前台視窗矩形（邏輯點），不是顯示器工作區，見 context/macos.rs。
 #[cfg(target_os = "macos")]
 pub fn capture_foreground_monitor() -> Option<MonitorBounds> {
     macos::capture_foreground_monitor()
@@ -805,7 +805,7 @@ pub unsafe fn read_class_name(hwnd: HWND) -> String {
     }
 }
 
-/// pid → 可执行文件名（不含路径）。inject 模块用它指认「是谁占着剪贴板」。
+/// pid → 執行檔名（不含路徑）。inject 模組用它指認「是誰佔著剪貼簿」。
 #[cfg(windows)]
 pub(crate) fn get_process_name(pid: u32) -> String {
     use windows::Win32::Foundation::CloseHandle;
@@ -862,7 +862,7 @@ mod tests {
 
     #[test]
     fn text_context_diag_serializes_codes_only() {
-        // 这份诊断会原样进 sayit.log：键名固定、没读到时不带 depth，且结构上没有放正文的字段
+        // 這份診斷會原樣進 sayit.log：鍵名固定、沒讀到時不帶 depth，且結構上沒有放正文的欄位
         let diag = text_diag("no_text_pattern", None, std::time::Instant::now());
         let json = serde_json::to_value(&diag).unwrap();
         let obj = json.as_object().unwrap();

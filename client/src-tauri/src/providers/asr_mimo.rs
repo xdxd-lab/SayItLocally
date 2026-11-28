@@ -1,7 +1,7 @@
 // 小米 MiMo ASR — mimo-v2.5-asr
-// OpenAI chat/completions 兼容接口，支持 Base64 data URL 音频（wav/mp3）。
-// 与千问的差异：鉴权头是 `api-key`（非 Bearer）、无 app_id、body 为 OpenAI chat 结构、
-// 响应为 choices[0].message.content（纯字符串）。
+// OpenAI chat/completions 相容介面，支援 Base64 data URL 音訊（wav/mp3）。
+// 與千問的差異：鑑權頭是 `api-key`（非 Bearer）、無 app_id、body 為 OpenAI chat 結構、
+// 響應為 choices[0].message.content（純字串）。
 
 use super::diag;
 use super::types::{AsrProviderConfig, AsrResult, TestResult};
@@ -10,7 +10,7 @@ use std::time::Instant;
 const API_URL: &str = "https://api.xiaomimimo.com/v1/chat/completions";
 const SCOPE: &str = "mimo/asr";
 
-/// 将 16kHz 单声道 16-bit PCM 封装为 WAV 容器（MiMo 只接受 wav/mp3，不接受裸 PCM）。
+/// 將 16kHz 單聲道 16-bit PCM 封裝為 WAV 容器（MiMo 只接受 wav/mp3，不接受裸 PCM）。
 fn pcm_to_wav(pcm: &[u8], sr: u32) -> Vec<u8> {
     let ds = pcm.len() as u32;
     let mut w = Vec::with_capacity(44 + pcm.len());
@@ -30,7 +30,7 @@ fn pcm_to_wav(pcm: &[u8], sr: u32) -> Vec<u8> {
     w
 }
 
-/// 从供应商额外配置读取识别语言（auto|zh|en），默认 auto。
+/// 從供應商額外配置讀取識別語言（auto|zh|en），預設 auto。
 fn resolve_language(config: &AsrProviderConfig) -> String {
     config
         .extra
@@ -57,8 +57,8 @@ fn build_body(data_url: &str, language: &str) -> serde_json::Value {
     })
 }
 
-/// 解析 OpenAI chat 响应中的转写文本：choices[0].message.content。
-/// content 可能是字符串，也可能是分段数组，两种都兼容。
+/// 解析 OpenAI chat 響應中的轉寫文本：choices[0].message.content。
+/// content 可能是字串，也可能是分段陣列，兩種都相容。
 fn extract_text(data: &serde_json::Value) -> String {
     let content = data
         .get("choices")
@@ -86,10 +86,10 @@ pub async fn transcribe(
     config: &AsrProviderConfig,
     hotwords: &[String],
 ) -> Result<AsrResult, String> {
-    // 这份实现没把热词接进去。协议是有位置的（OpenAI chat/completions 兼容，
-    // asr_openai_chat_audio.rs 就是把词表追加到 instruction 的），所以
-    // capabilities.rs 把它记作 NotWiredUp 而不是 ProtocolHasNoSlot。
-    // 留痕理由同 asr_groq.rs：不留这行，"热词没生效"在日志里查不出来。
+    // 這份實現沒把熱詞接進去。協議是有位置的（OpenAI chat/completions 相容，
+    // asr_openai_chat_audio.rs 就是把詞表追加到 instruction 的），所以
+    // capabilities.rs 把它記作 NotWiredUp 而不是 ProtocolHasNoSlot。
+    // 留痕理由同 asr_groq.rs：不留這行，"熱詞沒生效"在日誌裡查不出來。
     if !hotwords.is_empty() {
         diag::log(
             SCOPE,
@@ -150,7 +150,7 @@ pub async fn transcribe(
         return Err(diag::fail(
             SCOPE,
             "http_status",
-            // 原来是 `&body[..body.len().min(300)]`，中文报错体会切在汉字中间 panic
+            // 原來是 `&body[..body.len().min(300)]`，中文報錯體會切在漢字中間 panic
             format!(
                 "MiMo ASR error {} [{}]: {}",
                 status,
@@ -197,7 +197,7 @@ pub async fn transcribe(
 }
 
 pub async fn test_connection(config: &AsrProviderConfig) -> TestResult {
-    let silence = vec![0u8; 16000]; // 0.5s 静音
+    let silence = vec![0u8; 16000]; // 0.5s 靜音
     let wav = pcm_to_wav(&silence, 16000);
     let wav_b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &wav);
     let data_url = format!("data:audio/wav;base64,{}", wav_b64);

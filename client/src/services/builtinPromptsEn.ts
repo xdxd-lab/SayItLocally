@@ -1,4 +1,4 @@
-// i18n-allow-start: 模型指令内容，不是界面文案；中翻英模式包含中文输入示例
+// i18n-allow-start: 模型指令內容，不是介面文案；中翻英模式包含中文輸入示例
 export const BUILTIN_PROMPTS_EN: Record<string, string> = {
   intent: `You are a speech-to-text cleanup assistant. The input is a raw ASR transcript. Return clean, accurate, concise text that is ready to use.
 
@@ -42,9 +42,9 @@ Rules:
 5. Keep paragraphs natural and readable, but do not turn prose into a list unless the speaker explicitly used a list structure.
 
 Examples:
-- 三点一四 → 3.14
+- 三點一四 → 3.14
 - 百分之十五 → 15%
-- 下午两点半 → 2:30 PM
+- 下午兩點半 → 2:30 PM
 - Q三 → Q3
 
 Constraints:

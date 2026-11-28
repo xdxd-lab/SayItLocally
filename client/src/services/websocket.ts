@@ -33,9 +33,9 @@ export interface FinalResult {
   asrModel?: string
   contextApplied?: boolean
   /**
-   * 服务端 AI 的执行证据，从 llm_debug 里只摘 error 与 provider。
-   * 有它才能把「服务端跑了但很快」和「服务端压根没跑」分开 —— llm_ms=0 分不出来。
-   * 刻意不透传整个 llm_debug：服务器开了 debug_llm 时它带完整 prompt 与原始输出。
+   * 服務端 AI 的執行證據，從 llm_debug 裡只摘 error 與 provider。
+   * 有它才能把「服務端跑了但很快」和「服務端壓根沒跑」分開 —— llm_ms=0 分不出來。
+   * 刻意不透傳整個 llm_debug：伺服器開了 debug_llm 時它帶完整 prompt 與原始輸出。
    */
   serverAi?: { error?: string; provider?: string }
 }
@@ -61,11 +61,11 @@ let ws: WebSocket | null = null
 let callbacks: WSCallbacks = {}
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 let intentionalClose = false
-/** 连接建立的时间戳，用于日志里计算连接存活时长 */
+/** 連線建立的時間戳，用於日誌裡計算連線存活時長 */
 let connectStartMs = 0
 let openedAtMs = 0
 
-/** 抓取一小段调用栈（去掉本函数与 Error 头两行），用于日志里定位「谁触发了连接/关闭」。 */
+/** 抓取一小段呼叫棧（去掉本函式與 Error 頭兩行），用於日誌裡定位「誰觸發了連線/關閉」。 */
 function shortCallerStack(): string {
   const raw = new Error().stack || ''
   return raw
@@ -75,15 +75,15 @@ function shortCallerStack(): string {
     .join(' <- ')
 }
 
-// --- 重连退避 ---
+// --- 重連退避 ---
 let reconnectAttempts = 0
 const RECONNECT_BASE_MS = 3000
 const RECONNECT_MAX_MS = 30_000
-// 服务端限流类关闭码（1013 服务器满、4029 该 IP 并发超限）：退避更久，避免重连风暴
+// 服務端限流類關閉碼（1013 伺服器滿、4029 該 IP 併發超限）：退避更久，避免重連風暴
 const RECONNECT_LIMIT_MIN_MS = 15_000
 const LIMIT_CLOSE_CODES = new Set([1013, 4029])
 
-/** 计算下次重连延迟：指数退避 + ±20% 抖动；限流码时至少退避 RECONNECT_LIMIT_MIN_MS */
+/** 計算下次重連延遲：指數退避 + ±20% 抖動；限流碼時至少退避 RECONNECT_LIMIT_MIN_MS */
 function computeReconnectDelayMs(closeCode?: number): number {
   const exp = Math.min(RECONNECT_BASE_MS * 2 ** reconnectAttempts, RECONNECT_MAX_MS)
   const base = closeCode !== undefined && LIMIT_CLOSE_CODES.has(closeCode)
@@ -170,14 +170,14 @@ export function connect(cbs: WSCallbacks): Promise<void> {
   callbacks = cbs
 
   if (ws?.readyState === WebSocket.OPEN) {
-    // 已经连上，直接复用（connect 幂等）。这是每次开始录音的正常路径，不记日志避免刷屏；
-    // 真正异常的连接场景由 开始连接/连接成功/主动关闭/关闭未就绪连接 等日志覆盖。
+    // 已經連上，直接複用（connect 冪等）。這是每次開始錄音的正常路徑，不記日誌避免刷屏；
+    // 真正異常的連線場景由 開始連線/連線成功/主動關閉/關閉未就緒連線 等日誌覆蓋。
     return Promise.resolve()
   }
 
   if (ws) {
-    // 上一条连接还在（可能仍在 CONNECTING，或刚 open 尚未标记就绪）。这里会主动关掉它再重连，
-    // 这正是「连上几秒就被自己关掉、且没发 start」最可能的元凶——记录下来看看是谁触发的。
+    // 上一條連線還在（可能仍在 CONNECTING，或剛 open 尚未標記就緒）。這裡會主動關掉它再重連，
+    // 這正是「連上幾秒就被自己關掉、且沒發 start」最可能的元兇——記錄下來看看是誰觸發的。
     const prevState = ws.readyState
     addRuntimeEvent('warn', 'websocket', 'connect() closed the previous unready connection before reconnecting', {
       prevReadyState: prevState, // 0=CONNECTING 1=OPEN 2=CLOSING 3=CLOSED
@@ -192,8 +192,8 @@ export function connect(cbs: WSCallbacks): Promise<void> {
     ws = null
   }
 
-  // 新连接一发起（按热键开录、改了服务器地址），排着的自动重连就多余了；不清掉的话
-  // 它到点还会再 connect() 一次，把这条还在握手的连接当成「未就绪」关掉重来。
+  // 新連線一發起（按熱鍵開錄、改了伺服器地址），排著的自動重連就多餘了；不清掉的話
+  // 它到點還會再 connect() 一次，把這條還在握手的連線當成「未就緒」關掉重來。
   if (reconnectTimer) {
     clearTimeout(reconnectTimer)
     reconnectTimer = null
@@ -244,8 +244,8 @@ export function connect(cbs: WSCallbacks): Promise<void> {
     }
 
     socket.onmessage = (e) => {
-      // 已被 cancel/disconnect 替换的旧 socket 即使队列里还有消息，也绝不能
-      // 投递给新会话的 callbacks。
+      // 已被 cancel/disconnect 替換的舊 socket 即使佇列裡還有訊息，也絕不能
+      // 投遞給新會話的 callbacks。
       if (ws !== socket) return
       if (typeof e.data !== 'string') return
       try {
@@ -294,8 +294,8 @@ export function connect(cbs: WSCallbacks): Promise<void> {
               asrEngine: msg.asr_engine || undefined,
               asrModel: msg.asr_model || undefined,
               contextApplied: explicitContextApplied ?? (legacyContextApplied ? true : undefined),
-              // 只摘这两个结论性字段往下传，llm_debug 本体留在这里（开了 debug_llm 时
-              // 它带完整 prompt 和原始输出，不能顺着结果对象扩散）。
+              // 只摘這兩個結論性欄位往下傳，llm_debug 本體留在這裡（開了 debug_llm 時
+              // 它帶完整 prompt 和原始輸出，不能順著結果物件擴散）。
               serverAi: extractServerAiEvidence(msg?.llm_debug),
             })
             break
@@ -329,9 +329,9 @@ export function connect(cbs: WSCallbacks): Promise<void> {
 
     socket.onclose = (ev) => {
       clearTimeout(timeout)
-      // 没 open 就关了（拒连、ALB 502、被 disconnect()/新的 connect() 替换）必须 reject：
-      // 上面这行已经清掉了 10 秒超时，不在这里结束，等它的 await 就永远挂着 ——
-      // 按热键开录时表现为麦克风开着、悬浮窗停在等待、不报错。超时那条路已 reject 过，再调无副作用。
+      // 沒 open 就關了（拒連、ALB 502、被 disconnect()/新的 connect() 替換）必須 reject：
+      // 上面這行已經清掉了 10 秒超時，不在這裡結束，等它的 await 就永遠掛著 ——
+      // 按熱鍵開錄時表現為麥克風開著、懸浮窗停在等待、不報錯。超時那條路已 reject 過，再調無副作用。
       if (!opened) reject(new Error(`WebSocket closed before open (code=${ev.code})`))
       if (ws !== socket) {
         addRuntimeEvent('info', 'websocket', 'Ignored close event from stale connection', { code: ev.code })
@@ -355,12 +355,12 @@ export function connect(cbs: WSCallbacks): Promise<void> {
           sentStart,
         })
         reconnectAttempts++
-        // 自动重连没有调用方等结果；失败已由超时/onclose 记过日志，这里吞掉，
-        // 否则每次重连超时都多一条 Unhandled promise rejection。
+        // 自動重連沒有呼叫方等結果；失敗已由超時/onclose 記過日誌，這裡吞掉，
+        // 否則每次重連超時都多一條 Unhandled promise rejection。
         reconnectTimer = setTimeout(() => { connect(callbacks).catch(() => { }) }, delay)
       } else {
-        // 主动关闭这一路以前是完全静默的（切换供应商/地址、connect() 替换旧连接、disconnect()）。
-        // 现在也记一条，标明是客户端主动关的，便于区分「服务端踢」还是「客户端自己关」。
+        // 主動關閉這一路以前是完全靜默的（切換供應商/地址、connect() 替換舊連線、disconnect()）。
+        // 現在也記一條，標明是客戶端主動關的，便於區分「服務端踢」還是「客戶端自己關」。
         addRuntimeEvent('warn', 'websocket', `Connection closed intentionally code=${ev.code} reason=${ev.reason || '-'}`, {
           code: ev.code,
           aliveMs,
@@ -487,7 +487,7 @@ export function sendStart(opts?: {
 
 export function sendStop(opts?: {
   pttHoldMs?: number
-  /** 松键时补上的「这次别做 AI」。服务端在收到 stop 之后才开始 ASR+AI，来得及。 */
+  /** 鬆鍵時補上的「這次別做 AI」。服務端在收到 stop 之後才開始 ASR+AI，來得及。 */
   disableAi?: boolean
   audioStats?: AudioStats
 }): boolean {

@@ -67,11 +67,11 @@ export default function ContextSelectionModelSetting() {
   const missing = Boolean(profileId && !selected)
   const usable = profiles.filter(isProfileComplete)
 
-  // 用应用自己的 Select，不用原生 <select>：原生下拉在 WebView2 里弹的是系统列表，
-  // 宽度跟着最长那一项走（「模型名 · 供应商 · 主机名」很长），会伸出卡片甚至窗口。
-  // 这个组件的列表与触发器同宽，长名字截断，悬停看全称。
-  // 它不支持禁用单项，所以没填齐的服务干脆不列；只有已经选中的那条例外，
-  // 否则触发器上什么都不显示，用户看不出自己选过什么（下面另有警告说明原因）。
+  // 用應用自己的 Select，不用原生 <select>：原生下拉在 WebView2 裡彈的是系統列表，
+  // 寬度跟著最長那一項走（「模型名 · 供應商 · 主機名」很長），會伸出卡片甚至視窗。
+  // 這個元件的列表與觸發器同寬，長名字截斷，懸停看全稱。
+  // 它不支援停用單項，所以沒填齊的服務乾脆不列；只有已經選中的那條例外，
+  // 否則觸發器上什麼都不顯示，使用者看不出自己選過什麼（下面另有警告說明原因）。
   const options: SelectOption[] = [
     { value: '', label: t('settings.contextAware.sameModel') },
     ...(missing ? [{ value: profileId, label: t('settings.contextAware.modelMissingOption') }] : []),
@@ -84,8 +84,8 @@ export default function ContextSelectionModelSetting() {
       }),
   ]
 
-  // 和卡片标题那一行同一个结构：左边名称 + 一行说明，右边控件。下拉框固定窄宽度，
-  // 列表右对齐往左展开（menuAlign="end"），长模型名不会把控件撑宽。
+  // 和卡片標題那一行同一個結構：左邊名稱 + 一行說明，右邊控制元件。下拉框固定窄寬度，
+  // 列表右對齊往左展開（menuAlign="end"），長模型名不會把控制元件撐寬。
   return (
     <div className="mt-4 border-t border-border pt-4">
       <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2">

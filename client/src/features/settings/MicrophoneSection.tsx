@@ -9,7 +9,7 @@ import { isPseudoInputDevice, type MicEndpoint } from '@/services/audio'
 
 import type { MicVolumeLevel } from './settingsMicrophone'
 
-/** 存 key 而不是文案：这是模块级常量，只求值一次，存好的中文串切语言时不会变。 */
+/** 存 key 而不是文案：這是模組級常量，只求值一次，存好的中文串切語言時不會變。 */
 const VOLUME_CONFIG: Record<MicVolumeLevel, { labelKey: TranslationKey | null; color: string; descKey: TranslationKey | null }> = {
   idle: { labelKey: null, color: '', descKey: null },
   silent: { labelKey: 'mic.level.silent', color: 'text-destructive', descKey: 'mic.level.silentDesc' },
@@ -30,7 +30,7 @@ export default function MicrophoneSection({
   revealingNames,
   virtualDefaultNote,
 }: {
-  /** 系统默认是虚拟声卡、录音会改用别的麦克风时的说明；空串不显示 */
+  /** 系統預設是虛擬音效卡、錄音會改用別的麥克風時的說明；空串不顯示 */
   virtualDefaultNote?: string
   mics: MicEndpoint[]
   selectedMic: string

@@ -16,49 +16,49 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use tauri::{AppHandle, Emitter};
 
-// ── 健康监测埋点（悬浮窗/热键间歇性失效排查）──
-// 这些是进程级静态量，与具体某次 hook 实例无关，用于在钩子"悄悄失效"时留下痕迹：
-// - LAST_CALLBACK_MS：钩子回调最近一次被 Windows 调用的时间（任意按键都会更新，
-//   不限于 PTT 键）。如果这个值长时间不再更新但用户在正常打字，说明钩子已被
-//   系统摘除（WH_KEYBOARD_LL 回调超时/异常会被静默移除，是本次排查的头号嫌疑）。
-// - DISPATCHER_ALIVE：dispatcher 线程是否仍在运行；线程 panic 或 recv() 返回
-//   Err（发送端全部丢弃）都会导致这个循环退出。
-// - TRY_SEND_FAIL_COUNT：钩子回调向 dispatcher 发送消息失败的累计次数——一旦
-//   >0 就说明 dispatcher 侧出了问题（队列满或已退出），即使 hook 本身还活着，
-//   PTT 事件也发不出去，前端永远等不到 ptt-down。
+// ── 健康監測埋點（懸浮窗/熱鍵間歇性失效排查）──
+// 這些是程序級靜態量，與具體某次 hook 例項無關，用於在鉤子"悄悄失效"時留下痕跡：
+// - LAST_CALLBACK_MS：鉤子回撥最近一次被 Windows 呼叫的時間（任意按鍵都會更新，
+//   不限於 PTT 鍵）。如果這個值長時間不再更新但使用者在正常打字，說明鉤子已被
+//   系統摘除（WH_KEYBOARD_LL 回撥超時/異常會被靜默移除，是本次排查的頭號嫌疑）。
+// - DISPATCHER_ALIVE：dispatcher 執行緒是否仍在執行；執行緒 panic 或 recv() 返回
+//   Err（傳送端全部丟棄）都會導致這個迴圈退出。
+// - TRY_SEND_FAIL_COUNT：鉤子回撥向 dispatcher 傳送訊息失敗的累計次數——一旦
+//   >0 就說明 dispatcher 側出了問題（佇列滿或已退出），即使 hook 本身還活著，
+//   PTT 事件也發不出去，前端永遠等不到 ptt-down。
 static LAST_CALLBACK_MS: AtomicI64 = AtomicI64::new(0);
 static DISPATCHER_ALIVE: AtomicBool = AtomicBool::new(false);
 static TRY_SEND_FAIL_COUNT: AtomicU64 = AtomicU64::new(0);
-/// 钩子回调实际执行耗时的最大观测值（微秒），用于确认是否接近/超过 Windows 的
-/// ~200ms 静默摘除阈值。正常情况应恒定在几十微秒级别。
+/// 鉤子回撥實際執行耗時的最大觀測值（微秒），用於確認是否接近/超過 Windows 的
+/// ~200ms 靜默摘除閾值。正常情況應恆定在幾十微秒級別。
 static MAX_CALLBACK_DURATION_US: AtomicU64 = AtomicU64::new(0);
-/// 镜像 `KeyboardHookManager.running`——独立看门狗线程没有该实例的引用，
-/// 用全局静态量同步一份供健康快照读取。
+/// 映象 `KeyboardHookManager.running`——獨立看門狗執行緒沒有該例項的引用，
+/// 用全域性靜態量同步一份供健康快照讀取。
 static HOOK_RUNNING: AtomicBool = AtomicBool::new(false);
-/// reconfigure() 累计调用次数，用于确认"过一段时间失效"是否与设置变更相关。
+/// reconfigure() 累計呼叫次數，用於確認"過一段時間失效"是否與設定變更相關。
 static RECONFIGURE_COUNT: AtomicU64 = AtomicU64::new(0);
 
-// ── "录制捕获"模式 ──
-// 设置页录制快捷键时，前端会打开这个开关。开启后：
-//  - 鼠标钩子把下一个侧键(XBUTTON)按下吞掉并回报，webview 不会当成“后退”导航；
-//  - 键盘钩子把浏览器后退/前进键(0xA6/0xA7，罗技等改键鼠标常把侧键映射成这个)也
-//    吞掉并回报；
-//  - 键盘钩子放行已绑定的 PTT/免提单键，不触发录音——录制时按到旧热键应当是"想把它
-//    录进来"（或看到冲突提示），而不是开始口述。
+// ── "錄製捕獲"模式 ──
+// 設定頁錄製快捷鍵時，前端會開啟這個開關。開啟後：
+//  - 滑鼠鉤子把下一個側鍵(XBUTTON)按下吞掉並回報，webview 不會當成“後退”導航；
+//  - 鍵盤鉤子把瀏覽器後退/前進鍵(0xA6/0xA7，羅技等改鍵滑鼠常把側鍵對映成這個)也
+//    吞掉並回報；
+//  - 鍵盤鉤子放行已繫結的 PTT/免持單鍵，不觸發錄音——錄製時按到舊熱鍵應當是"想把它
+//    錄進來"（或看到衝突提示），而不是開始口述。
 static SHORTCUT_CAPTURE: AtomicBool = AtomicBool::new(false);
-/// 捕获到侧键 down 后，记住其 vk，好把配对的 up 也一并吞掉（否则可能残留导航）。
+/// 捕獲到側鍵 down 後，記住其 vk，好把配對的 up 也一併吞掉（否則可能殘留導航）。
 static CONSUME_XUP_VK: AtomicU32 = AtomicU32::new(0);
 
-/// 打开/关闭录制捕获模式（供设置页录制快捷键时调用）。
+/// 開啟/關閉錄製捕獲模式（供設定頁錄製快捷鍵時呼叫）。
 pub fn set_shortcut_capture(on: bool) {
     SHORTCUT_CAPTURE.store(on, Ordering::SeqCst);
-    // 只在“开始录制”时清零，作为一次干净的起点。
-    // 绝不在“结束录制”时清零——因为捕获到 down 后配对的 up 往往稍晚才到，
-    // 若在结束时就清掉，这个“抬起”就会漏给 webview（后退键会导致页面返回）。
+    // 只在“開始錄製”時清零，作為一次乾淨的起點。
+    // 絕不在“結束錄製”時清零——因為捕獲到 down 後配對的 up 往往稍晚才到，
+    // 若在結束時就清掉，這個“抬起”就會漏給 webview（後退鍵會導致頁面返回）。
     if on {
         CONSUME_XUP_VK.store(0, Ordering::SeqCst);
-        // 录制时可能按侧键，鼠标钩子必须在场才能把它吞掉（见 needs_mouse_hook）。
-        // 钩子只能装在钩子线程上，所以发消息让那边装。
+        // 錄製時可能按側鍵，滑鼠鉤子必須在場才能把它吞掉（見 needs_mouse_hook）。
+        // 鉤子只能裝在鉤子執行緒上，所以發訊息讓那邊裝。
         #[cfg(windows)]
         {
             let tid = HOOK_THREAD_ID.load(Ordering::SeqCst);
@@ -71,31 +71,31 @@ pub fn set_shortcut_capture(on: bool) {
     }
 }
 
-/// 键盘钩子线程的 id，用来从别的线程让它装上鼠标钩子。0 = 钩子线程没在跑。
+/// 鍵盤鉤子執行緒的 id，用來從別的執行緒讓它裝上滑鼠鉤子。0 = 鉤子執行緒沒在跑。
 #[cfg_attr(not(windows), allow(dead_code))]
 static HOOK_THREAD_ID: AtomicU32 = AtomicU32::new(0);
-/// 发给钩子线程的私有消息（WM_APP + 0x51）：「现在需要鼠标钩子」。
+/// 發給鉤子執行緒的私有訊息（WM_APP + 0x51）：「現在需要滑鼠鉤子」。
 #[cfg(windows)]
 const WM_SAYIT_NEED_MOUSE_HOOK: u32 = 0x8000 + 0x51;
-/// 发给钩子线程的私有消息（WM_APP + 0x52）：「钩子可能被系统摘了，重装一遍」。
+/// 發給鉤子執行緒的私有訊息（WM_APP + 0x52）：「鉤子可能被系統摘了，重灌一遍」。
 #[cfg(windows)]
 const WM_SAYIT_REFRESH_HOOKS: u32 = 0x8000 + 0x52;
-/// 已经因为怀疑被摘而重装过几次（写进 [ptt-watchdog] 日志）。
+/// 已經因為懷疑被摘而重灌過幾次（寫進 [ptt-watchdog] 日誌）。
 static HOOK_REFRESH_COUNT: AtomicU32 = AtomicU32::new(0);
 
-/// 低级钩子回调超过 LowLevelHooksTimeout（系统卡顿、休眠唤醒时常见）会被 Windows **静默摘除**，
-/// 不发任何通知；之后热键全部失灵，直到重启 SayIt。
+/// 低階鉤子回撥超過 LowLevelHooksTimeout（系統卡頓、休眠喚醒時常見）會被 Windows **靜默摘除**，
+/// 不發任何通知；之後熱鍵全部失靈，直到重啟 SayIt。
 ///
-/// 判据：系统记录的「最后一次输入」比钩子最后一次被调用晚了 5 秒以上，说明有输入没经过我们。
-/// 会误报：没绑鼠标键时不装鼠标钩子，只动鼠标也算输入。误报的代价只是重装一次钩子
-/// （几微秒，在钩子线程里先装新的再卸旧的，中间不会处理任何按键，所以不会漏也不会重复），
-/// 所以宁可多装，每分钟最多一次。
+/// 判據：系統記錄的「最後一次輸入」比鉤子最後一次被呼叫晚了 5 秒以上，說明有輸入沒經過我們。
+/// 會誤報：沒綁滑鼠鍵時不裝滑鼠鉤子，只動滑鼠也算輸入。誤報的代價只是重灌一次鉤子
+/// （幾微秒，在鉤子執行緒裡先裝新的再卸舊的，中間不會處理任何按鍵，所以不會漏也不會重複），
+/// 所以寧可多裝，每分鐘最多一次。
 #[cfg_attr(not(windows), allow(dead_code))]
 fn hook_looks_removed(callback_age_ms: i64, input_age_ms: i64) -> bool {
     callback_age_ms >= 0 && input_age_ms >= 0 && callback_age_ms - input_age_ms > 5_000
 }
 
-/// 系统最后一次输入（键盘或鼠标）距今多少毫秒。
+/// 系統最後一次輸入（鍵盤或滑鼠）距今多少毫秒。
 #[cfg(windows)]
 fn last_input_age_ms() -> Option<i64> {
     use windows::Win32::System::SystemInformation::GetTickCount;
@@ -109,27 +109,27 @@ fn last_input_age_ms() -> Option<i64> {
     }
 }
 
-/// 鼠标钩子只在用得上时才装：某个热键绑在鼠标键上（侧键 / 中键），或者正在录制快捷键。
+/// 滑鼠鉤子只在用得上時才裝：某個熱鍵綁在滑鼠鍵上（側鍵 / 中鍵），或者正在錄製快捷鍵。
 ///
-/// 原来它随键盘钩子一直挂着。回调虽然对鼠标移动最先放行，但每次移动仍要经过一次
-/// 跨进程回调，高回报率的游戏鼠标每秒上千次。绝大多数用户根本没绑鼠标键。
-/// 录制时装上的钩子留到下次重配（保存绑定后就会重配）才按绑定重新决定，
-/// 这样捕获到侧键后配对的那个抬起照样能被吞掉（pitfalls #6）。
+/// 原來它隨鍵盤鉤子一直掛著。回撥雖然對滑鼠移動最先放行，但每次移動仍要經過一次
+/// 跨程序回撥，高回報率的遊戲滑鼠每秒上千次。絕大多數使用者根本沒綁滑鼠鍵。
+/// 錄製時裝上的鉤子留到下次重配（儲存繫結後就會重配）才按繫結重新決定，
+/// 這樣捕獲到側鍵後配對的那個抬起照樣能被吞掉（pitfalls #6）。
 #[cfg_attr(not(windows), allow(dead_code))]
 fn needs_mouse_hook(ptt: &[u32], hf: &[u32], ai_toggle: &[u32], capturing: bool) -> bool {
     capturing || ptt.iter().chain(hf).chain(ai_toggle).any(|vk| is_mouse_vk(*vk))
 }
 
-// ── 全局 Esc 动作 ──
-// overlay 不抢焦点，用户按键仍发给原应用，因此必须在现有 WH_KEYBOARD_LL 中捕获。
-// 仅由前端在 recording/processing/fallback 可见期间短暂开启，并设置硬截止时间作为安全网。
+// ── 全域性 Esc 動作 ──
+// overlay 不搶焦點，使用者按鍵仍發給原應用，因此必須在現有 WH_KEYBOARD_LL 中捕獲。
+// 僅由前端在 recording/processing/fallback 可見期間短暫開啟，並設定硬截止時間作為安全網。
 const ESCAPE_MODE_OFF: u32 = 0;
 const ESCAPE_MODE_CANCEL_PROCESSING: u32 = 1;
 const ESCAPE_MODE_DISMISS_FALLBACK: u32 = 2;
 const ESCAPE_MODE_CANCEL_RECORDING: u32 = 3;
-/// 处理已超时、正在宽限期里等迟到结果时按 Esc：放弃等待。
-/// 必须和 dismiss_fallback 分开 —— 它除了收起提示，还要让随后到达的迟到结果
-/// **不再自动插字**（否则界面说着"失败"，文字却突然出现在输入框里）。
+/// 處理已超時、正在寬限期裡等遲到結果時按 Esc：放棄等待。
+/// 必須和 dismiss_fallback 分開 —— 它除了收起提示，還要讓隨後到達的遲到結果
+/// **不再自動插字**（否則介面說著"失敗"，文字卻突然出現在輸入框裡）。
 const ESCAPE_MODE_ABANDON_LATE_RESULT: u32 = 4;
 static ESCAPE_ACTION_MODE: AtomicU32 = AtomicU32::new(ESCAPE_MODE_OFF);
 static ESCAPE_ACTION_TOKEN: AtomicU64 = AtomicU64::new(0);
@@ -139,18 +139,18 @@ static ESCAPE_KEY_DOWN: AtomicBool = AtomicBool::new(false);
 pub fn set_escape_action_mode(mode: &str, token: u64) -> Result<(), String> {
     let (value, ttl_ms) = match mode {
         "off" => (ESCAPE_MODE_OFF, 0),
-        // 录音硬上限约 5 分钟；留足安全余量，但异常状态也不会永久吞 Esc。
+        // 錄音硬上限約 5 分鐘；留足安全餘量，但異常狀態也不會永久吞 Esc。
         "cancel_recording" => (ESCAPE_MODE_CANCEL_RECORDING, 11 * 60 * 1000),
         "cancel_processing" => (ESCAPE_MODE_CANCEL_PROCESSING, 2 * 60 * 1000),
-        // 结果卡/失败卡不再自动消失，改由前端在可见期间续期，所以这里的 TTL 只是
-        // 异常兜底（渲染端卡死时不至于永久吞 Esc）。续期间隔必须明显小于它。
+        // 結果卡/失敗卡不再自動消失，改由前端在可見期間續期，所以這裡的 TTL 只是
+        // 異常兜底（渲染端卡死時不至於永久吞 Esc）。續期間隔必須明顯小於它。
         "dismiss_fallback" => (ESCAPE_MODE_DISMISS_FALLBACK, 30 * 1000),
-        // 宽限期最长 LATE_FINAL_GRACE_MS（15s），留足余量。
+        // 寬限期最長 LATE_FINAL_GRACE_MS（15s），留足餘量。
         "abandon_late_result" => (ESCAPE_MODE_ABANDON_LATE_RESULT, 60 * 1000),
         _ => return Err(format!("Unknown Escape action mode: {mode}")),
     };
-    // 先关闭模式，再按 token/deadline/final mode 的顺序发布一组一致快照。
-    // 钩子只有看到最终非 off 模式后才会读取对应 token。
+    // 先關閉模式，再按 token/deadline/final mode 的順序釋出一組一致快照。
+    // 鉤子只有看到最終非 off 模式後才會讀取對應 token。
     ESCAPE_ACTION_MODE.store(ESCAPE_MODE_OFF, Ordering::SeqCst);
     ESCAPE_ACTION_TOKEN.store(if value == ESCAPE_MODE_OFF { 0 } else { token }, Ordering::SeqCst);
     ESCAPE_ACTION_DEADLINE_MS.store(
@@ -185,35 +185,35 @@ fn escape_action_mode_name(mode: u32) -> &'static str {
     }
 }
 
-// ── 悬浮窗卡片快捷键（与卡片生命周期绑定的临时组合键）──
+// ── 懸浮窗卡片快捷鍵（與卡片生命週期繫結的臨時組合鍵）──
 //
-// 为什么不能用 global_shortcut 注册 Ctrl+C：那是**永久**占用，用户在别的程序里
-// 就再也复制不了东西。为什么不能在 overlay 的 webview 里监听 keydown：悬浮窗是
-// `.focused(false)` 且显示时带 SWP_NOACTIVATE，按键始终发给用户原来的程序，DOM
-// 永远收不到 —— Esc 当年就是因此改用这个钩子的。
+// 為什麼不能用 global_shortcut 註冊 Ctrl+C：那是**永久**佔用，使用者在別的程式裡
+// 就再也複製不了東西。為什麼不能在 overlay 的 webview 裡監聽 keydown：懸浮窗是
+// `.focused(false)` 且顯示時帶 SWP_NOACTIVATE，按鍵始終發給使用者原來的程式，DOM
+// 永遠收不到 —— Esc 當年就是因此改用這個鉤子的。
 //
-// 所以做成"只在卡片可见期间、且只在卡片弹出时那个前台窗口里"生效的临时接管，
-// 三道闸门：位掩码（哪些动作开着）、token（哪一张卡片）、前台窗口（还是不是他）。
+// 所以做成"只在卡片可見期間、且只在卡片彈出時那個前台視窗裡"生效的臨時接管，
+// 三道閘門：位掩碼（哪些動作開著）、token（哪一張卡片）、前台視窗（還是不是他）。
 const CARD_HOTKEY_COPY: u32 = 1 << 0;
 
 static CARD_HOTKEY_MASK: AtomicU32 = AtomicU32::new(0);
 static CARD_HOTKEY_TOKEN: AtomicU64 = AtomicU64::new(0);
 static CARD_HOTKEY_DEADLINE_MS: AtomicI64 = AtomicI64::new(0);
-/// 卡片弹出瞬间的前台窗口句柄。0 表示不校验 —— 拿不到前台窗口时宁可少吞一次
-/// （漏判只让用户改用鼠标点，误吞会抢走他在别处的复制）。
+/// 卡片彈出瞬間的前台視窗控制代碼。0 表示不校驗 —— 拿不到前台視窗時寧可少吞一次
+/// （漏判只讓使用者改用滑鼠點，誤吞會搶走他在別處的複製）。
 static CARD_HOTKEY_FOREGROUND: AtomicIsize = AtomicIsize::new(0);
-/// 一次物理按下只投递一个动作；同时保证配对的 keyup 也被吞掉，否则目标程序会
-/// 收到一个孤立的 C 抬起事件（与 ESCAPE_KEY_DOWN 同一个理由）。
+/// 一次物理按下只投遞一個動作；同時保證配對的 keyup 也被吞掉，否則目標程式會
+/// 收到一個孤立的 C 抬起事件（與 ESCAPE_KEY_DOWN 同一個理由）。
 static CARD_HOTKEY_C_DOWN: AtomicBool = AtomicBool::new(false);
 
-/// 卡片快捷键的硬截止。
+/// 卡片快捷鍵的硬截止。
 ///
-/// 结果卡现在**不再自动消失**（文本还没交给用户，不该按"通知已读"处理），所以
-/// 前端会在卡片可见期间周期性续期。这个 TTL 只是异常兜底：渲染端卡死或进程忙死时，
-/// 绝不能永久接管用户的 Ctrl+C。续期间隔必须明显小于它。
+/// 結果卡現在**不再自動消失**（文本還沒交給使用者，不該按"通知已讀"處理），所以
+/// 前端會在卡片可見期間週期性續期。這個 TTL 只是異常兜底：渲染端卡死或程序忙死時，
+/// 絕不能永久接管使用者的 Ctrl+C。續期間隔必須明顯小於它。
 const CARD_HOTKEY_TTL_MS: i64 = 20 * 1000;
 
-/// 开启/续期/解除卡片快捷键。`actions` 为空即全部解除。
+/// 開啟/續期/解除卡片快捷鍵。`actions` 為空即全部解除。
 pub fn set_card_hotkeys(actions: &[String], token: u64) -> Result<(), String> {
     let mut mask = 0u32;
     for action in actions {
@@ -231,16 +231,16 @@ pub fn set_card_hotkeys(actions: &[String], token: u64) -> Result<(), String> {
         return Ok(());
     }
 
-    // 续期（token 未变）时不要重新取前台窗口：卡片可见期间用户可能已经切走，
-    // 那正是要解除接管的情形，重新取会把新前台当成"卡片的主人"又接管回来。
+    // 續期（token 未變）時不要重新取前台視窗：卡片可見期間使用者可能已經切走，
+    // 那正是要解除接管的情形，重新取會把新前台當成"卡片的主人"又接管回來。
     let renewing = CARD_HOTKEY_TOKEN.load(Ordering::SeqCst) == token
         && CARD_HOTKEY_MASK.load(Ordering::SeqCst) != 0;
     if !renewing {
         CARD_HOTKEY_FOREGROUND.store(current_foreground_hwnd(), Ordering::SeqCst);
     }
 
-    // 与 set_escape_action_mode 同样的发布顺序：先关，再写 token/deadline，最后开 mask。
-    // 钩子只有看到非零 mask 之后才会去读 token。
+    // 與 set_escape_action_mode 同樣的釋出順序：先關，再寫 token/deadline，最後開 mask。
+    // 鉤子只有看到非零 mask 之後才會去讀 token。
     CARD_HOTKEY_MASK.store(0, Ordering::SeqCst);
     CARD_HOTKEY_TOKEN.store(token, Ordering::SeqCst);
     CARD_HOTKEY_DEADLINE_MS.store(now_ms() + CARD_HOTKEY_TTL_MS, Ordering::SeqCst);
@@ -254,7 +254,7 @@ fn current_foreground_hwnd() -> isize {
     unsafe { GetForegroundWindow().0 as isize }
 }
 
-/// macOS：用前台应用的 pid 代替窗口句柄（卡片快捷键只需判断「用户切没切走」）。
+/// macOS：用前台應用的 pid 代替視窗控制代碼（卡片快捷鍵只需判斷「使用者切沒切走」）。
 #[cfg(target_os = "macos")]
 fn current_foreground_hwnd() -> isize {
     crate::platform::macos::ax::focused_application_pid().unwrap_or(0) as isize
@@ -265,7 +265,7 @@ fn current_foreground_hwnd() -> isize {
     0
 }
 
-/// 读取当前生效的卡片快捷键；顺手做过期自清（与 active_escape_action 同构）。
+/// 讀取當前生效的卡片快捷鍵；順手做過期自清（與 active_escape_action 同構）。
 fn active_card_hotkeys() -> (u32, u64) {
     let mask = CARD_HOTKEY_MASK.load(Ordering::SeqCst);
     if mask == 0 {
@@ -281,7 +281,7 @@ fn active_card_hotkeys() -> (u32, u64) {
     (mask, CARD_HOTKEY_TOKEN.load(Ordering::SeqCst))
 }
 
-/// 前台窗口是否仍是卡片弹出时那个。记录值为 0（取不到）时一律放过校验。
+/// 前台視窗是否仍是卡片彈出時那個。記錄值為 0（取不到）時一律放過校驗。
 #[cfg(any(windows, target_os = "macos"))]
 fn card_hotkey_foreground_matches() -> bool {
     let expected = CARD_HOTKEY_FOREGROUND.load(Ordering::SeqCst);
@@ -291,16 +291,16 @@ fn card_hotkey_foreground_matches() -> bool {
     current_foreground_hwnd() == expected
 }
 
-/// 这一刻按下的是不是**只有** Ctrl 的 Ctrl+C。
+/// 這一刻按下的是不是**只有** Ctrl 的 Ctrl+C。
 ///
-/// 为什么要排除其他修饰键：Ctrl+Shift+C（浏览器开发者工具的"检查元素"）、Ctrl+Alt+C、
-/// Win+Ctrl+C 都含着一个 Ctrl+C。只判"Ctrl 按着"会把这些一并截走，用户在自己的程序里
-/// 突然少了一个快捷键，而且完全看不出是谁干的。
+/// 為什麼要排除其他修飾鍵：Ctrl+Shift+C（瀏覽器開發者工具的"檢查元素"）、Ctrl+Alt+C、
+/// Win+Ctrl+C 都含著一個 Ctrl+C。只判"Ctrl 按著"會把這些一併截走，使用者在自己的程式裡
+/// 突然少了一個快捷鍵，而且完全看不出是誰幹的。
 ///
-/// 用 `GetAsyncKeyState` 是可靠的：这些修饰键我们从不吞（见
-/// single_key_blocked_by_modifiers 的注释）。唯一的边界是用户把**右 Ctrl 设成了
-/// PTT 单键**（默认配置就是），那一路 down 会被吞掉、异步状态可能读不到 —— 但那种
-/// 场景下按右 Ctrl 本来就在开始录音，不会是在复制。
+/// 用 `GetAsyncKeyState` 是可靠的：這些修飾鍵我們從不吞（見
+/// single_key_blocked_by_modifiers 的註釋）。唯一的邊界是使用者把**右 Ctrl 設成了
+/// PTT 單鍵**（預設配置就是），那一路 down 會被吞掉、非同步狀態可能讀不到 —— 但那種
+/// 場景下按右 Ctrl 本來就在開始錄音，不會是在複製。
 #[cfg(windows)]
 unsafe fn only_ctrl_is_down(kb_flags: u32) -> bool {
     use windows::Win32::UI::Input::KeyboardAndMouse::GetAsyncKeyState;
@@ -313,8 +313,8 @@ unsafe fn only_ctrl_is_down(kb_flags: u32) -> bool {
     if GetAsyncKeyState(VK_CONTROL) >= 0 {
         return false;
     }
-    // Alt 优先用事件自带的 LLKHF_ALTDOWN：那是 OS 派发这次按键时的视角，比事后问
-    // GetAsyncKeyState 更贴近现场（与 single_key_blocked_by_modifiers 同一个理由）。
+    // Alt 優先用事件自帶的 LLKHF_ALTDOWN：那是 OS 派發這次按鍵時的視角，比事後問
+    // GetAsyncKeyState 更貼近現場（與 single_key_blocked_by_modifiers 同一個理由）。
     if kb_flags & LLKHF_ALTDOWN != 0 {
         return false;
     }
@@ -333,14 +333,14 @@ fn card_hotkey_action_name(action: u32) -> &'static str {
     }
 }
 
-// ── 看门狗写日志的节流状态 ──
-// 每 60s 采样一次是廉价的，但没必要每次都写日志：正常时全是同样的正常值，纯噪音。
-// 只在"状态翻转 / 失败计数增加 / 距上次写日志超过心跳间隔"时才落一行。
+// ── 看門狗寫日誌的節流狀態 ──
+// 每 60s 取樣一次是廉價的，但沒必要每次都寫日誌：正常時全是同樣的正常值，純噪音。
+// 只在"狀態翻轉 / 失敗計數增加 / 距上次寫日誌超過心跳間隔"時才落一行。
 static WD_LAST_LOG_MS: AtomicI64 = AtomicI64::new(0);
 static WD_LAST_HOOK_RUNNING: AtomicBool = AtomicBool::new(false);
 static WD_LAST_DISPATCHER_ALIVE: AtomicBool = AtomicBool::new(false);
 static WD_LAST_FAIL_COUNT: AtomicU64 = AtomicU64::new(0);
-/// 一切正常时的心跳间隔：每 10 分钟落一行，证明进程还活着。
+/// 一切正常時的心跳間隔：每 10 分鐘落一行，證明程序還活著。
 const WD_HEARTBEAT_MS: i64 = 10 * 60 * 1000;
 
 fn now_ms() -> i64 {
@@ -359,11 +359,11 @@ use windows::Win32::UI::WindowsAndMessaging::{
     WM_MBUTTONDOWN, WM_MBUTTONUP,
 };
 
-/// 单键热键表 —— 单一数据源。
+/// 單鍵熱鍵表 —— 單一資料來源。
 ///
-/// ⚠️ 必须与前端 `client/src/lib/shortcutKeys.ts` 的 `SINGLE_KEYS` 保持一致
-/// （Rust 无法直接引用 TS，新增/修改单键时两边都要改）。
-/// `setting` 取值等于 DOM KeyboardEvent.code。
+/// ⚠️ 必須與前端 `client/src/lib/shortcutKeys.ts` 的 `SINGLE_KEYS` 保持一致
+/// （Rust 無法直接引用 TS，新增/修改單鍵時兩邊都要改）。
+/// `setting` 取值等於 DOM KeyboardEvent.code。
 const SINGLE_KEY_TABLE: &[(&str, u32)] = &[
     ("AltLeft", 0xA4),
     ("AltRight", 0xA5),
@@ -377,37 +377,37 @@ const SINGLE_KEY_TABLE: &[(&str, u32)] = &[
     ("Pause", 0x13),
     ("ScrollLock", 0x91),
     ("Insert", 0x2D),
-    // 鼠标侧键：走 WH_MOUSE_LL 鼠标钩子（非键盘钩子），vk 用 Windows 的 VK_XBUTTON1/2。
+    // 滑鼠側鍵：走 WH_MOUSE_LL 滑鼠鉤子（非鍵盤鉤子），vk 用 Windows 的 VK_XBUTTON1/2。
     ("XButton1", 0x05),
     ("XButton2", 0x06),
-    // 鼠标中键：走同一个低级鼠标钩子，vk 用 VK_MBUTTON。
+    // 滑鼠中鍵：走同一個低階滑鼠鉤子，vk 用 VK_MBUTTON。
     ("MButton", 0x04),
-    // 浏览器后退/前进键：罗技等改键鼠标常把侧键映射成这个（走键盘钩子）。
+    // 瀏覽器後退/前進鍵：羅技等改鍵滑鼠常把側鍵對映成這個（走鍵盤鉤子）。
     ("BrowserBack", 0xA6),
     ("BrowserForward", 0xA7),
     ("F1", 0x70), ("F2", 0x71), ("F3", 0x72), ("F4", 0x73),
     ("F5", 0x74), ("F6", 0x75), ("F7", 0x76), ("F8", 0x77),
     ("F9", 0x78), ("F10", 0x79), ("F11", 0x7A), ("F12", 0x7B),
-    // F13–F24：物理键盘上没有这些键，因此几乎不与任何程序的快捷键冲突，
-    // 适合可编程键盘 / 自制 HID 语音设备当专用触发键。
-    // 这一段在幻影过滤里有例外，见 is_injection_exempt_vk。
+    // F13–F24：物理鍵盤上沒有這些鍵，因此幾乎不與任何程式的快捷鍵衝突，
+    // 適合可程式設計鍵盤 / 自製 HID 語音裝置當專用觸發鍵。
+    // 這一段在幻影過濾裡有例外，見 is_injection_exempt_vk。
     ("F13", 0x7C), ("F14", 0x7D), ("F15", 0x7E), ("F16", 0x7F),
     ("F17", 0x80), ("F18", 0x81), ("F19", 0x82), ("F20", 0x83),
     ("F21", 0x84), ("F22", 0x85), ("F23", 0x86), ("F24", 0x87),
 ];
 
-/// 只在 macOS 上能单独当热键的键，Windows 上不放进上面的公共表（Windows 行为保持不变）：
-/// - 单独的 ⌘（Windows 上是 Win 键，单按会弹开始菜单，所以 Windows 不允许）；
-///   mac 上右 ⌘ 单按没有系统动作，是免提的默认键。
-/// - Fn / 🌐：Windows 没有对应的虚拟键；mac 的 event tap 把它翻译成保留值 0xFF
-///   （见 platform::macos::keycodes::VK_FN）。
-/// ⚠️ 与前端 lib/shortcutKeys.ts 里 IS_MAC 时追加的单键保持一致。
+/// 只在 macOS 上能單獨當熱鍵的鍵，Windows 上不放進上面的公共表（Windows 行為保持不變）：
+/// - 單獨的 ⌘（Windows 上是 Win 鍵，單按會彈開始選單，所以 Windows 不允許）；
+///   mac 上右 ⌘ 單按沒有系統動作，是免持的預設鍵。
+/// - Fn / 🌐：Windows 沒有對應的虛擬鍵；mac 的 event tap 把它翻譯成保留值 0xFF
+///   （見 platform::macos::keycodes::VK_FN）。
+/// ⚠️ 與前端 lib/shortcutKeys.ts 裡 IS_MAC 時追加的單鍵保持一致。
 #[cfg(target_os = "macos")]
 const PLATFORM_EXTRA_SINGLE_KEYS: &[(&str, u32)] = &[("MetaLeft", 0x5B), ("MetaRight", 0x5C), ("Fn", 0xFF)];
 #[cfg(not(target_os = "macos"))]
 const PLATFORM_EXTRA_SINGLE_KEYS: &[(&str, u32)] = &[];
 
-/// 单键热键表查找（公共表 + 本平台额外的单键）。
+/// 單鍵熱鍵表查詢（公共表 + 本平台額外的單鍵）。
 fn single_key_vk(code: &str) -> Option<u32> {
     SINGLE_KEY_TABLE
         .iter()
@@ -492,27 +492,27 @@ impl PttKeyConfig {
     }
 }
 
-/// 「按住说话」的默认键，同时也是配置非法时的回退。
+/// 「按住說話」的預設鍵，同時也是配置非法時的回退。
 ///
-/// **不能是 Shift**：长按右 Shift 约 8 秒会触发 Windows 筛选键，那之后我们收不到
-/// 这次「松开」，录音不会随手指抬起而结束。这里曾经是 ShiftRight，于是每台新装的
-/// 机器开箱就绑在那个键上（前端也一样，见 services/defaults.ts）。
-/// 右 Ctrl 位置相近、没有辅助功能陷阱，也不和免提的默认键（右 Alt）撞。
+/// **不能是 Shift**：長按右 Shift 約 8 秒會觸發 Windows 篩選鍵，那之後我們收不到
+/// 這次「鬆開」，錄音不會隨手指抬起而結束。這裡曾經是 ShiftRight，於是每台新裝的
+/// 機器開箱就綁在那個鍵上（前端也一樣，見 services/defaults.ts）。
+/// 右 Ctrl 位置相近、沒有輔助功能陷阱，也不和免持的預設鍵（右 Alt）撞。
 ///
-/// 值在 crate::defaults，那里有与前端 defaults.ts 的对账测试。
+/// 值在 crate::defaults，那裡有與前端 defaults.ts 的對帳測試。
 const DEFAULT_PTT_SETTING: &str = crate::defaults::SHORTCUT_PTT;
-/// 与 DEFAULT_PTT_SETTING 对应的键：Windows 右 Ctrl，macOS 右 ⌥（MacBook 没有右 Ctrl）。
+/// 與 DEFAULT_PTT_SETTING 對應的鍵：Windows 右 Ctrl，macOS 右 ⌥（MacBook 沒有右 Ctrl）。
 #[cfg(not(target_os = "macos"))]
 const DEFAULT_PTT_VK: u32 = 0xA3;
 #[cfg(target_os = "macos")]
 const DEFAULT_PTT_VK: u32 = 0xA5;
 
-/// 解析向后兼容的 PTT 物理键格式。旧单键仍是单成员；组合成员用 `+` 分隔。
+/// 解析向後相容的 PTT 物理鍵格式。舊單鍵仍是單成員；組合成員用 `+` 分隔。
 ///
-/// 非法或未知非空值安全回退到默认键，避免整串被误当成别的键。
-/// 注意这里**不禁止 Shift**：老用户存的可能就是 ShiftRight，那些绑定必须照原样生效。
-/// 「不许再新设 Shift」是前端校验的事（lib/shortcutKeys.ts），不是解析器的事 ——
-/// 在这里连解析都拒掉，等于用户没改设置说话键就自己变了。
+/// 非法或未知非空值安全回退到預設鍵，避免整串被誤當成別的鍵。
+/// 注意這裡**不禁止 Shift**：老使用者存的可能就是 ShiftRight，那些繫結必須照原樣生效。
+/// 「不許再新設 Shift」是前端校驗的事（lib/shortcutKeys.ts），不是解析器的事 ——
+/// 在這裡連解析都拒掉，等於使用者沒改設定說話鍵就自己變了。
 fn ptt_key_config(setting: &str) -> PttKeyConfig {
     if setting.is_empty() {
         return PttKeyConfig::disabled();
@@ -535,8 +535,8 @@ fn ptt_key_config(setting: &str) -> PttKeyConfig {
         }
         vk_codes.push(vk);
         if let Some(family) = ptt_modifier_family(code) {
-            // WebView 的 KeyboardEvent 只能给出家族级 ctrlKey/altKey 等状态，无法在
-            // 主键快路径可靠区分同族左右键；明确禁止左右两侧同时进入一个组合。
+            // WebView 的 KeyboardEvent 只能給出家族級 ctrlKey/altKey 等狀態，無法在
+            // 主鍵快路徑可靠區分同族左右鍵；明確禁止左右兩側同時進入一個組合。
             if modifier_families.contains(&family) {
                 return PttKeyConfig::fallback();
             }
@@ -578,72 +578,72 @@ pub fn is_single_key_setting(setting: &str) -> bool {
     single_key_vk(setting).is_some()
 }
 
-/// 该设置是否为鼠标侧键（由低级鼠标钩子处理，而非键盘钩子）。
+/// 該設定是否為滑鼠側鍵（由低階滑鼠鉤子處理，而非鍵盤鉤子）。
 #[cfg_attr(not(windows), allow(dead_code))]
 fn is_mouse_button_setting(setting: &str) -> bool {
     matches!(setting, "XButton1" | "XButton2" | "MButton")
 }
 
-/// 这个 vk 是鼠标按键吗（VK_MBUTTON / VK_XBUTTON1 / VK_XBUTTON2）。
+/// 這個 vk 是滑鼠按鍵嗎（VK_MBUTTON / VK_XBUTTON1 / VK_XBUTTON2）。
 ///
-/// ⚠️ 鼠标按键的物理状态**查不到**：低级鼠标钩子把它们的 down/up 都吞掉了
-/// （返回 LRESULT(1)，否则会触发别的程序的前进/后退导航），事件因此不进系统输入
-/// 队列，Windows 也就不为它们维护异步键状态 —— `GetAsyncKeyState` 会一直报「没按下」。
-/// 所以凡是以 `is_ptt_member_physically_down` 为判据的逻辑，遇到鼠标按键都必须绕开。
+/// ⚠️ 滑鼠按鍵的物理狀態**查不到**：低階滑鼠鉤子把它們的 down/up 都吞掉了
+/// （返回 LRESULT(1)，否則會觸發別的程式的前進/後退導航），事件因此不進系統輸入
+/// 佇列，Windows 也就不為它們維護非同步鍵狀態 —— `GetAsyncKeyState` 會一直報「沒按下」。
+/// 所以凡是以 `is_ptt_member_physically_down` 為判據的邏輯，遇到滑鼠按鍵都必須繞開。
 ///
-/// 若日后往 SINGLE_KEY_TABLE 里加第四个鼠标键，这里也要跟着加（有测试钉住）。
+/// 若日後往 SINGLE_KEY_TABLE 裡加第四個滑鼠鍵，這裡也要跟著加（有測試釘住）。
 fn is_mouse_vk(vk: u32) -> bool {
     matches!(vk, 0x04 | 0x05 | 0x06)
 }
 
-/// 幻影过滤的例外键：即使带「注入」标志或 scanCode==0，也照常当用户按键处理。
+/// 幻影過濾的例外部索引鍵：即使帶「注入」標誌或 scanCode==0，也照常當使用者按鍵處理。
 ///
-/// 幻影过滤真正要防的是 Windows 菜单导航合成出来的假 Alt（与真实按键几乎无法区分，
-/// 只能靠 injected 标志和 scanCode==0 识别）。下面这些键都不可能是那种幻影，而它们的
-/// **正常来源恰恰就是注入**，按幻影丢弃只会让用户绑了不生效：
-///   · BrowserBack / BrowserForward（0xA6/0xA7）：罗技等鼠标驱动把侧键改写成它们。
-///   · F13–F24（0x7C–0x87）：物理键盘上不存在这些键，用户要按出来只有两条路 ——
-///     可编程键盘 / HID 固件直接发（真键，本来就能过），或者用 AutoHotkey、PowerToys
-///     键盘管理器、外设驱动宏把别的键映射过来。后者走 SendInput，带 injected 标志；
-///     不开例外的话这类用户会遇到「绑得上、按下去没反应、日志里也没有任何记录」，
-///     排查起来毫无线索。误判的代价只是某个程序模拟 F13 时多弹一次悬浮窗。
+/// 幻影過濾真正要防的是 Windows 選單導航合成出來的假 Alt（與真實按鍵幾乎無法區分，
+/// 只能靠 injected 標誌和 scanCode==0 識別）。下面這些鍵都不可能是那種幻影，而它們的
+/// **正常來源恰恰就是注入**，按幻影丟棄只會讓使用者綁了不生效：
+///   · BrowserBack / BrowserForward（0xA6/0xA7）：羅技等滑鼠驅動把側鍵改寫成它們。
+///   · F13–F24（0x7C–0x87）：物理鍵盤上不存在這些鍵，使用者要按出來只有兩條路 ——
+///     可程式設計鍵盤 / HID 韌體直接發（真鍵，本來就能過），或者用 AutoHotkey、PowerToys
+///     鍵盤管理器、外設驅動宏把別的鍵對映過來。後者走 SendInput，帶 injected 標誌；
+///     不開例外的話這類使用者會遇到「綁得上、按下去沒反應、日誌裡也沒有任何記錄」，
+///     排查起來毫無線索。誤判的代價只是某個程式模擬 F13 時多彈一次懸浮窗。
 #[cfg_attr(not(windows), allow(dead_code))]
 fn is_injection_exempt_vk(vk: u32) -> bool {
     matches!(vk, 0xA6 | 0xA7) || (0x7C..=0x87).contains(&vk)
 }
 
-/// `KBDLLHOOKSTRUCT.flags` 的 LLKHF_ALTDOWN 位：这次按键发生时 Alt 是否按住。
+/// `KBDLLHOOKSTRUCT.flags` 的 LLKHF_ALTDOWN 位：這次按鍵發生時 Alt 是否按住。
 ///
-/// 这是 OS 派发事件时自己的视角，比事后问 `GetAsyncKeyState` 更贴近现场。
-/// ⚠️ 不能用「msg == WM_SYSKEYDOWN」代替：F10 单独按下也走 WM_SYSKEYDOWN。
+/// 這是 OS 派發事件時自己的視角，比事後問 `GetAsyncKeyState` 更貼近現場。
+/// ⚠️ 不能用「msg == WM_SYSKEYDOWN」代替：F10 單獨按下也走 WM_SYSKEYDOWN。
 #[cfg(windows)]
 const LLKHF_ALTDOWN: u32 = 0x20;
 
 /// 左右 Shift / Ctrl / Alt / Win 的 vk。
 const MODIFIER_VK_CODES: [u32; 8] = [0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0x5B, 0x5C];
 
-/// 这个单键热键是否要求「裸按」—— 按下的那一刻不能有额外修饰键按住。
+/// 這個單鍵熱鍵是否要求「裸按」—— 按下的那一刻不能有額外修飾鍵按住。
 ///
-/// 起因：用户把 F4 设成免提，结果按 Alt+F4 也会开始录音（而且 F4 的 down 被我们吞掉，
-/// Alt+F4 本身还失效了）。判定原来只比 vk，压根不看修饰键。
+/// 起因：使用者把 F4 設成免持，結果按 Alt+F4 也會開始錄音（而且 F4 的 down 被我們吞掉，
+/// Alt+F4 本身還失效了）。判定原來只比 vk，壓根不看修飾鍵。
 ///
-/// **只对主键成立**（F1–F24、Space、Insert、CapsLock、BrowserBack…）。热键本身就是
-/// 修饰键时绝不能套这条规则，两个原因都会让热键彻底失效：
-///   · 「按住说话」默认是右 Ctrl、免提默认是右 Alt。自己就是 Ctrl，再去问
-///     「有没有 Ctrl 按住」永远为真；
-///   · 欧洲键盘布局的 AltGr 会同时产生 左Ctrl + 右Alt。右 Alt 当热键时，
-///     这些用户每次按都带着一个左 Ctrl，会被永久挡住。
+/// **只對主鍵成立**（F1–F24、Space、Insert、CapsLock、BrowserBack…）。熱鍵本身就是
+/// 修飾鍵時絕不能套這條規則，兩個原因都會讓熱鍵徹底失效：
+///   · 「按住說話」預設是右 Ctrl、免持預設是右 Alt。自己就是 Ctrl，再去問
+///     「有沒有 Ctrl 按住」永遠為真；
+///   · 歐洲鍵盤佈局的 AltGr 會同時產生 左Ctrl + 右Alt。右 Alt 當熱鍵時，
+///     這些使用者每次按都帶著一個左 Ctrl，會被永久擋住。
 ///
-/// 鼠标键也排除：它们走的是鼠标钩子，而且 Alt+侧键不是任何系统快捷键 ——
-/// 放行反而会把浏览器的前进/后退导航漏给别的程序（见 pitfalls 第 6 条）。
+/// 滑鼠鍵也排除：它們走的是滑鼠鉤子，而且 Alt+側鍵不是任何系統快捷鍵 ——
+/// 放行反而會把瀏覽器的前進/後退導航漏給別的程式（見 pitfalls 第 6 條）。
 fn single_key_requires_bare_press(vk: u32) -> bool {
     !MODIFIER_VK_CODES.contains(&vk) && !is_mouse_vk(vk)
 }
 
-/// 按下这个单键热键的时刻，是否有额外修饰键按住（有则整条放行、不吞、不触发）。
+/// 按下這個單鍵熱鍵的時刻，是否有額外修飾鍵按住（有則整條放行、不吞、不觸發）。
 ///
-/// Ctrl / Shift / Alt / Win 我们从不吞掉，所以它们的异步键状态是可靠的 ——
-/// pitfalls 第 13 条那条「鼠标键查不到物理状态」的限制在这里不适用。
+/// Ctrl / Shift / Alt / Win 我們從不吞掉，所以它們的非同步鍵狀態是可靠的 ——
+/// pitfalls 第 13 條那條「滑鼠鍵查不到物理狀態」的限制在這裡不適用。
 #[cfg(windows)]
 unsafe fn single_key_blocked_by_modifiers(vk: u32, kb_flags: u32) -> bool {
     use windows::Win32::UI::Input::KeyboardAndMouse::GetAsyncKeyState;
@@ -692,31 +692,31 @@ struct PTTEvent {
 struct HookSharedState {
     ptt_vk_codes: Vec<u32>,
     ptt_setting: String,
-    /// PTT 成员的已按下位图；只有位图首次达到 full_mask 才开始。
+    /// PTT 成員的已按下點陣圖；只有點陣圖首次達到 full_mask 才開始。
     ptt_pressed_mask: AtomicU64,
     ptt_full_mask: u64,
-    /// 哪些 PTT 成员是修饰键，用于组合键的事件消费策略。
+    /// 哪些 PTT 成員是修飾鍵，用於組合鍵的事件消費策略。
     ptt_modifier_mask: u64,
-    /// 普通组合中已经吞掉 down 的主键位；仅对应位的 up 才能继续吞，避免孤立事件。
+    /// 普通組合中已經吞掉 down 的主鍵位；僅對應位的 up 才能繼續吞，避免孤立事件。
     ptt_consumed_down_mask: AtomicU64,
-    /// 当前活动 PTT 代次；0 表示空闲，最高位表示某个释放方已认领、正在入队 up。
-    /// 按下、释放归属和“允许下一次按下”由这一个原子量决定，避免拆分 bool/代次产生竞态。
+    /// 當前活動 PTT 代次；0 表示空閒，最高位表示某個釋放方已認領、正在入隊 up。
+    /// 按下、釋放歸屬和“允許下一次按下”由這一個原子量決定，避免拆分 bool/代次產生競態。
     ptt_active_generation: AtomicU64,
-    /// 单调递增的 PTT 代次分配器，仅在新按下时推进。
+    /// 單調遞增的 PTT 代次分配器，僅在新按下時推進。
     ptt_generation: AtomicU64,
-    /// 每个成员最近一次真实 keydown（包括 repeat）的时间。
-    /// 各成员独立记录，避免仍按住成员的 repeat 掩盖另一个成员已经漏掉 key-up。
+    /// 每個成員最近一次真實 keydown（包括 repeat）的時間。
+    /// 各成員獨立記錄，避免仍按住成員的 repeat 掩蓋另一個成員已經漏掉 key-up。
     ptt_last_down_ms: Vec<AtomicI64>,
-    /// hook 生命周期标记，供独立成员状态看门狗在重配/停止时退出。
+    /// hook 生命週期標記，供獨立成員狀態看門狗在重配/停止時退出。
     ptt_hook_alive: AtomicBool,
     hands_free_active: AtomicBool,
-    /// 免提键是否处于"已按下"状态。首个真实 keydown 触发 toggle，repeat down 被忽略；
-    /// 配对 keyup（包括被标成 synthetic 的 up）负责清零，让下一次按下可以再次触发。
+    /// 免持鍵是否處於"已按下"狀態。首個真實 keydown 觸發 toggle，repeat down 被忽略；
+    /// 配對 keyup（包括被標成 synthetic 的 up）負責清零，讓下一次按下可以再次觸發。
     hf_key_down: AtomicBool,
     /// VK codes for hands-free toggle key (empty = not using hook for hands-free)
     hf_vk_codes: Vec<u32>,
     hf_setting: String,
-    /// AI 整理开关支持单键与鼠标按键；组合键仍由 global_shortcut 处理。
+    /// AI 整理開關支援單鍵與滑鼠按鍵；組合鍵仍由 global_shortcut 處理。
     ai_toggle_key_down: AtomicBool,
     ai_toggle_vk_codes: Vec<u32>,
     ai_toggle_setting: String,
@@ -732,21 +732,21 @@ enum HookAction {
     HfToggle { vk: u32 },
     AiToggle { vk: u32 },
     Escape { mode: u32, token: u64 },
-    /// 悬浮窗卡片上的临时组合键（目前只有 Ctrl+C = 复制结果文本）。
+    /// 懸浮窗卡片上的臨時組合鍵（目前只有 Ctrl+C = 複製結果文本）。
     CardHotkey { action: u32, token: u64 },
     Diag { vk: u32, msg_name: &'static str, flags: u32, scan_code: u32 },
     Shutdown,
-    /// 快捷键录制期间捕获到的鼠标侧键（vk=0x05/0x06），用于让设置页绑定侧键。
+    /// 快捷鍵錄製期間捕獲到的滑鼠側鍵（vk=0x05/0x06），用於讓設定頁繫結側鍵。
     MouseCaptured { vk: u32 },
-    /// 切换润色模式。只有 mac 的 event tap 会发：系统快捷键接不住的、只带 ⌥ / ⇧ 的组合键
-    /// （见 keyboard/macos.rs 的 TAP_COMBOS）。Windows 上这类组合仍由 global_shortcut 处理。
+    /// 切換潤色模式。只有 mac 的 event tap 會發：系統快捷鍵接不住的、只帶 ⌥ / ⇧ 的組合鍵
+    /// （見 keyboard/macos.rs 的 TAP_COMBOS）。Windows 上這類組合仍由 global_shortcut 處理。
     PresetSwitch { preset_id: String },
 }
 
 const PTT_RELEASING_BIT: u64 = 1 << 63;
 
-/// 开始一次新的 PTT 代次。只有 active=0 才能发布新代次；释放方把旧 up 放进
-/// dispatcher 队列之前 active 始终非 0，因此不会出现 down(new) 排在 up(old) 前面。
+/// 開始一次新的 PTT 代次。只有 active=0 才能釋出新代次；釋放方把舊 up 放進
+/// dispatcher 佇列之前 active 始終非 0，因此不會出現 down(new) 排在 up(old) 前面。
 fn begin_ptt_press(active_generation: &AtomicU64, generation: &AtomicU64) -> Option<u64> {
     if active_generation.load(Ordering::SeqCst) != 0 {
         return None;
@@ -769,18 +769,18 @@ fn begin_ptt_press(active_generation: &AtomicU64, generation: &AtomicU64) -> Opt
         .map(|_| gen)
 }
 
-/// 免提键只在一次物理按下的首个 keydown 触发；Windows 随后的 repeat down 被忽略。
+/// 免持鍵只在一次物理按下的首個 keydown 觸發；Windows 隨後的 repeat down 被忽略。
 fn begin_hf_press(key_down: &AtomicBool) -> bool {
     !key_down.swap(true, Ordering::SeqCst)
 }
 
-/// 清除免提按下状态。返回 true 表示确实存在一枚需要配对消费的 keyup。
+/// 清除免持按下狀態。返回 true 表示確實存在一枚需要配對消費的 keyup。
 fn end_hf_press(key_down: &AtomicBool) -> bool {
     key_down.swap(false, Ordering::SeqCst)
 }
 
-/// 幂等认领一次释放，但暂不允许下一次 down。认领者必须在 up 成功入队后调用
-/// `complete_ptt_release`；dispatcher 断开时也 complete，优先避免 native 状态永久卡住。
+/// 冪等認領一次釋放，但暫不允許下一次 down。認領者必須在 up 成功入隊後呼叫
+/// `complete_ptt_release`；dispatcher 斷開時也 complete，優先避免 native 狀態永久卡住。
 fn claim_ptt_release(
     active_generation: &AtomicU64,
     expected_generation: Option<u64>,
@@ -832,14 +832,14 @@ fn ptt_member_index(vk_codes: &[u32], vk: u32) -> Option<usize> {
     vk_codes.iter().position(|configured| *configured == vk)
 }
 
-/// 记录成员 down；仅在该成员由 up→down 且本次使完整位图成立时返回 true。
+/// 記錄成員 down；僅在該成員由 up→down 且本次使完整點陣圖成立時返回 true。
 fn press_ptt_member(pressed_mask: &AtomicU64, index: usize, full_mask: u64) -> bool {
     let bit = 1_u64 << index;
     let previous = pressed_mask.fetch_or(bit, Ordering::SeqCst);
     (previous & bit) == 0 && (previous | bit) == full_mask
 }
 
-/// 记录成员 up；孤立或重复 up 返回 false。
+/// 記錄成員 up；孤立或重複 up 返回 false。
 fn release_ptt_member(pressed_mask: &AtomicU64, index: usize) -> bool {
     let bit = 1_u64 << index;
     (pressed_mask.fetch_and(!bit, Ordering::SeqCst) & bit) != 0
@@ -888,8 +888,8 @@ unsafe fn is_ptt_member_physically_down(vk: u32) -> bool {
     use windows::Win32::UI::Input::KeyboardAndMouse::GetAsyncKeyState;
     let configured_key_down = GetAsyncKeyState(vk as i32) < 0;
     let mapped_side_button_down = match vk {
-        // 罗技等驱动常把标准侧键改写成 BrowserBack/Forward；同时检查原始
-        // XBUTTON，避免注入后的浏览器 VK 不维护异步键状态。
+        // 羅技等驅動常把標準側鍵改寫成 BrowserBack/Forward；同時檢查原始
+        // XBUTTON，避免注入後的瀏覽器 VK 不維護非同步鍵狀態。
         0xA6 => GetAsyncKeyState(0x05) < 0,
         0xA7 => GetAsyncKeyState(0x06) < 0,
         _ => false,
@@ -897,8 +897,8 @@ unsafe fn is_ptt_member_physically_down(vk: u32) -> bool {
     configured_key_down || mapped_side_button_down
 }
 
-/// 供 WebView 聚焦回退路径确认组合成员的真实物理状态。
-/// 返回值与输入 code 一一对应；未知 code 安全返回 false。
+/// 供 WebView 聚焦回退路徑確認組合成員的真實物理狀態。
+/// 返回值與輸入 code 一一對應；未知 code 安全返回 false。
 pub fn ptt_physical_key_states(codes: &[String]) -> Vec<bool> {
     #[cfg(windows)]
     {
@@ -928,8 +928,8 @@ pub fn ptt_physical_key_states(codes: &[String]) -> Vec<bool> {
     }
 }
 
-/// 新成员 down 到来前，先清掉其它成员中物理上已经松开的残位。
-/// 这既覆盖录音结束后的漏 up，也避免在 1.5 秒后台看门狗窗口内误拼出完整组合。
+/// 新成員 down 到來前，先清掉其它成員中物理上已經鬆開的殘位。
+/// 這既覆蓋錄音結束後的漏 up，也避免在 1.5 秒後台看門狗視窗內誤拼出完整組合。
 #[cfg(any(windows, target_os = "macos"))]
 unsafe fn reconcile_stale_ptt_members_before_down(
     state: &HookSharedState,
@@ -963,23 +963,23 @@ fn queue_ptt_release(
     };
 
     if sender.send(HookAction::PttUp { vk, gen, reason }).is_ok() {
-        // up 已经在线性 FIFO 中排队；现在才允许下一次 down 发布新代次。
+        // up 已經線上性 FIFO 中排隊；現在才允許下一次 down 釋出新代次。
         let _ = complete_ptt_release(active_generation, gen);
         true
     } else {
-        // dispatcher 已断开时不可能再投递前端事件；至少释放 native 状态，避免
-        // 永久拒绝后续 down/持续吞 PTT 键。健康看门狗会记录 dispatcher 失效。
+        // dispatcher 已斷開時不可能再投遞前端事件；至少釋放 native 狀態，避免
+        // 永久拒絕後續 down/持續吞 PTT 鍵。健康看門狗會記錄 dispatcher 失效。
         let _ = complete_ptt_release(active_generation, gen);
         TRY_SEND_FAIL_COUNT.fetch_add(1, Ordering::Relaxed);
         false
     }
 }
 
-/// 独立于“当前是否正在录音”的 PTT 成员物理状态看门狗。
+/// 獨立於“當前是否正在錄音”的 PTT 成員物理狀態看門狗。
 ///
-/// 活动代次可能因任一成员正常 up 而结束，但其它成员的 up 仍可能丢失；如果只让录音
-/// watchdog 工作到代次结束，残留位会把下一次单键误拼成完整组合。此线程存活期等于 hook，
-/// 会持续清理每个已物理松开且 repeat 静默足够久的成员，并在仍有活动代次时补发一次 up。
+/// 活動代次可能因任一成員正常 up 而結束，但其它成員的 up 仍可能丟失；如果只讓錄音
+/// watchdog 工作到代次結束，殘留位會把下一次單鍵誤拼成完整組合。此執行緒存活期等於 hook，
+/// 會持續清理每個已物理鬆開且 repeat 靜默足夠久的成員，並在仍有活動代次時補發一次 up。
 #[cfg(any(windows, target_os = "macos"))]
 fn spawn_ptt_member_watchdog(
     state: Arc<HookSharedState>,
@@ -1006,11 +1006,11 @@ fn spawn_ptt_member_watchdog(
                         continue;
                     }
 
-                    // 鼠标按键必须跳过这套判据。它由「repeat 静默」+「异步键状态」两个
-                    // 信号组成，而这两个对鼠标按键都不存在：鼠标按键没有自动重复，
-                    // 异步键状态又因为我们吞掉了事件而不更新（见 is_mouse_vk）。
-                    // 于是条件恒真、只会稳定误判。鼠标键的 up 由我们自己的钩子直接观测，
-                    // 吞掉不影响我们收到事件；真丢了 up 还有 5 分钟硬释放兜底。
+                    // 滑鼠按鍵必須跳過這套判據。它由「repeat 靜默」+「非同步鍵狀態」兩個
+                    // 訊號組成，而這兩個對滑鼠按鍵都不存在：滑鼠按鍵沒有自動重複，
+                    // 非同步鍵狀態又因為我們吞掉了事件而不更新（見 is_mouse_vk）。
+                    // 於是條件恆真、只會穩定誤判。滑鼠鍵的 up 由我們自己的鉤子直接觀測，
+                    // 吞掉不影響我們收到事件；真丟了 up 還有 5 分鐘硬釋放兜底。
                     if is_mouse_vk(member_vk) {
                         released_samples[index] = 0;
                         continue;
@@ -1095,8 +1095,8 @@ fn spawn_ptt_release_watchdog(
     gen: u64,
 ) {
     const POLL_MS: u64 = 100;
-    // Windows 可配置的首次键盘 repeat 延迟最长约 1 秒。留到 1.5 秒，且再要求
-    // 连续三次看到物理键已松开，避免正常长按被短暂状态抖动提前结束。
+    // Windows 可配置的首次鍵盤 repeat 延遲最長約 1 秒。留到 1.5 秒，且再要求
+    // 連續三次看到物理鍵已鬆開，避免正常長按被短暫狀態抖動提前結束。
     const REPEAT_SILENCE_MS: i64 = 1_500;
     const RELEASED_SAMPLES_REQUIRED: u8 = 3;
     const WARNING_AFTER_SECS: u64 = 4 * 60;
@@ -1117,8 +1117,8 @@ fn spawn_ptt_release_watchdog(
                     return;
                 }
 
-                // 每个成员独立检查“repeat 静默 + 物理状态”。另一个仍按住成员的
-                // repeat 不会再掩盖已经松开但漏掉 key-up 的成员。
+                // 每個成員獨立檢查“repeat 靜默 + 物理狀態”。另一個仍按住成員的
+                // repeat 不會再掩蓋已經鬆開但漏掉 key-up 的成員。
                 let mut recovered_member: Option<(usize, u32, i64)> = None;
                 for (index, &member_vk) in state.ptt_vk_codes.iter().enumerate() {
                     let bit = 1_u64 << index;
@@ -1127,9 +1127,9 @@ fn spawn_ptt_release_watchdog(
                         continue;
                     }
 
-                    // 见 member watchdog 里同一处的说明：这套「repeat 静默 + 异步键状态」
-                    // 的判据对鼠标按键两个信号都缺，必然误判。实测按住侧键/中键 1.7 秒
-                    // 就会被判成「漏了 keyup」而强制结束录音（reason=missing_keyup_release）。
+                    // 見 member watchdog 裡同一處的說明：這套「repeat 靜默 + 非同步鍵狀態」
+                    // 的判據對滑鼠按鍵兩個訊號都缺，必然誤判。實測按住側鍵/中鍵 1.7 秒
+                    // 就會被判成「漏了 keyup」而強制結束錄音（reason=missing_keyup_release）。
                     if is_mouse_vk(member_vk) {
                         released_samples[index] = 0;
                         continue;
@@ -1152,14 +1152,14 @@ fn spawn_ptt_release_watchdog(
                 }
 
                 if let Some((index, member_vk, repeat_silence_ms)) = recovered_member {
-                    // 一旦确认至少一个成员漏了 up，就同步清掉当前所有“物理已松开”的位。
-                    // 这样两个成员同时漏 up 时不会留下半个组合；仍物理按住的成员保留，
-                    // 避免 repeat 自动把完整组合重新拼起来。
+                    // 一旦確認至少一個成員漏了 up，就同步清掉當前所有“物理已鬆開”的位。
+                    // 這樣兩個成員同時漏 up 時不會留下半個組合；仍物理按住的成員保留，
+                    // 避免 repeat 自動把完整組合重新拼起來。
                     let mut cleared_mask = 0_u64;
                     for (other_index, &other_vk) in state.ptt_vk_codes.iter().enumerate() {
                         let bit = 1_u64 << other_index;
-                        // 同样跳过鼠标按键：它的物理状态查不到，清掉只会误伤。
-                        // （鼠标键目前只允许单键格式，走不到这里，但判据要一致。）
+                        // 同樣跳過滑鼠按鍵：它的物理狀態查不到，清掉只會誤傷。
+                        // （滑鼠鍵目前只允許單鍵格式，走不到這裡，但判據要一致。）
                         if is_mouse_vk(other_vk) {
                             continue;
                         }
@@ -1242,8 +1242,8 @@ fn spawn_ptt_release_watchdog(
             "[RUST] [ptt] failed to start release watchdog gen={} error={}",
             gen, error,
         ));
-        // 无 watchdog 比立即结束本次录音更危险。此处本来就在 dispatcher 线程：
-        // 先 emit，再清 active，仍保证旧 up 不会排到下一次 down 后面。
+        // 無 watchdog 比立即結束本次錄音更危險。此處本來就在 dispatcher 執行緒：
+        // 先 emit，再清 active，仍保證舊 up 不會排到下一次 down 後面。
         clear_ptt_members(&fallback_state);
         if let Some(claimed_gen) =
             claim_ptt_release(&fallback_state.ptt_active_generation, Some(gen))
@@ -1254,9 +1254,9 @@ fn spawn_ptt_release_watchdog(
     }
 }
 
-/// RAII 计时器：测量 `low_level_keyboard_proc` 单次调用耗时，drop 时更新
-/// `MAX_CALLBACK_DURATION_US`。用 Drop 而非在每个 return 点手写更新，这样
-/// 无论函数从哪条路径返回都会被覆盖到，不会漏记。
+/// RAII 計時器：測量 `low_level_keyboard_proc` 單次呼叫耗時，drop 時更新
+/// `MAX_CALLBACK_DURATION_US`。用 Drop 而非在每個 return 點手寫更新，這樣
+/// 無論函式從哪條路徑返回都會被覆蓋到，不會漏記。
 #[cfg(any(windows, target_os = "macos"))]
 struct CallbackTimer(std::time::Instant);
 
@@ -1271,9 +1271,9 @@ impl Drop for CallbackTimer {
     }
 }
 
-/// RAII 标记：dispatcher 线程存活状态。构造时置 true，drop 时（无论正常退出
-/// 还是 panic 展开）置 false —— 这样即使 dispatcher 线程 panic，全局健康快照
-/// 也能立刻反映出"dispatcher 已死"，不依赖它自己走到正常退出的日志行。
+/// RAII 標記：dispatcher 執行緒存活狀態。構造時置 true，drop 時（無論正常退出
+/// 還是 panic 展開）置 false —— 這樣即使 dispatcher 執行緒 panic，全域性健康快照
+/// 也能立刻反映出"dispatcher 已死"，不依賴它自己走到正常退出的日誌行。
 struct DispatcherAliveGuard;
 
 impl DispatcherAliveGuard {
@@ -1289,8 +1289,8 @@ impl Drop for DispatcherAliveGuard {
     }
 }
 
-/// 供看门狗线程读取的健康快照，写入 sayit.log 供事后排查。
-/// 复现问题后搜索 `[ptt-watchdog]` 即可看到当时的钩子/dispatcher 状态。
+/// 供看門狗執行緒讀取的健康快照，寫入 sayit.log 供事後排查。
+/// 復現問題後搜尋 `[ptt-watchdog]` 即可看到當時的鉤子/dispatcher 狀態。
 pub fn write_health_snapshot(reason: &str) {
     let last_cb = LAST_CALLBACK_MS.load(Ordering::SeqCst);
     let last_cb_age_ms = if last_cb == 0 { -1 } else { now_ms() - last_cb };
@@ -1306,26 +1306,26 @@ pub fn write_health_snapshot(reason: &str) {
     ));
 }
 
-/// 启动一个每 60 秒采样一次健康状态的看门狗线程。整个进程生命周期内只需启动一次
-/// （在 main.rs 的 setup 阶段调用），与具体某次 hook 的 start/stop/reconfigure 无关。
+/// 啟動一個每 60 秒取樣一次健康狀態的看門狗執行緒。整個程序生命週期內只需啟動一次
+/// （在 main.rs 的 setup 階段呼叫），與具體某次 hook 的 start/stop/reconfigure 無關。
 ///
-/// 采样廉价、写日志克制：仅在①钩子/分发线程存活状态翻转、②投递失败计数增加、
-/// ③距上次落盘超过心跳间隔（10 分钟）时才写一行，避免正常运行时刷屏。
+/// 取樣廉價、寫日誌剋制：僅在①鉤子/分發執行緒存活狀態翻轉、②投遞失敗計數增加、
+/// ③距上次落盤超過心跳間隔（10 分鐘）時才寫一行，避免正常執行時刷屏。
 pub fn spawn_health_watchdog() {
     let _ = thread::Builder::new()
         .name("ptt-watchdog".to_string())
         .spawn(|| {
-            // last_refresh_ms 只有 Windows 的「钩子被摘」判据用得到
+            // last_refresh_ms 只有 Windows 的「鉤子被摘」判據用得到
             #[cfg_attr(not(windows), allow(unused_mut, unused_variables))]
             let mut last_refresh_ms: i64 = 0;
             let mut refresh_logged_at_ms: i64 = 0;
             loop {
-                // 15 秒查一次：钩子被摘后最多一刻钟内（有输入的前提下）就能装回来。
-                // 采样本身只是几次原子读和一次 GetLastInputInfo。
+                // 15 秒查一次：鉤子被摘後最多一刻鐘內（有輸入的前提下）就能裝回來。
+                // 取樣本身只是幾次原子讀和一次 GetLastInputInfo。
                 thread::sleep(std::time::Duration::from_secs(15));
 
-                // macOS 不会静默摘钩子，但会在回调超时 / 用户输入保护时把 tap 停用
-                // （回调里收到 kCGEventTapDisabledBy* 时会立刻重开，这里是兜底）。
+                // macOS 不會靜默摘鉤子，但會在回撥超時 / 使用者輸入保護時把 tap 停用
+                // （回撥裡收到 kCGEventTapDisabledBy* 時會立刻重開，這裡是兜底）。
                 #[cfg(target_os = "macos")]
                 if HOOK_RUNNING.load(Ordering::SeqCst) && macos::reenable_tap_if_disabled() {
                     HOOK_REFRESH_COUNT.fetch_add(1, Ordering::SeqCst);
@@ -1349,7 +1349,7 @@ pub fn spawn_health_watchdog() {
                             unsafe {
                                 let _ = PostThreadMessageW(tid, WM_SAYIT_REFRESH_HOOKS, WPARAM(0), LPARAM(0));
                             }
-                            // 只动鼠标时每分钟都会走到这里，日志半小时最多一行。
+                            // 只動滑鼠時每分鐘都會走到這裡，日誌半小時最多一行。
                             if now_ms() - refresh_logged_at_ms >= 30 * 60_000 {
                                 refresh_logged_at_ms = now_ms();
                                 crate::commands::system::write_log_line(&format!(
@@ -1383,8 +1383,8 @@ pub fn spawn_health_watchdog() {
         });
 }
 
-/// Dispatcher 线程：日志与 emit（可能阻塞）都在这里做，钩子回调只往队列里投递。
-/// Windows 的低级钩子与 macOS 的 event tap 共用这一份，事件名和载荷只有一处定义。
+/// Dispatcher 執行緒：日誌與 emit（可能阻塞）都在這裡做，鉤子回撥只往佇列裡投遞。
+/// Windows 的低階鉤子與 macOS 的 event tap 共用這一份，事件名和載荷只有一處定義。
 #[cfg(any(windows, target_os = "macos"))]
 fn spawn_dispatcher(
     dispatch_state: Arc<HookSharedState>,
@@ -1394,8 +1394,8 @@ fn spawn_dispatcher(
         thread::Builder::new()
             .name("ptt-dispatcher".to_string())
             .spawn(move || {
-            // Guard 存活期 = 本线程存活期；线程正常退出或 panic 展开都会触发 Drop，
-            // 从而让看门狗快照立刻看到 dispatcher_alive=false。
+            // Guard 存活期 = 本執行緒存活期；執行緒正常退出或 panic 展開都會觸發 Drop，
+            // 從而讓看門狗快照立刻看到 dispatcher_alive=false。
             let _alive_guard = DispatcherAliveGuard::new();
             crate::commands::system::write_log_line("[ptt-dispatcher] thread started");
             while let Ok(action) = action_rx.recv() {
@@ -1480,7 +1480,7 @@ fn spawn_dispatcher(
                             0x06 => "XButton2",
                             0xA6 => "BrowserBack",
                             0xA7 => "BrowserForward",
-                            // mac 的 Fn / 🌐 键（内部 ID 0xFF，只有 mac 会产生）
+                            // mac 的 Fn / 🌐 鍵（內部 ID 0xFF，只有 mac 會產生）
                             0xFF => "Fn",
                             _ => "",
                         };
@@ -1496,7 +1496,7 @@ fn spawn_dispatcher(
                         crate::commands::system::write_log_line(
                             &format!("[RUST] [preset] switch preset={} (event tap)", preset_id)
                         );
-                        // 载荷与 commands/shortcuts.rs 里系统快捷键发的一致
+                        // 載荷與 commands/shortcuts.rs 裡系統快捷鍵發的一致
                         let _ = dispatch_state.app_handle.emit("switch-preset", serde_json::json!({
                             "presetId": preset_id,
                         }));
@@ -1622,16 +1622,16 @@ impl KeyboardHookManager {
         self.running.store(false, Ordering::SeqCst);
         HOOK_RUNNING.store(false, Ordering::SeqCst);
 
-        // 先清成员位，但不在调用线程清活动代次。hook 线程退出时会在最后一个 callback
-        // 完成后，用同一个 sender 依次排入配对 up 和 Shutdown，避免 stop 与 down 入队竞态。
+        // 先清成員位，但不在呼叫執行緒清活動代次。hook 執行緒退出時會在最後一個 callback
+        // 完成後，用同一個 sender 依次排入配對 up 和 Shutdown，避免 stop 與 down 入隊競態。
         #[cfg(windows)]
         if let Some(state) = self.shared_state.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).as_ref() {
             let had_active = state.ptt_active_generation.load(Ordering::SeqCst) != 0;
             clear_ptt_members(state);
 
             if had_active {
-                // 保留既有的 synthetic keyup，用于清理由旧版本遗留在 Windows 中的状态。
-                // 鼠标侧键不涉及键盘状态，无需（也不能）补发键盘 keyup。
+                // 保留既有的 synthetic keyup，用於清理由舊版本遺留在 Windows 中的狀態。
+                // 滑鼠側鍵不涉及鍵盤狀態，無需（也不能）補發鍵盤 keyup。
                 if !is_mouse_button_setting(&state.ptt_setting) {
                     for &vk in &state.ptt_vk_codes {
                         unsafe {
@@ -1653,7 +1653,7 @@ impl KeyboardHookManager {
             }
         }
 
-        // macOS：我们从不吞修饰键，系统的键盘状态不会被留住，不需要补发 keyup。
+        // macOS：我們從不吞修飾鍵，系統的鍵盤狀態不會被留住，不需要補發 keyup。
         #[cfg(target_os = "macos")]
         if let Some(state) = self.shared_state.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).as_ref() {
             clear_ptt_members(state);
@@ -1671,8 +1671,8 @@ impl KeyboardHookManager {
             }
         }
 
-        // 等 hook 线程卸载钩子，并等它内部的 dispatcher 处理 Shutdown 后真正退出。
-        // 这是重配的跨实例屏障：旧实例不可能在新实例 ptt-down 之后再发旧 ptt-up。
+        // 等 hook 執行緒解除安裝鉤子，並等它內部的 dispatcher 處理 Shutdown 後真正退出。
+        // 這是重配的跨例項屏障：舊例項不可能在新例項 ptt-down 之後再發舊 ptt-up。
         if let Some(hook_thread) = self.hook_thread.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).take() {
             if hook_thread.join().is_err() {
                 crate::commands::system::write_log_line(
@@ -1683,7 +1683,7 @@ impl KeyboardHookManager {
 
         #[cfg(any(windows, target_os = "macos"))]
         if let Some(state) = self.shared_state.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).as_ref() {
-            // 安装失败/panic 时 hook 线程可能没机会排 up；至少不要把 native 状态留住。
+            // 安裝失敗/panic 時 hook 執行緒可能沒機會排 up；至少不要把 native 狀態留住。
             clear_ptt_members(state);
             let _ = clear_ptt_press(&state.ptt_active_generation);
         }
@@ -1698,7 +1698,7 @@ impl KeyboardHookManager {
             count, ptt_setting, hf_setting, ai_toggle_setting,
         ));
         self.stop();
-        // stop() 已 join 旧 hook 与 dispatcher，可直接启动新实例。
+        // stop() 已 join 舊 hook 與 dispatcher，可直接啟動新例項。
         self.start(app, ptt_setting, hf_setting, ai_toggle_setting);
     }
 
@@ -1723,8 +1723,8 @@ impl KeyboardHookManager {
             state.ptt_setting, state.ptt_vk_codes
         );
 
-        // 无界 mpsc::Sender::send 不会等待消费者，可安全用于低级 hook 回调；相比原来的
-        // 64 槽 sync_channel，它不会被按住热键产生的诊断 repeat 填满而丢失关键 up。
+        // 無界 mpsc::Sender::send 不會等待消費者，可安全用於低階 hook 回撥；相比原來的
+        // 64 槽 sync_channel，它不會被按住熱鍵產生的診斷 repeat 填滿而丟失關鍵 up。
         let (action_tx, action_rx) = std::sync::mpsc::channel::<HookAction>();
         let watchdog_action_tx = action_tx.clone();
         let member_watchdog = spawn_ptt_member_watchdog(state.clone(), action_tx.clone());
@@ -1814,7 +1814,7 @@ impl KeyboardHookManager {
             let _ = tx.send(thread_id);
             HOOK_THREAD_ID.store(thread_id, Ordering::SeqCst);
             log::info!("keyboard hook message loop starting on thread {}", thread_id);
-            // 消息循环开始前录制可能已经打开（那条消息发给了旧线程或还没线程），补一次。
+            // 訊息迴圈開始前錄製可能已經開啟（那條訊息發給了舊執行緒或還沒執行緒），補一次。
             if mouse_hook.is_none() && SHORTCUT_CAPTURE.load(Ordering::SeqCst) {
                 mouse_hook = install_mouse_hook();
             }
@@ -1828,7 +1828,7 @@ impl KeyboardHookManager {
                     continue;
                 }
                 if msg.hwnd.0.is_null() && msg.message == WM_SAYIT_REFRESH_HOOKS {
-                    // 先装新的再卸旧的：这段代码跑在消息循环线程上，期间不会处理任何钩子回调。
+                    // 先裝新的再卸舊的：這段程式碼跑在訊息迴圈執行緒上，期間不會處理任何鉤子回撥。
                     if let Some(new_hook) = install_hook() {
                         let _ = UnhookWindowsHookEx(hook);
                         hook = new_hook;
@@ -1854,10 +1854,10 @@ impl KeyboardHookManager {
             }
         }
 
-        // dispatcher 为 watchdog 持有 sender clone，不能再依赖“所有 sender drop”退出；
-        // hook 消息循环结束时显式关闭，避免每次 reconfigure 泄漏线程和 AppHandle。
-        // 与 callback 共用同一个 sender：最后一个 callback 已结束后，严格按 FIFO 排入
-        // manager_stop up，再排 Shutdown。即使 stop 与 down callback 并发，也不会出现 up 先于 down。
+        // dispatcher 為 watchdog 持有 sender clone，不能再依賴“所有 sender drop”退出；
+        // hook 訊息迴圈結束時顯式關閉，避免每次 reconfigure 洩漏執行緒和 AppHandle。
+        // 與 callback 共用同一個 sender：最後一個 callback 已結束後，嚴格按 FIFO 排入
+        // manager_stop up，再排 Shutdown。即使 stop 與 down callback 併發，也不會出現 up 先於 down。
         state.ptt_hook_alive.store(false, Ordering::SeqCst);
         if let Some(handle) = member_watchdog {
             if handle.join().is_err() {
@@ -1890,7 +1890,7 @@ impl KeyboardHookManager {
         }
     }
 
-    /// macOS：CGEventTap，见 keyboard/macos.rs。
+    /// macOS：CGEventTap，見 keyboard/macos.rs。
     #[cfg(target_os = "macos")]
     fn hook_thread(state: Arc<HookSharedState>, tx: std::sync::mpsc::Sender<u32>) {
         macos::hook_thread(state, tx);
@@ -1903,11 +1903,11 @@ impl KeyboardHookManager {
     }
 }
 
-/// 低级鼠标钩子回调：只处理鼠标侧键（XButton1/2）的按下/抬起，复用与键盘钩子
-/// 完全相同的 PTT/免提流水线（HookAction -> dispatcher -> emit）。
+/// 低階滑鼠鉤子回撥：只處理滑鼠側鍵（XButton1/2）的按下/抬起，複用與鍵盤鉤子
+/// 完全相同的 PTT/免持流水線（HookAction -> dispatcher -> emit）。
 ///
-/// ⚠️ 性能：WH_MOUSE_LL 会在**每次鼠标移动**都被调用。因此第一件事就是判断
-/// “不是侧键的按下/抬起就立刻放行”，绝不在鼠标移动这条最热的路径上做任何多余的事。
+/// ⚠️ 效能：WH_MOUSE_LL 會在**每次滑鼠移動**都被呼叫。因此第一件事就是判斷
+/// “不是側鍵的按下/抬起就立刻放行”，絕不在滑鼠移動這條最熱的路徑上做任何多餘的事。
 #[cfg(windows)]
 unsafe extern "system" fn low_level_mouse_proc(
     n_code: i32,
@@ -1916,8 +1916,8 @@ unsafe extern "system" fn low_level_mouse_proc(
 ) -> LRESULT {
     let msg = w_param.0 as u32;
 
-    // ── 最热路径：移动/滚轮/其它键一律立刻放行，连结构体都不解引用 ──
-    // 只处理侧键(XBUTTON)和中键(MBUTTON)的按下/抬起。
+    // ── 最熱路徑：移動/滾輪/其它鍵一律立刻放行，連結構體都不解引用 ──
+    // 只處理側鍵(XBUTTON)和中鍵(MBUTTON)的按下/抬起。
     if n_code < 0
         || (msg != WM_XBUTTONDOWN
             && msg != WM_XBUTTONUP
@@ -1929,14 +1929,14 @@ unsafe extern "system" fn low_level_mouse_proc(
 
     let ms = &*(l_param.0 as *const MSLLHOOKSTRUCT);
 
-    // 过滤注入（合成）的鼠标事件，只认真实硬件按键。
+    // 過濾注入（合成）的滑鼠事件，只認真實硬體按鍵。
     const LLMHF_INJECTED: u32 = 0x00000001;
     if (ms.flags & LLMHF_INJECTED) != 0 {
         return CallNextHookEx(None, n_code, w_param, l_param);
     }
 
-    // 中键：直接是 VK_MBUTTON(0x04)，无需从 mouseData 解码。
-    // 侧键：编号在 mouseData 高 16 位：1=XBUTTON1（后退键） 2=XBUTTON2（前进键）。
+    // 中鍵：直接是 VK_MBUTTON(0x04)，無需從 mouseData 解碼。
+    // 側鍵：編號在 mouseData 高 16 位：1=XBUTTON1（後退鍵） 2=XBUTTON2（前進鍵）。
     let is_middle = msg == WM_MBUTTONDOWN || msg == WM_MBUTTONUP;
     let vk: u32 = if is_middle {
         0x04 // VK_MBUTTON
@@ -1951,11 +1951,11 @@ unsafe extern "system" fn low_level_mouse_proc(
     let is_down = msg == WM_XBUTTONDOWN || msg == WM_MBUTTONDOWN;
     let is_up = msg == WM_XBUTTONUP || msg == WM_MBUTTONUP;
 
-    // ── 录制捕获模式：把侧键吞掉并回报给设置页，避免 webview 把它当成“后退”导航 ──
+    // ── 錄製捕獲模式：把側鍵吞掉並回報給設定頁，避免 webview 把它當成“後退”導航 ──
     if SHORTCUT_CAPTURE.load(Ordering::SeqCst) {
         if is_down {
             SHORTCUT_CAPTURE.store(false, Ordering::SeqCst);
-            CONSUME_XUP_VK.store(vk, Ordering::SeqCst); // 记住 vk，好把配对的 up 也吞掉
+            CONSUME_XUP_VK.store(vk, Ordering::SeqCst); // 記住 vk，好把配對的 up 也吞掉
             HOOK_ACTION_TX.with(|tx| {
                 if let Some(sender) = tx.borrow().as_ref() {
                     if sender.send(HookAction::MouseCaptured { vk }).is_err() {
@@ -1964,9 +1964,9 @@ unsafe extern "system" fn low_level_mouse_proc(
                 }
             });
         }
-        return LRESULT(1); // 捕获期间侧键的 down/up 一律吞掉
+        return LRESULT(1); // 捕獲期間側鍵的 down/up 一律吞掉
     }
-    // 吞掉“捕获到的那次 down”配对的 up，避免残留“后退”导航。
+    // 吞掉“捕獲到的那次 down”配對的 up，避免殘留“後退”導航。
     if is_up && CONSUME_XUP_VK.load(Ordering::SeqCst) == vk {
         CONSUME_XUP_VK.store(0, Ordering::SeqCst);
         return LRESULT(1);
@@ -1980,14 +1980,14 @@ unsafe extern "system" fn low_level_mouse_proc(
             let is_ptt_key = ptt_member.is_some();
             let is_hf_key = !state.hf_vk_codes.is_empty()
                 && state.hf_vk_codes.contains(&vk)
-                && !is_ptt_key; // 同一键时 PTT 优先
+                && !is_ptt_key; // 同一鍵時 PTT 優先
             let is_ai_toggle_key = !state.ai_toggle_vk_codes.is_empty()
                 && state.ai_toggle_vk_codes.contains(&vk)
                 && !is_ptt_key
-                && !is_hf_key; // PTT / 免提高于 AI 开关
+                && !is_hf_key; // PTT / 免持高於 AI 開關
 
             if let Some(member_index) = ptt_member {
-                // 鼠标按键只允许旧单键格式；按下和抬起都吞掉，避免误触发其它程序导航。
+                // 滑鼠按鍵只允許舊單鍵格式；按下和抬起都吞掉，避免誤觸發其它程式導航。
                 consumed = true;
 
                 if is_down {
@@ -2034,7 +2034,7 @@ unsafe extern "system" fn low_level_mouse_proc(
             }
 
             if is_hf_key {
-                // 免提在首个按下时立即触发；hf_key_down 过滤鼠标驱动可能产生的重复 down。
+                // 免持在首個按下時立即觸發；hf_key_down 過濾滑鼠驅動可能產生的重複 down。
                 if is_down {
                     consumed = true;
                     if begin_hf_press(&state.hf_key_down) {
@@ -2084,12 +2084,12 @@ unsafe extern "system" fn low_level_keyboard_proc(
     w_param: WPARAM,
     l_param: LPARAM,
 ) -> LRESULT {
-    // 计时器：无论下面走哪条 return 路径，drop 时都会把本次调用耗时汇报进
-    // MAX_CALLBACK_DURATION_US，用来确认回调是否在正常情况下也逼近了 Windows
-    // 静默摘除钩子的 ~200ms 阈值。
+    // 計時器：無論下面走哪條 return 路徑，drop 時都會把本次呼叫耗時彙報進
+    // MAX_CALLBACK_DURATION_US，用來確認回撥是否在正常情況下也逼近了 Windows
+    // 靜默摘除鉤子的 ~200ms 閾值。
     let _timer = CallbackTimer(std::time::Instant::now());
-    // 任意按键（不限于 PTT 键）都刷新这个时间戳——只要这个值还在正常前进，
-    // 就说明 Windows 仍在调用本回调，钩子没有被系统摘除。
+    // 任意按鍵（不限於 PTT 鍵）都重新整理這個時間戳——只要這個值還在正常前進，
+    // 就說明 Windows 仍在呼叫本回撥，鉤子沒有被系統摘除。
     LAST_CALLBACK_MS.store(now_ms(), Ordering::Relaxed);
 
     if n_code >= 0 {
@@ -2097,27 +2097,27 @@ unsafe extern "system" fn low_level_keyboard_proc(
         let vk = kb.vkCode;
         let msg = w_param.0 as u32;
 
-        // 过滤 Windows 合成的"幻影 Alt"：鼠标点击跨会话边界（如从本机点进远程桌面
-        // 窗口）触发焦点切换时，Windows 会自动合成一个 Alt keydown/keyup 用于清理
-        // 菜单导航状态，与用户真实按键几乎无法区分——唯二的区别是：
-        //   1) LLKHF_INJECTED (0x10) / LLKHF_LOWER_IL_INJECTED (0x02) 标志位被置位；
-        //   2) scanCode 通常为 0（真实键盘按键的 scanCode 非零）。
-        // 命中任一条件即认为是系统合成按键，直接放行给系统处理，不当作用户按键。
+        // 過濾 Windows 合成的"幻影 Alt"：滑鼠點選跨會話邊界（如從本機點進遠端桌面
+        // 視窗）觸發焦點切換時，Windows 會自動合成一個 Alt keydown/keyup 用於清理
+        // 選單導航狀態，與使用者真實按鍵幾乎無法區分——唯二的區別是：
+        //   1) LLKHF_INJECTED (0x10) / LLKHF_LOWER_IL_INJECTED (0x02) 標誌位被置位；
+        //   2) scanCode 通常為 0（真實鍵盤按鍵的 scanCode 非零）。
+        // 命中任一條件即認為是系統合成按鍵，直接放行給系統處理，不當作使用者按鍵。
         const LLKHF_INJECTED: u32 = 0x10;
         const LLKHF_LOWER_IL_INJECTED: u32 = 0x02;
 
-        // 保存本次事件的 flags/scanCode，供下方「命中热键时」的诊断日志使用。
+        // 儲存本次事件的 flags/scanCode，供下方「命中熱鍵時」的診斷日誌使用。
         let kb_flags = kb.flags.0;
         let kb_scan_code = kb.scanCode;
 
         let is_kdown = msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN;
         let is_kup = msg == WM_KEYUP || msg == WM_SYSKEYUP;
 
-        // ── 侧键录制捕获（键盘侧）：必须放在下面的“幻影过滤”之前，因为罗技等改键鼠标
-        //    发出的浏览器后退/前进键通常带“注入”标志，会被幻影过滤器直接丢掉。 ──
+        // ── 側鍵錄製捕獲（鍵盤側）：必須放在下面的“幻影過濾”之前，因為羅技等改鍵滑鼠
+        //    發出的瀏覽器後退/前進鍵通常帶“注入”標誌，會被幻影過濾器直接丟掉。 ──
         if SHORTCUT_CAPTURE.load(Ordering::SeqCst) {
-            // 捕获模式中的任何键都必须先结束仍活动的 PTT；放在 BrowserBack/Forward
-            // 早退之前，否则这两个键可让前端录音只剩 5 分钟硬截止。
+            // 捕獲模式中的任何鍵都必須先結束仍活動的 PTT；放在 BrowserBack/Forward
+            // 早退之前，否則這兩個鍵可讓前端錄音只剩 5 分鐘硬截止。
             HOOK_STATE.with(|s| {
                 if let Some(state) = s.borrow().as_ref() {
                     clear_ptt_members(state);
@@ -2138,7 +2138,7 @@ unsafe extern "system" fn low_level_keyboard_proc(
                 }
             });
 
-            // 浏览器后退/前进键 → 作为侧键绑定，并吞掉避免 webview 后退/前进导航。
+            // 瀏覽器後退/前進鍵 → 作為側鍵繫結，併吞掉避免 webview 後退/前進導航。
             if vk == 0xA6 || vk == 0xA7 {
                 if is_kdown {
                     SHORTCUT_CAPTURE.store(false, Ordering::SeqCst);
@@ -2151,29 +2151,29 @@ unsafe extern "system" fn low_level_keyboard_proc(
                 return LRESULT(1);
             }
 
-            // 其余按键一律放行给 webview 去绑定，本轮不做任何 PTT/免提判定：
-            // 录制时按到已绑定的热键（如免提的右 Alt）应该被录进设置或提示冲突，
-            // 而不是触发录音弹出悬浮窗。
+            // 其餘按鍵一律放行給 webview 去繫結，本輪不做任何 PTT/免持判定：
+            // 錄製時按到已繫結的熱鍵（如免持的右 Alt）應該被錄進設定或提示衝突，
+            // 而不是觸發錄音彈出懸浮窗。
             return CallNextHookEx(None, n_code, w_param, l_param);
         }
 
-        // 幻影过滤：注入或 scanCode==0 视为系统合成键，放行、不当作用户按键。
-        // 例外见 is_injection_exempt_vk（侧键改写键、F13–F24）——这些键的正常来源就是
-        // 注入，按幻影丢弃会让用户绑了不生效，且不留任何日志线索。
+        // 幻影過濾：注入或 scanCode==0 視為系統合成鍵，放行、不當作使用者按鍵。
+        // 例外見 is_injection_exempt_vk（側鍵改寫鍵、F13–F24）——這些鍵的正常來源就是
+        // 注入，按幻影丟棄會讓使用者綁了不生效，且不留任何日誌線索。
         let is_synthetic = ((kb.flags.0 & (LLKHF_INJECTED | LLKHF_LOWER_IL_INJECTED)) != 0
             || kb.scanCode == 0)
             && !is_injection_exempt_vk(vk);
         if is_synthetic {
-            // 只接受“已有真实 PTT down”的合成抬起作为释放信号。Windows 辅助功能、
-            // 远程桌面或驱动可能把配对 up 标成 injected/scanCode=0；此前在这里直接
-            // 早退会让录音永久卡住。孤立 synthetic up 因没有活动代次仍会被忽略。
+            // 只接受“已有真實 PTT down”的合成抬起作為釋放訊號。Windows 輔助功能、
+            // 遠端桌面或驅動可能把配對 up 標成 injected/scanCode=0；此前在這裡直接
+            // 早退會讓錄音永久卡住。孤立 synthetic up 因沒有活動代次仍會被忽略。
             let mut consume_paired_up = false;
             if is_kup {
                 HOOK_STATE.with(|s| {
                     if let Some(state) = s.borrow().as_ref() {
-                        // 真实 HF down 的配对 up 偶尔会被远程桌面/驱动标成 synthetic。
-                        // 即使不把它当作一次触发，也必须清掉按下状态，否则下一次真实按下
-                        // 会被误认成 repeat 而没有反应。
+                        // 真實 HF down 的配對 up 偶爾會被遠端桌面/驅動標成 synthetic。
+                        // 即使不把它當作一次觸發，也必須清掉按下狀態，否則下一次真實按下
+                        // 會被誤認成 repeat 而沒有反應。
                         if state.hf_vk_codes.contains(&vk) {
                             consume_paired_up = end_hf_press(&state.hf_key_down);
                         }
@@ -2210,9 +2210,9 @@ unsafe extern "system" fn low_level_keyboard_proc(
             return CallNextHookEx(None, n_code, w_param, l_param);
         }
 
-        // overlay 不聚焦，录音中/处理中/兜底卡片的 Esc 必须在这里全局捕获。
-        // 只在前端短暂开启的模式下吞键；配对的 keyup 即使模式已被前端关闭也继续吞掉，
-        // 避免目标应用只收到一个孤立的 Esc 抬起事件。
+        // overlay 不聚焦，錄音中/處理中/兜底卡片的 Esc 必須在這裡全域性捕獲。
+        // 只在前端短暫開啟的模式下吞鍵；配對的 keyup 即使模式已被前端關閉也繼續吞掉，
+        // 避免目標應用只收到一個孤立的 Esc 抬起事件。
         const VK_ESCAPE: u32 = 0x1B;
         if vk == VK_ESCAPE {
             let is_kup = msg == WM_KEYUP || msg == WM_SYSKEYUP;
@@ -2240,14 +2240,14 @@ unsafe extern "system" fn low_level_keyboard_proc(
             }
         }
 
-        // 悬浮窗卡片的 Ctrl+C。判据与上面的 Esc 同构（mask + token + deadline），
-        // 额外两道：这一刻 Ctrl 必须按着，且前台窗口仍是卡片弹出时那个 —— 用户切走
-        // 之后，他的 Ctrl+C 就该归他自己。
+        // 懸浮窗卡片的 Ctrl+C。判據與上面的 Esc 同構（mask + token + deadline），
+        // 額外兩道：這一刻 Ctrl 必須按著，且前台視窗仍是卡片彈出時那個 —— 使用者切走
+        // 之後，他的 Ctrl+C 就該歸他自己。
         const VK_C: u32 = 0x43;
         if vk == VK_C {
             if is_kdown {
                 if CARD_HOTKEY_C_DOWN.load(Ordering::SeqCst) {
-                    // 按住不放产生的 repeat：继续吞，但不重复投递动作。
+                    // 按住不放產生的 repeat：繼續吞，但不重複投遞動作。
                     return LRESULT(1);
                 }
                 let (mask, token) = active_card_hotkeys();
@@ -2292,34 +2292,34 @@ unsafe extern "system" fn low_level_keyboard_proc(
                     && !is_ptt_key
                     && !is_hf_key; // PTT / hands-free take priority if misconfigured
 
-                // Alt 键（VK_LMENU=0xA4 / VK_RMENU=0xA5）作为单键热键时，keyup 也必须吞掉。
-                // 否则被放行的 Alt 抬起会被 Windows 判为「单击了一下 Alt」→ 激活前台程序的
-                // 菜单栏（如记事本显示「文件(F)」等加速键下划线），抢走输入框焦点，导致随后
-                // 插字落到菜单上、实际没插进去（而 SendInput 仍上报成功，形成假成功）。
-                // keydown 既已被吞、系统自始至终没见过这个 Alt，连 keyup 一起吞不会造成
-                // 「修饰键卡住」。非 Alt 单键（F 键、Space、侧键等）维持原状：只吞 keydown。
+                // Alt 鍵（VK_LMENU=0xA4 / VK_RMENU=0xA5）作為單鍵熱鍵時，keyup 也必須吞掉。
+                // 否則被放行的 Alt 抬起會被 Windows 判為「單擊了一下 Alt」→ 啟用前台程式的
+                // 選單欄（如記事本顯示「檔案(F)」等加速鍵下劃線），搶走輸入框焦點，導致隨後
+                // 插字落到選單上、實際沒插進去（而 SendInput 仍上報成功，形成假成功）。
+                // keydown 既已被吞、系統自始至終沒見過這個 Alt，連 keyup 一起吞不會造成
+                // 「修飾鍵卡住」。非 Alt 單鍵（F 鍵、Space、側鍵等）維持原狀：只吞 keydown。
                 let is_alt_key = vk == 0xA4 || vk == 0xA5;
 
-                // 单键热键必须是「裸按」才算命中：Alt+F4 不该唤起绑在 F4 上的免提。
+                // 單鍵熱鍵必須是「裸按」才算命中：Alt+F4 不該喚起綁在 F4 上的免持。
                 //
-                // ⚠️ **只能用在 keydown 上。** keyup 一律照原样处理 —— 否则
-                // 「按 F4 开始录音 → 再按住 Alt → 松开 F4」会因为松开那一刻有修饰键
-                // 而跳过释放，录音就再也停不下来了（只能等 5 分钟硬截止）。
+                // ⚠️ **只能用在 keydown 上。** keyup 一律照原樣處理 —— 否則
+                // 「按 F4 開始錄音 → 再按住 Alt → 鬆開 F4」會因為鬆開那一刻有修飾鍵
+                // 而跳過釋放，錄音就再也停不下來了（只能等 5 分鐘硬截止）。
                 let modifiers_block_down = single_key_blocked_by_modifiers(vk, kb_flags);
 
-                // ── 诊断：仅在「当前配置的 PTT/免提热键」被按下时记录 flags/scanCode ──
-                // 只记每个组合成员的首个 down，不把按住产生的 repeat 全部塞进无界队列；
-                // 漏 key-up 看门狗直接刷新该成员的 last_down，不依赖诊断日志。
+                // ── 診斷：僅在「當前配置的 PTT/免持熱鍵」被按下時記錄 flags/scanCode ──
+                // 只記每個組合成員的首個 down，不把按住產生的 repeat 全部塞進無界佇列；
+                // 漏 key-up 看門狗直接重新整理該成員的 last_down，不依賴診斷日誌。
                 let should_log_hotkey_down = is_kdown
                     && ((ptt_member.is_some_and(|index| {
                         state.ptt_pressed_mask.load(Ordering::SeqCst) & (1_u64 << index) == 0
                     }) && !state.hands_free_active.load(Ordering::SeqCst))
                         || (is_hf_key && !state.hf_key_down.load(Ordering::SeqCst)));
                 if should_log_hotkey_down {
-                    // 两种名字要分开：不然「按 Alt+F4 没反应」和「热键压根没送到」
-                    // 在日志里长得一模一样，排查时无从下手。
-                    // 组合键 PTT 命中时 modifiers_block_down 也可能为真（它就是要修饰键），
-                    // 那种情况按下面 bare_press_violated 的规则放行，这条日志只作提示。
+                    // 兩種名字要分開：不然「按 Alt+F4 沒反應」和「熱鍵壓根沒送到」
+                    // 在日誌裡長得一模一樣，排查時無從下手。
+                    // 組合鍵 PTT 命中時 modifiers_block_down 也可能為真（它就是要修飾鍵），
+                    // 那種情況按下面 bare_press_violated 的規則放行，這條日誌只作提示。
                     let msg_name = if modifiers_block_down {
                         "hotkey-down-with-modifier"
                     } else {
@@ -2345,16 +2345,16 @@ unsafe extern "system" fn low_level_keyboard_proc(
                     let is_pure_modifier_combo = is_combo
                         && state.ptt_modifier_mask == state.ptt_full_mask;
                     let is_main_key = state.ptt_modifier_mask & member_bit == 0;
-                    // 「裸按」规则只套单键 PTT。组合键（Alt+F4 之类）本来就要求修饰键
-                    // 按住，套上去等于把它自己永久挡死。
+                    // 「裸按」規則只套單鍵 PTT。組合鍵（Alt+F4 之類）本來就要求修飾鍵
+                    // 按住，套上去等於把它自己永久擋死。
                     let bare_press_violated = !is_combo && modifiers_block_down;
 
-                    // 旧单键维持原消费策略。普通组合仅当主键首次按下时所需修饰键
-                    // 已全部按住，才吞主键 down，并用位图保证只吞它配对的 up。
-                    // 若顺序是 K→Ctrl，组合仍可开始，但 K 的 down/up 都放行，不制造孤立事件。
+                    // 舊單鍵維持原消費策略。普通組合僅當主鍵首次按下時所需修飾鍵
+                    // 已全部按住，才吞主鍵 down，並用點陣圖保證只吞它配對的 up。
+                    // 若順序是 K→Ctrl，組合仍可開始，但 K 的 down/up 都放行，不製造孤立事件。
                     if !is_combo {
-                        // 带修饰键按下时整条放行：不吞，让 Alt+F4 这类系统/程序快捷键
-                        // 照常送到前台程序。下面的按下记账也一并跳过。
+                        // 帶修飾鍵按下時整條放行：不吞，讓 Alt+F4 這類系統/程式快捷鍵
+                        // 照常送到前台程式。下面的按下記帳也一併跳過。
                         if (is_kdown && !bare_press_violated) || (is_kup && is_alt_key) {
                             consumed = true;
                         }
@@ -2386,7 +2386,7 @@ unsafe extern "system" fn low_level_keyboard_proc(
                         }
                     }
 
-                    // 记账也要跳过：否则 Alt+F4 虽然没被吞，录音照样开始了。
+                    // 記帳也要跳過：否則 Alt+F4 雖然沒被吞，錄音照樣開始了。
                     if is_kdown && !bare_press_violated {
                         state.ptt_last_down_ms[member_index].store(now_ms(), Ordering::SeqCst);
                         let became_complete = press_ptt_member(
@@ -2421,7 +2421,7 @@ unsafe extern "system" fn low_level_keyboard_proc(
                         }
                     }
 
-                    // 活动时任意成员松开都结束；未完成组合时的成员 up 只更新位图。
+                    // 活動時任意成員鬆開都結束；未完成組合時的成員 up 只更新點陣圖。
                     if is_kup && release_ptt_member(&state.ptt_pressed_mask, member_index) {
                         HOOK_ACTION_TX.with(|tx| {
                             if let Some(sender) = tx.borrow().as_ref() {
@@ -2437,15 +2437,15 @@ unsafe extern "system" fn low_level_keyboard_proc(
                     }
                 }
 
-                // 免提键：首次 keydown 立即触发，后续 repeat down 忽略；keyup 只负责重新布防。
-                // 合成 keydown 仍在上方被过滤，所以远程桌面的幻影 Alt 不会触发录音。
+                // 免持鍵：首次 keydown 立即觸發，後續 repeat down 忽略；keyup 只負責重新佈防。
+                // 合成 keydown 仍在上方被過濾，所以遠端桌面的幻影 Alt 不會觸發錄音。
                 if is_hf_key {
                     let is_up = msg == WM_KEYUP || msg == WM_SYSKEYUP;
                     let is_down = msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN;
-                    // 带修饰键按下时整条放行。不 begin_hf_press ⇒ hf_key_down 仍是 false
-                    // ⇒ 下面的 end_hf_press 也返回 false，配对的 keyup 同样不吞。
+                    // 帶修飾鍵按下時整條放行。不 begin_hf_press ⇒ hf_key_down 仍是 false
+                    // ⇒ 下面的 end_hf_press 也返回 false，配對的 keyup 同樣不吞。
                     if is_down && !modifiers_block_down {
-                        consumed = true; // 吞掉 keydown 防止系统处理
+                        consumed = true; // 吞掉 keydown 防止系統處理
                         if begin_hf_press(&state.hf_key_down) {
                             HOOK_ACTION_TX.with(|tx| {
                                 if let Some(sender) = tx.borrow().as_ref() {
@@ -2457,7 +2457,7 @@ unsafe extern "system" fn low_level_keyboard_proc(
                         }
                     }
                     if is_up {
-                        // 吞掉与首个 down 配对的 up，避免向目标程序留下孤立的按键事件。
+                        // 吞掉與首個 down 配對的 up，避免向目標程式留下孤立的按鍵事件。
                         if end_hf_press(&state.hf_key_down) || is_alt_key {
                             consumed = true;
                         }
@@ -2467,7 +2467,7 @@ unsafe extern "system" fn low_level_keyboard_proc(
                 if is_ai_toggle_key {
                     let is_up = msg == WM_KEYUP || msg == WM_SYSKEYUP;
                     let is_down = msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN;
-                    // 同免提：带修饰键就整条放行（见上面 modifiers_block_down 的注释）
+                    // 同免持：帶修飾鍵就整條放行（見上面 modifiers_block_down 的註釋）
                     if is_down && !modifiers_block_down {
                         consumed = true;
                         if begin_hf_press(&state.ai_toggle_key_down) {
@@ -2510,20 +2510,20 @@ mod tests {
     use super::queue_ptt_release;
     use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
-    /// 卡片快捷键的三道闸门与自清。
+    /// 卡片快捷鍵的三道閘門與自清。
     ///
-    /// 这些是进程级静态量，所以整组断言刻意放在**同一个** #[test] 里 —— 拆成多个会被
-    /// 并行调度互相踩掉，表现为随机失败。
+    /// 這些是程序級靜態量，所以整組斷言刻意放在**同一個** #[test] 裡 —— 拆成多個會被
+    /// 並行排程互相踩掉，表現為隨機失敗。
     #[test]
     fn card_hotkeys_are_scoped_to_one_card_and_expire_on_their_own() {
-        // 未知动作必须报错，绝不能静默开成"什么都不接管"或"全都接管"。
+        // 未知動作必須報錯，絕不能靜默開成"什麼都不接管"或"全都接管"。
         assert!(set_card_hotkeys(&["retry".to_string()], 1).is_err());
 
         set_card_hotkeys(&["copy".to_string()], 7).unwrap();
         assert_eq!(active_card_hotkeys(), (CARD_HOTKEY_COPY, 7));
 
-        // 续期（同 token）绝不能重新取前台窗口：卡片可见期间用户可能已经切走，
-        // 那正是要解除接管的情形，重新取会把新前台当成"卡片的主人"又接管回来。
+        // 續期（同 token）絕不能重新取前台視窗：卡片可見期間使用者可能已經切走，
+        // 那正是要解除接管的情形，重新取會把新前台當成"卡片的主人"又接管回來。
         CARD_HOTKEY_FOREGROUND.store(0x1234, Ordering::SeqCst);
         set_card_hotkeys(&["copy".to_string()], 7).unwrap();
         assert_eq!(
@@ -2532,7 +2532,7 @@ mod tests {
             "renewal must keep the foreground window captured when the card appeared",
         );
 
-        // 过了硬截止就自己关掉，不依赖前端来解除（渲染端卡死时不能永久吞 Ctrl+C）。
+        // 過了硬截止就自己關掉，不依賴前端來解除（渲染端卡死時不能永久吞 Ctrl+C）。
         CARD_HOTKEY_DEADLINE_MS.store(1, Ordering::SeqCst);
         assert_eq!(active_card_hotkeys(), (0, 0));
         assert_eq!(
@@ -2541,14 +2541,14 @@ mod tests {
             "expiry must also drop the captured foreground window",
         );
 
-        // 空数组 = 解除。
+        // 空陣列 = 解除。
         set_card_hotkeys(&["copy".to_string()], 8).unwrap();
         set_card_hotkeys(&[], 8).unwrap();
         assert_eq!(active_card_hotkeys(), (0, 0));
     }
 
-    /// 动作名与模式名是**跨进程契约**：前端按这两个字符串分派。
-    /// 改名就会静默失效（事件照发、前端认不出来），所以在这里钉住。
+    /// 動作名與模式名是**跨程序契約**：前端按這兩個字串分派。
+    /// 改名就會靜默失效（事件照發、前端認不出來），所以在這裡釘住。
     #[test]
     fn hotkey_and_escape_names_match_the_frontend_contract() {
         assert_eq!(card_hotkey_action_name(CARD_HOTKEY_COPY), "copy");
@@ -2561,7 +2561,7 @@ mod tests {
             "abandon_late_result",
         ] {
             set_escape_action_mode(mode, 1).unwrap();
-            // off 的 token 会被清零，其余模式都该原样读回自己的名字。
+            // off 的 token 會被清零，其餘模式都該原樣讀回自己的名字。
             let value = super::ESCAPE_ACTION_MODE.load(Ordering::SeqCst);
             assert_eq!(escape_action_mode_name(value), mode, "mode name drifted: {mode}");
         }
@@ -2622,14 +2622,14 @@ mod tests {
             main_bit,
             modifier_mask,
         ));
-        // K 先按下且当时已放行；之后再按 Ctrl，K 的 repeat 也必须继续放行。
+        // K 先按下且當時已放行；之後再按 Ctrl，K 的 repeat 也必須繼續放行。
         assert!(!should_consume_combo_main_down(
             main_bit | modifier_mask,
             0,
             main_bit,
             modifier_mask,
         ));
-        // 若最初的 K down 已吞，repeat 继续吞，直到配对 up 清掉 consumed bit。
+        // 若最初的 K down 已吞，repeat 繼續吞，直到配對 up 清掉 consumed bit。
         assert!(should_consume_combo_main_down(
             main_bit | modifier_mask,
             main_bit,
@@ -2679,19 +2679,19 @@ mod tests {
         assert_eq!(duplicate_family.vk_codes, vec![DEFAULT_PTT_VK]);
     }
 
-    /// 默认键绝不能是 Shift：那正是会触发 Windows 筛选键、让录音停不下来的键。
-    /// 有人把默认值改回去时，这条会拦住。
+    /// 預設鍵絕不能是 Shift：那正是會觸發 Windows 篩選鍵、讓錄音停不下來的鍵。
+    /// 有人把預設值改回去時，這條會攔住。
     #[test]
     fn default_ptt_key_is_never_shift() {
         assert!(!DEFAULT_PTT_SETTING.contains("Shift"));
         assert_ne!(DEFAULT_PTT_VK, 0xA0);
         assert_ne!(DEFAULT_PTT_VK, 0xA1);
-        // 默认键必须自身可解析，否则 fallback 会陷入"回退到一个非法值"
+        // 預設鍵必須自身可解析，否則 fallback 會陷入"回退到一個非法值"
         assert_eq!(ptt_key_config(DEFAULT_PTT_SETTING).setting, DEFAULT_PTT_SETTING);
     }
 
-    /// 老用户存的 ShiftRight 必须继续被解析、继续生效。
-    /// 前端不再让人新设 Shift，但已经存在的绑定不能因为升级就失灵。
+    /// 老使用者存的 ShiftRight 必須繼續被解析、繼續生效。
+    /// 前端不再讓人新設 Shift，但已經存在的繫結不能因為升級就失靈。
     #[test]
     fn legacy_shift_binding_still_parses() {
         let legacy = ptt_key_config("ShiftRight");
@@ -2752,17 +2752,17 @@ mod tests {
 
     #[test]
     fn hook_removal_is_suspected_only_when_input_outran_the_callback() {
-        // 按键刚经过钩子：回调和输入一样新
+        // 按鍵剛經過鉤子：回撥和輸入一樣新
         assert!(!hook_looks_removed(1_000, 1_000));
-        // 用户已经很久没动：两边差不多一样旧
+        // 使用者已經很久沒動：兩邊差不多一樣舊
         assert!(!hook_looks_removed(600_000, 598_000));
-        // 很久没按键、10 秒前动了下鼠标：也会判成可疑（没装鼠标钩子时的已知误报，代价只是重装一次）
+        // 很久沒按鍵、10 秒前動了下滑鼠：也會判成可疑（沒裝滑鼠鉤子時的已知誤報，代價只是重灌一次）
         assert!(hook_looks_removed(600_000, 590_000));
-        // 2 分钟没回调，但 3 秒前有输入：可能被摘了
+        // 2 分鐘沒回撥，但 3 秒前有輸入：可能被摘了
         assert!(hook_looks_removed(120_000, 3_000));
-        // 差距在 5 秒以内不算
+        // 差距在 5 秒以內不算
         assert!(!hook_looks_removed(8_000, 4_000));
-        // 还没收到过任何回调（-1）时不判
+        // 還沒收到過任何回撥（-1）時不判
         assert!(!hook_looks_removed(-1, 0));
     }
 
@@ -2776,11 +2776,11 @@ mod tests {
         assert!(needs_mouse_hook(&keyboard, &[], &[0x04], false));
     }
 
-    /// 鼠标按键清单必须与 `is_mouse_vk` 保持一致。
+    /// 滑鼠按鍵清單必須與 `is_mouse_vk` 保持一致。
     ///
-    /// 这两处一旦不同步就是静默失败：两个 PTT 看门狗靠 `is_mouse_vk` 绕开
-    /// 「repeat 静默 + 异步键状态」判据，漏掉一个鼠标键的后果是按住它录音会在
-    /// 1.7 秒后被强制结束（0.1.5 的实测症状），而编译和其它测试都不会报错。
+    /// 這兩處一旦不同步就是靜默失敗：兩個 PTT 看門狗靠 `is_mouse_vk` 繞開
+    /// 「repeat 靜默 + 非同步鍵狀態」判據，漏掉一個滑鼠鍵的後果是按住它錄音會在
+    /// 1.7 秒後被強制結束（0.1.5 的實測症狀），而編譯和其它測試都不會報錯。
     #[test]
     fn is_mouse_vk_covers_every_mouse_button_in_the_key_table() {
         for (code, vk) in SINGLE_KEY_TABLE {
@@ -2789,19 +2789,19 @@ mod tests {
                 listed_as_mouse,
                 is_mouse_vk(*vk),
                 "{code} (vk={vk:#04x}): is_mouse_button_setting={listed_as_mouse} \
-                 但 is_mouse_vk={}，两处判定必须一致",
+                 但 is_mouse_vk={}，兩處判定必須一致",
                 is_mouse_vk(*vk),
             );
         }
     }
 
-    /// 「裸按」规则必须覆盖每一个主键，且必须放过每一个修饰键。
+    /// 「裸按」規則必須覆蓋每一個主鍵，且必須放過每一個修飾鍵。
     ///
-    /// 这两条各自对应一个真实故障：漏掉主键 → Alt+F4 会唤起绑在 F4 上的免提，
-    /// 而且 F4 的 down 被吞掉、Alt+F4 本身也失效（用户报的就是这个）；
-    /// 误伤修饰键 → 「按住说话」默认的右 Ctrl、免提默认的右 Alt 会永久失效
-    /// （自己就是 Ctrl，再问「Ctrl 有没有按下」永远为真），而且是静默的：
-    /// 编译过、其它测试全绿，只有真机上按下去没反应。
+    /// 這兩條各自對應一個真實故障：漏掉主鍵 → Alt+F4 會喚起綁在 F4 上的免持，
+    /// 而且 F4 的 down 被吞掉、Alt+F4 本身也失效（使用者報的就是這個）；
+    /// 誤傷修飾鍵 → 「按住說話」預設的右 Ctrl、免持預設的右 Alt 會永久失效
+    /// （自己就是 Ctrl，再問「Ctrl 有沒有按下」永遠為真），而且是靜默的：
+    /// 編譯過、其它測試全綠，只有真機上按下去沒反應。
     #[test]
     fn bare_press_rule_covers_main_keys_and_spares_modifiers() {
         for (code, vk) in SINGLE_KEY_TABLE {
@@ -2812,46 +2812,46 @@ mod tests {
                 single_key_requires_bare_press(*vk),
                 expected,
                 "{code} (vk={vk:#04x})：modifier={is_modifier} mouse={is_mouse}，\
-                 应当 requires_bare_press={expected}",
+                 應當 requires_bare_press={expected}",
             );
         }
     }
 
-    /// 几个点名的键，防止上面那条循环因为清单本身写错而一起错。
+    /// 幾個點名的鍵，防止上面那條迴圈因為清單本身寫錯而一起錯。
     #[test]
     fn bare_press_rule_named_cases() {
-        assert!(single_key_requires_bare_press(0x73), "F4 是主键，必须要求裸按");
-        assert!(single_key_requires_bare_press(0x20), "Space 是主键");
-        assert!(single_key_requires_bare_press(0xA6), "BrowserBack 走键盘钩子，算主键");
-        assert!(!single_key_requires_bare_press(0xA3), "右 Ctrl 是「按住说话」默认键，不能套");
-        assert!(!single_key_requires_bare_press(0xA5), "右 Alt 是免提默认键，也是 AltGr 的一半");
-        assert!(!single_key_requires_bare_press(0x05), "鼠标侧键走鼠标钩子，不套这条");
+        assert!(single_key_requires_bare_press(0x73), "F4 是主鍵，必須要求裸按");
+        assert!(single_key_requires_bare_press(0x20), "Space 是主鍵");
+        assert!(single_key_requires_bare_press(0xA6), "BrowserBack 走鍵盤鉤子，算主鍵");
+        assert!(!single_key_requires_bare_press(0xA3), "右 Ctrl 是「按住說話」預設鍵，不能套");
+        assert!(!single_key_requires_bare_press(0xA5), "右 Alt 是免持預設鍵，也是 AltGr 的一半");
+        assert!(!single_key_requires_bare_press(0x05), "滑鼠側鍵走滑鼠鉤子，不套這條");
     }
 
-    /// 鼠标按键只允许单键格式。两个看门狗跳过鼠标成员时依赖这一点：
-    /// 单键设置只有一个成员，不存在「组合里半个键被清掉」的情况。
+    /// 滑鼠按鍵只允許單鍵格式。兩個看門狗跳過滑鼠成員時依賴這一點：
+    /// 單鍵設定只有一個成員，不存在「組合裡半個鍵被清掉」的情況。
     #[test]
     fn mouse_buttons_are_single_key_only() {
         for combo in ["XButton1+KeyA", "ControlLeft+XButton1", "MButton+ShiftLeft"] {
             let config = ptt_key_config(combo);
             assert_ne!(
                 config.setting, combo,
-                "{combo} 不该被接受为有效组合（鼠标键只允许单键）",
+                "{combo} 不該被接受為有效組合（滑鼠鍵只允許單鍵）",
             );
         }
         for single in ["XButton1", "XButton2", "MButton"] {
             let config = ptt_key_config(single);
-            assert_eq!(config.setting, single, "{single} 应当是有效的单键设置");
-            assert_eq!(config.vk_codes.len(), 1, "{single} 应当只有一个成员");
+            assert_eq!(config.setting, single, "{single} 應當是有效的單鍵設定");
+            assert_eq!(config.vk_codes.len(), 1, "{single} 應當只有一個成員");
         }
     }
 
-    /// F1–F24 必须全部在表里、且 vk 连续等于 0x70 + (n-1)。
+    /// F1–F24 必須全部在表裡、且 vk 連續等於 0x70 + (n-1)。
     ///
-    /// 这张表与前端 `lib/shortcutKeys.ts` 的 `SINGLE_KEYS` 是两份手写副本，只改一边
-    /// 是**静默失败**：前端放行 F13、Rust 查不到它，`ptt_key_config` 的 valid_shape
-    /// 落空后走 `fallback()` —— 用户界面上显示 F13，实际说话键悄悄变成右 Ctrl，
-    /// 编译和其它测试都不报错。TS 侧有一条对称的断言。
+    /// 這張表與前端 `lib/shortcutKeys.ts` 的 `SINGLE_KEYS` 是兩份手寫副本，只改一邊
+    /// 是**靜默失敗**：前端放行 F13、Rust 查不到它，`ptt_key_config` 的 valid_shape
+    /// 落空後走 `fallback()` —— 使用者介面上顯示 F13，實際說話鍵悄悄變成右 Ctrl，
+    /// 編譯和其它測試都不報錯。TS 側有一條對稱的斷言。
     #[test]
     fn function_keys_f1_through_f24_are_all_present_with_contiguous_vks() {
         for n in 1..=24_u32 {
@@ -2861,37 +2861,37 @@ mod tests {
                 .iter()
                 .find(|(setting, _)| *setting == code.as_str());
             let Some((_, vk)) = found else {
-                panic!("{code} 不在 SINGLE_KEY_TABLE 里（前端 SINGLE_KEYS 有 F1–F24，两边必须一致）");
+                panic!("{code} 不在 SINGLE_KEY_TABLE 裡（前端 SINGLE_KEYS 有 F1–F24，兩邊必須一致）");
             };
             assert_eq!(
                 *vk, expected_vk,
-                "{code} 的 vk 应当是 {expected_vk:#04x}（VK_F1..VK_F24 是连续的）",
+                "{code} 的 vk 應當是 {expected_vk:#04x}（VK_F1..VK_F24 是連續的）",
             );
 
-            // 解析必须真的接受它，而不是回落到默认键。
+            // 解析必須真的接受它，而不是回落到預設鍵。
             let config = ptt_key_config(&code);
-            assert_eq!(config.setting, code, "{code} 应当被接受为有效单键，而不是回落");
-            assert_eq!(config.vk_codes, vec![expected_vk], "{code} 应当解析出对应 vk");
+            assert_eq!(config.setting, code, "{code} 應當被接受為有效單鍵，而不是回落");
+            assert_eq!(config.vk_codes, vec![expected_vk], "{code} 應當解析出對應 vk");
         }
     }
 
-    /// 幻影过滤的例外范围：F13–F24 与两个侧键改写键在内，边界之外不在。
+    /// 幻影過濾的例外範圍：F13–F24 與兩個側鍵改寫鍵在內，邊界之外不在。
     ///
-    /// 这些键带 injected 标志是正常来源（改键软件走 SendInput），漏掉任何一个的症状
-    /// 都是「绑得上、按下去没反应、日志里也没有记录」。
+    /// 這些鍵帶 injected 標誌是正常來源（改鍵軟體走 SendInput），漏掉任何一個的症狀
+    /// 都是「綁得上、按下去沒反應、日誌裡也沒有記錄」。
     #[test]
     fn injection_exempt_vks_cover_f13_to_f24_and_side_button_remaps() {
         for vk in 0x7C..=0x87_u32 {
-            assert!(is_injection_exempt_vk(vk), "{vk:#04x}（F13–F24 段）必须开例外");
+            assert!(is_injection_exempt_vk(vk), "{vk:#04x}（F13–F24 段）必須開例外");
         }
-        assert!(is_injection_exempt_vk(0xA6), "BrowserBack 必须开例外");
-        assert!(is_injection_exempt_vk(0xA7), "BrowserForward 必须开例外");
+        assert!(is_injection_exempt_vk(0xA6), "BrowserBack 必須開例外");
+        assert!(is_injection_exempt_vk(0xA7), "BrowserForward 必須開例外");
 
-        // 边界：F12 及以下是物理真键，注入的 F12 没有正常来源，维持幻影过滤。
-        assert!(!is_injection_exempt_vk(0x7B), "F12 不该开例外");
-        assert!(!is_injection_exempt_vk(0x88), "0x88 已越过 F24，不该开例外");
-        // 幻影过滤本来要防的就是合成 Alt，绝不能被例外放进来。
-        assert!(!is_injection_exempt_vk(0xA4), "左 Alt 绝不能开例外");
-        assert!(!is_injection_exempt_vk(0xA5), "右 Alt 绝不能开例外");
+        // 邊界：F12 及以下是物理真鍵，注入的 F12 沒有正常來源，維持幻影過濾。
+        assert!(!is_injection_exempt_vk(0x7B), "F12 不該開例外");
+        assert!(!is_injection_exempt_vk(0x88), "0x88 已越過 F24，不該開例外");
+        // 幻影過濾本來要防的就是合成 Alt，絕不能被例外放進來。
+        assert!(!is_injection_exempt_vk(0xA4), "左 Alt 絕不能開例外");
+        assert!(!is_injection_exempt_vk(0xA5), "右 Alt 絕不能開例外");
     }
 }

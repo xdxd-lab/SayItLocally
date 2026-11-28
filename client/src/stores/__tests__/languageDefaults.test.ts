@@ -16,25 +16,25 @@ vi.mock('@/services/bridge', () => ({
 import { getLocale, setLocale } from '@/i18n'
 import { initLanguage, initLocaleDefaults } from '../language'
 
-describe('首次运行的地区默认值', () => {
+describe('首次執行的地區預設值', () => {
   beforeEach(() => bridgeState.values.clear())
 
   // [自訂] S25／S34：不論語言，官方 Hugging Face 與本機 Ollama
-  it('英文环境使用官方 Hugging Face 与 Ollama', async () => {
+  it('英文環境使用官方 Hugging Face 與 Ollama', async () => {
     await initLocaleDefaults('en')
     expect(bridgeState.values.get('localAsr.downloadSource')).toBe('HuggingFace')
     expect(bridgeState.values.get('cloudAi.provider')).toBe('ollama')
     expect(bridgeState.values.get('ai.builtinPromptLanguage')).toBe('en')
   })
 
-  it('中文环境同样使用官方 Hugging Face 与 Ollama', async () => {
+  it('中文環境同樣使用官方 Hugging Face 與 Ollama', async () => {
     await initLocaleDefaults('zh-TW')
     expect(bridgeState.values.get('localAsr.downloadSource')).toBe('HuggingFace')
     expect(bridgeState.values.get('cloudAi.provider')).toBe('ollama')
     expect(bridgeState.values.get('ai.builtinPromptLanguage')).toBe('zh-TW')
   })
 
-  it('已有设置不会被界面语言覆盖', async () => {
+  it('已有設定不會被介面語言覆蓋', async () => {
     bridgeState.values.set('localAsr.downloadSource', 'Custom source')
     bridgeState.values.set('cloudAi.provider', '')
     bridgeState.values.set('ai.builtinPromptLanguage', 'zh-TW')

@@ -1,4 +1,4 @@
-// ASR 测试卡片 — 用内置测试音频测试当前模式的识别效果
+// ASR 測試卡片 — 用內建測試音訊測試當前模式的識別效果
 
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { invoke } from '@tauri-apps/api/core'
@@ -31,15 +31,15 @@ export default function AsrTestSection({ workMode }: { workMode: WorkMode }) {
   const [testing, setTesting] = useState(false)
   const [playing, setPlaying] = useState(false)
   const [result, setResult] = useState<TestResult | null>(null)
-  // 失败原来是被写进 result.text 的，于是用与成功完全相同的面板渲染出来，
-  // 外面还配着「ASR 0ms」的徽标——失败长得像"成功识别出了『测试失败:』这几个字"。
+  // 失敗原來是被寫進 result.text 的，於是用與成功完全相同的面板渲染出來，
+  // 外面還配著「ASR 0ms」的徽標——失敗長得像"成功識別出了『測試失敗:』這幾個字"。
   const [error, setError] = useState<TestError | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
 
-  // 上方配置有未保存改动时，这里读到的还是旧值，测出来的结果没有意义
+  // 上方配置有未儲存改動時，這裡讀到的還是舊值，測出來的結果沒有意義
   const draftDirty = useSyncExternalStore(subscribeEngineDraft, getEngineDraftDirty)
 
-  // 换了工作模式，旧结果就不再说明任何事情，直接作废
+  // 換了工作模式，舊結果就不再說明任何事情，直接作廢
   useEffect(() => {
     setResult(null)
     setError(null)
@@ -70,7 +70,7 @@ export default function AsrTestSection({ workMode }: { workMode: WorkMode }) {
     setError(null)
 
     try {
-      // 获取测试音频并计算时长
+      // 獲取測試音訊並計算時長
       const wavB64 = await invoke<string>('get_test_audio_b64')
       const wavBytes = Uint8Array.from(atob(wavB64), (c) => c.charCodeAt(0))
       const pcmBytes = wavBytes.slice(44)
@@ -97,13 +97,13 @@ export default function AsrTestSection({ workMode }: { workMode: WorkMode }) {
         const asrAppId = await getSetting('cloudAsr.appId', '') as string
         const asrModel = await getSetting('cloudAsr.model', '') as string
 
-        // 模型解析一律走 @/lib/asrModels。这里原来自己抄了一份映射表，还留着几个
-        // 已经不在 ASR_PROVIDERS 里的旧 key——测试可能用与实际配置不同的模型。
+        // 模型解析一律走 @/lib/asrModels。這裡原來自己抄了一份對映表，還留著幾個
+        // 已經不在 ASR_PROVIDERS 裡的舊 key——測試可能用與實際配置不同的模型。
         const isOmni = isQwenOmniProvider(asrProvider)
         const savedPrompt = isOmni
           ? await getSetting('cloudAsr.omniSystemPrompt', '') as string
           : ''
-        // baseUrl 只有「地址自己填」那两张卡是非空的，其余一律空串（见 asrEndpointUrl）
+        // baseUrl 只有「地址自己填」那兩張卡是非空的，其餘一律空串（見 asrEndpointUrl）
         const baseUrl = await getSetting('cloudAsr.baseUrl', '') as string
         const protocol = await getSetting('cloudAsr.protocol', 'auto') as string
         const extra = buildAsrExtra(asrProvider, {
@@ -131,12 +131,12 @@ export default function AsrTestSection({ workMode }: { workMode: WorkMode }) {
           text: r.text,
           asrMs: totalMs,
           mode: 'cloud_api',
-          // 报的必须是**真正发出去的**那个模型，否则这个面板就成了误导源
+          // 報的必須是**真正發出去的**那個模型，否則這個面板就成了誤導源
           model: extra?.model || resolveAsrDisplayModel(asrProvider),
           audioDurationSec,
         })
       } else {
-        // 服务器模式
+        // 伺服器模式
         const { getWSUrl } = await import('@/services/runtimeConfig')
         const { getClientRuntimeInfo } = await import('@/services/bridge')
         const wsUrl = getWSUrl()
@@ -147,10 +147,10 @@ export default function AsrTestSection({ workMode }: { workMode: WorkMode }) {
           const sock = new WebSocket(wsUrl)
           sock.binaryType = 'arraybuffer'
           sock.onopen = () => {
-            // 服务端准入（guard admission）要求 start 带 device_id / client_version、source 只认
-            // live / history_reprocess，否则回「连接异常，请使用最新版 SayIt 客户端」并断开。
-            // 用 history_reprocess 而不是 live：测试音频是一次性推完的，live 会被推流检测拦，
-            // stop 也得带按键时长；这和历史记录重新识别是同一种请求，按同一条道走。
+            // 服務端准入（guard admission）要求 start 帶 device_id / client_version、source 只認
+            // live / history_reprocess，否則回「連線異常，請使用最新版 SayIt 客戶端」並斷開。
+            // 用 history_reprocess 而不是 live：測試音訊是一次性推完的，live 會被推流檢測攔，
+            // stop 也得帶按鍵時長；這和歷史記錄重新識別是同一種請求，按同一條道走。
             const startMsg: Record<string, unknown> = { cmd: 'start', source: 'history_reprocess', disable_ai: true }
             if (clientMeta) {
               startMsg.client_meta = {
@@ -162,7 +162,7 @@ export default function AsrTestSection({ workMode }: { workMode: WorkMode }) {
               }
             }
             sock.send(JSON.stringify(startMsg))
-            // 分块发送 PCM（每块 3200 字节 = 100ms @16kHz 16bit mono）
+            // 分塊傳送 PCM（每塊 3200 位元組 = 100ms @16kHz 16bit mono）
             const chunkSize = 3200
             for (let i = 0; i < pcmBytes.length; i += chunkSize) {
               sock.send(pcmBytes.slice(i, i + chunkSize).buffer)
@@ -202,13 +202,13 @@ export default function AsrTestSection({ workMode }: { workMode: WorkMode }) {
   return (
     <Card>
       <CardContent className="p-6">
-        {/* flex-wrap：最小窗口下标题 + 两个按钮挤一行会溢出 */}
+        {/* flex-wrap：最小視窗下標題 + 兩個按鈕擠一行會溢位 */}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
             <h2 className="text-lg font-semibold">{t('asrTest.title')}</h2>
-            {/* 这张卡只测 ASR。服务器模式下请求里写着 disable_ai: true，本地和云 API 也
-                不经过 AI 整理——原来界面上还渲染一个恒为 0 的「LLM 0ms」，会让人以为
-                AI 整理坏了。现在把范围说清，并不再展示那个假字段。 */}
+            {/* 這張卡只測 ASR。伺服器模式下請求裡寫著 disable_ai: true，本地和雲 API 也
+                不經過 AI 整理——原來介面上還渲染一個恆為 0 的「LLM 0ms」，會讓人以為
+                AI 整理壞了。現在把範圍說清，並不再展示那個假欄位。 */}
             <p className="mt-1 text-xs text-muted-foreground">
               {t('asrTest.desc')}
             </p>
@@ -229,7 +229,7 @@ export default function AsrTestSection({ workMode }: { workMode: WorkMode }) {
           </div>
         </div>
 
-        {/* 测试读的是已保存的配置。粘完密钥直接点测试必然失败，用户会误判成"密钥是坏的"。 */}
+        {/* 測試讀的是已儲存的配置。粘完金鑰直接點測試必然失敗，使用者會誤判成"金鑰是壞的"。 */}
         {draftDirty && (
           <Feedback
             className="mt-4"
@@ -258,7 +258,7 @@ export default function AsrTestSection({ workMode }: { workMode: WorkMode }) {
               <span>{t('asrTest.audioLen', { sec: result.audioDurationSec.toFixed(1) })}</span>
               <span>{t('asrTest.elapsed', { ms: result.asrMs })}</span>
             </div>
-            {/* mac-selectable：mac 上界面文字默认不可选，识别结果要能选中拷贝（index.css） */}
+            {/* mac-selectable：mac 上介面文字預設不可選，識別結果要能選中拷貝（index.css） */}
             <p className="mac-selectable mt-2 text-sm text-foreground">{result.text || t('asrTest.noResult')}</p>
           </div>
         )}

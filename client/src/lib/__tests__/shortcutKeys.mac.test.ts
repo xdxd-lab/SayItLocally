@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-// 这个文件按 macOS 跑。IS_MAC 在模块加载时就决定了键表和校验口径，所以要在导入前替换掉。
+// 這個檔案按 macOS 跑。IS_MAC 在模組載入時就決定了鍵表和校驗口徑，所以要在匯入前替換掉。
 vi.mock('@/lib/platform', () => ({ IS_MAC: true }))
 
 import {
@@ -10,7 +10,7 @@ import {
   keyEventToShortcutCandidate,
 } from '../shortcutKeys'
 
-/** 只造出 keyEventToShortcutCandidate 会读的那几个字段 */
+/** 只造出 keyEventToShortcutCandidate 會讀的那幾個欄位 */
 function keyEvent(init: { code: string, key: string, alt?: boolean, ctrl?: boolean, shift?: boolean, meta?: boolean }) {
   return {
     code: init.code,
@@ -22,16 +22,16 @@ function keyEvent(init: { code: string, key: string, alt?: boolean, ctrl?: boole
   } as KeyboardEvent
 }
 
-describe('macOS 快捷键校验', () => {
-  // 回归：单键也被套上了组合键的规则，设右 ⌥、F5、鼠标侧键时都报「需要带上 ⌘ 或 ⌃」
-  it('单键和鼠标键不受组合键规则的限制', () => {
+describe('macOS 快捷鍵校驗', () => {
+  // 迴歸：單鍵也被套上了組合鍵的規則，設右 ⌥、F5、滑鼠側鍵時都報「需要帶上 ⌘ 或 ⌃」
+  it('單鍵和滑鼠鍵不受組合鍵規則的限制', () => {
     for (const key of ['AltRight', 'AltLeft', 'MetaRight', 'ControlRight', 'ShiftRight', 'Fn', 'F5', 'Space', 'XButton1', 'MButton']) {
       expect(getAcceleratorShortcutValidationError(key), key).toBeNull()
     }
   })
 
-  // 修饰键只有 ⌥ / ⇧ 的组合系统快捷键在 macOS 15 起不触发，现在由 Rust 的 event tap 接管，可以用了
-  it('只带 ⌥、⇧ 或 ⌥⇧ 的组合键可以用，一个修饰键加会打字的键照样拦下', () => {
+  // 修飾鍵只有 ⌥ / ⇧ 的組合系統快捷鍵在 macOS 15 起不觸發，現在由 Rust 的 event tap 接管，可以用了
+  it('只帶 ⌥、⇧ 或 ⌥⇧ 的組合鍵可以用，一個修飾鍵加會打字的鍵照樣攔下', () => {
     for (const combo of ['Alt+Shift+K', 'Alt+Shift+1', 'Alt+F5', 'Shift+F5', 'Alt+Shift+Comma']) {
       expect(getAcceleratorShortcutValidationError(combo), combo).toBeNull()
     }
@@ -40,8 +40,8 @@ describe('macOS 快捷键校验', () => {
     }
   })
 
-  // 用户实测时把免提设成了 ⌘W：注册成功了，但从此所有程序里的 ⌘W（关窗口）都被 SayIt 抢走
-  it('一个修饰键 + 字母 / 数字 / 方向键被拦下，加第二个修饰键或换 F 键就放行', () => {
+  // 使用者實測時把免持設成了 ⌘W：註冊成功了，但從此所有程式裡的 ⌘W（關視窗）都被 SayIt 搶走
+  it('一個修飾鍵 + 字母 / 數字 / 方向鍵被攔下，加第二個修飾鍵或換 F 鍵就放行', () => {
     for (const combo of ['CommandOrControl+W', 'CommandOrControl+C', 'CommandOrControl+1', 'CommandOrControl+,', 'CommandOrControl+Left', 'Control+A', 'Control+Right', 'CommandOrControl+Return']) {
       expect(getAcceleratorShortcutValidationError(combo), combo).not.toBeNull()
     }
@@ -51,7 +51,7 @@ describe('macOS 快捷键校验', () => {
     expect(getAcceleratorShortcutValidationError('CommandOrControl+Alt+Escape')).not.toBeNull()
   })
 
-  it('带 ⌘ 或 ⌃ 的组合键放行，系统占用的组合拦下', () => {
+  it('帶 ⌘ 或 ⌃ 的組合鍵放行，系統佔用的組合攔下', () => {
     expect(getAcceleratorShortcutValidationError('CommandOrControl+Shift+K')).toBeNull()
     expect(getAcceleratorShortcutValidationError('Control+Alt+K')).toBeNull()
     expect(getAcceleratorShortcutValidationError('CommandOrControl+Space')).not.toBeNull()
@@ -60,37 +60,37 @@ describe('macOS 快捷键校验', () => {
     expect(getAcceleratorShortcutValidationError('CommandOrControl+Shift+4')).not.toBeNull()
   })
 
-  it('录制：单按修饰键录成单键，⌘ 与 ⌃ 分开记', () => {
+  it('錄製：單按修飾鍵錄成單鍵，⌘ 與 ⌃ 分開記', () => {
     expect(keyEventToShortcutCandidate(keyEvent({ code: 'MetaRight', key: 'Meta', meta: true }))).toBe('MetaRight')
     expect(keyEventToShortcutCandidate(keyEvent({ code: 'AltRight', key: 'Alt', alt: true }))).toBe('AltRight')
     expect(keyEventToShortcutCandidate(keyEvent({ code: 'KeyK', key: 'k', meta: true }))).toBe('CommandOrControl+K')
     expect(keyEventToShortcutCandidate(keyEvent({ code: 'KeyK', key: 'k', ctrl: true }))).toBe('Control+K')
   })
 
-  // ⌥ 和 ⇧ 会改掉 event.key：按字符录的话会存成 Rust 端解析不了的「Alt+Shift+Î」「Control+Shift+!」
-  it('录制：组合键的主键按键位记，不受 ⌥ / ⇧ 打出的字符影响', () => {
+  // ⌥ 和 ⇧ 會改掉 event.key：按字元錄的話會存成 Rust 端解析不了的「Alt+Shift+Î」「Control+Shift+!」
+  it('錄製：組合鍵的主鍵按鍵位記，不受 ⌥ / ⇧ 打出的字元影響', () => {
     expect(keyEventToShortcutCandidate(keyEvent({ code: 'KeyD', key: 'Î', alt: true, shift: true }))).toBe('Alt+Shift+D')
     expect(keyEventToShortcutCandidate(keyEvent({ code: 'Digit1', key: '!', ctrl: true, shift: true }))).toBe('Control+Shift+1')
     expect(keyEventToShortcutCandidate(keyEvent({ code: 'Comma', key: '¯', alt: true, shift: true }))).toBe('Alt+Shift+Comma')
     expect(keyEventToShortcutCandidate(keyEvent({ code: 'Enter', key: 'Enter', meta: true, shift: true }))).toBe('CommandOrControl+Shift+Enter')
     expect(keyEventToShortcutCandidate(keyEvent({ code: 'ArrowUp', key: 'ArrowUp', ctrl: true, alt: true }))).toBe('Control+Alt+Up')
     expect(keyEventToShortcutCandidate(keyEvent({ code: 'F5', key: 'F5', shift: true }))).toBe('Shift+F5')
-    // 主键当不了快捷键的（ISO 键盘 Z 左边那个键）：还没成型，保留上一个候选
+    // 主鍵當不了快捷鍵的（ISO 鍵盤 Z 左邊那個鍵）：還沒成型，保留上一個候選
     expect(keyEventToShortcutCandidate(keyEvent({ code: 'IntlBackslash', key: '§', alt: true, shift: true }), { comboOnly: true })).toBeNull()
   })
 
-  it('组合键显示成 mac 菜单里的写法', () => {
+  it('組合鍵顯示成 mac 選單裡的寫法', () => {
     expect(displayAccelerator('Alt+Shift+Comma')).toEqual(['⌥', '⇧', ','])
     expect(displayAccelerator('CommandOrControl+Shift+Enter')).toEqual(['⌘', '⇧', '↩'])
     expect(displayAccelerator('Control+Alt+Up')).toEqual(['⌃', '⌥', '↑'])
   })
 
-  it('按住说话：单独的 ⌘ 可以用（mac 上单按 ⌘ 没有系统动作）', () => {
+  it('按住說話：單獨的 ⌘ 可以用（mac 上單按 ⌘ 沒有系統動作）', () => {
     expect(getPTTShortcutValidationError('MetaRight')).toBeNull()
     expect(getPTTShortcutValidationError('AltRight')).toBeNull()
   })
 
-  it('报错文案用 mac 的修饰键名，不提 Ctrl / Win / Alt', () => {
+  it('報錯文案用 mac 的修飾鍵名，不提 Ctrl / Win / Alt', () => {
     const message = getPTTShortcutValidationError('KeyK') ?? ''
     expect(message).toContain('⌘')
     expect(message).not.toMatch(/Ctrl|Win|Alt/)

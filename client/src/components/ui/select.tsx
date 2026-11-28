@@ -7,12 +7,12 @@ export interface SelectOption {
   value: string
   label: string
   /**
-   * 悬停提示。只有在 label 可能被 truncate 截掉、而完整内容对用户有用时才设
-   * （麦克风列表就是：设备名很长，但那串后缀正是辨认设备的依据）。
-   * 不设就没有 tooltip —— 别给所有下拉都挂上，那是噪音。
+   * 懸停提示。只有在 label 可能被 truncate 截掉、而完整內容對使用者有用時才設
+   * （麥克風列表就是：裝置名很長，但那串字尾正是辨認裝置的依據）。
+   * 不設就沒有 tooltip —— 別給所有下拉都掛上，那是噪音。
    */
   title?: string
-  /** 列表里跟在 label 后面的灰色次要信息（如供应商名），与 label 同一行。触发器上不显示。 */
+  /** 列表裡跟在 label 後面的灰色次要資訊（如供應商名），與 label 同一行。觸發器上不顯示。 */
   hint?: string
 }
 
@@ -24,15 +24,15 @@ export interface SelectProps {
   className?: string
   placeholder?: string
   disabled?: boolean
-  /** 关联可见标题的 id。触发器是个 <button>，屏幕阅读器只会念它内部的当前值，
-   *  旁边那行 <label> 文本不会自动关联（没有 htmlFor 可指）。与 Segmented 同款。 */
+  /** 關聯可見標題的 id。觸發器是個 <button>，螢幕閱讀器只會念它內部的當前值，
+   *  旁邊那行 <label> 文本不會自動關聯（沒有 htmlFor 可指）。與 Segmented 同款。 */
   labelledBy?: string
-  /** sm：设置行右侧那种紧凑下拉（h-8、12px 字、选项行更矮）。 */
+  /** sm：設定行右側那種緊湊下拉（h-8、12px 字、選項行更矮）。 */
   size?: 'default' | 'sm'
   /**
-   * 弹出列表的宽度。stretch（默认）= 与触发器同宽；end = 右对齐、按内容撑开，
-   * 最宽 20rem。触发器放在一行右侧又比较窄时用 end：列表往左长，不会伸出卡片，
-   * 长名字也不用截得只剩半截。
+   * 彈出列表的寬度。stretch（預設）= 與觸發器同寬；end = 右對齊、按內容撐開，
+   * 最寬 20rem。觸發器放在一行右側又比較窄時用 end：列表往左長，不會伸出卡片，
+   * 長名字也不用截得只剩半截。
    */
   menuAlign?: 'stretch' | 'end'
 }
@@ -44,7 +44,7 @@ const Select = forwardRef<HTMLDivElement, SelectProps>(
     const [isOpen, setIsOpen] = useState(false)
     const containerRef = useRef<HTMLDivElement>(null)
 
-    // 如果传入了 children（原生 option），则解析它们
+    // 如果傳入了 children（原生 option），則解析它們
     const parsedOptions: SelectOption[] = options || []
 
     if (!options && children) {
@@ -101,7 +101,7 @@ const Select = forwardRef<HTMLDivElement, SelectProps>(
             className={cn('min-w-0 truncate', !selectedOption && 'text-input-placeholder')}
             title={selectedOption?.title}
           >
-            {/* hint 只在列表里显示：触发器通常很窄，带上它只会把次要信息截成半截 */}
+            {/* hint 只在列表裡顯示：觸發器通常很窄，帶上它只會把次要資訊截成半截 */}
             {selectedOption?.label || placeholder || t('ui.selectPlaceholder')}
           </span>
           <ChevronDown

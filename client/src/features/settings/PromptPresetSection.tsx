@@ -17,7 +17,7 @@ import { IS_MAC } from '@/lib/platform'
 import type { TranslationKey } from '@/i18n'
 import { InfoTip } from '@/components/ui/info-tip'
 
-/** 内置润色模式的一句话说明（按 id）。用户改过内置提示词也还是这个模式，说明不变。 */
+/** 內建潤色模式的一句話說明（按 id）。使用者改過內建提示詞也還是這個模式，說明不變。 */
 const BUILTIN_PRESET_DESC: Record<string, TranslationKey> = {
   intent: 'promptPreset.builtinDesc.intent',
   faithful: 'promptPreset.builtinDesc.faithful',
@@ -49,7 +49,7 @@ export default function PromptPresetSection({
   activePresetId: string
   editingPreset: PromptPreset | null
   presetShortcuts: Record<string, string>
-  /** 编辑中的快捷键草稿。**不即时落库** —— 见下方 onEditingShortcutChange 的说明 */
+  /** 編輯中的快捷鍵草稿。**不即時落庫** —— 見下方 onEditingShortcutChange 的說明 */
   editingShortcut: string
   promptLanguage: BuiltinPromptLanguage
   promptLanguageChanging?: boolean
@@ -59,16 +59,16 @@ export default function PromptPresetSection({
   onStartEditing: (preset: PromptPreset) => void
   onEditingPresetChange: (preset: PromptPreset) => void
   /**
-   * 只改草稿，保存时才写库。
-   * 以前这里是即时写库的，于是：给还没保存的新模式设了快捷键再点取消，会留下一条指向
-   * 不存在模式的快捷键；而且写入时为保证组合键唯一会把占用同一组合键的旧模式清掉，
-   * 取消后那个旧模式的快捷键也回不来了。
+   * 只改草稿，儲存時才寫庫。
+   * 以前這裡是即時寫庫的，於是：給還沒儲存的新模式設了快捷鍵再點取消，會留下一條指向
+   * 不存在模式的快捷鍵；而且寫入時為保證組合鍵唯一會把佔用同一組合鍵的舊模式清掉，
+   * 取消後那個舊模式的快捷鍵也回不來了。
    */
   onEditingShortcutChange: (accelerator: string) => void
   onCancelEditing: () => void
   onSavePreset: (preset: PromptPreset) => void
   onDeletePreset: (id: string) => void
-  /** 拖拽调整自定义模式的顺序（下标是在"自定义"这一段里的下标；内置顺序固定） */
+  /** 拖拽調整自定義模式的順序（下標是在"自定義"這一段裡的下標；內建順序固定） */
   onMovePreset: (from: number, to: number) => void
   validateShortcut?: ShortcutValidate
 }) {
@@ -78,12 +78,12 @@ export default function PromptPresetSection({
   const [templateId, setTemplateId] = useState('')
   const editingPresetName = editingPreset ? promptPresetDisplayName(editingPreset) : ''
 
-  // 是否在"新建"（草稿的 id 还不在已有列表里）
+  // 是否在"新建"（草稿的 id 還不在已有列表裡）
   const isCreating = !!editingPreset && !presets.some((preset) => preset.id === editingPreset.id)
 
-  // 打开表单时把焦点放到名称框。
-  // 依赖**只能**是 id / builtin 这类原始值：editingPreset 每次输入都是新对象，
-  // 把它列进依赖会导致每敲一个字都重新聚焦，光标从提示词框被拽回名称框。
+  // 開啟表單時把焦點放到名稱框。
+  // 依賴**只能**是 id / builtin 這類原始值：editingPreset 每次輸入都是新物件，
+  // 把它列進依賴會導致每敲一個字都重新聚焦，游標從提示詞框被拽回名稱框。
   const editingId = editingPreset?.id ?? null
   const editingBuiltin = !!editingPreset?.builtin
   useEffect(() => {
@@ -136,8 +136,8 @@ export default function PromptPresetSection({
           </div>
         </div>
 
-        {/* 编辑/新建表单放在列表**上方**：以前在整个列表下面，列表一长就在屏幕外，
-            点了「新建」看着像没反应。 */}
+        {/* 編輯/新建表單放在列表**上方**：以前在整個列表下面，列表一長就在螢幕外，
+            點了「新建」看著像沒反應。 */}
         {editingPreset && (
           <div className="mb-4 space-y-3 rounded-lg border border-primary/30 bg-muted p-4">
             <p className="text-sm font-medium">{isCreating ? t('promptPreset.createTitle') : t('promptPreset.editTitle', { name: editingPresetName })}</p>
@@ -154,7 +154,7 @@ export default function PromptPresetSection({
               />
             </div>
 
-            {/* 新建时给个起点：从零写 System Prompt 门槛太高，内置模式本身就是好模板 */}
+            {/* 新建時給個起點：從零寫 System Prompt 門檻太高，內建模式本身就是好模板 */}
             {isCreating && (
               <div>
                 <label className="mb-1.5 block text-xs font-medium text-foreground">{t('promptPreset.template')}</label>
@@ -203,7 +203,7 @@ export default function PromptPresetSection({
             </div>
 
             <div className="flex items-center justify-end gap-2">
-              {/* 保存不可点时说明原因，而不是干灰着 */}
+              {/* 儲存不可點時說明原因，而不是幹灰著 */}
               {(missingName || missingPrompt) && (
                 <span className="mr-auto text-xs text-muted-foreground">
                   {missingName && missingPrompt
@@ -247,8 +247,8 @@ export default function PromptPresetSection({
           {presets.map((preset) => {
             const customPresets = presets.filter((item) => !item.builtin)
             const customIndex = customPresets.findIndex((item) => item.id === preset.id)
-            // 只有自定义模式能拖，但一旦出现拖拽柄，内置行也要留出同宽的位置，
-            // 否则自定义行的单选圈和名字会比内置行整体右移一截，上下对不齐。
+            // 只有自定義模式能拖，但一旦出現拖拽柄，內建行也要留出同寬的位置，
+            // 否則自定義行的單選圈和名字會比內建行整體右移一截，上下對不齊。
             const sortEnabled = customPresets.length > 1
             const canMove = !preset.builtin && sortEnabled
             const presetName = promptPresetDisplayName(preset)
@@ -264,7 +264,7 @@ export default function PromptPresetSection({
               >
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex min-w-0 items-center gap-3">
-                    {/* -ml-1 抵掉手柄自带的 p-1，让图标左缘贴住卡片内边距，柄列不至于太宽 */}
+                    {/* -ml-1 抵掉手柄自帶的 p-1，讓圖示左緣貼住卡片內邊距，柄列不至於太寬 */}
                     {canMove && (
                       <DragHandle
                         className="-ml-1"
@@ -301,8 +301,8 @@ export default function PromptPresetSection({
                           </span>
                         )}
                       </div>
-                      {/* 原来显示提示词原文的前 60 个字（「你是语音文本精炼助手。输入是 ASR……」），
-                          看不出几个模式的区别。内置模式改成一句说明；自建模式没有说明，只显示名字。 */}
+                      {/* 原來顯示提示詞原文的前 60 個字（「你是語音文本精煉助手。輸入是 ASR……」），
+                          看不出幾個模式的區別。內建模式改成一句說明；自建模式沒有說明，只顯示名字。 */}
                       {BUILTIN_PRESET_DESC[preset.id] && (
                         <p className="truncate text-xs text-muted-foreground">{t(BUILTIN_PRESET_DESC[preset.id])}</p>
                       )}

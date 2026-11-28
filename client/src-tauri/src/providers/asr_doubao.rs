@@ -1,5 +1,5 @@
-// 豆包（火山引擎）ASR 供应商
-// 使用大模型录音文件极速版 HTTP API：一次请求即返回结果
+// 豆包（火山引擎）ASR 供應商
+// 使用大模型錄音檔案極速版 HTTP API：一次請求即返回結果
 // 接口：POST https://openspeech.bytedance.com/api/v3/auc/bigmodel/recognize/flash
 
 use super::diag;
@@ -13,7 +13,7 @@ const RECOGNIZE_URL: &str =
 const RESOURCE_ID: &str = "volc.bigasr.auc_turbo";
 const SCOPE: &str = "doubao/flash";
 
-/// 将 PCM Int16 音频转换为 WAV 格式（火山引擎需要 WAV/MP3/OGG 格式）
+/// 將 PCM Int16 音訊轉換為 WAV 格式（火山引擎需要 WAV/MP3/OGG 格式）
 fn pcm_to_wav(pcm_data: &[u8], sample_rate: u32) -> Vec<u8> {
     let num_channels: u16 = 1;
     let bits_per_sample: u16 = 16;
@@ -43,14 +43,14 @@ fn pcm_to_wav(pcm_data: &[u8], sample_rate: u32) -> Vec<u8> {
     wav
 }
 
-/// 调用豆包极速版 ASR
+/// 呼叫豆包極速版 ASR
 pub async fn transcribe(
     audio_pcm_b64: &str,
     sample_rate: u32,
     config: &AsrProviderConfig,
     hotwords: &[String],
 ) -> Result<AsrResult, String> {
-    // 解码 base64 PCM 数据
+    // 解碼 base64 PCM 資料
     let pcm_data = base64::Engine::decode(
         &base64::engine::general_purpose::STANDARD,
         audio_pcm_b64,
@@ -65,7 +65,7 @@ pub async fn transcribe(
         });
     }
 
-    // 转换为 WAV 格式并 base64 编码
+    // 轉換為 WAV 格式並 base64 編碼
     let wav_data = pcm_to_wav(&pcm_data, sample_rate);
     let wav_b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &wav_data);
 
@@ -97,7 +97,7 @@ pub async fn transcribe(
     let mut request_params = serde_json::json!({
         "model_name": "bigmodel"
     });
-    // 注入热词（如果有）：热词须放在 request.corpus.context
+    // 注入熱詞（如果有）：熱詞須放在 request.corpus.context
     if let Some(ctx) = doubao_protocol::build_hotword_context(hotwords) {
         request_params["corpus"] = serde_json::json!({ "context": ctx });
     }
@@ -139,7 +139,7 @@ pub async fn transcribe(
         resp.headers(),
     );
 
-    // 检查响应头中的状态码
+    // 檢查響應頭中的狀態碼
     let status_code = resp
         .headers()
         .get("X-Api-Status-Code")
@@ -188,12 +188,12 @@ pub async fn transcribe(
         )
     })?;
 
-    // 检查 API 状态码。
-    // 之前的写法是 `status_code != "20000000" && !status_code.is_empty()` —— 状态头缺失时
-    // 整个检查被跳过，一个没有 result 的响应就这样一路走到「文本为空」，对外表现成
-    // 「未检测到有效声音」。现在头缺失就记一条，后面靠 result 是否存在来判定成败。
+    // 檢查 API 狀態碼。
+    // 之前的寫法是 `status_code != "20000000" && !status_code.is_empty()` —— 狀態頭缺失時
+    // 整個檢查被跳過，一個沒有 result 的響應就這樣一路走到「文本為空」，對外表現成
+    // 「未檢測到有效聲音」。現在頭缺失就記一條，後面靠 result 是否存在來判定成敗。
     if !status_code.is_empty() && status_code != "20000000" {
-        // 附上人话解释：这条消息会经历史记录的「原因」直接给用户看
+        // 附上人話解釋：這條訊息會經歷史記錄的「原因」直接給使用者看
         let hint = doubao_auth::explain_status_code(&status_code)
             .map(|t| format!("（{}）", t))
             .unwrap_or_default();
@@ -210,8 +210,8 @@ pub async fn transcribe(
         diag::log(SCOPE, "missing_status_header", &http_summary);
     }
 
-    // 提取识别文本。result 整个不存在 = 这不是一个正常的成功响应，
-    // 不能静默当成「没识别出内容」。
+    // 提取識別文本。result 整個不存在 = 這不是一個正常的成功響應，
+    // 不能靜默當成「沒識別出內容」。
     let Some(result) = data.get("result") else {
         return Err(diag::fail(
             SCOPE,
@@ -250,9 +250,9 @@ pub async fn transcribe(
     Ok(AsrResult { text, elapsed_ms })
 }
 
-/// 测试豆包 ASR 连接（发送一段极短的静音音频）
+/// 測試豆包 ASR 連線（傳送一段極短的靜音音訊）
 pub async fn test_connection(config: &AsrProviderConfig) -> TestResult {
-    // 生成 0.5 秒静音 PCM（16kHz, 16bit）
+    // 生成 0.5 秒靜音 PCM（16kHz, 16bit）
     let silence = vec![0u8; 16000]; // 0.5s * 16000 * 2 bytes = 16000 bytes
     let wav = pcm_to_wav(&silence, 16000);
     let wav_b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &wav);
@@ -308,7 +308,7 @@ pub async fn test_connection(config: &AsrProviderConfig) -> TestResult {
                 .to_string();
 
             if status_code == "20000000" || status_code == "20000003" {
-                // 20000003 = 静音音频，也算连接成功
+                // 20000003 = 靜音音訊，也算連線成功
                 TestResult {
                     ok: true,
                     message: format!("Connection successful ({}ms)", elapsed_ms),

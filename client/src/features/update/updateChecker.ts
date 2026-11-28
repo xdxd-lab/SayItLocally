@@ -1,4 +1,4 @@
-// 前端版本检查 — 直接请求后端 manifest API 比较版本号
+// 前端版本檢查 — 直接請求後端 manifest API 比較版本號
 
 import { getOfficialUpdateBaseUrl, getUpdateBaseUrl, isOfficialUpdateChannel } from '@/services/runtimeConfig'
 import { getClientRuntimeInfo } from '@/services/bridge'
@@ -10,19 +10,19 @@ export interface VersionInfo {
   latestVersion: string | null
   downloadUrl: string | null
   releaseDate: string | null
-  /** 安装包的 SHA-512（Base64）。下载后由 Rust 侧校验，manifest 没给就是 null。 */
+  /** 安裝包的 SHA-512（Base64）。下載後由 Rust 側校驗，manifest 沒給就是 null。 */
   sha512: string | null
   error: string | null
-  /** 实际取到 manifest 的地址。回落发生时它是官方地址，不等于服务器设置里那个。 */
+  /** 實際取到 manifest 的地址。回落發生時它是官方地址，不等於伺服器設定裡那個。 */
   sourceUrl: string | null
 }
 
 /**
  * 返回 >0 表示 latest 比 current 新。
  *
- * 只认纯数字的点分段。非数字段（预发布后缀之类）按 0 处理而不是让 NaN 传下去：
- * NaN 参与减法永远得 NaN，`NaN !== 0` 为真，会让循环在第一段就返回 NaN，
- * 而 `NaN > 0` 是 false —— 结果是"有更新也不报"，且没有任何报错。
+ * 只認純數字的點分段。非數字段（預釋出字尾之類）按 0 處理而不是讓 NaN 傳下去：
+ * NaN 參與減法永遠得 NaN，`NaN !== 0` 為真，會讓迴圈在第一段就返回 NaN，
+ * 而 `NaN > 0` 是 false —— 結果是"有更新也不報"，且沒有任何報錯。
  */
 export function compareVersions(current: string, latest: string): number {
   const parse = (value: string) => value.split('.').map((segment) => {
@@ -39,31 +39,31 @@ export function compareVersions(current: string, latest: string): number {
 }
 
 /**
- * 检查更新。先问服务器设置里那个地址，拿不到有效 manifest 就回落到官方地址。
+ * 檢查更新。先問伺服器設定裡那個地址，拿不到有效 manifest 就回落到官方地址。
  *
- * **回落不是优化，是「更新地址跟随服务器地址」这个设计能成立的前提。**
- * 把服务器指向自建后端的用户，那台机器上不会有 manifest；没有这一步，他们每次检查都
- * 拿到 404、被当成"已是最新版"，从此永远收不到更新，而且毫无征兆。
+ * **回落不是最佳化，是「更新地址跟隨伺服器地址」這個設計能成立的前提。**
+ * 把伺服器指向自建後端的使用者，那台機器上不會有 manifest；沒有這一步，他們每次檢查都
+ * 拿到 404、被當成"已是最新版"，從此永遠收不到更新，而且毫無徵兆。
  *
- * 只在「没拿到版本号」时回落 —— 包括 404、网络失败、以及返回了 JSON 但没有 version
- * 字段。已经拿到版本号就用它，哪怕版本比当前的旧（那是测试指向旧通道的正常情况，
- * 不该悄悄换成官方的答案）。
+ * 只在「沒拿到版本號」時回落 —— 包括 404、網路失敗、以及返回了 JSON 但沒有 version
+ * 欄位。已經拿到版本號就用它，哪怕版本比當前的舊（那是測試指向舊通道的正常情況，
+ * 不該悄悄換成官方的答案）。
  */
 export async function checkVersionUpdate(currentVersion: string): Promise<VersionInfo> {
   const configured = await fetchManifest(currentVersion, getUpdateBaseUrl())
   if (configured.latestVersion || isOfficialUpdateChannel()) return configured
 
   const fallback = await fetchManifest(currentVersion, getOfficialUpdateBaseUrl())
-  // 两边都没拿到就报第一次的结果：错误信息应该指向用户实际配置的那个地址。
+  // 兩邊都沒拿到就報第一次的結果：錯誤資訊應該指向使用者實際配置的那個地址。
   return fallback.latestVersion ? fallback : configured
 }
 
 /**
- * 安装包地址只能是 manifest 所在服务器上的路径。
+ * 安裝包地址只能是 manifest 所在伺服器上的路徑。
  *
- * 原来是 `${baseUrl}${download_path}` 直接拼字符串：download_path 写成 `.attacker.example/x.exe`，
- * 拼出来就是 `https://sayitapp.site.attacker.example/x.exe`，域名已经换了。
- * 现在按 URL 解析后比 origin，不同源就当没有下载地址。Rust 的 download_update 下载前还会再查一次。
+ * 原來是 `${baseUrl}${download_path}` 直接拼字串：download_path 寫成 `.attacker.example/x.exe`，
+ * 拼出來就是 `https://sayitapp.site.attacker.example/x.exe`，域名已經換了。
+ * 現在按 URL 解析後比 origin，不同源就當沒有下載地址。Rust 的 download_update 下載前還會再查一次。
  */
 export function resolveDownloadUrl(baseUrl: string, downloadPath: string | undefined | null): string | null {
   if (!downloadPath || !downloadPath.startsWith('/') || downloadPath.startsWith('//')) return null
@@ -77,9 +77,9 @@ export function resolveDownloadUrl(baseUrl: string, downloadPath: string | undef
 }
 
 /**
- * 更新通道 `{platform}/{arch}`，与服务端 releases 目录对应（server/backend/app/releases.py）。
- * Windows 只发 x64；mac 按 CPU 架构分 arm64 / x64（WKWebView 的 UA 在 Apple 芯片上也写 Intel，
- * 所以架构问 Rust）。
+ * 更新通道 `{platform}/{arch}`，與服務端 releases 目錄對應（server/backend/app/releases.py）。
+ * Windows 只發 x64；mac 按 CPU 架構分 arm64 / x64（WKWebView 的 UA 在 Apple 晶片上也寫 Intel，
+ * 所以架構問 Rust）。
  */
 async function updateChannel(): Promise<string> {
   if (!IS_MAC) return 'win32/x64'

@@ -1,38 +1,38 @@
-// 「AI 供应商」页的数据模型与纯函数。
+// 「AI 供應商」頁的資料模型與純函式。
 //
-// 单独成文件的原因：这里每一条都曾经或可能悄悄漂移（默认值与示例不一致、密钥长度断言
-// 过期、老数据迁移），而它们全都是纯逻辑，值得被测试锁住。组件只负责渲染与副作用。
+// 單獨成檔案的原因：這裡每一條都曾經或可能悄悄漂移（預設值與示例不一致、金鑰長度斷言
+// 過期、老資料遷移），而它們全都是純邏輯，值得被測試鎖住。元件只負責渲染與副作用。
 
 /**
- * 供应商清单 —— 这是唯一的真相来源。
+ * 供應商清單 —— 這是唯一的真相來源。
  *
- * 默认地址与候选模型原来另有三张表（DEFAULT_URLS / DEFAULT_MODELS / DEFAULT_MODEL_LISTS）
- * 声明在组件函数体里，于是同一个供应商在示例文字和默认值之间漂移过：
- * 千问的示例写 `qwen-plus` 而实际种进去的是 `qwen3.6-flash`，
- * MiMo 的示例写 `mimo-v2.5-pro` 而默认选中的是 `mimo-v2.5`。
- * 合并成一张表后，示例直接由 defaultModels[0] 派生，漂移不可能再发生。
+ * 預設地址與候選模型原來另有三張表（DEFAULT_URLS / DEFAULT_MODELS / DEFAULT_MODEL_LISTS）
+ * 宣告在元件函式體裡，於是同一個供應商在示例文字和預設值之間漂移過：
+ * 千問的示例寫 `qwen-plus` 而實際種進去的是 `qwen3.6-flash`，
+ * MiMo 的示例寫 `mimo-v2.5-pro` 而預設選中的是 `mimo-v2.5`。
+ * 合併成一張表後，示例直接由 defaultModels[0] 派生，漂移不可能再發生。
  */
 import { getLocale, t } from '@/i18n'
 
 export interface AiProvider {
   value: string
   /**
-   * 展示名。品牌名用官方英文写法（Qwen / Doubao (Volcengine Ark) / Xiaomi MiMo），
-   * 不是直译 —— 中文语境习惯叫「通义千问」，所以它仍然要跟界面语言走。
+   * 展示名。品牌名用官方英文寫法（Qwen / Doubao (Volcengine Ark) / Xiaomi MiMo），
+   * 不是直譯 —— 中文語境習慣叫「通義千問」，所以它仍然要跟介面語言走。
    *
-   * ⚠️ 表里几条用的是 **getter**，不是普通字符串字段。原因：这张表是模块级常量，
-   * 普通字段会在模块加载那一刻把当时的语言固化下来，切语言后不再变。改成 getter
-   * 就能保留 `.label` 这个读法 —— 二十多个调用点和三个测试文件都不用动。
+   * ⚠️ 表裡幾條用的是 **getter**，不是普通字串欄位。原因：這張表是模組級常量，
+   * 普通欄位會在模組載入那一刻把當時的語言固化下來，切語言後不再變。改成 getter
+   * 就能保留 `.label` 這個讀法 —— 二十多個呼叫點和三個測試檔案都不用動。
    */
   label: string
   defaultUrl: string
   /** A blank URL uses the provider's default when saving. */
   urlOptional?: boolean
-  /** 建议的模型，第一个作为新建时的默认值；同时作为表单里的快速选择 */
+  /** 建議的模型，第一個作為新建時的預設值；同時作為表單裡的快速選擇 */
   defaultModels: string[]
-  /** 不需要 API Key（目前只有本机 Ollama） */
+  /** 不需要 API Key（目前只有本機 Ollama） */
   keyless?: boolean
-  /** 申请密钥的控制台地址 */
+  /** 申請金鑰的控制台地址 */
   consoleUrl?: string
 }
 
@@ -78,24 +78,24 @@ export const AI_PROVIDERS: AiProvider[] = [
     value: 'zhipu',
     get label() { return t('aiProvider.zhipu') },
     /**
-     * 版本段在 base 里是 `/v4`，不是 `/v1`（normalize_base_url 认得这个形状，会原样保留）。
+     * 版本段在 base 裡是 `/v4`，不是 `/v1`（normalize_base_url 認得這個形狀，會原樣保留）。
      *
-     * 之前没有这张卡，用户只能选「OpenAI 兼容」自己填地址，而这个地址**几乎必然填错**：
-     * 智谱文档里出现的是完整端点 `.../v4/chat/completions`，照抄过来会被再拼一次；
-     * 只填到 `.../api/paas` 又会被补成 `/api/paas/v1`。两种都是 404，用户看到的就是
-     * 「智谱接不上」。做成内置卡之后没有可填错的余地。
+     * 之前沒有這張卡，使用者只能選「OpenAI 相容」自己填地址，而這個地址**幾乎必然填錯**：
+     * 智譜文件裡出現的是完整端點 `.../v4/chat/completions`，照抄過來會被再拼一次；
+     * 只填到 `.../api/paas` 又會被補成 `/api/paas/v1`。兩種都是 404，使用者看到的就是
+     * 「智譜接不上」。做成內建卡之後沒有可填錯的餘地。
      */
     defaultUrl: 'https://open.bigmodel.cn/api/paas/v4',
-    // glm-4.7-flash 在官方「免费模型」目录下（docs.bigmodel.cn/cn/guide/models/free/glm-4.7-flash），
-    // 所以放第一位当默认值 —— 想白用的人开箱即可。
+    // glm-4.7-flash 在官方「免費模型」目錄下（docs.bigmodel.cn/cn/guide/models/free/glm-4.7-flash），
+    // 所以放第一位當預設值 —— 想白用的人開箱即可。
     defaultModels: ['glm-4.7-flash', 'glm-4.7'],
     consoleUrl: 'https://open.bigmodel.cn/usercenter/proj-mgmt/apikeys',
   },
   {
     value: 'groq',
-    // 品牌名，中英文都写 Groq，不需要 locale 键（同 DeepSeek 的处理）
+    // 品牌名，中英文都寫 Groq，不需要 locale 鍵（同 DeepSeek 的處理）
     label: 'Groq',
-    // 末段已经是 /v1，normalize_base_url 会原样保留、不再追加版本段
+    // 末段已經是 /v1，normalize_base_url 會原樣保留、不再追加版本段
     defaultUrl: 'https://api.groq.com/openai/v1',
     defaultModels: ['openai/gpt-oss-20b', 'openai/gpt-oss-120b', 'llama-3.3-70b-versatile'],
     consoleUrl: 'https://console.groq.com/keys',
@@ -119,16 +119,16 @@ export const AI_PROVIDERS: AiProvider[] = [
 ]
 
 /**
- * 新建服务时的地区默认；只影响还没选择过供应商的场景。
- * 英文默认 OpenRouter，与英文界面推荐的 DeepSeek V4.1 Flash（经 OpenRouter）一致；
- * 中文不跟：国内付款和访问 OpenRouter 都不方便，直连 DeepSeek 更合适。
+ * 新建服務時的地區預設；只影響還沒選擇過供應商的場景。
+ * 英文預設 OpenRouter，與英文介面推薦的 DeepSeek V4.1 Flash（經 OpenRouter）一致；
+ * 中文不跟：國內付款和訪問 OpenRouter 都不方便，直連 DeepSeek 更合適。
  */
 export function preferredAiProviderValue(): string {
   // [自訂] S34：一律本機 Ollama（原：getLocale() === 'en' ? 'openrouter' : 'deepseek'）
   return 'ollama'
 }
 
-/** 把地区默认那家排到最前，原数组顺序保持不变供迁移逻辑使用。 */
+/** 把地區預設那家排到最前，原陣列順序保持不變供遷移邏輯使用。 */
 // [自訂] #18：本 fork 只允許本機 Ollama（Rust 端 registry.rs 也會拒絕其他供應商），
 // AI 服務頁只列出 Ollama。AI_PROVIDERS 清單本身保留（舊設定讀取、測試仍用到）。改回 true 即恢復上游行為。
 const SHOW_CLOUD_AI_PROVIDERS = false
@@ -147,16 +147,16 @@ export function findProvider(value: string): AiProvider {
   return AI_PROVIDERS.find((p) => p.value === value) ?? AI_PROVIDERS[0]
 }
 
-/** 每供应商独立存储的字段 */
+/** 每供應商獨立儲存的欄位 */
 export type AiSettingField = 'apiUrl' | 'apiKey' | 'model' | 'models' | 'latency'
 
 /**
- * 每个供应商的配置键。
+ * 每個供應商的配置鍵。
  *
- * 键名格式是历史约定（`cloudAi.<provider>.<field>`），**不能随意改**：
- * 改了等于用户已存的地址与密钥全部读不到，界面上看着像被清空了。
- * 另有一组不带 provider 的 `cloudAi.provider/apiUrl/apiKey/model`，
- * 那是运行时实际生效的"当前配置"，由本页在保存/切换时同步过去。
+ * 鍵名格式是歷史約定（`cloudAi.<provider>.<field>`），**不能隨意改**：
+ * 改了等於使用者已存的地址與金鑰全部讀不到，介面上看著像被清空了。
+ * 另有一組不帶 provider 的 `cloudAi.provider/apiUrl/apiKey/model`，
+ * 那是執行時實際生效的"當前配置"，由本頁在儲存/切換時同步過去。
  */
 export function aiSettingKey(provider: string, field: AiSettingField): string {
   return `cloudAi.${provider}.${field}`
@@ -167,30 +167,30 @@ export function providerLabel(value: string): string {
 }
 
 /**
- * 一条已配置的 AI 服务。
+ * 一條已配置的 AI 服務。
  *
- * 为什么是这个形状：原来的模型是「供应商」为主轴、模型只是它下面的一串字符串，
- * 而地址和密钥挂在供应商上。后果有两个：
- *   1. 两个不同端点的「OpenAI 兼容」模型（比如一个 OpenAI、一个本地 vLLM）没法各自
- *      配置——切了模型却还在用同一个地址和密钥，其中一个必然打不通；
- *   2. 想在 DeepSeek 和千问之间换一下，得走下拉、改地址、改密钥，等于重配一遍。
- * 把「供应商 + 地址 + 密钥 + 模型」打包成一条可命名的服务后，切换就是点一下列表。
+ * 為什麼是這個形狀：原來的模型是「供應商」為主軸、模型只是它下面的一串字串，
+ * 而地址和金鑰掛在供應商上。後果有兩個：
+ *   1. 兩個不同端點的「OpenAI 相容」模型（比如一個 OpenAI、一個本地 vLLM）沒法各自
+ *      配置——切了模型卻還在用同一個地址和金鑰，其中一個必然打不通；
+ *   2. 想在 DeepSeek 和千問之間換一下，得走下拉、改地址、改金鑰，等於重配一遍。
+ * 把「供應商 + 地址 + 金鑰 + 模型」打包成一條可命名的服務後，切換就是點一下列表。
  */
 /**
- * 一次可用性检测的结果。
+ * 一次可用性檢測的結果。
  *
- * 为什么不是单独存一个 latencyMs：那样界面上只能说出「多快」，说不出「行不行」。
- * 而用户按下这个按钮时想知道的第一件事是"这份配置能不能用"——密钥对不对、模型开通了没、
- * 网络通不通；耗时是可用之后的第二个维度（口述场景里确实重要，但它不是结论）。
- * 失败也要留痕：卡上必须能显示「不可用」，而不是停在「未测试」装作没事。
+ * 為什麼不是單獨存一個 latencyMs：那樣介面上只能說出「多快」，說不出「行不行」。
+ * 而使用者按下這個按鈕時想知道的第一件事是"這份配置能不能用"——金鑰對不對、模型開通了沒、
+ * 網路通不通；耗時是可用之後的第二個維度（口述場景裡確實重要，但它不是結論）。
+ * 失敗也要留痕：卡上必須能顯示「不可用」，而不是停在「未測試」裝作沒事。
  */
 export interface AiProfileCheck {
   ok: boolean
-  /** 检测完成的时间戳。用来说"多久之前测的"——一次通过不等于此刻还通 */
+  /** 檢測完成的時間戳。用來說"多久之前測的"——一次通過不等於此刻還通 */
   at?: number
-  /** 成功时的一次往返耗时 */
+  /** 成功時的一次往返耗時 */
   latencyMs?: number
-  /** 失败时的一句话原因（已由 describeProviderError 归一化过） */
+  /** 失敗時的一句話原因（已由 describeProviderError 歸一化過） */
   reason?: string
 }
 
@@ -200,7 +200,7 @@ export interface AiProfile {
   apiUrl: string
   apiKey: string
   model: string
-  /** 最近一次可用性检测。没有 = 还没测过 */
+  /** 最近一次可用性檢測。沒有 = 還沒測過 */
   check?: AiProfileCheck
 }
 
@@ -208,7 +208,7 @@ export function makeProfileId(): string {
   return `p-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
 }
 
-/** 新建一条服务时的初值 */
+/** 新建一條服務時的初值 */
 export function blankProfile(providerValue = preferredAiProviderValue()): AiProfile {
   const meta = findProvider(providerValue)
   return {
@@ -221,13 +221,13 @@ export function blankProfile(providerValue = preferredAiProviderValue()): AiProf
 }
 
 /**
- * 端点的主机名，且**只在它不是这家供应商的默认地址时**才返回，否则空串。
+ * 端點的主機名，且**只在它不是這家供應商的預設地址時**才返回，否則空串。
  *
- * 卡片上要不要显示地址，取决于它能不能区分两张卡：用 DeepSeek 官方地址的那张，
- * 写出 `api.deepseek.com` 只是重复"DeepSeek"这三个字；而两个都叫「OpenAI 兼容」的
- * 端点，主机名是唯一能把它们分开的东西——那正是旧结构根本存不下第二份的那个场景。
- * 只给主机名不给完整 URL：路径（/v1、/compatible-mode）在窄卡片里会挤掉模型名，
- * 完整地址在编辑弹窗里看。
+ * 卡片上要不要顯示地址，取決於它能不能區分兩張卡：用 DeepSeek 官方地址的那張，
+ * 寫出 `api.deepseek.com` 只是重複"DeepSeek"這三個字；而兩個都叫「OpenAI 相容」的
+ * 端點，主機名是唯一能把它們分開的東西——那正是舊結構根本存不下第二份的那個場景。
+ * 只給主機名不給完整 URL：路徑（/v1、/compatible-mode）在窄卡片裡會擠掉模型名，
+ * 完整地址在編輯彈窗裡看。
  */
 function profileCustomHost(profile: AiProfile): string {
   const hostOf = (url: string): string => {
@@ -242,19 +242,19 @@ function profileCustomHost(profile: AiProfile): string {
   return host && host !== defaultHost ? host : ''
 }
 
-/** 一条服务的一行式说法（供应商 · 主机名），用于读屏名称等只能给一串文字的地方 */
+/** 一條服務的一行式說法（供應商 · 主機名），用於讀屏名稱等只能給一串文字的地方 */
 export function profileSubtitle(profile: AiProfile): string {
   const label = providerLabel(profile.provider)
   const host = profileCustomHost(profile)
   return host ? `${label} · ${host}` : label
 }
 
-/** 列表里一行的主标题。模型名就是标题；还没填的时候也得有字，否则那一行看着像坏了 */
+/** 列表裡一行的主標題。模型名就是標題；還沒填的時候也得有字，否則那一行看著像壞了 */
 export function profileTitle(profile: AiProfile): string {
   return profile.model.trim() || t('aiProvider.noModel')
 }
 
-/** 一条服务是否填齐了能用的东西 */
+/** 一條服務是否填齊了能用的東西 */
 export function isProfileComplete(profile: AiProfile): boolean {
   if (!profile.apiUrl.trim() || !profile.model.trim()) return false
   if (!findProvider(profile.provider).keyless && !profile.apiKey.trim()) return false
@@ -262,11 +262,11 @@ export function isProfileComplete(profile: AiProfile): boolean {
 }
 
 /**
- * 把存储里读回来的东西还原成服务列表。
+ * 把儲存裡讀回來的東西還原成服務列表。
  *
- * 为什么要这么小心：这个值会经过配置导出/导入、用户手改数据库、以及将来版本的字段增减，
- * 任何一条脏数据都不该让整页白屏。所以规则是"能救的救、救不了的丢"，绝不抛异常。
- * id 重复同样要处理——单选和编辑都靠 id 定位，重复 id 会让你点 A 改到 B。
+ * 為什麼要這麼小心：這個值會經過配置匯出/匯入、使用者手改資料庫、以及將來版本的欄位增減，
+ * 任何一條髒資料都不該讓整頁白屏。所以規則是"能救的救、救不了的丟"，絕不拋異常。
+ * id 重複同樣要處理——單選和編輯都靠 id 定位，重複 id 會讓你點 A 改到 B。
  */
 export function parseProfiles(raw: unknown): AiProfile[] {
   if (!Array.isArray(raw)) return []
@@ -297,7 +297,7 @@ export function parseProfiles(raw: unknown): AiProfile[] {
   return out
 }
 
-/** 检测结果的容错解析。第二个参数是更早版本平铺在 profile 上的 latencyMs，只有测通才会写。 */
+/** 檢測結果的容錯解析。第二個引數是更早版本平鋪在 profile 上的 latencyMs，只有測通才會寫。 */
 function parseCheck(
   raw: unknown,
   legacyLatency: unknown,
@@ -319,19 +319,19 @@ function parseCheck(
   return latency === undefined ? undefined : { ok: true, latencyMs: latency }
 }
 
-/** 当前启用的那条。id 失效（删掉了、导入的数据对不上）时回落到第一条，而不是"什么都没启用" */
+/** 當前啟用的那條。id 失效（刪掉了、匯入的資料對不上）時回落到第一條，而不是"什麼都沒啟用" */
 export function resolveActiveProfile(profiles: AiProfile[], activeId: string): AiProfile | null {
   if (profiles.length === 0) return null
   return profiles.find((p) => p.id === activeId) ?? profiles[0]
 }
 
 /**
- * 检查 API Key 格式，返回提示文字（空字符串表示格式正常）。
+ * 檢查 API Key 格式，返回提示文字（空字串表示格式正常）。
  *
- * 只保留「几乎不会误报」的规则：粘贴时常带进来的空白字符，以及确定的前缀约定。
- * 原来还断言 DeepSeek / 通义千问「必须 35 位」、豆包「必须是 UUID」——供应商一改密钥
- * 长度，这里就开始对**合法**密钥报警，而用户看到警告的第一反应是去重新生成一个密钥。
- * 对合法密钥误报的代价高于漏报，所以长度断言去掉了。
+ * 只保留「幾乎不會誤報」的規則：貼上時常帶進來的空白字元，以及確定的字首約定。
+ * 原來還斷言 DeepSeek / 通義千問「必須 35 位」、豆包「必須是 UUID」——供應商一改金鑰
+ * 長度，這裡就開始對**合法**金鑰報警，而使用者看到警告的第一反應是去重新生成一個金鑰。
+ * 對合法金鑰誤報的代價高於漏報，所以長度斷言去掉了。
  */
 export function checkAiKeyFormat(provider: string, key: string): string {
   if (!key.trim()) return ''
@@ -344,7 +344,7 @@ export function checkAiKeyFormat(provider: string, key: string): string {
   return ''
 }
 
-/** 地址是否像个能用的 base URL。原来这里零校验，填错要等到测试失败才知道。 */
+/** 地址是否像個能用的 base URL。原來這裡零校驗，填錯要等到測試失敗才知道。 */
 export function checkApiUrl(url: string): string {
   const u = url.trim()
   if (!u) return ''
@@ -361,15 +361,15 @@ export function checkApiUrl(url: string): string {
 }
 
 /**
- * 从后端 detail 里取那句「回复: xxx」。
+ * 從後端 detail 裡取那句「Reply: xxx」。
  *
- * detail 的完整内容是 `耗时/模型/发送/回复` 四行（见 ai_openai_compat.rs 的
- * test_connection），其中「发送」那行会把内部测试提示词
- * （`system="只回复「连接正常」四个字…"`）原样展示给用户——那是后端的调试信息，
- * 不该出现在成功提示里。这里只取「回复」，耗时和模型名走结构化字段。
+ * detail 的完整內容是 `Elapsed/Model/Sent/Reply` 四行（見 ai_openai_compat.rs 的
+ * test_connection），其中「Sent」那行會把內部測試提示詞
+ * （`system="只回復「連線正常」四個字…"`）原樣展示給使用者——那是後端的除錯資訊，
+ * 不該出現在成功提示裡。這裡只取「Reply」，耗時和模型名走結構化欄位。
  */
 export function extractTestReply(detail?: string): string {
-  const match = detail?.match(/^回复:\s*(.*)$/m) // i18n-allow: 匹配供应商返回的中文响应字段
+  const match = detail?.match(/^Reply:\s*(.*)$/m)
   return match?.[1]?.trim() ?? ''
 }
 
@@ -378,27 +378,27 @@ export function formatLatency(ms: number): string {
 }
 
 /**
- * 延迟分档。
+ * 延遲分檔。
  *
- * 口述场景的判断标准和跑分不一样：用户松开热键站在原地等文字出现在光标处，
- * 一次往返超过 1 秒就已经能感觉到停顿，超过 2 秒基本没法用来干活。
- * 所以纯数字不够——1.4s 和 140ms 在界面上必须长得不一样。
+ * 口述場景的判斷標準和跑分不一樣：使用者鬆開熱鍵站在原地等文字出現在游標處，
+ * 一次往返超過 1 秒就已經能感覺到停頓，超過 2 秒基本沒法用來幹活。
+ * 所以純數字不夠——1.4s 和 140ms 在介面上必須長得不一樣。
  *
- * 分档只在"需要提醒"时才给词：够快的时候多一个「很快」是噪音，慢下来才值得占字。
- * 颜色只有 ok / warn 两档：红色在这一页已经被「不可用」占了，
- * 「能用但慢」不该和「根本用不了」撞成同一个颜色。
+ * 分檔只在"需要提醒"時才給詞：夠快的時候多一個「很快」是噪音，慢下來才值得佔字。
+ * 顏色只有 ok / warn 兩檔：紅色在這一頁已經被「不可用」佔了，
+ * 「能用但慢」不該和「根本用不了」撞成同一個顏色。
  */
 export type LatencyTier = 'instant' | 'fast' | 'normal' | 'slow' | 'tooSlow'
 
 export interface LatencyGrade {
   tier: LatencyTier
-  /** 一个词的结论，和数字一起显示 */
+  /** 一個詞的結論，和數字一起顯示 */
   label: string
-  /** ok = 放心用，warn = 能用但拖，bad = 不建议用 */
+  /** ok = 放心用，warn = 能用但拖，bad = 不建議用 */
   tone: 'ok' | 'warn' | 'bad'
 }
 
-/** 分界值集中在这里，想调手感只改这一处 */
+/** 分界值集中在這裡，想調手感只改這一處 */
 const LATENCY_THRESHOLDS = { instant: 200, fast: 500, normal: 1000, slow: 2000 } as const
 
 export function gradeLatency(ms: number): LatencyGrade {
@@ -410,33 +410,33 @@ export function gradeLatency(ms: number): LatencyGrade {
 }
 
 /**
- * 检测结论的保鲜期。
+ * 檢測結論的保鮮期。
  *
- * 为什么需要这个：一次测通只是那一刻的事实。额度用光、密钥被吊销、模型下线、
- * 供应商限流都会让它悄悄失效，而界面上那枚绿色的「可用」会一直挂着，
- * 变成一句无限期的承诺——三天前测的绿灯，读起来和刚测的一模一样。
- * 过了保鲜期就把颜色收回中性：绿色只代表"刚刚验过，可以信"。
+ * 為什麼需要這個：一次測通只是那一刻的事實。額度用光、金鑰被吊銷、模型下線、
+ * 供應商限流都會讓它悄悄失效，而介面上那枚綠色的「可用」會一直掛著，
+ * 變成一句無限期的承諾——三天前測的綠燈，讀起來和剛測的一模一樣。
+ * 過了保鮮期就把顏色收回中性：綠色只代表"剛剛驗過，可以信"。
  */
 export const CHECK_FRESH_MS = 24 * 60 * 60 * 1000
 
-/** 结论还新鲜吗。没有时间戳的（更早版本迁移来的）一律当过期，重测一次就好了 */
+/** 結論還新鮮嗎。沒有時間戳的（更早版本遷移來的）一律當過期，重測一次就好了 */
 export function isCheckFresh(check: AiProfileCheck | undefined, now = Date.now()): boolean {
   if (!check?.at) return false
   return now - check.at < CHECK_FRESH_MS
 }
 
 /**
- * 「多久之前测的」。
+ * 「多久之前測的」。
  *
- * 为什么要显示这个：一次测通不代表此刻还通（额度用光、密钥被吊销、模型下线都会变）。
- * 卡上那枚「可用」标签如果不说清是什么时候测的，就变成了一句无限期的承诺。
- * now 作为参数传入，纯函数好测。
+ * 為什麼要顯示這個：一次測通不代表此刻還通（額度用光、金鑰被吊銷、模型下線都會變）。
+ * 卡上那枚「可用」標籤如果不說清是什麼時候測的，就變成了一句無限期的承諾。
+ * now 作為引數傳入，純函式好測。
  */
 export function formatCheckedAt(at: number, now = Date.now()): string {
   const seconds = Math.max(0, Math.round((now - at) / 1000))
   if (seconds < 60) return t('time.justNow')
-  // 用 Intl.RelativeTimeFormat 而不是自己拼字符串：英文的单复数（"1 minute ago"
-  // vs "5 minutes ago"）没法用一条模板覆盖，而这是最容易被忽略、也最显业余的细节。
+  // 用 Intl.RelativeTimeFormat 而不是自己拼字串：英文的單複數（"1 minute ago"
+  // vs "5 minutes ago"）沒法用一條模板覆蓋，而這是最容易被忽略、也最顯業餘的細節。
   const rtf = new Intl.RelativeTimeFormat(getLocale(), { numeric: 'auto' })
   const minutes = Math.floor(seconds / 60)
   if (minutes < 60) return rtf.format(-minutes, 'minute')
@@ -445,26 +445,26 @@ export function formatCheckedAt(at: number, now = Date.now()): string {
   return rtf.format(-Math.floor(hours / 24), 'day')
 }
 
-// ── 老数据迁移 ────────────────────────────────────────────────────────────
+// ── 老資料遷移 ────────────────────────────────────────────────────────────
 
-/** 老结构：每个供应商一组配置，模型是一串逗号分隔的字符串 */
+/** 老結構：每個供應商一組配置，模型是一串逗號分隔的字串 */
 export interface LegacyProviderData {
   provider: string
   apiUrl: string
   apiKey: string
-  /** 当时选中的模型 */
+  /** 當時選中的模型 */
   model: string
-  /** 候选模型列表 */
+  /** 候選模型列表 */
   models: string[]
-  /** `model=ms,model=ms` 解析后的耗时表 */
+  /** `model=ms,model=ms` 解析後的耗時表 */
   latencies: Record<string, number>
 }
 
 /**
- * 把 `model=ms,model=ms` 解析成表（老版本把整张延迟表存成一个字符串）。
+ * 把 `model=ms,model=ms` 解析成表（老版本把整張延遲表存成一個字串）。
  *
- * 只读不写：新结构把耗时放在每条服务的 latencyMs 上。损坏条目一律跳过——
- * 这只是给"哪个更快"排序用的展示数据，绝不该因为一条脏数据让迁移整体失败。
+ * 只讀不寫：新結構把耗時放在每條服務的 latencyMs 上。損壞條目一律跳過——
+ * 這只是給"哪個更快"排序用的展示資料，絕不該因為一條髒資料讓遷移整體失敗。
  */
 export function parseLegacyLatencies(raw: string): Record<string, number> {
   const out: Record<string, number> = {}
@@ -479,11 +479,11 @@ export function parseLegacyLatencies(raw: string): Record<string, number> {
 }
 
 /**
- * 把老的「每供应商一组配置」摊平成服务列表。
+ * 把老的「每供應商一組配置」攤平成服務列表。
  *
- * 规则：只迁移填齐了的（有地址、且有密钥或免密钥）；该供应商下的每个候选模型各成一条；
- * 老的「当前供应商 + 当前模型」成为启用项。老的存储键一律不删——降级回旧版本还能用，
- * 也不至于因为迁移出错就丢掉用户的密钥。
+ * 規則：只遷移填齊了的（有地址、且有金鑰或免金鑰）；該供應商下的每個候選模型各成一條；
+ * 老的「當前供應商 + 當前模型」成為啟用項。老的儲存鍵一律不刪——降級回舊版本還能用，
+ * 也不至於因為遷移出錯就丟掉使用者的金鑰。
  */
 export function migrateLegacyProfiles(
   legacy: LegacyProviderData[],
@@ -498,7 +498,7 @@ export function migrateLegacyProfiles(
     if (!url) continue
     if (!meta.keyless && !entry.apiKey.trim()) continue
 
-    // 候选列表 + 当时选中的，去重后各成一条
+    // 候選列表 + 當時選中的，去重後各成一條
     const models = [...entry.models]
     if (entry.model && !models.includes(entry.model)) models.unshift(entry.model)
     const unique = models.map((m) => m.trim()).filter(Boolean).filter((m, i, a) => a.indexOf(m) === i)
@@ -507,14 +507,14 @@ export function migrateLegacyProfiles(
     for (const model of unique) {
       const latencyMs = entry.latencies[model]
       profiles.push({
-        // 迁移用确定性 id，方便排查，也保证重复迁移不会产生两份
+        // 遷移用確定性 id，方便排查，也保證重複遷移不會產生兩份
         id: `legacy-${entry.provider}-${model}`,
         provider: entry.provider,
         apiUrl: url,
         apiKey: entry.apiKey,
         model,
-        // 老版本只在测通之后才记耗时，所以有耗时就等于有过一次通过的检测；
-        // 但那是什么时候测的没人知道，所以不写 at（界面上就不会声称"刚测过"）
+        // 老版本只在測通之後才記耗時，所以有耗時就等於有過一次通過的檢測；
+        // 但那是什麼時候測的沒人知道，所以不寫 at（介面上就不會聲稱"剛測過"）
         check: latencyMs === undefined ? undefined : { ok: true, latencyMs },
       })
     }

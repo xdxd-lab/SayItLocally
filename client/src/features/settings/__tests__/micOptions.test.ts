@@ -3,29 +3,29 @@ import type { MicEndpoint } from '@/services/audio'
 import { buildMicOptions } from '../utils'
 
 const labels = {
-  systemDefault: '系统默认',
-  systemDefaultWith: (device: string) => `系统默认（${device}）`,
-  unnamed: (idPrefix: string) => `麦克风 ${idPrefix}`,
-  unavailable: '上次选的麦克风当前不可用',
+  systemDefault: '系統預設',
+  systemDefaultWith: (device: string) => `系統預設（${device}）`,
+  unnamed: (idPrefix: string) => `麥克風 ${idPrefix}`,
+  unavailable: '上次選的麥克風當前不可用',
 }
 
 /**
- * `enumerateDevices()` 在 Windows 上返回的真实形状，采样自本机日志：一个真实端点，
- * 外加 Chromium 自己摆的两个伪设备，label 是 `<本地化前缀> - <真实端点名>`。
+ * `enumerateDevices()` 在 Windows 上返回的真實形狀，取樣自本機日誌：一個真實端點，
+ * 外加 Chromium 自己擺的兩個偽裝置，label 是 `<本地化字首> - <真實端點名>`。
  */
-const RAW = '耳机式麦克风 (Plantronics Blackwire 5220 Series) (047f:c053)'
-/** 下拉里该显示的：留型号，剥掉结尾的 USB 标识。 */
-const SHOWN = '耳机式麦克风 (Plantronics Blackwire 5220 Series)'
+const RAW = '耳機式麥克風 (Plantronics Blackwire 5220 Series) (047f:c053)'
+/** 下拉裡該顯示的：留型號，剝掉結尾的 USB 標識。 */
+const SHOWN = '耳機式麥克風 (Plantronics Blackwire 5220 Series)'
 
 const snapshot: MicEndpoint[] = [
-  { deviceId: 'default', groupId: 'plt-group', label: `默认值 - ${RAW}` },
-  { deviceId: 'communications', groupId: 'plt-group', label: `通信设备 - ${RAW}` },
+  { deviceId: 'default', groupId: 'plt-group', label: `預設值 - ${RAW}` },
+  { deviceId: 'communications', groupId: 'plt-group', label: `通訊裝置 - ${RAW}` },
   { deviceId: 'real-headset', groupId: 'plt-group', label: RAW },
 ]
 
-describe('麦克风下拉的选项', () => {
-  it('保留括号里的型号，只剥掉结尾的 USB 标识', () => {
-    // 型号是区分设备的依据，必须留；VID:PID 连同型号都区分不了，只占宽度。
+describe('麥克風下拉的選項', () => {
+  it('保留括號裡的型號，只剝掉結尾的 USB 標識', () => {
+    // 型號是區分裝置的依據，必須留；VID:PID 連同型號都區分不了，只佔寬度。
     const options = buildMicOptions(snapshot, '', labels)
 
     expect(options.map((option) => option.value)).toEqual(['', 'real-headset'])
@@ -33,77 +33,77 @@ describe('麦克风下拉的选项', () => {
     expect(options[1].label).not.toContain('047f')
   })
 
-  it('「系统默认」写明它当前指向哪个设备', () => {
-    // 只写「系统默认」等于没说，用户看不出录音会走哪个麦克风。
+  it('「系統預設」寫明它當前指向哪個裝置', () => {
+    // 只寫「系統預設」等於沒說，使用者看不出錄音會走哪個麥克風。
     const options = buildMicOptions(snapshot, '', labels)
     expect(options[0]).toEqual({
       value: '',
-      label: `系统默认（${SHOWN}）`,
-      title: `系统默认（${SHOWN}）`,
+      label: `系統預設（${SHOWN}）`,
+      title: `系統預設（${SHOWN}）`,
     })
   })
 
-  it('伪设备不单独成项', () => {
-    // 列出来的话一个耳麦占掉四个选项，选哪个都一样却看着像四个不同的设备。
+  it('偽裝置不單獨成項', () => {
+    // 列出來的話一個耳麥佔掉四個選項，選哪個都一樣卻看著像四個不同的裝置。
     const options = buildMicOptions(snapshot, '', labels)
     expect(options.some((option) => option.value === 'default')).toBe(false)
     expect(options.some((option) => option.value === 'communications')).toBe(false)
   })
 
-  it('伪设备的 groupId 为空时靠后缀匹配解析出系统默认指向谁', () => {
+  it('偽裝置的 groupId 為空時靠字尾匹配解析出系統預設指向誰', () => {
     const noGroup: MicEndpoint[] = [
-      { deviceId: 'default', groupId: '', label: `默认值 - ${RAW}` },
+      { deviceId: 'default', groupId: '', label: `預設值 - ${RAW}` },
       { deviceId: 'real-headset', groupId: 'plt-group', label: RAW },
     ]
-    expect(buildMicOptions(noGroup, '', labels)[0].label).toBe(`系统默认（${SHOWN}）`)
+    expect(buildMicOptions(noGroup, '', labels)[0].label).toBe(`系統預設（${SHOWN}）`)
   })
 
-  it('解析不出系统默认指向谁时，退回朴素的「系统默认」而不是显示空括号', () => {
+  it('解析不出系統預設指向誰時，退回樸素的「系統預設」而不是顯示空括號', () => {
     const orphan: MicEndpoint[] = [
-      { deviceId: 'default', groupId: 'gone', label: '默认值 - 某个已消失的设备' },
+      { deviceId: 'default', groupId: 'gone', label: '預設值 - 某個已消失的裝置' },
     ]
-    expect(buildMicOptions(orphan, '', labels)[0].label).toBe('系统默认')
-    expect(buildMicOptions([], '', labels)[0].label).toBe('系统默认')
+    expect(buildMicOptions(orphan, '', labels)[0].label).toBe('系統預設')
+    expect(buildMicOptions([], '', labels)[0].label).toBe('系統預設')
   })
 
-  it('每一项都带完整名字的 title，截断之后还能悬停看到', () => {
+  it('每一項都帶完整名字的 title，截斷之後還能懸停看到', () => {
     const options = buildMicOptions(snapshot, '', labels)
     expect(options.every((option) => option.title === option.label)).toBe(true)
   })
 
-  it('读不到名字时给一个带 id 前缀的兜底标签，不渲染空白项', () => {
+  it('讀不到名字時給一個帶 id 字首的兜底標籤，不渲染空白項', () => {
     const unnamed: MicEndpoint[] = [
       { deviceId: 'abcdef1234567890', groupId: 'g', label: '' },
     ]
-    // label 为空的条目不算真实端点（无从辨认），所以列表里只剩「系统默认」。
+    // label 為空的條目不算真實端點（無從辨認），所以列表裡只剩「系統預設」。
     expect(buildMicOptions(unnamed, '', labels).map((option) => option.value)).toEqual([''])
-    // 已选设备仍在清单内，使用无名标签。
+    // 已選裝置仍在清單內，使用無名標籤。
     const selected = buildMicOptions(unnamed, 'abcdef1234567890', labels)
     expect(selected[selected.length - 1]).toEqual({
       value: 'abcdef1234567890',
-      label: '麦克风 abcdef12',
-      title: '麦克风 abcdef12',
+      label: '麥克風 abcdef12',
+      title: '麥克風 abcdef12',
     })
   })
 
-  it('选中的设备不在列表里时补一条占位项', () => {
-    // 不补的话 Select 找不到选中值、退回占位符文案，界面看起来像"没有选择麦克风"，
-    // 而用户其实选过 —— 拔掉设备、换机器、清过 WebView 缓存都会走到这里。
+  it('選中的裝置不在列表裡時補一條佔位項', () => {
+    // 不補的話 Select 找不到選中值、退回佔位符文案，介面看起來像"沒有選擇麥克風"，
+    // 而使用者其實選過 —— 拔掉裝置、換機器、清過 WebView 快取都會走到這裡。
     const options = buildMicOptions(snapshot, 'gone-device', labels)
 
     expect(options.map((option) => option.value)).toEqual(['', 'real-headset', 'gone-device'])
-    expect(options[2].label).toBe('上次选的麦克风当前不可用')
+    expect(options[2].label).toBe('上次選的麥克風當前不可用')
   })
 
-  it('选中系统默认或列表里的设备时都不补占位项', () => {
+  it('選中系統預設或列表裡的裝置時都不補佔位項', () => {
     expect(buildMicOptions(snapshot, '', labels)).toHaveLength(2)
     expect(buildMicOptions(snapshot, 'real-headset', labels)).toHaveLength(2)
   })
 
-  it('设备列表还没加载出来时，系统默认仍然是可选中的', () => {
-    // 进设置页的第一帧 devices 是空数组。此时若连系统默认都匹配不上，界面会先空一下。
+  it('裝置列表還沒載入出來時，系統預設仍然是可選中的', () => {
+    // 進設定頁的第一幀 devices 是空陣列。此時若連繫統預設都匹配不上，介面會先空一下。
     expect(buildMicOptions([], '', labels)).toEqual([
-      { value: '', label: '系统默认', title: '系统默认' },
+      { value: '', label: '系統預設', title: '系統預設' },
     ])
   })
 })

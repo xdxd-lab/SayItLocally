@@ -1,10 +1,10 @@
-//! 录音期间静音系统输出（默认扬声器）——防止外放的声音被麦克风回采。
+//! 錄音期間靜音系統輸出（預設揚聲器）——防止外放的聲音被麥克風回採。
 //!
-//! 只在采集期间静音，松开热键立即恢复到用户原本的静音状态：
-//! - `mute_system_output`：记录当前默认输出设备的静音状态，然后静音。
-//! - `restore_system_output`：恢复到之前记录的状态（若用户本来就是静音，则保持静音）。
+//! 只在採集期間靜音，鬆開熱鍵立即恢復到使用者原本的靜音狀態：
+//! - `mute_system_output`：記錄當前預設輸出裝置的靜音狀態，然後靜音。
+//! - `restore_system_output`：恢復到之前記錄的狀態（若使用者本來就是靜音，則保持靜音）。
 //!
-//! 用「保存/恢复原状态」而非「无脑取消静音」，避免录完后把用户原本的静音误开成有声。
+//! 用「儲存/恢復原狀態」而非「無腦取消靜音」，避免錄完後把使用者原本的靜音誤開成有聲。
 
 use serde::Serialize;
 
@@ -13,26 +13,26 @@ use once_cell::sync::Lazy;
 #[cfg(any(windows, target_os = "macos"))]
 use std::sync::Mutex;
 
-/// 查询麦克风静音状态的结果。
-/// - `matched`：是否成功定位到目标设备（默认设备总能定位；指定设备需按名字唯一匹配到）。
-///   为 false 时前端不应据此判定，应退回基于音频信号的检测。
-/// - `muted`：目标设备在系统层面是否被静音。
+/// 查詢麥克風靜音狀態的結果。
+/// - `matched`：是否成功定位到目標裝置（預設裝置總能定位；指定裝置需按名字唯一匹配到）。
+///   為 false 時前端不應據此判定，應退回基於音訊訊號的檢測。
+/// - `muted`：目標裝置在系統層面是否被靜音。
 #[derive(Debug, Clone, Serialize)]
 pub struct MicMuteState {
     pub matched: bool,
     pub muted: bool,
 }
 
-/// 保存的「静音前的原始状态」。None 表示当前未处于我们施加的静音中。
+/// 儲存的「靜音前的原始狀態」。None 表示當前未處於我們施加的靜音中。
 #[cfg(windows)]
 static SAVED_MUTE_STATE: Lazy<Mutex<Option<bool>>> = Lazy::new(|| Mutex::new(None));
 
-/// macOS：静音前默认输出设备的状态（Mute 属性或各通道音量）。None = 当前不在我们施加的静音中。
+/// macOS：靜音前預設輸出裝置的狀態（Mute 屬性或各通道音量）。None = 當前不在我們施加的靜音中。
 #[cfg(target_os = "macos")]
 static SAVED_OUTPUT_STATE: Lazy<Mutex<Option<crate::platform::macos::audio::SavedOutputState>>> =
     Lazy::new(|| Mutex::new(None));
 
-/// 获取默认渲染端点（扬声器）的音量控制接口，并在其上执行闭包。
+/// 獲取預設渲染端點（揚聲器）的音量控制介面，並在其上執行閉包。
 #[cfg(windows)]
 unsafe fn with_endpoint_volume<F, R>(f: F) -> Result<R, String>
 where
@@ -73,8 +73,8 @@ where
     result
 }
 
-/// 记录当前默认输出设备静音状态并将其静音。
-/// 返回 true 表示已处理（Windows），false 表示非 Windows 平台跳过。
+/// 記錄當前預設輸出裝置靜音狀態並將其靜音。
+/// 返回 true 表示已處理（Windows），false 表示非 Windows 平台跳過。
 #[tauri::command]
 pub fn mute_system_output() -> Result<bool, String> {
     #[cfg(windows)]
@@ -85,7 +85,7 @@ pub fn mute_system_output() -> Result<bool, String> {
                 .map_err(|e| format!("GetMute: {}", e))?
                 .as_bool();
 
-            // 仅在首次静音时保存原状态，避免重复调用覆盖真实原值
+            // 僅在首次靜音時儲存原狀態，避免重複呼叫覆蓋真實原值
             {
                 let mut saved = SAVED_MUTE_STATE.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
                 if saved.is_none() {
@@ -108,7 +108,7 @@ pub fn mute_system_output() -> Result<bool, String> {
     #[cfg(target_os = "macos")]
     {
         let mut saved = SAVED_OUTPUT_STATE.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-        // 仅在首次静音时保存原状态，避免重复调用覆盖真实原值
+        // 僅在首次靜音時儲存原狀態，避免重複呼叫覆蓋真實原值
         if saved.is_some() {
             return Ok(true);
         }
@@ -123,8 +123,8 @@ pub fn mute_system_output() -> Result<bool, String> {
     }
 }
 
-/// 恢复到 `mute_system_output` 之前记录的静音状态。
-/// 若没有记录（未曾静音），则不做任何操作。
+/// 恢復到 `mute_system_output` 之前記錄的靜音狀態。
+/// 若沒有記錄（未曾靜音），則不做任何操作。
 #[tauri::command]
 pub fn restore_system_output() -> Result<bool, String> {
     #[cfg(windows)]
@@ -169,15 +169,25 @@ pub fn restore_system_output() -> Result<bool, String> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// 麦克风静音状态查询
+// 麥克風靜音狀態查詢
 // ─────────────────────────────────────────────────────────────────────────
 
-/// 浏览器会给默认设备名加上 Default/Communications 前缀；Windows 端点友好名没有。
-/// 这里只做名字规范化以定位本次实际打开的端点，不参与静音与否的判断。
+/// 瀏覽器會給預設裝置名加上 Default/Communications 字首；Windows 端點友好名沒有。
+/// 這裡只做名字規範化以定位本次實際開啟的端點，不參與靜音與否的判斷。
 fn normalize_mic_label(label: &str) -> String {
     let trimmed = label.trim();
     let lower = trimmed.to_lowercase();
-    let without_route_prefix = ["default", "communications", "默认值", "默认", "通信"]
+    let without_route_prefix = [
+        "default",
+        "communications",
+        // Windows 簡體系統的路由字首（預設值、預設、通訊）以 Unicode 跳脫保存，後面是正體系統的寫法
+        "\u{9ed8}\u{8ba4}\u{503c}",
+        "\u{9ed8}\u{8ba4}",
+        "\u{901a}\u{4fe1}",
+        "預設值",
+        "預設",
+        "通訊",
+    ]
         .iter()
         .find_map(|prefix| {
             let prefix_lower = prefix.to_lowercase();
@@ -237,36 +247,36 @@ unsafe fn get_device_string_property(
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// 录音端点清单：前端靠它判断「系统默认」是不是虚拟设备
+// 錄音端點清單：前端靠它判斷「系統預設」是不是虛擬裝置
 // ─────────────────────────────────────────────────────────────────────────
 
-/// 一个处于启用状态的录音端点。
+/// 一個處於啟用狀態的錄音端點。
 ///
-/// `name` 是 Windows 的端点友好名（`耳机式麦克风 (Plantronics Blackwire 5220 Series)`），
-/// 与 Chromium 的 MediaDeviceInfo.label 去掉结尾 `(vid:pid)` 后相同，前端按它对应。
-/// macOS 上是 CoreAudio 的设备名，与 WebKit 的 label 相同（静音查询也按它对应）。
+/// `name` 是 Windows 的端點友好名（`耳機式麥克風 (Plantronics Blackwire 5220 Series)`），
+/// 與 Chromium 的 MediaDeviceInfo.label 去掉結尾 `(vid:pid)` 後相同，前端按它對應。
+/// macOS 上是 CoreAudio 的裝置名，與 WebKit 的 label 相同（靜音查詢也按它對應）。
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CaptureEndpoint {
     pub name: String,
-    /// 端点所属音频设备挂在哪条总线上：USB / HDAUDIO / INTELAUDIO / BTHENUM / ROOT ……
-    /// macOS 上是 CoreAudio 的连接类型四字符码：bltn / usb / blue / virt ……（只用于日志和排查）
+    /// 端點所屬音訊裝置掛在哪條匯流排上：USB / HDAUDIO / INTELAUDIO / BTHENUM / ROOT ……
+    /// macOS 上是 CoreAudio 的連線型別四字元碼：bltn / usb / blue / virt ……（只用於日誌和排查）
     pub enumerator: String,
     pub is_virtual: bool,
     pub is_default: bool,
     pub is_default_communications: bool,
 }
 
-/// 按总线判断是不是虚拟设备，**不按设备名**。
+/// 按匯流排判斷是不是虛擬裝置，**不按裝置名**。
 ///
-/// 真实麦克风一定挂在某条硬件总线下（USB、HD Audio、英特尔智音、蓝牙）；VB-Cable、
-/// Voicemeeter 这类纯软件驱动没有硬件可挂，由系统直接在根上枚举，总线名是 `ROOT`。
-/// 本机实测：CABLE Output 是 ROOT，其余五个真实麦克风是 USB / INTELAUDIO / HDAUDIO。
+/// 真實麥克風一定掛在某條硬體匯流排下（USB、HD Audio、英特爾智音、藍牙）；VB-Cable、
+/// Voicemeeter 這類純軟體驅動沒有硬體可掛，由系統直接在根上列舉，匯流排名是 `ROOT`。
+/// 本機實測：CABLE Output 是 ROOT，其餘五個真實麥克風是 USB / INTELAUDIO / HDAUDIO。
 ///
-/// 刻意没把 `SWD`（软件设备 API）算进来：它也是软件枚举，但没有实测样本，
-/// 误判的代价不对称 —— 把真麦克风当成虚拟会让 SayIt 跳过用户要用的设备，
-/// 漏判只是退回原来「跟随系统默认」的行为。
-/// 「立体声混音」这类回采端点挂在真实声卡下，这条判据认不出来；它默认是禁用的，暂不处理。
+/// 刻意沒把 `SWD`（軟體裝置 API）算進來：它也是軟體列舉，但沒有實測樣本，
+/// 誤判的代價不對稱 —— 把真麥克風當成虛擬會讓 SayIt 跳過使用者要用的裝置，
+/// 漏判只是退回原來「跟隨系統預設」的行為。
+/// 「立體聲混音」這類回採端點掛在真實音效卡下，這條判據認不出來；它預設是停用的，暫不處理。
 #[cfg(any(windows, test))]
 fn is_virtual_enumerator(enumerator: &str) -> bool {
     enumerator.trim().eq_ignore_ascii_case("ROOT")
@@ -276,18 +286,18 @@ fn is_virtual_enumerator(enumerator: &str) -> bool {
 #[cfg(any(target_os = "macos", test))]
 const MAC_TRANSPORT_VIRTUAL: u32 = u32::from_be_bytes(*b"virt");
 
-/// macOS 版的同一条判据：按 CoreAudio 报的连接类型，不按名字。
+/// macOS 版的同一條判據：按 CoreAudio 報的連線型別，不按名字。
 ///
-/// BlackHole、Loopback、Teams / Zoom 自带的虚拟音频设备都报 `virt`；内置麦克风是 `bltn`、
-/// USB 是 `usb `、蓝牙是 `blue`、iPhone 连续互通是 `ccwl`。
-/// 聚合设备（`grup` / `fgrp`）刻意不算：它是用户在「音频 MIDI 设置」里自己把真实设备拼起来的，
-/// 选它多半是有意为之；拿不到类型（0）也不算，理由同 Windows 那条（误判比漏判代价大）。
+/// BlackHole、Loopback、Teams / Zoom 自帶的虛擬音訊裝置都報 `virt`；內建麥克風是 `bltn`、
+/// USB 是 `usb `、藍牙是 `blue`、iPhone 連續互通是 `ccwl`。
+/// 聚合裝置（`grup` / `fgrp`）刻意不算：它是使用者在「音訊 MIDI 設定」裡自己把真實裝置拼起來的，
+/// 選它多半是有意為之；拿不到型別（0）也不算，理由同 Windows 那條（誤判比漏判代價大）。
 #[cfg(any(target_os = "macos", test))]
 fn is_virtual_transport(transport: u32) -> bool {
     transport == MAC_TRANSPORT_VIRTUAL
 }
 
-/// 把四字符码转成可读文字，写进 `enumerator` 方便看日志。拿不到类型时是空串。
+/// 把四字元碼轉成可讀文字，寫進 `enumerator` 方便看日誌。拿不到型別時是空串。
 #[cfg(any(target_os = "macos", test))]
 fn fourcc_text(code: u32) -> String {
     if code == 0 {
@@ -315,7 +325,7 @@ fn query_capture_endpoints_macos() -> Vec<CaptureEndpoint> {
                 enumerator: fourcc_text(transport),
                 is_virtual: is_virtual_transport(transport),
                 is_default: default_input == Some(id),
-                // macOS 没有单独的「默认通信设备」
+                // macOS 沒有單獨的「預設通訊裝置」
                 is_default_communications: false,
             })
         })
@@ -344,8 +354,8 @@ unsafe fn query_capture_endpoints() -> Result<Vec<CaptureEndpoint>, String> {
     };
     use windows::Win32::UI::Shell::PropertiesSystem::PROPERTYKEY;
 
-    // PKEY_Device_EnumeratorName。windows crate 只以 DEVPROPKEY 形式导出它，
-    // IPropertyStore 要的是 PROPERTYKEY，两者 fmtid/pid 相同，这里直接写出来。
+    // PKEY_Device_EnumeratorName。windows crate 只以 DEVPROPKEY 形式匯出它，
+    // IPropertyStore 要的是 PROPERTYKEY，兩者 fmtid/pid 相同，這裡直接寫出來。
     const PKEY_DEVICE_ENUMERATOR_NAME: PROPERTYKEY = PROPERTYKEY {
         fmtid: GUID::from_u128(0xa45c254e_df1c_4efd_8020_67d146a850e0),
         pid: 24,
@@ -399,8 +409,8 @@ unsafe fn query_capture_endpoints() -> Result<Vec<CaptureEndpoint>, String> {
     result
 }
 
-/// 列出启用中的录音端点，标出哪个是系统默认、哪个是虚拟设备。
-/// 失败或其他平台一律返回空表：前端拿到空表就照旧跟随系统默认，不做任何替换。
+/// 列出啟用中的錄音端點，標出哪個是系統預設、哪個是虛擬裝置。
+/// 失敗或其他平台一律返回空表：前端拿到空表就照舊跟隨系統預設，不做任何替換。
 /// [自訂] SC-62：同步命令在主執行緒執行，每次開錄都會卡住事件迴圈與浮動視窗。
 /// 改在阻塞執行緒池查詢；查詢本身失敗或 panic 時照原本回傳的空值。
 async fn off_main_thread<T: Send + 'static>(query: impl FnOnce() -> T + Send + 'static, fallback: T) -> T {
@@ -436,11 +446,11 @@ fn capture_endpoints() -> Vec<CaptureEndpoint> {
     }
 }
 
-/// 查询采集设备的静音状态。
+/// 查詢採集裝置的靜音狀態。
 ///
-/// 前端传入 getUserMedia 实际打开的 MediaStreamTrack.label。这里枚举 Windows 采集端点，
-/// 按规范化后的友好名唯一匹配，再读取该端点真实的 IAudioEndpointVolume::GetMute 状态。
-/// 找不到或出现同名多个端点时返回 matched=false，绝不猜测静音。
+/// 前端傳入 getUserMedia 實際開啟的 MediaStreamTrack.label。這裡列舉 Windows 採集端點，
+/// 按規範化後的友好名唯一匹配，再讀取該端點真實的 IAudioEndpointVolume::GetMute 狀態。
+/// 找不到或出現同名多個端點時返回 matched=false，絕不猜測靜音。
 #[cfg(windows)]
 unsafe fn query_mic_mute(label: Option<&str>) -> Result<MicMuteState, String> {
     use windows::Win32::Media::Audio::Endpoints::IAudioEndpointVolume;
@@ -485,7 +495,7 @@ unsafe fn query_mic_mute(label: Option<&str>) -> Result<MicMuteState, String> {
                     continue;
                 }
                 if matched.is_some() {
-                    // 同名设备无法可靠区分；宁可回退信号检测，也不查询错端点。
+                    // 同名裝置無法可靠區分；寧可回退訊號檢測，也不查詢錯端點。
                     return Ok(MicMuteState {
                         matched: false,
                         muted: false,
@@ -526,9 +536,9 @@ unsafe fn query_mic_mute(label: Option<&str>) -> Result<MicMuteState, String> {
     result
 }
 
-/// 查询麦克风是否被系统静音。
-/// `device_label`：本次 MediaStreamTrack 实际打开的设备名；传 None/空才回退查询系统默认麦克风。
-/// 返回 `matched=false` 时表示无法可靠定位设备（如选了特定设备但同名多个），前端应退回信号检测。
+/// 查詢麥克風是否被系統靜音。
+/// `device_label`：本次 MediaStreamTrack 實際開啟的裝置名；傳 None/空才回退查詢系統預設麥克風。
+/// 返回 `matched=false` 時表示無法可靠定位裝置（如選了特定裝置但同名多個），前端應退回訊號檢測。
 #[tauri::command]
 pub async fn get_mic_mute_state(device_label: Option<String>) -> MicMuteState {
     off_main_thread(move || mic_mute_state(device_label), MicMuteState { matched: false, muted: false }).await
@@ -559,8 +569,8 @@ fn mic_mute_state(device_label: Option<String>) -> MicMuteState {
     }
 }
 
-/// macOS：按名字唯一匹配输入设备，读输入方向的 Mute 属性。
-/// 多数内置麦克风没有 Mute 属性，这时返回 matched=false，前端退回信号检测。
+/// macOS：按名字唯一匹配輸入裝置，讀輸入方向的 Mute 屬性。
+/// 多數內建麥克風沒有 Mute 屬性，這時返回 matched=false，前端退回訊號檢測。
 #[cfg(target_os = "macos")]
 fn query_mic_mute_macos(label: Option<&str>) -> MicMuteState {
     use crate::platform::macos::audio;
@@ -575,7 +585,7 @@ fn query_mic_mute_macos(label: Option<&str>) -> MicMuteState {
                     continue;
                 }
                 if matched.is_some() {
-                    // 同名设备无法可靠区分；宁可回退信号检测，也不查询错设备。
+                    // 同名裝置無法可靠區分；寧可回退訊號檢測，也不查詢錯裝置。
                     return not_matched;
                 }
                 matched = Some(id);
@@ -615,7 +625,7 @@ mod tests {
     fn only_virt_transport_counts_as_virtual_on_macos() {
         let code = |s: &[u8; 4]| u32::from_be_bytes(*s);
         assert!(is_virtual_transport(code(b"virt")));
-        // 内置、USB、蓝牙、连续互通、聚合设备、拿不到类型：都不算
+        // 內建、USB、藍牙、連續互通、聚合裝置、拿不到型別：都不算
         for real in [b"bltn", b"usb ", b"blue", b"ccwl", b"grup", b"fgrp"] {
             assert!(!is_virtual_transport(code(real)));
         }
@@ -627,13 +637,13 @@ mod tests {
 
     #[test]
     fn only_root_enumerated_endpoints_count_as_virtual() {
-        // 本机实测值：CABLE Output 是 ROOT，真实麦克风是 USB / INTELAUDIO / HDAUDIO。
+        // 本機實測值：CABLE Output 是 ROOT，真實麥克風是 USB / INTELAUDIO / HDAUDIO。
         assert!(is_virtual_enumerator("ROOT"));
         assert!(is_virtual_enumerator(" root "));
         for real in ["USB", "INTELAUDIO", "HDAUDIO", "BTHENUM", "BTHHFENUM", ""] {
             assert!(!is_virtual_enumerator(real), "{real} must not be treated as virtual");
         }
-        // SWD 刻意不算（见 is_virtual_enumerator 的注释）
+        // SWD 刻意不算（見 is_virtual_enumerator 的註釋）
         assert!(!is_virtual_enumerator("SWD"));
     }
 
@@ -647,6 +657,21 @@ mod tests {
             normalize_mic_label("Communications: USB Microphone"),
             "usb microphone"
         );
+    }
+
+    /// [自訂] F14 PR-C：Windows 簡體與正體系統的路由字首都要去掉（簡體以 Unicode 跳脫保存）。
+    #[test]
+    fn simplified_and_traditional_route_prefixes_are_removed() {
+        for label in [
+            "\u{9ed8}\u{8ba4}\u{503c} - USB Microphone", // 預設值
+            "\u{9ed8}\u{8ba4} - USB Microphone",          // 預設
+            "\u{901a}\u{4fe1} - USB Microphone",          // 通訊
+            "預設值 - USB Microphone",
+            "預設 - USB Microphone",
+            "通訊 - USB Microphone",
+        ] {
+            assert_eq!(normalize_mic_label(label), "usb microphone", "{label}");
+        }
     }
 
     #[test]

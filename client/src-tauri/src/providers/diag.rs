@@ -1,45 +1,45 @@
-// 各 ASR / AI 供应商的统一诊断日志。
+// 各 ASR / AI 供應商的統一診斷日誌。
 //
-// 为什么需要这个模块：有用户报「没有检测到有效声音」，而我们手上除了这句话什么都没有。
-// 当时除两条 realtime 路径外，其余 provider 在失败点一条日志都不写，返回的 Err 里也没有
-// 任何服务端信息（HTTP 状态、响应体、追踪 ID），空结果更是走成功路径、前后端都不留痕迹。
-// 结果是排查只能靠猜和反复问用户，而真正的原因（额度耗尽、资源未开通、服务端提前关连接）
-// 本来在响应里写得很清楚。
+// 為什麼需要這個模組：有使用者報「沒有檢測到有效聲音」，而我們手上除了這句話什麼都沒有。
+// 當時除兩條 realtime 路徑外，其餘 provider 在失敗點一條日誌都不寫，返回的 Err 裡也沒有
+// 任何服務端資訊（HTTP 狀態、響應體、追蹤 ID），空結果更是走成功路徑、前後端都不留痕跡。
+// 結果是排查只能靠猜和反覆問使用者，而真正的原因（額度耗盡、資源未開通、服務端提前關連線）
+// 本來在響應裡寫得很清楚。
 //
-// 三条硬约束，改这里之前先读：
+// 三條硬約束，改這裡之前先讀：
 //
-//   1. **只记文本长度，绝不记识别文本或校对文本。** 公开版不留「用户说了什么」的痕迹，
-//      与审计只记长度的口径一致。想加 text=... 的时候请停手。
-//   2. **绝不记密钥。** 只记鉴权模式名（如 api_key(new-console)）。
-//   3. **截断按字符边界，不按字节。** 供应商的报错体基本都是中文，`&s[..n]` 落在多字节
-//      字符中间会直接 panic —— 而这些截断只在出错路径上执行，等于「一出错就崩」，
-//      把一个看得懂的错误变成一次没有日志的崩溃。
+//   1. **只記文本長度，絕不記識別文本或校對文本。** 公開版不留「使用者說了什麼」的痕跡，
+//      與審計只記長度的口徑一致。想加 text=... 的時候請停手。
+//   2. **絕不記金鑰。** 只記鑑權模式名（如 api_key(new-console)）。
+//   3. **截斷按字元邊界，不按位元組。** 供應商的報錯體基本都是中文，`&s[..n]` 落在多位元組
+//      字元中間會直接 panic —— 而這些截斷只在出錯路徑上執行，等於「一出錯就崩」，
+//      把一個看得懂的錯誤變成一次沒有日誌的崩潰。
 
 use crate::commands::system::write_log_line;
 use crate::error_protocol;
 
-/// 统一前缀。所有 provider 日志共用一个标签，排查时 `Select-String '\[provider\]'`
-/// 一次就能把整条调用链捞出来，不必知道用户用的是哪家。
+/// 統一字首。所有 provider 日誌共用一個標籤，排查時 `Select-String '\[provider\]'`
+/// 一次就能把整條呼叫鏈撈出來，不必知道使用者用的是哪家。
 const TAG: &str = "[RUST] [provider]";
 
-/// 按**字符**边界截断，超长补省略号；顺手把控制字符换成空格。
+/// 按**字元**邊界截斷，超長補省略號；順手把控制字元換成空格。
 ///
-/// 压平换行是为了守住「一行一条」的结构：响应体里的换行会把一条日志拆成多行，
-/// 之后按行 grep 就再也对不齐了。
+/// 壓平換行是為了守住「一行一條」的結構：響應體裡的換行會把一條日誌拆成多行，
+/// 之後按行 grep 就再也對不齊了。
 pub fn truncate(s: &str, max_chars: usize) -> String {
     let mut out: String = s
         .chars()
         .take(max_chars)
         .map(|c| if c.is_control() { ' ' } else { c })
         .collect();
-    // 只多走一个字符就能判断有没有被截断，不必再遍历整串
+    // 只多走一個字元就能判斷有沒有被截斷，不必再遍歷整串
     if s.chars().nth(max_chars).is_some() {
         out.push('…');
     }
     out
 }
 
-/// 记一条普通事件（请求已发出、命中了哪个资源等）。
+/// 記一條普通事件（請求已發出、命中了哪個資源等）。
 pub fn log(scope: &str, stage: &str, detail: &str) {
     if detail.is_empty() {
         write_log_line(&format!("{} {} {}", TAG, scope, stage));
@@ -48,15 +48,15 @@ pub fn log(scope: &str, stage: &str, detail: &str) {
     }
 }
 
-/// 记一条失败，并把**原样的用户可见消息**返回，供 `?` / `map_err` 直接用：
+/// 記一條失敗，並把**原樣的使用者可見訊息**返回，供 `?` / `map_err` 直接用：
 ///
 /// ```ignore
-/// .map_err(|e| diag::fail(SCOPE, "send_audio", format!("发送音频失败: {}", e)))?
+/// .map_err(|e| diag::fail(SCOPE, "send_audio", format!("傳送音訊失敗: {}", e)))?
 /// ```
 ///
-/// 刻意做成「记录 + 返回同一条」，是为了让漏记变成不可能：只要这个错误被返回过，
-/// 它就一定进过日志。否则加日志这件事永远是半覆盖的 —— 总会漏掉某个 early return，
-/// 而漏掉的那个偏偏就是线上真正走到的分支。
+/// 刻意做成「記錄 + 返回同一條」，是為了讓漏記變成不可能：只要這個錯誤被返回過，
+/// 它就一定進過日誌。否則加日誌這件事永遠是半覆蓋的 —— 總會漏掉某個 early return，
+/// 而漏掉的那個偏偏就是線上真正走到的分支。
 pub fn fail(scope: &str, stage: &str, user_msg: String) -> String {
     write_log_line(&format!(
         "{} {} {} FAILED {}",
@@ -90,46 +90,52 @@ fn contains_http_status(message: &str, expected: &[u16]) -> bool {
 
 fn classify_failure(stage: &str, message: &str) -> &'static str {
     let lower = message.to_ascii_lowercase();
-    // 401 才是明确的鉴权失败。**403 不是** —— 它更常见的成因是"这个请求根本不该到这儿"：
-    // CDN 按 IP 地区拒绝、账号没开通该模型、被 WAF 拦下，响应里一个字都不提密钥。
-    // 这两个状态码曾经一起归成 provider_bad_key，于是国内直连 Groq（Cloudflare 边缘
-    // 按 IP 拒，返回 403 {"error":{"message":"Forbidden"}}，连鉴权头都没被读过）
-    // 被报成「密钥被拒绝，确认复制完整、没有多余空格」—— 用户只会一遍遍重建密钥。
+    // 401 才是明確的鑑權失敗。**403 不是** —— 它更常見的成因是"這個請求根本不該到這兒"：
+    // CDN 按 IP 地區拒絕、帳號沒開通該模型、被 WAF 攔下，響應裡一個字都不提金鑰。
+    // 這兩個狀態碼曾經一起歸成 provider_bad_key，於是國內直連 Groq（Cloudflare 邊緣
+    // 按 IP 拒，返回 403 {"error":{"message":"Forbidden"}}，連鑑權頭都沒被讀過）
+    // 被報成「金鑰被拒絕，確認複製完整、沒有多餘空格」—— 使用者只會一遍遍重建金鑰。
     if contains_http_status(message, &[401])
         || lower.contains("unauthorized")
         || lower.contains("invalid api key")
         || lower.contains("invalid_api_key")
-        || message.contains("认证失败")
-        || message.contains("鉴权")
+        // 供應商回傳的簡體原文（認證失敗、鑑權）以 Unicode 跳脫保存，並列正體寫法
+        || message.contains("\u{8ba4}\u{8bc1}\u{5931}\u{8d25}")
+        || message.contains("\u{9274}\u{6743}")
+        || message.contains("認證失敗")
+        || message.contains("鑑權")
     {
         return "provider_bad_key";
     }
-    // 402 排在限流之前，而且要早于任何按关键词猜的分支。
+    // 402 排在限流之前，而且要早於任何按關鍵詞猜的分支。
     //
-    // 「余额不足」和「被限流」是两件不同的事，给用户的动作也相反：限流等一会儿就好，
-    // 余额不足等到明年也还是不行，得去充值。402 是这件事唯一明确的信号 ——
-    // OpenRouter 的 402 响应体里带 "balance" 字样，实测（2026-09-16）会是
+    // 「餘額不足」和「被限流」是兩件不同的事，給使用者的動作也相反：限流等一會兒就好，
+    // 餘額不足等到明年也還是不行，得去充值。402 是這件事唯一明確的訊號 ——
+    // OpenRouter 的 402 響應體裡帶 "balance" 字樣，實測（2026-09-16）會是
     // `This request requires at least $0.50 in balance for audio`。
-    // 以前没有这一档，它落到最后的 connect_failed，界面显示成「连接失败」——
-    // 而真实原因是账户里没钱，用户完全看不出来该去干什么。
+    // 以前沒有這一檔，它落到最後的 connect_failed，介面顯示成「連線失敗」——
+    // 而真實原因是帳戶裡沒錢，使用者完全看不出來該去幹什麼。
     if contains_http_status(message, &[402])
         || lower.contains("payment required")
         || lower.contains("insufficient balance")
         || lower.contains("in balance")
         || lower.contains("insufficient_quota")
-        || message.contains("余额不足")
+        || message.contains("\u{4f59}\u{989d}\u{4e0d}\u{8db3}") // 餘額不足（簡體原文）
+        || message.contains("餘額不足")
     {
         return "provider_insufficient_balance";
     }
     if contains_http_status(message, &[429])
         || lower.contains("rate limit")
         || lower.contains("quota")
-        || message.contains("欠费")
-        || message.contains("余额")
+        || message.contains("\u{6b20}\u{8d39}") // 欠費（簡體原文）
+        || message.contains("\u{4f59}\u{989d}") // 餘額（簡體原文）
+        || message.contains("欠費")
+        || message.contains("餘額")
     {
         return "provider_rate_limit";
     }
-    // 排在限流之后：403 + quota 字样更可能是配额问题而不是权限问题
+    // 排在限流之後：403 + quota 字樣更可能是配額問題而不是許可權問題
     if contains_http_status(message, &[403]) {
         return "provider_forbidden";
     }
@@ -139,7 +145,9 @@ fn classify_failure(stage: &str, message: &str) -> &'static str {
     {
         return "provider_no_model";
     }
-    if lower.contains("timeout") || lower.contains("timed out") || message.contains("超时") {
+    if lower.contains("timeout") || lower.contains("timed out") || message.contains("\u{8d85}\u{65f6}") // 超時（簡體原文）
+        || message.contains("超時")
+    {
         return "provider_timeout";
     }
     if matches!(
@@ -151,16 +159,16 @@ fn classify_failure(stage: &str, message: &str) -> &'static str {
     "connect_failed"
 }
 
-/// 记一条「服务端返回了空结果」。
+/// 記一條「服務端返回了空結果」。
 ///
-/// 空结果走的是成功路径 —— 前端只会显示「未检测到有效声音」，然后什么都不记。
-/// 用户明明说了两分钟话却看到这句提示时，这条日志是唯一的线索，所以务必带上服务端
-/// 给的全部上下文（状态码、响应体摘要、追踪 ID）。
+/// 空結果走的是成功路徑 —— 前端只會顯示「未檢測到有效聲音」，然後什麼都不記。
+/// 使用者明明說了兩分鐘話卻看到這句提示時，這條日誌是唯一的線索，所以務必帶上服務端
+/// 給的全部上下文（狀態碼、響應體摘要、追蹤 ID）。
 pub fn empty_result(scope: &str, detail: &str) {
     write_log_line(&format!("{} {} EMPTY_RESULT {}", TAG, scope, detail));
 }
 
-/// 记一次成功。**只记字符数，不记内容**（见文件头约束 1）。
+/// 記一次成功。**只記字元數，不記內容**（見檔案頭約束 1）。
 pub fn ok(scope: &str, elapsed_ms: u64, text_chars: usize) {
     write_log_line(&format!(
         "{} {} ok elapsed={}ms chars={}",
@@ -168,8 +176,8 @@ pub fn ok(scope: &str, elapsed_ms: u64, text_chars: usize) {
     ));
 }
 
-/// 出错时值得记下来的字段名。全是「服务端在解释为什么不行」的字段
-/// （额度、资源未开通、限流、截断原因都在这里），不含任何识别内容。
+/// 出錯時值得記下來的欄位名。全是「服務端在解釋為什麼不行」的欄位
+/// （額度、資源未開通、限流、截斷原因都在這裡），不含任何識別內容。
 const SAFE_FIELDS: &[&str] = &[
     "code",
     "error_code",
@@ -180,11 +188,11 @@ const SAFE_FIELDS: &[&str] = &[
     "finish_reason",
 ];
 
-/// 明确排除的字段名：这些装的是识别文本 / 校对文本，一个都不能进日志。
+/// 明確排除的欄位名：這些裝的是識別文本 / 校對文本，一個都不能進日誌。
 const TEXT_FIELDS: &[&str] = &["text", "content", "transcript", "delta", "utterances"];
 
 fn collect_safe_fields(value: &serde_json::Value, depth: usize, out: &mut Vec<String>) {
-    // 限深既防御深层嵌套的大响应，也让日志长度可控
+    // 限深既防禦深層巢狀的大響應，也讓日誌長度可控
     if depth > 4 || out.len() >= 6 {
         return;
     }
@@ -194,9 +202,9 @@ fn collect_safe_fields(value: &serde_json::Value, depth: usize, out: &mut Vec<St
                 if TEXT_FIELDS.iter().any(|t| k.eq_ignore_ascii_case(t)) {
                     continue;
                 }
-                // 只收标量。这一条是关键：OpenAI 兼容响应里的 `message` 是个**对象**，
-                // 里面装着 content（识别/校对文本）—— 只收标量就自动把它挡在外面，
-                // 同时保留 `message: "资源未开通"` 这种真正有用的字符串。
+                // 只收標量。這一條是關鍵：OpenAI 相容響應裡的 `message` 是個**物件**，
+                // 裡面裝著 content（識別/校對文本）—— 只收標量就自動把它擋在外面，
+                // 同時保留 `message: "資源未開通"` 這種真正有用的字串。
                 let is_scalar = v.is_string() || v.is_number() || v.is_boolean();
                 if is_scalar && SAFE_FIELDS.iter().any(|s| k.eq_ignore_ascii_case(s)) {
                     let raw = match v {
@@ -219,10 +227,10 @@ fn collect_safe_fields(value: &serde_json::Value, depth: usize, out: &mut Vec<St
     }
 }
 
-/// 描述一个 JSON 响应体，用于「拿到空结果」时留证。
+/// 描述一個 JSON 響應體，用於「拿到空結果」時留證。
 ///
-/// **只取结构与错误字段，绝不取识别文本**（见文件头约束 1）。排查空结果要知道的是
-/// 「服务端回了个什么形状、有没有说明原因」，而不是用户说了什么。
+/// **只取結構與錯誤欄位，絕不取識別文本**（見檔案頭約束 1）。排查空結果要知道的是
+/// 「服務端回了個什麼形狀、有沒有說明原因」，而不是使用者說了什麼。
 pub fn describe_json(raw: &str) -> String {
     let Ok(json) = serde_json::from_str::<serde_json::Value>(raw) else {
         return format!("body_bytes={} (non-JSON)", raw.len());
@@ -238,15 +246,15 @@ pub fn describe_json(raw: &str) -> String {
     parts.join(" ")
 }
 
-/// 供应商常用的服务端追踪 ID 头。用户报问题时带着它才能找供应商定位，没有就只能猜。
+/// 供應商常用的服務端追蹤 ID 頭。使用者報問題時帶著它才能找供應商定位，沒有就只能猜。
 const TRACE_HEADERS: &[&str] = &[
     "X-Tt-Logid",      // 火山引擎（豆包）
-    "x-request-id",    // 阿里云 DashScope / OpenAI 兼容服务通用
+    "x-request-id",    // 阿里雲 DashScope / OpenAI 相容服務通用
     "x-ds-trace-id",   // DeepSeek
     "req-id",
 ];
 
-/// HTTP 响应里对排查有用的那部分：状态码 + 追踪 ID。
+/// HTTP 響應裡對排查有用的那部分：狀態碼 + 追蹤 ID。
 pub fn http_summary(
     status: reqwest::StatusCode,
     headers: &reqwest::header::HeaderMap,
@@ -264,6 +272,26 @@ pub fn http_summary(
 mod tests {
     use super::*;
 
+    /// [自訂] F14 PR-C：供應商錯誤可能是簡體原文，也可能是正體；兩種都要分到同一類。
+    /// 簡體以 Unicode 跳脫保存，註解寫對應的正體。
+    #[test]
+    fn simplified_and_traditional_provider_errors_classify_the_same() {
+        for (text, code) in [
+            ("\u{8ba4}\u{8bc1}\u{5931}\u{8d25}", "provider_bad_key"), // 認證失敗
+            ("認證失敗", "provider_bad_key"),
+            ("\u{9274}\u{6743}", "provider_bad_key"), // 鑑權
+            ("鑑權", "provider_bad_key"),
+            ("\u{4f59}\u{989d}\u{4e0d}\u{8db3}", "provider_insufficient_balance"), // 餘額不足
+            ("餘額不足", "provider_insufficient_balance"),
+            ("\u{6b20}\u{8d39}", "provider_rate_limit"), // 欠費
+            ("欠費", "provider_rate_limit"),
+            ("\u{8d85}\u{65f6}", "provider_timeout"), // 超時
+            ("超時", "provider_timeout"),
+        ] {
+            assert_eq!(classify_failure("request", text), code, "{text}");
+        }
+    }
+
     #[test]
     fn classifies_provider_failures_before_the_detail_is_translated() {
         assert_eq!(classify_failure("http_status", "HTTP 401 Unauthorized"), "provider_bad_key");
@@ -272,11 +300,11 @@ mod tests {
         assert_eq!(classify_failure("connect", "socket closed"), "provider_unreachable");
     }
 
-    /// 关键回归：403 不许再报成「密钥被拒绝」。
+    /// 關鍵迴歸：403 不許再報成「金鑰被拒絕」。
     ///
-    /// 实测 Groq 在中国大陆 IP 上的响应就是这一行，且假密钥、真密钥、完全不带鉴权头
-    /// 三种情况返回的内容**完全相同** —— 说明请求在边缘节点就被拒了，密钥从未被验证。
-    /// 归成密钥问题会把用户引去反复重建密钥。
+    /// 實測 Groq 在中國大陸 IP 上的響應就是這一行，且假金鑰、真金鑰、完全不帶鑑權頭
+    /// 三種情況返回的內容**完全相同** —— 說明請求在邊緣節點就被拒了，金鑰從未被驗證。
+    /// 歸成金鑰問題會把使用者引去反覆重建金鑰。
     #[test]
     fn forbidden_is_not_reported_as_a_bad_key() {
         assert_eq!(
@@ -286,26 +314,26 @@ mod tests {
             ),
             "provider_forbidden"
         );
-        // 403 但服务端明确提了密钥无效，仍然算密钥问题
+        // 403 但服務端明確提了金鑰無效，仍然算金鑰問題
         assert_eq!(
             classify_failure("http_status", "HTTP 403: Invalid API Key"),
             "provider_bad_key"
         );
-        // 403 但说的是配额，归到限流而不是权限
+        // 403 但說的是配額，歸到限流而不是許可權
         assert_eq!(
             classify_failure("http_status", "HTTP 403: quota exceeded"),
             "provider_rate_limit"
         );
     }
 
-    /// 关键回归：按字节切中文会 panic。历史上 doubao / ollama / qwen / mimo 四处
-    /// 各有一份 `&s[..n]` 的实现，只要供应商回一段中文报错就崩 —— 而那正是出错的时刻。
+    /// 關鍵迴歸：按位元組切中文會 panic。歷史上 doubao / ollama / qwen / mimo 四處
+    /// 各有一份 `&s[..n]` 的實現，只要供應商回一段中文報錯就崩 —— 而那正是出錯的時刻。
     #[test]
     fn truncates_multibyte_without_panicking() {
-        let body = "请求失败：资源未开通，请到控制台确认";
-        // 若按字节切，7 会落在某个汉字中间
+        let body = "請求失敗：資源未開通，請到控制台確認";
+        // 若按位元組切，7 會落在某個漢字中間
         let out = truncate(body, 7);
-        assert_eq!(out, "请求失败：资源…");
+        assert_eq!(out, "請求失敗：資源…");
     }
 
     #[test]
@@ -314,46 +342,46 @@ mod tests {
         assert_eq!(truncate("", 10), "");
     }
 
-    /// 恰好等长时不该加省略号。
+    /// 恰好等長時不該加省略號。
     #[test]
     fn no_ellipsis_at_exact_length() {
         assert_eq!(truncate("abcd", 4), "abcd");
         assert_eq!(truncate("abcde", 4), "abcd…");
     }
 
-    /// 换行必须压平，否则一条日志会被拆成多行、破坏按行 grep。
+    /// 換行必須壓平，否則一條日誌會被拆成多行、破壞按行 grep。
     #[test]
     fn flattens_newlines() {
         assert_eq!(truncate("a\nb\r\nc", 20), "a b  c");
     }
 
-    /// 关键隐私回归：OpenAI 兼容响应里 `message` 是对象、`content` 装着文本，
-    /// 描述响应体时一个字都不能带出来。
+    /// 關鍵隱私迴歸：OpenAI 相容響應裡 `message` 是物件、`content` 裝著文本，
+    /// 描述響應體時一個字都不能帶出來。
     #[test]
     fn describe_json_never_leaks_recognized_text() {
-        let body = r#"{"choices":[{"message":{"content":"我的银行卡密码是一二三四"},
+        let body = r#"{"choices":[{"message":{"content":"我的銀行卡密碼是一二三四"},
             "finish_reason":"stop"}],"request_id":"req-42"}"#;
         let out = describe_json(body);
-        assert!(!out.contains("银行卡"), "识别文本泄漏进日志: {}", out);
-        assert!(!out.contains("密码"), "识别文本泄漏进日志: {}", out);
-        // 该带的诊断信息要带上
+        assert!(!out.contains("銀行卡"), "識別文本洩漏進日誌: {}", out);
+        assert!(!out.contains("密碼"), "識別文本洩漏進日誌: {}", out);
+        // 該帶的診斷資訊要帶上
         assert!(out.contains("request_id=req-42"), "{}", out);
         assert!(out.contains("finish_reason=stop"), "{}", out);
     }
 
-    /// `message` 是字符串时它就是服务端的错误说明，这种要保留。
+    /// `message` 是字串時它就是服務端的錯誤說明，這種要保留。
     #[test]
     fn describe_json_keeps_scalar_message() {
-        let out = describe_json(r#"{"code":45000030,"message":"资源未开通"}"#);
+        let out = describe_json(r#"{"code":45000030,"message":"資源未開通"}"#);
         assert!(out.contains("code=45000030"), "{}", out);
-        assert!(out.contains("message=资源未开通"), "{}", out);
+        assert!(out.contains("message=資源未開通"), "{}", out);
     }
 
-    /// 顶层 text / utterances 一律不取。
+    /// 頂層 text / utterances 一律不取。
     #[test]
     fn describe_json_skips_text_fields() {
-        let out = describe_json(r#"{"result":{"text":"这是识别出来的句子"}}"#);
-        assert!(!out.contains("识别出来"), "{}", out);
+        let out = describe_json(r#"{"result":{"text":"這是識別出來的句子"}}"#);
+        assert!(!out.contains("識別出來"), "{}", out);
         assert!(out.contains("keys=[result]"), "{}", out);
     }
 

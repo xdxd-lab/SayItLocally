@@ -31,13 +31,13 @@ function profile(over: Partial<AsrProfile> = {}): AsrProfile {
   return { ...emptyAsrProfile(), ...over }
 }
 
-describe('ASR_PROVIDERS 结构性不变量', () => {
+describe('ASR_PROVIDERS 結構性不變數', () => {
   it('id 唯一', () => {
     const ids = ASR_PROVIDERS.map((p) => p.id)
     expect(new Set(ids).size).toBe(ids.length)
   })
 
-  it('每张卡都有标题、一句定位、至少一个模型', () => {
+  it('每張卡都有標題、一句定位、至少一個模型', () => {
     for (const p of ASR_PROVIDERS) {
       expect(p.label.trim()).not.toBe('')
       expect(p.blurb.trim()).not.toBe('')
@@ -47,12 +47,12 @@ describe('ASR_PROVIDERS 结构性不变量', () => {
   })
 
   /**
-   * 一张卡 = 一个平台，而且 id 就等于 platform。
+   * 一張卡 = 一個平台，而且 id 就等於 platform。
    *
-   * 这是这次重构的核心不变量：界面按平台归拢（用户认的是「千问」，不是
-   * 「qwen_audio_stream」），协议差异下沉到模型的 provider 字段。
+   * 這是這次重構的核心不變數：介面按平台歸攏（使用者認的是「千問」，不是
+   * 「qwen_audio_stream」），協議差異下沉到模型的 provider 欄位。
    */
-  it('一张卡对应一个平台，id 等于 platform', () => {
+  it('一張卡對應一個平台，id 等於 platform', () => {
     for (const p of ASR_PROVIDERS) {
       expect(p.id).toBe(p.platform)
       expect(providersOfPlatform(p.platform)).toHaveLength(1)
@@ -60,21 +60,21 @@ describe('ASR_PROVIDERS 结构性不变量', () => {
   })
 
   /**
-   * 每个模型都要指明走哪份实现，而且那个 provider 必须是 Rust registry.rs 认识的。
+   * 每個模型都要指明走哪份實現，而且那個 provider 必須是 Rust registry.rs 認識的。
    *
-   * 这份清单是**手抄**的对照表 —— 加模型时如果忘了在 registry.rs 的两处 match 里
-   * 登记，运行时会得到 "ASR provider not implemented"，而那时候用户已经配好了。
+   * 這份清單是**手抄**的對照表 —— 加模型時如果忘了在 registry.rs 的兩處 match 裡
+   * 登記，執行時會得到 "ASR provider not implemented"，而那時候使用者已經配好了。
    */
-  it('每个模型的 provider 都在 Rust 侧登记过', () => {
+  it('每個模型的 provider 都在 Rust 側登記過', () => {
     const registered = new Set([
       'doubao_v2', 'qwen', 'qwen_realtime', 'qwen_audio_stream', 'qwen_omni', 'mimo',
       'groq_whisper', 'openai_transcribe', 'openai_live_transcribe',
       'gemini_transcribe', 'gemini_live_transcribe', 'openrouter_transcribe',
       // chat/completions + input_audio 那一套（asr_openai_chat_audio.rs）
       'qwen_chat_audio', 'openai_chat_audio', 'openai_chat_audio_standard',
-      // /audio/transcriptions、地址由用户填（asr_groq.rs 的 OPENAI_COMPAT 档）
+      // /audio/transcriptions、地址由使用者填（asr_groq.rs 的 OPENAI_COMPAT 檔）
       'openai_compat_transcribe',
-      // 协议卡的分发层：探测出协议后再转给上面两组之一（asr_openai_compat.rs）
+      // 協議卡的分發層：探測出協議後再轉給上面兩組之一（asr_openai_compat.rs）
       'openai_compat',
     ])
     for (const p of ASR_PROVIDERS) {
@@ -86,39 +86,39 @@ describe('ASR_PROVIDERS 结构性不变量', () => {
   })
 
   /**
-   * 千问那张卡是「一张卡多种协议」的样板。现在是五种实现 ——
-   * qwen3.8-omni-flash 走的是非实时的 chat/completions（`qwen_chat_audio`），
-   * 与另外几个 Omni 的 realtime WebSocket 不是一套。
+   * 千問那張卡是「一張卡多種協議」的樣板。現在是五種實現 ——
+   * qwen3.8-omni-flash 走的是非即時的 chat/completions（`qwen_chat_audio`），
+   * 與另外幾個 Omni 的 realtime WebSocket 不是一套。
    */
-  it('千问一张卡覆盖它的五种协议实现', () => {
+  it('千問一張卡覆蓋它的五種協議實現', () => {
     const providers = asrModelsOf(findAsrProvider('qwen')!).map((m) => m.provider)
     expect(new Set(providers)).toEqual(
       new Set(['qwen_audio_stream', 'qwen', 'qwen_realtime', 'qwen_omni', 'qwen_chat_audio']),
     )
   })
 
-  // 这条断言变过两次，记下来免得再绕回去：
-  //   v1「每一家都是 mainland_china」—— 只是把当时的事实写死，加海外供应商时它拦的是新功能；
-  //   v2「每种地区都有展示文案」—— 于是七张卡上各挂一句「面向中国大陆账号」，是纯噪音；
-  //   现在：国内是默认情形，不给字；只有需要海外账号/网络的才提醒。
-  //   v3 追加：地址由用户填的「协议卡」也不给字 —— 对面可能是 localhost，
-  //   挂一句「需要海外网络」只会误导。
-  it('只有海外供应商才给地区提示，国内的和协议卡都不占字', () => {
+  // 這條斷言變過兩次，記下來免得再繞回去：
+  //   v1「每一家都是 mainland_china」—— 只是把當時的事實寫死，加海外供應商時它攔的是新功能；
+  //   v2「每種地區都有展示文案」—— 於是七張卡上各掛一句「面向中國大陸帳號」，是純噪音；
+  //   現在：國內是預設情形，不給字；只有需要海外帳號/網路的才提醒。
+  //   v3 追加：地址由使用者填的「協議卡」也不給字 —— 對面可能是 localhost，
+  //   掛一句「需要海外網路」只會誤導。
+  it('只有海外供應商才給地區提示，國內的和協議卡都不佔字', () => {
     for (const p of ASR_PROVIDERS) {
       const label = asrAvailabilityLabel(p).trim()
       if (p.customEndpoint) expect(label).toBe('')
       else if (p.availability === 'global') expect(label).not.toBe('')
       else expect(label).toBe('')
     }
-    // 至少还有一家是海外的，否则上面那半条断言等于没跑
+    // 至少還有一家是海外的，否則上面那半條斷言等於沒跑
     expect(ASR_PROVIDERS.some((p) => p.availability === 'global')).toBe(true)
   })
 
-  it('平台都在 ASR_PLATFORMS 里有定义', () => {
+  it('平台都在 ASR_PLATFORMS 裡有定義', () => {
     for (const p of ASR_PROVIDERS) expect(ASR_PLATFORMS[p.platform]).toBeTruthy()
   })
 
-  it('模型 id 在卡内唯一、不为空', () => {
+  it('模型 id 在卡內唯一、不為空', () => {
     for (const p of ASR_PROVIDERS) {
       const ids = asrModelsOf(p).map((m) => m.id)
       expect(new Set(ids).size).toBe(ids.length)
@@ -127,13 +127,13 @@ describe('ASR_PROVIDERS 结构性不变量', () => {
   })
 
   /**
-   * OpenRouter 的 slug 必须带厂商前缀（`openai/whisper-1` 而不是 `whisper-1`）。
+   * OpenRouter 的 slug 必須帶廠商字首（`openai/whisper-1` 而不是 `whisper-1`）。
    *
-   * 少了前缀是 404 model not found —— 一个只在真调用时才暴露、而且报错指向
-   * 「模型不存在」而不是「你写错了格式」的错误。目录是这些 slug 的唯一出处，
-   * 所以在这里挡住。
+   * 少了字首是 404 model not found —— 一個只在真呼叫時才暴露、而且報錯指向
+   * 「模型不存在」而不是「你寫錯了格式」的錯誤。目錄是這些 slug 的唯一出處，
+   * 所以在這裡擋住。
    */
-  it('OpenRouter 的每个模型 slug 都带厂商前缀', () => {
+  it('OpenRouter 的每個模型 slug 都帶廠商字首', () => {
     const entry = findAsrProvider('openrouter')!
     expect(entry.platform).toBe('openrouter')
     const slugs = asrModelsOf(entry).map((m) => m.id)
@@ -141,29 +141,29 @@ describe('ASR_PROVIDERS 结构性不变量', () => {
     for (const slug of slugs) {
       expect(slug).toMatch(/^[a-z0-9-]+\/.+/)
     }
-    // 清单是从 /api/v1/models 原样抄的，抽查几个「展示名推不出来」的
+    // 清單是從 /api/v1/models 原樣抄的，抽查幾個「展示名推不出來」的
     expect(slugs).toContain('openai/whisper-large-v3-turbo')
     expect(slugs).toContain('qwen/qwen3-asr-flash-2026-02-10')
     expect(slugs).toContain('x-ai/grok-stt-1.0')
     expect(slugs).toContain('meta/muse-voice-transcribe-1.0')
   })
 
-  it('用户反馈缺的两个模型都在清单里', () => {
+  it('使用者反饋缺的兩個模型都在清單裡', () => {
     expect(asrModelsOf(findAsrProvider('groq')!).map((m) => m.id)).toContain('whisper-large-v3')
     expect(asrModelsOf(findAsrProvider('openai')!).map((m) => m.id)).toContain('gpt-transcribe')
   })
 
   /**
-   * 模型上标了 streaming 的，必须真的有流式实现（isStreamingDisplayReady 认它）；
-   * 反过来也必须成立。
+   * 模型上標了 streaming 的，必須真的有流式實現（isStreamingDisplayReady 認它）；
+   * 反過來也必須成立。
    *
-   * 两边都查是因为它们**是两份独立的清单**：目录里的 streaming 只是给人看的标记，
-   * 运行时闸门只认 asrModels.ts 那份。只加目录不加闸门的话，卡片上写着支持实时字幕、
-   * 实际永远走一次性路径 —— 不报错，字幕就是不出来。
+   * 兩邊都查是因為它們**是兩份獨立的清單**：目錄裡的 streaming 只是給人看的標記，
+   * 執行時閘門只認 asrModels.ts 那份。只加目錄不加閘門的話，卡片上寫著支援即時字幕、
+   * 實際永遠走一次性路徑 —— 不報錯，字幕就是不出來。
    *
-   * 判据用**模型的 provider**，因为闸门认的就是它。
+   * 判據用**模型的 provider**，因為閘門認的就是它。
    */
-  it('模型的 streaming 标记与运行时闸门一致', () => {
+  it('模型的 streaming 標記與執行時閘門一致', () => {
     let streamingCount = 0
     for (const p of ASR_PROVIDERS) {
       for (const model of asrModelsOf(p)) {
@@ -172,19 +172,19 @@ describe('ASR_PROVIDERS 结构性不变量', () => {
         if (model.streaming) streamingCount += 1
       }
     }
-    // 至少有一个标了 streaming，否则上面那条等于没跑
+    // 至少有一個標了 streaming，否則上面那條等於沒跑
     expect(streamingCount).toBeGreaterThan(0)
   })
 
   /**
-   * 「文件转写」与「实时字幕」现在是同一张卡里的两个模型，各走各的实现。
+   * 「檔案轉寫」與「即時字幕」現在是同一張卡裡的兩個模型，各走各的實現。
    *
-   * 流式模型在文件端点上根本不存在（gpt-live-transcribe 之于 /audio/transcriptions、
-   * gemini-3.5-transcribe-live 之于 generateContent），所以关掉实时字幕回落时
-   * Rust 侧会把模型名换掉（asr_groq 的 honors_selected_model、asr_gemini 的
-   * LIVE_PROVIDER 判断）。这条钉住两者确实是不同的模型 + 不同的实现。
+   * 流式模型在檔案端點上根本不存在（gpt-live-transcribe 之於 /audio/transcriptions、
+   * gemini-3.5-transcribe-live 之於 generateContent），所以關掉即時字幕回落時
+   * Rust 側會把模型名換掉（asr_groq 的 honors_selected_model、asr_gemini 的
+   * LIVE_PROVIDER 判斷）。這條釘住兩者確實是不同的模型 + 不同的實現。
    */
-  it('每家的文件模型与流式模型各走各的实现', () => {
+  it('每家的檔案模型與流式模型各走各的實現', () => {
     for (const cardId of ['openai', 'google']) {
       const models = asrModelsOf(findAsrProvider(cardId)!)
       const file = models.find((m) => !m.streaming)!
@@ -195,13 +195,13 @@ describe('ASR_PROVIDERS 结构性不变量', () => {
   })
 
   /**
-   * 卡片标题不该再出现「（qwen3.5-omni-plus，ASR+AI）」这种**模型名括号串** ——
+   * 卡片標題不該再出現「（qwen3.5-omni-plus，ASR+AI）」這種**模型名括號串** ——
    * 模型名有自己的一行。
    *
-   * 判据钉的是「括号里不能是模型名」，不是「不许有括号」：两张协议卡的名字里
-   * 「（对话式）」是在区分两套同名协议，那是标题必须承担的信息。
+   * 判據釘的是「括號裡不能是模型名」，不是「不許有括號」：兩張協議卡的名字裡
+   * 「（對話式）」是在區分兩套同名協議，那是標題必須承擔的資訊。
    */
-  it('标题的括号里不出现模型名', () => {
+  it('標題的括號裡不出現模型名', () => {
     const allModelIds = ASR_PROVIDERS.flatMap((p) => asrModelsOf(p)).map((m) => m.id)
     for (const p of ASR_PROVIDERS) {
       for (const id of allModelIds) {
@@ -210,17 +210,17 @@ describe('ASR_PROVIDERS 结构性不变量', () => {
     }
   })
 
-  /** 卡片顺序就是推荐顺序，前两名钉住 */
-  it('推荐顺序：豆包第一，千问第二', () => {
+  /** 卡片順序就是推薦順序，前兩名釘住 */
+  it('推薦順序：豆包第一，千問第二', () => {
     expect(ASR_PROVIDERS.slice(0, 2).map((p) => p.id)).toEqual(['doubao', 'qwen'])
   })
 
   /**
-   * 只有 qwen3-asr-flash-realtime 需要业务空间 ID。
-   * Qwen-Audio-ASR-Flash-Streaming 的 3.1 与 3.0 都用通用域名就能跑（实测），
-   * 照抄 needsWorkspaceId 会让用户以为不填就用不了 —— 这条钉住这个区别。
+   * 只有 qwen3-asr-flash-realtime 需要業務空間 ID。
+   * Qwen-Audio-ASR-Flash-Streaming 的 3.1 與 3.0 都用通用域名就能跑（實測），
+   * 照抄 needsWorkspaceId 會讓使用者以為不填就用不了 —— 這條釘住這個區別。
    */
-  it('只有 qwen_realtime 那个模型需要业务空间 ID', () => {
+  it('只有 qwen_realtime 那個模型需要業務空間 ID', () => {
     const needing = ASR_PROVIDERS.flatMap((p) => asrModelsOf(p))
       .filter((m) => m.needsWorkspaceId)
       .map((m) => m.id)
@@ -228,15 +228,15 @@ describe('ASR_PROVIDERS 结构性不变量', () => {
   })
 
   /**
-   * 走 realtime 那条路的 Omni：**发出去的模型名必须带 `-realtime`**。
+   * 走 realtime 那條路的 Omni：**發出去的模型名必須帶 `-realtime`**。
    *
-   * 断言的是 resolveAsrApiModel 的结果，不是「每个都得有 apiModel」——
-   * 后者曾经成立（那时产品名都不带后缀，靠 apiModel 补），但
-   * qwen3.8-omni-flash-realtime 的产品名本身就带，给它配 apiModel 只会得到
-   * `...-realtime-realtime`。把断言钉在「实际发什么」上，两种情形都覆盖，
-   * 也不会因为下次加了个本来就带后缀的模型而红。
+   * 斷言的是 resolveAsrApiModel 的結果，不是「每個都得有 apiModel」——
+   * 後者曾經成立（那時產品名都不帶字尾，靠 apiModel 補），但
+   * qwen3.8-omni-flash-realtime 的產品名本身就帶，給它配 apiModel 只會得到
+   * `...-realtime-realtime`。把斷言釘在「實際發什麼」上，兩種情形都覆蓋，
+   * 也不會因為下次加了個本來就帶字尾的模型而紅。
    */
-  it('走 realtime 的 Omni，发出去的模型名都带 -realtime', () => {
+  it('走 realtime 的 Omni，發出去的模型名都帶 -realtime', () => {
     const realtimeOmni = asrModelsOf(findAsrProvider('qwen')!)
       .filter((m) => m.omni && m.provider === 'qwen_omni')
     expect(realtimeOmni.map((m) => m.id)).toEqual([
@@ -245,25 +245,25 @@ describe('ASR_PROVIDERS 结构性不变量', () => {
     for (const model of realtimeOmni) {
       const sent = resolveAsrApiModel(profile({ provider: 'qwen', model: model.id }))
       expect(sent).toMatch(/-realtime$/)
-      // 后缀只能有一份
+      // 字尾只能有一份
       expect(sent.endsWith('-realtime-realtime')).toBe(false)
     }
   })
 
   /**
-   * 3.8 那两条是**同一代的两条协议**，不是新旧关系。这条钉住它们各走各的实现。
+   * 3.8 那兩條是**同一代的兩條協議**，不是新舊關係。這條釘住它們各走各的實現。
    *
-   * ⚠️ 这里的结论被推翻过两次，别按旧理由改回去：
-   *  1. 最早认为「服务端没有 qwen3.8-omni-flash-realtime」——
-   *     2026-09-23 复测它存在了；
-   *  2. 接着认为「它在我们的代码路径上过不去」（`response.create` 时报
-   *     `Voice 'Chelsie' is not supported`）—— 这个现象是真的，但**结论错了**：
-   *     当时的对照实验里"带 voice"和"不发 response.create"两个变量一起变了。
-   *     固定发 response.create、只变音色字段重测后，加一个
-   *     `session.audio.output.voice` 就能用（3.5 两代也接受同一个字段）。
-   *     那个字段现在由 asr_qwen_omni.rs 对所有 Omni 统一发送。
+   * ⚠️ 這裡的結論被推翻過兩次，別按舊理由改回去：
+   *  1. 最早認為「服務端沒有 qwen3.8-omni-flash-realtime」——
+   *     2026-09-23 複測它存在了；
+   *  2. 接著認為「它在我們的程式碼路徑上過不去」（`response.create` 時報
+   *     `Voice 'Chelsie' is not supported`）—— 這個現象是真的，但**結論錯了**：
+   *     當時的對照實驗裡"帶 voice"和"不發 response.create"兩個變數一起變了。
+   *     固定發 response.create、只變音色欄位重測後，加一個
+   *     `session.audio.output.voice` 就能用（3.5 兩代也接受同一個欄位）。
+   *     那個欄位現在由 asr_qwen_omni.rs 對所有 Omni 統一傳送。
    */
-  it('3.8 的两个 Omni 各走各的协议', () => {
+  it('3.8 的兩個 Omni 各走各的協議', () => {
     const models = asrModelsOf(findAsrProvider('qwen')!)
 
     const http = models.find((m) => m.id === 'qwen3.8-omni-flash')
@@ -271,19 +271,19 @@ describe('ASR_PROVIDERS 结构性不变量', () => {
     expect(http!.provider).toBe('qwen_chat_audio')
     expect(http!.apiModel).toBeUndefined()
     expect(http!.omni).toBe(true)
-    // 它没有实时字幕能力，别顺手标上 streaming
+    // 它沒有即時字幕能力，別順手標上 streaming
     expect(http!.streaming).toBeUndefined()
-    // HTTP 那条路才允许改地址
+    // HTTP 那條路才允許改地址
     expect(http!.supportsCustomUrl).toBe(true)
 
     const ws = models.find((m) => m.id === 'qwen3.8-omni-flash-realtime')
     expect(ws).toBeTruthy()
     expect(ws!.provider).toBe('qwen_omni')
-    // 产品名已经带 -realtime，补 apiModel 会变成 -realtime-realtime
+    // 產品名已經帶 -realtime，補 apiModel 會變成 -realtime-realtime
     expect(ws!.apiModel).toBeUndefined()
     expect(ws!.omni).toBe(true)
     expect(ws!.streaming).toBeUndefined()
-    // realtime WebSocket 改地址没有意义，而且那几份实现压根不读 extra.baseUrl
+    // realtime WebSocket 改地址沒有意義，而且那幾份實現壓根不讀 extra.baseUrl
     expect(ws!.supportsCustomUrl).toBeUndefined()
     expect(asrEndpointUrl(profile({
       provider: 'qwen', model: 'qwen3.8-omni-flash-realtime', apiUrl: 'https://evil.example/v1',
@@ -291,14 +291,14 @@ describe('ASR_PROVIDERS 结构性不变量', () => {
   })
 
   /**
-   * 「协议卡」的不变量：必须有地址占位示例、必须只给一个默认模型。
+   * 「協議卡」的不變數：必須有地址佔位示例、必須只給一個預設模型。
    *
-   * 占位示例是这类卡唯一的填写线索（我们说不出对面是谁），少了它用户只能猜。
+   * 佔位示例是這類卡唯一的填寫線索（我們說不出對面是誰），少了它使用者只能猜。
    */
-  it('协议卡只有一张，有地址占位示例，且地址必填', () => {
+  it('協議卡只有一張，有地址佔位示例，且地址必填', () => {
     const custom = ASR_PROVIDERS.filter((p) => p.customEndpoint)
-    // 刻意只留一张：曾经按协议分成两张让用户自己选，但用户没办法知道对面说哪种协议。
-    // 合并之后协议由 Rust 侧探测（asr_openai_compat.rs）。
+    // 刻意只留一張：曾經按協議分成兩張讓使用者自己選，但使用者沒辦法知道對面說哪種協議。
+    // 合併之後協議由 Rust 側探測（asr_openai_compat.rs）。
     expect(custom.map((p) => p.id)).toEqual(['openai_compat'])
     for (const p of custom) {
       expect(p.urlPlaceholder?.trim()).toBeTruthy()
@@ -311,14 +311,14 @@ describe('ASR_PROVIDERS 结构性不变量', () => {
   })
 
   /**
-   * 「能不能改地址」是**协议**的属性，所以必须挂在模型上、不能挂在卡片上。
+   * 「能不能改地址」是**協議**的屬性，所以必須掛在模型上、不能掛在卡片上。
    *
-   * 千问那张卡就是反例的来源：`qwen3.8-omni-flash` 是 HTTP（能改），
-   * `qwen3.5-omni-plus` 是 realtime WebSocket（改不了）。挂在卡片上表达不了这种混合，
-   * 而弄错的后果是「界面上让我填了地址，实际发的还是官方地址」——静默不一致。
+   * 千問那張卡就是反例的來源：`qwen3.8-omni-flash` 是 HTTP（能改），
+   * `qwen3.5-omni-plus` 是 realtime WebSocket（改不了）。掛在卡片上表達不了這種混合，
+   * 而弄錯的後果是「介面上讓我填了地址，實際發的還是官方地址」——靜默不一致。
    */
-  it('只有 HTTP 协议的模型才允许改地址，WebSocket 的一律不给', () => {
-    // 这几个 provider 走 WebSocket，地址改不了
+  it('只有 HTTP 協議的模型才允許改地址，WebSocket 的一律不給', () => {
+    // 這幾個 provider 走 WebSocket，地址改不了
     const websocketProviders = new Set([
       'doubao_v2', 'qwen_audio_stream', 'qwen_realtime', 'qwen_omni',
       'openai_live_transcribe', 'gemini_live_transcribe',
@@ -330,7 +330,7 @@ describe('ASR_PROVIDERS 结构性不变量', () => {
         }
       }
     }
-    // 而 HTTP 那些必须开着，否则用中转站的用户接不上
+    // 而 HTTP 那些必須開著，否則用中轉站的使用者接不上
     const qwenModels = asrModelsOf(findAsrProvider('qwen')!)
     expect(qwenModels.find((m) => m.id === 'qwen3.8-omni-flash')!.supportsCustomUrl).toBe(true)
     expect(qwenModels.find((m) => m.id === 'qwen3.5-omni-plus')!.supportsCustomUrl).toBeFalsy()
@@ -342,8 +342,8 @@ describe('ASR_PROVIDERS 结构性不变量', () => {
       .find((m) => m.id === 'gpt-live-transcribe')!.supportsCustomUrl).toBeFalsy()
   })
 
-  /** requiresCustomUrl 只能出现在协议卡上：内置卡的地址是可选覆盖，不是必填。 */
-  it('内置卡的地址是可选的，不是必填', () => {
+  /** requiresCustomUrl 只能出現在協議卡上：內建卡的地址是可選覆蓋，不是必填。 */
+  it('內建卡的地址是可選的，不是必填', () => {
     for (const entry of ASR_PROVIDERS) {
       if (entry.customEndpoint) continue
       for (const model of asrModelsOf(entry)) {
@@ -353,24 +353,24 @@ describe('ASR_PROVIDERS 结构性不变量', () => {
   })
 
   /**
-   * 模型下拉里必须能看到**真实 ID**，不能只有中文短名。
+   * 模型下拉裡必須能看到**真實 ID**，不能只有中文短名。
    *
-   * 短名说明这是什么，真实 ID 才是能拿去对服务商文档、能在日志和账单里搜到的
-   * 那个东西 —— 只给短名的话用户根本对不上号。
+   * 短名說明這是什麼，真實 ID 才是能拿去對服務商文件、能在日誌和帳單裡搜到的
+   * 那個東西 —— 只給短名的話使用者根本對不上號。
    */
   /**
-   * 每个模型的显示名就是它的真实 ID —— 清单里**不允许**再出现中文短名。
+   * 每個模型的顯示名就是它的真實 ID —— 清單裡**不允許**再出現中文短名。
    *
-   * 这条钉的是一次真实的困惑：短名本来是「一张卡 = 一个模型」时代的卡片标题
-   * （「千问 ASR 一次性」靠「一次性」跟流式那张卡对比），归拢成一卡一平台之后它们
-   * 成了卡内的模型名，用户在「模型」那一栏看到的就是一个不像模型的词。
-   * 真实 ID 既一眼认得出，又能拿去对服务商文档和账单。
+   * 這條釘的是一次真實的困惑：短名本來是「一張卡 = 一個模型」時代的卡片標題
+   * （「千問 ASR 一次性」靠「一次性」跟流式那張卡對比），歸攏成一卡一平台之後它們
+   * 成了卡內的模型名，使用者在「模型」那一欄看到的就是一個不像模型的詞。
+   * 真實 ID 既一眼認得出，又能拿去對服務商文件和帳單。
    */
-  it('模型清单里只用真实模型 ID，不带中文短名', () => {
+  it('模型清單裡只用真實模型 ID，不帶中文短名', () => {
     for (const entry of ASR_PROVIDERS) {
       for (const option of asrModelsOf(entry)) {
         expect(option.id.trim()).not.toBe('')
-        // 真实模型 ID 不含中日韩字符；出现了就说明有人又把短名写回来了
+        // 真實模型 ID 不含中日韓字元；出現了就說明有人又把短名寫回來了
         expect(option.id).not.toMatch(/[\u4e00-\u9fff]/)
       }
     }
@@ -385,11 +385,11 @@ describe('ASR_PROVIDERS 结构性不变量', () => {
 describe('groupAsrModelsByVendor', () => {
   const opt = (id: string): AsrModelOption => ({ id, provider: 'openrouter_transcribe' })
 
-  it('带厂商前缀时按厂商分组，组内保持原顺序', () => {
+  it('帶廠商字首時按廠商分組，組內保持原順序', () => {
     const groups = groupAsrModelsByVendor(
       ['openai/gpt-transcribe', 'qwen/a', 'qwen/b', 'openai/whisper-1'].map(opt),
     )!
-    // openai 组排第一，因为默认模型在里面；同组的 whisper-1 归并进来
+    // openai 組排第一，因為預設模型在裡面；同組的 whisper-1 歸併進來
     expect(groups.map(([vendor, models]) => [vendor, models.map((m) => m.id)])).toEqual([
       ['openai', ['openai/gpt-transcribe', 'openai/whisper-1']],
       ['qwen', ['qwen/a', 'qwen/b']],
@@ -397,40 +397,40 @@ describe('groupAsrModelsByVendor', () => {
   })
 
   /**
-   * 不带前缀的一律不分组。直连那几张卡的模型名是 `whisper-large-v3` 这种裸名，
-   * 硬分组会得到一个名叫空串的 optgroup。
+   * 不帶字首的一律不分組。直連那幾張卡的模型名是 `whisper-large-v3` 這種裸名，
+   * 硬分組會得到一個名叫空串的 optgroup。
    */
-  it('模型名不带前缀、或只有一个时不分组', () => {
+  it('模型名不帶字首、或只有一個時不分組', () => {
     expect(groupAsrModelsByVendor(['whisper-large-v3-turbo', 'whisper-large-v3'].map(opt))).toBeNull()
     expect(groupAsrModelsByVendor(['gpt-transcribe', 'openai/whisper-1'].map(opt))).toBeNull()
     expect(groupAsrModelsByVendor([opt('openai/gpt-transcribe')])).toBeNull()
     expect(groupAsrModelsByVendor([])).toBeNull()
   })
 
-  it('目录里只有 OpenRouter 那张卡会分组', () => {
+  it('目錄裡只有 OpenRouter 那張卡會分組', () => {
     const grouped = ASR_PROVIDERS
       .filter((p) => groupAsrModelsByVendor(asrModelsOf(p)) !== null)
       .map((p) => p.id)
     expect(grouped).toEqual(['openrouter'])
   })
 
-  /** 默认模型所在的组必须排在最前面，否则下拉打开时要往下翻才看到推荐项 */
-  it('默认模型所在的组排最前', () => {
+  /** 預設模型所在的組必須排在最前面，否則下拉開啟時要往下翻才看到推薦項 */
+  it('預設模型所在的組排最前', () => {
     const models = asrModelsOf(findAsrProvider('openrouter')!)
     const groups = groupAsrModelsByVendor(models)!
     expect(groups[0][1][0].id).toBe(models[0].id)
   })
 })
 
-describe('parseAsrProfiles 容错', () => {
-  it('非数组一律当空列表', () => {
+describe('parseAsrProfiles 容錯', () => {
+  it('非陣列一律當空列表', () => {
     expect(parseAsrProfiles(null)).toEqual([])
     expect(parseAsrProfiles({})).toEqual([])
     expect(parseAsrProfiles('x')).toEqual([])
   })
 
-  it('丢掉供应商不在内置清单里的条目', () => {
-    // 留着只会渲染出一张点不动的卡
+  it('丟掉供應商不在內建清單裡的條目', () => {
+    // 留著只會渲染出一張點不動的卡
     const r = parseAsrProfiles([
       { id: 'a', provider: 'doubao_v2' },
       { id: 'b', provider: 'gpt-4-asr' },
@@ -439,7 +439,7 @@ describe('parseAsrProfiles 容错', () => {
     expect(r.map((p) => p.id)).toEqual(['a'])
   })
 
-  it('丢掉重复 id', () => {
+  it('丟掉重複 id', () => {
     const r = parseAsrProfiles([
       { id: 'a', provider: 'doubao_v2' },
       { id: 'a', provider: 'qwen' },
@@ -447,26 +447,26 @@ describe('parseAsrProfiles 容错', () => {
     expect(r).toHaveLength(1)
   })
 
-  it('缺字段补成空串，不会渲染出 undefined', () => {
+  it('缺欄位補成空串，不會渲染出 undefined', () => {
     const [p] = parseAsrProfiles([{ id: 'a', provider: 'qwen' }])
     expect(p.apiKey).toBe('')
     expect(p.appId).toBe('')
     expect(p.workspaceId).toBe('')
     expect(p.omniPrompt).toBe('')
     expect(p.console).toBe('new')
-    // 老配置没有 model 字段，会按 provider 迁移出对应的那个模型
+    // 老配置沒有 model 欄位，會按 provider 遷移出對應的那個模型
     expect(p.provider).toBe('qwen')
     expect(p.model).toBe('qwen3-asr-flash')
   })
 
   /**
-   * **存量配置的迁移是这次重构最要紧的一条。**
+   * **存量配置的遷移是這次重構最要緊的一條。**
    *
-   * 改成「一张卡 = 一个平台」后，老 profile 里 provider 存的还是旧分发 key
+   * 改成「一張卡 = 一個平台」後，老 profile 裡 provider 存的還是舊分發 key
    * （`qwen_audio_stream`、`gemini_live_transcribe`…），那些值不再是任何卡片的 id。
-   * 没有迁移，parseAsrProfiles 会把它们整条丢掉 —— 用户的服务配置连密钥一起消失。
+   * 沒有遷移，parseAsrProfiles 會把它們整條丟掉 —— 使用者的服務配置連金鑰一起消失。
    */
-  it('存量条目按旧 provider 迁移成（卡片, 模型），密钥不丢', () => {
+  it('存量條目按舊 provider 遷移成（卡片, 模型），金鑰不丟', () => {
     const legacy = [
       { id: 'a', provider: 'qwen_audio_stream', apiKey: 'sk-qwen' },
       { id: 'b', provider: 'doubao_v2', apiKey: 'KEY', appId: '123', console: 'legacy' },
@@ -474,7 +474,7 @@ describe('parseAsrProfiles 容错', () => {
       { id: 'd', provider: 'openai_transcribe', apiKey: 'sk-oa' },
       { id: 'e', provider: 'groq_whisper', apiKey: 'gsk' },
       { id: 'f', provider: 'openrouter_transcribe', apiKey: 'sk-or' },
-      // 更早的别名也要认
+      // 更早的別名也要認
       { id: 'g', provider: 'aliyun', apiKey: 'sk-old' },
     ]
     const out = parseAsrProfiles(legacy)
@@ -487,14 +487,14 @@ describe('parseAsrProfiles 容错', () => {
       ['openrouter', 'openai/gpt-transcribe'],
       ['qwen', 'qwen3-asr-flash'],
     ])
-    // 密钥与豆包那套代次字段都要原样带过来
+    // 金鑰與豆包那套代次欄位都要原樣帶過來
     expect(out[0].apiKey).toBe('sk-qwen')
     expect(out[1].appId).toBe('123')
     expect(out[1].console).toBe('legacy')
   })
 
-  /** 已经是新格式的条目（带 model）不该被迁移逻辑改动 */
-  it('新格式条目原样保留', () => {
+  /** 已經是新格式的條目（帶 model）不該被遷移邏輯改動 */
+  it('新格式條目原樣保留', () => {
     const out = parseAsrProfiles([
       { id: 'a', provider: 'qwen', model: 'qwen3.5-omni-flash', apiKey: 'k' },
     ])
@@ -503,15 +503,15 @@ describe('parseAsrProfiles 容错', () => {
   })
 
   /**
-   * **这条是那次"卡片全没了"的回归测试。**
+   * **這條是那次"卡片全沒了"的迴歸測試。**
    *
-   * `model` 字段是上一个版本就加进来的（那时它表示"同实现下选哪个模型"），所以存量里
-   * `provider='gemini_transcribe'` + `model='gemini-3.5-transcribe'` 是完全正常的组合。
-   * 迁移判据一度写成「有 model 就是新数据」，于是这类条目被判成新格式、
-   * `findAsrProvider('gemini_transcribe')` 返回 undefined、整条被丢掉 ——
-   * 用户打开设置页发现自己配的卡连密钥一起消失了。
+   * `model` 欄位是上一個版本就加進來的（那時它表示"同實現下選哪個模型"），所以存量裡
+   * `provider='gemini_transcribe'` + `model='gemini-3.5-transcribe'` 是完全正常的組合。
+   * 遷移判據一度寫成「有 model 就是新資料」，於是這類條目被判成新格式、
+   * `findAsrProvider('gemini_transcribe')` 返回 undefined、整條被丟掉 ——
+   * 使用者開啟設定頁發現自己配的卡連金鑰一起消失了。
    */
-  it('旧 provider 配着旧 model 的条目不能被丢掉', () => {
+  it('舊 provider 配著舊 model 的條目不能被丟掉', () => {
     const out = parseAsrProfiles([
       { id: 'a', provider: 'gemini_transcribe', model: 'gemini-3.5-transcribe', apiKey: 'AIza' },
       { id: 'b', provider: 'openai_live_transcribe', model: 'gpt-live-transcribe', apiKey: 'sk' },
@@ -526,8 +526,8 @@ describe('parseAsrProfiles 容错', () => {
     expect(out[0].apiKey).toBe('AIza')
   })
 
-  /** 用户在旧卡上选过的模型，只要新卡也有就保留 —— 不该被打回默认 */
-  it('迁移时保留用户选过的模型', () => {
+  /** 使用者在舊卡上選過的模型，只要新卡也有就保留 —— 不該被打回預設 */
+  it('遷移時保留使用者選過的模型', () => {
     const out = parseAsrProfiles([
       { id: 'a', provider: 'groq_whisper', model: 'whisper-large-v3', apiKey: 'gsk' },
       { id: 'b', provider: 'openai_transcribe', model: 'whisper-1', apiKey: 'sk' },
@@ -539,13 +539,13 @@ describe('parseAsrProfiles 容错', () => {
   })
 
   /**
-   * 上一代 Omni 的旧 id 也要能落下来。
+   * 上一代 Omni 的舊 id 也要能落下來。
    *
-   * 它们指向的模型本身已经从目录里删掉（被百炼缩容），但这些卡**不能**丢，也不能
-   * 落到卡片默认那个纯 ASR 模型上 —— 那会把用户从「不用配 AI 服务」悄悄搬到
-   * 「必须另配 AI 服务」。所以两个都落到同族还活着的 qwen3.5-omni-flash。
+   * 它們指向的模型本身已經從目錄裡刪掉（被百煉縮容），但這些卡**不能**丟，也不能
+   * 落到卡片預設那個純 ASR 模型上 —— 那會把使用者從「不用配 AI 服務」悄悄搬到
+   * 「必須另配 AI 服務」。所以兩個都落到同族還活著的 qwen3.5-omni-flash。
    */
-  it('上一代 Omni 的旧 provider 迁到同族还活着的模型', () => {
+  it('上一代 Omni 的舊 provider 遷到同族還活著的模型', () => {
     const out = parseAsrProfiles([
       { id: 'a', provider: 'qwen_omni_turbo', apiKey: 'k' },
       { id: 'b', provider: 'qwen_omni_flash', apiKey: 'k' },
@@ -556,20 +556,20 @@ describe('parseAsrProfiles 容错', () => {
       ['qwen', 'qwen3.5-omni-flash'],
       ['qwen', 'qwen3.5-omni-plus'],
     ])
-    // 迁完必须还是 Omni（识别+整理一体），否则这条迁移就没有意义
+    // 遷完必須還是 Omni（識別+整理一體），否則這條遷移就沒有意義
     for (const profile of out) {
       expect(resolveAsrModelOption(profile)!.omni).toBe(true)
     }
   })
 
   /**
-   * 已经是「新数据形态」的退役模型也要接住。
+   * 已經是「新資料形態」的退役模型也要接住。
    *
-   * 这是上一条覆盖不到的另一半：`provider` 已经迁成卡片 id `qwen`、`model` 里存着
-   * 退役的模型名。这种条目走的是 migrateLegacyProvider 的回落分支，而回落到卡片
-   * 默认会得到一个**纯 ASR** 模型 —— Omni 用户的整理能力会无声消失。
+   * 這是上一條覆蓋不到的另一半：`provider` 已經遷成卡片 id `qwen`、`model` 裡存著
+   * 退役的模型名。這種條目走的是 migrateLegacyProvider 的回落分支，而回落到卡片
+   * 預設會得到一個**純 ASR** 模型 —— Omni 使用者的整理能力會無聲消失。
    */
-  it('新数据形态里的退役 Omni 也落到同族替代', () => {
+  it('新資料形態裡的退役 Omni 也落到同族替代', () => {
     const out = parseAsrProfiles([
       { id: 'a', provider: 'qwen', model: 'qwen3-omni-flash', apiKey: 'k' },
       { id: 'b', provider: 'qwen', model: 'qwen-omni-turbo', apiKey: 'k' },
@@ -583,32 +583,32 @@ describe('parseAsrProfiles 容错', () => {
   })
 
   /**
-   * 认不出的模型名不丢条目，但**落点取决于 provider 值走的是哪条分支**。
+   * 認不出的模型名不丟條目，但**落點取決於 provider 值走的是哪條分支**。
    *
-   * `qwen` 同时是旧分发 key 和卡片 id，所以它先命中 LEGACY_PROVIDERS，落到那张表
-   * 指定的 qwen3-asr-flash，而不是卡片第一项（3.1 流式）。这不是 bug：对存量数据
-   * 来说「provider 是 qwen」本来就等于「用 qwen3-asr-flash 那个模型」。
+   * `qwen` 同時是舊分發 key 和卡片 id，所以它先命中 LEGACY_PROVIDERS，落到那張表
+   * 指定的 qwen3-asr-flash，而不是卡片第一項（3.1 流式）。這不是 bug：對存量資料
+   * 來說「provider 是 qwen」本來就等於「用 qwen3-asr-flash 那個模型」。
    *
-   * 这条钉在这里是因为它反过来解释了 RETIRED_MODELS 为什么必须在所有分支之前
-   * 执行 —— 放在后面就会被这条 LEGACY 分支抢先返回。
+   * 這條釘在這裡是因為它反過來解釋了 RETIRED_MODELS 為什麼必須在所有分支之前
+   * 執行 —— 放在後面就會被這條 LEGACY 分支搶先返回。
    */
-  it('认不出的模型名不丢条目，落到 LEGACY 表指定的那个', () => {
+  it('認不出的模型名不丟條目，落到 LEGACY 表指定的那個', () => {
     const out = parseAsrProfiles([
       { id: 'a', provider: 'qwen', model: 'qwen-something-that-never-existed', apiKey: 'k' },
     ])
     expect(out.map((p) => p.model)).toEqual(['qwen3-asr-flash'])
   })
 
-  /** 纯卡片 id（不在 LEGACY 表里）配认不出的模型名，才走「回落到卡片默认」 */
-  it('不在迁移表里的卡片 id 才回落到卡片默认', () => {
+  /** 純卡片 id（不在 LEGACY 表裡）配認不出的模型名，才走「回落到卡片預設」 */
+  it('不在遷移表裡的卡片 id 才回落到卡片預設', () => {
     const out = parseAsrProfiles([
       { id: 'a', provider: 'openrouter', model: 'nope/does-not-exist', apiKey: 'k' },
     ])
     expect(out.map((p) => p.model)).toEqual(['openai/gpt-transcribe'])
   })
 
-  /** 真正认不出来的不进列表：provider 既不是卡片 id 也不在迁移表里 */
-  it('完全认不出的 provider 不进列表', () => {
+  /** 真正認不出來的不進列表：provider 既不是卡片 id 也不在遷移表裡 */
+  it('完全認不出的 provider 不進列表', () => {
     const out = parseAsrProfiles([
       { id: 'a', provider: 'some_removed_vendor', model: 'x', apiKey: 'k' },
       { id: 'b', provider: 'qwen', model: 'qwen3-asr-flash', apiKey: 'k' },
@@ -617,29 +617,29 @@ describe('parseAsrProfiles 容错', () => {
   })
 
   /**
-   * **但它不能从磁盘上消失。**
+   * **但它不能從磁碟上消失。**
    *
-   * 这是那次数据损失的第二道防线：解析不出来的条目要原样交回给调用方，
-   * 由 saveAsrProfiles 拼回存储。否则「解析失败」会在下一次归一化写回时
-   * 变成「永久删除」—— 用户丢的是配置连带密钥，而密钥没有第二份。
+   * 這是那次資料損失的第二道防線：解析不出來的條目要原樣交回給呼叫方，
+   * 由 saveAsrProfiles 拼回儲存。否則「解析失敗」會在下一次歸一化寫回時
+   * 變成「永久刪除」—— 使用者丟的是配置連帶金鑰，而金鑰沒有第二份。
    */
-  it('解析不出来的条目原样交回，不丢', () => {
+  it('解析不出來的條目原樣交回，不丟', () => {
     const raw = [
       { id: 'a', provider: 'some_removed_vendor', model: 'x', apiKey: 'secret1' },
       { id: 'b', provider: 'qwen', model: 'qwen3-asr-flash', apiKey: 'k' },
       'not an object',
-      { id: 'b', provider: 'qwen', model: 'qwen3-asr-flash' }, // 重复 id
+      { id: 'b', provider: 'qwen', model: 'qwen3-asr-flash' }, // 重複 id
     ]
     const { profiles, orphans } = parseAsrProfilesDetailed(raw)
     expect(profiles.map((p) => p.id)).toEqual(['b'])
-    // 三种落选原因都要留痕：认不出的 provider、非对象、重复 id
+    // 三種落選原因都要留痕：認不出的 provider、非物件、重複 id
     expect(orphans).toHaveLength(3)
     expect(orphans[0]).toBe(raw[0])
     expect(orphans[1]).toBe(raw[2])
     expect(orphans[2]).toBe(raw[3])
   })
 
-  it('全都能解析时 orphans 为空', () => {
+  it('全都能解析時 orphans 為空', () => {
     const { orphans } = parseAsrProfilesDetailed([
       { id: 'a', provider: 'qwen', model: 'qwen3-asr-flash' },
       { id: 'b', provider: 'gemini_transcribe', model: 'gemini-3.5-transcribe' },
@@ -647,8 +647,8 @@ describe('parseAsrProfiles 容错', () => {
     expect(orphans).toEqual([])
   })
 
-  /** provider 是卡片 id 但 model 不认识（新建没选 / 模型下线）→ 回落该卡默认 */
-  it('模型名不认识时回落到该卡默认，条目不丢', () => {
+  /** provider 是卡片 id 但 model 不認識（新建沒選 / 模型下線）→ 回落該卡預設 */
+  it('模型名不認識時回落到該卡預設，條目不丟', () => {
     const out = parseAsrProfiles([
       { id: 'a', provider: 'google', model: 'gemini-9-nonexistent', apiKey: 'k' },
     ])
@@ -656,12 +656,12 @@ describe('parseAsrProfiles 容错', () => {
     expect(out[0].model).toBe('gemini-3.5-transcribe')
   })
 
-  it('console 只认 new / legacy，其它值回落到 new', () => {
+  it('console 只認 new / legacy，其它值回落到 new', () => {
     expect(parseAsrProfiles([{ id: 'a', provider: 'doubao_v2', console: 'legacy' }])[0].console).toBe('legacy')
     expect(parseAsrProfiles([{ id: 'a', provider: 'doubao_v2', console: 'garbage' }])[0].console).toBe('new')
   })
 
-  it('坏的检测结论被丢掉，好的保留', () => {
+  it('壞的檢測結論被丟掉，好的保留', () => {
     const r = parseAsrProfiles([
       { id: 'a', provider: 'qwen', check: { ok: true, at: 100, latencyMs: 800, audioSec: 3 } },
       { id: 'b', provider: 'qwen', check: { ok: true } },
@@ -672,7 +672,7 @@ describe('parseAsrProfiles 容错', () => {
     expect(r[2].check).toBeUndefined()
   })
 
-  it('没有 id 时自动补一个，不会整条丢掉', () => {
+  it('沒有 id 時自動補一個，不會整條丟掉', () => {
     const r = parseAsrProfiles([{ provider: 'qwen', apiKey: 'sk-1' }])
     expect(r).toHaveLength(1)
     expect(r[0].id).not.toBe('')
@@ -680,7 +680,7 @@ describe('parseAsrProfiles 容错', () => {
 })
 
 describe('resolveActiveAsrProfile', () => {
-  it('指向不存在的 id 时回落到第一条', () => {
+  it('指向不存在的 id 時回落到第一條', () => {
     const list = [profile({ id: 'a' }), profile({ id: 'b' })]
     expect(resolveActiveAsrProfile(list, 'zzz')?.id).toBe('a')
     expect(resolveActiveAsrProfile(list, 'b')?.id).toBe('b')
@@ -692,13 +692,13 @@ describe('resolveActiveAsrProfile', () => {
 })
 
 describe('resolveAsrModel', () => {
-  it('没选过就用该卡的默认模型', () => {
+  it('沒選過就用該卡的預設模型', () => {
     expect(resolveAsrModel(profile({ provider: 'groq', model: '' }))).toBe('whisper-large-v3-turbo')
     expect(resolveAsrModel(profile({ provider: 'groq', model: '  ' }))).toBe('whisper-large-v3-turbo')
     expect(resolveAsrModel(profile({ provider: 'openai', model: '' }))).toBe('gpt-transcribe')
   })
 
-  it('选过就用选的那个', () => {
+  it('選過就用選的那個', () => {
     expect(resolveAsrModel(profile({ provider: 'groq', model: 'whisper-large-v3' })))
       .toBe('whisper-large-v3')
     expect(resolveAsrModel(profile({ provider: 'openai', model: 'whisper-1' })))
@@ -706,13 +706,13 @@ describe('resolveAsrModel', () => {
   })
 
   /**
-   * 不在清单里的一律回落，不原样发出去。
+   * 不在清單裡的一律回落，不原樣發出去。
    *
-   * 两种来路：服务商下线了某个模型（他们淘汰模型比我们改代码勤），
-   * 或者用户先在 Groq 卡上选了 whisper-large-v3、再把供应商换成 OpenAI。
-   * 照发只会换来一个含义模糊的 400，而用户完全不知道自己发了什么。
+   * 兩種來路：服務商下線了某個模型（他們淘汰模型比我們改程式碼勤），
+   * 或者使用者先在 Groq 卡上選了 whisper-large-v3、再把供應商換成 OpenAI。
+   * 照發只會換來一個含義模糊的 400，而使用者完全不知道自己發了什麼。
    */
-  it('模型不属于这张卡时回落到默认', () => {
+  it('模型不屬於這張卡時回落到預設', () => {
     expect(resolveAsrModel(profile({ provider: 'openai', model: 'whisper-large-v3' })))
       .toBe('gpt-transcribe')
     expect(resolveAsrModel(profile({ provider: 'groq', model: 'gpt-transcribe' })))
@@ -723,14 +723,14 @@ describe('resolveAsrModel', () => {
 })
 
 /**
- * 运行时那两个键 —— **这是卡片 id 与后端实现分离之后最容易搞错的地方。**
+ * 執行時那兩個鍵 —— **這是卡片 id 與後端實現分離之後最容易搞錯的地方。**
  *
- * `cloudAsr.provider` 必须是选中模型的 provider（Rust 的分发 key），不是卡片 id；
- * 写成卡片 id 的话 Rust 会报 "ASR provider not implemented"。
- * `cloudAsr.model` 必须是 apiModel（Omni 那两个带 -realtime 后缀）。
+ * `cloudAsr.provider` 必須是選中模型的 provider（Rust 的分發 key），不是卡片 id；
+ * 寫成卡片 id 的話 Rust 會報 "ASR provider not implemented"。
+ * `cloudAsr.model` 必須是 apiModel（Omni 那兩個帶 -realtime 字尾）。
  */
-describe('运行时键解析', () => {
-  it('provider 取选中模型的实现，不是卡片 id', () => {
+describe('執行時鍵解析', () => {
+  it('provider 取選中模型的實現，不是卡片 id', () => {
     expect(resolveAsrRuntimeProvider(profile({ provider: 'qwen', model: 'qwen3-asr-flash' })))
       .toBe('qwen')
     expect(resolveAsrRuntimeProvider(
@@ -741,58 +741,58 @@ describe('运行时键解析', () => {
     )).toBe('qwen_realtime')
     expect(resolveAsrRuntimeProvider(profile({ provider: 'qwen', model: 'qwen3.5-omni-plus' })))
       .toBe('qwen_omni')
-    // 同一张 OpenAI 卡，两个模型走两份实现
+    // 同一張 OpenAI 卡，兩個模型走兩份實現
     expect(resolveAsrRuntimeProvider(profile({ provider: 'openai', model: 'gpt-transcribe' })))
       .toBe('openai_transcribe')
     expect(resolveAsrRuntimeProvider(profile({ provider: 'openai', model: 'gpt-live-transcribe' })))
       .toBe('openai_live_transcribe')
   })
 
-  it('model 取 apiModel —— Omni 的接口名带 -realtime 后缀', () => {
+  it('model 取 apiModel —— Omni 的介面名帶 -realtime 字尾', () => {
     expect(resolveAsrApiModel(profile({ provider: 'qwen', model: 'qwen3.5-omni-plus' })))
       .toBe('qwen3.5-omni-plus-realtime')
     expect(resolveAsrApiModel(profile({ provider: 'qwen', model: 'qwen3.5-omni-flash' })))
       .toBe('qwen3.5-omni-flash-realtime')
-    // 没有 apiModel 的就用 id 本身
+    // 沒有 apiModel 的就用 id 本身
     expect(resolveAsrApiModel(profile({ provider: 'groq', model: 'whisper-large-v3' })))
       .toBe('whisper-large-v3')
   })
 
-  it('卡片不存在时给空串，不抛', () => {
+  it('卡片不存在時給空串，不拋', () => {
     expect(resolveAsrRuntimeProvider(profile({ provider: 'nope', model: 'x' }))).toBe('')
     expect(resolveAsrApiModel(profile({ provider: 'nope', model: 'x' }))).toBe('')
   })
 })
 
 describe('effectiveAsrCredentials', () => {
-  // 核心不变量：Rust 侧靠 app_id 空不空来选两代鉴权头
-  it('豆包新版控制台必须把 appId 清空', () => {
+  // 核心不變數：Rust 側靠 app_id 空不空來選兩代鑑權頭
+  it('豆包新版控制台必須把 appId 清空', () => {
     const p = profile({
       provider: 'doubao', console: 'new', apiKey: 'APPKEY', otherKey: 'TOKEN', appId: '1234567890',
     })
     expect(effectiveAsrCredentials(p)).toEqual({ apiKey: 'APPKEY', appId: '' })
   })
 
-  it('豆包旧版控制台用 Access Token + App ID', () => {
+  it('豆包舊版控制台用 Access Token + App ID', () => {
     const p = profile({
       provider: 'doubao', console: 'legacy', apiKey: 'TOKEN', otherKey: 'APPKEY', appId: '1234567890',
     })
     expect(effectiveAsrCredentials(p)).toEqual({ apiKey: 'TOKEN', appId: '1234567890' })
   })
 
-  it('非豆包平台不带 appId', () => {
+  it('非豆包平台不帶 appId', () => {
     const p = profile({ provider: 'qwen', apiKey: ' sk-1 ', appId: '999' })
     expect(effectiveAsrCredentials(p)).toEqual({ apiKey: 'sk-1', appId: '' })
   })
 })
 
 describe('describeAsrMissing', () => {
-  it('豆包新版只要密钥', () => {
+  it('豆包新版只要金鑰', () => {
     expect(describeAsrMissing(profile({ provider: 'doubao', console: 'new' }))).toBe('還沒填 API Key')
     expect(describeAsrMissing(profile({ provider: 'doubao', console: 'new', apiKey: 'k' }))).toBe('')
   })
 
-  it('豆包旧版两个都要，且先报密钥', () => {
+  it('豆包舊版兩個都要，且先報金鑰', () => {
     expect(describeAsrMissing(profile({ provider: 'doubao', console: 'legacy' }))).toBe('還沒填 Access Token')
     expect(describeAsrMissing(profile({ provider: 'doubao', console: 'legacy', apiKey: 't' }))).toBe('還沒填 App ID')
     expect(describeAsrMissing(profile({ provider: 'doubao', console: 'legacy', apiKey: 't', appId: '1' }))).toBe('')
@@ -806,12 +806,12 @@ describe('describeAsrMissing', () => {
 
 describe('asrEndpointUrl', () => {
   /**
-   * ⚠️ 这一组守的是「音频不会被发到用户没打算用的地址」。
+   * ⚠️ 這一組守的是「音訊不會被發到使用者沒打算用的地址」。
    *
-   * 闸门必须看**选中的模型**，不能看卡片：档案里的 apiUrl 会残留（换过供应商、
-   * 换过模型都会留下），而残值一旦被发出去，音频就去了一个用户早就不用的地方。
+   * 閘門必須看**選中的模型**，不能看卡片：檔案裡的 apiUrl 會殘留（換過供應商、
+   * 換過模型都會留下），而殘值一旦被發出去，音訊就去了一個使用者早就不用的地方。
    */
-  it('模型不支持改地址时，残留的 apiUrl 一律不发出去', () => {
+  it('模型不支援改地址時，殘留的 apiUrl 一律不發出去', () => {
     // qwen3.5-omni-plus 是 realtime WebSocket，地址改不了
     const ws = profile({
       provider: 'qwen',
@@ -820,17 +820,17 @@ describe('asrEndpointUrl', () => {
     })
     expect(asrEndpointUrl(ws)).toBe('')
 
-    // 同一张卡换成 HTTP 的那个模型，同一个地址就该生效了
+    // 同一張卡換成 HTTP 的那個模型，同一個地址就該生效了
     const http = { ...ws, model: 'qwen3.8-omni-flash' }
     expect(asrEndpointUrl(http)).toBe('http://leftover.example/v1')
   })
 
-  it('地址留空时返回空串，让后端用官方地址', () => {
+  it('地址留空時返回空串，讓後端用官方地址', () => {
     const p = profile({ provider: 'openai', model: 'gpt-transcribe', apiUrl: '   ' })
     expect(asrEndpointUrl(p)).toBe('')
   })
 
-  it('内置卡填了地址就生效 —— 中转站 / 反代要靠这个', () => {
+  it('內建卡填了地址就生效 —— 中轉站 / 反代要靠這個', () => {
     const p = profile({
       provider: 'openai',
       model: 'gpt-transcribe',
@@ -841,7 +841,7 @@ describe('asrEndpointUrl', () => {
 })
 
 describe('parseAsrCompatProtocol', () => {
-  it('只认三个显式值，其余一律当自动', () => {
+  it('只認三個顯式值，其餘一律當自動', () => {
     expect(parseAsrCompatProtocol('transcriptions')).toBe('transcriptions')
     expect(parseAsrCompatProtocol('chat')).toBe('chat')
     expect(parseAsrCompatProtocol('chat_standard')).toBe('chat_standard')
@@ -853,14 +853,14 @@ describe('parseAsrCompatProtocol', () => {
 
 describe('asrCardTitle', () => {
   /**
-   * ⚠️ 这一组的核心是**标题里绝不能出现密钥的任何部分**。
+   * ⚠️ 這一組的核心是**標題裡絕不能出現金鑰的任何部分**。
    *
-   * 这里原来的做法是同平台多张卡时补「•• + 密钥末 4 位」。用户看到的第一反应是
-   * 「我的 API Key 怎么被显示出来了」——在一个专门用眼睛图标遮住密钥的界面里，
-   * 标题上却挂着密钥尾巴，这个自相矛盾比它解决的问题更严重。
-   * 把它改回去，这组测试会红。
+   * 這裡原來的做法是同平台多張卡時補「•• + 金鑰末 4 位」。使用者看到的第一反應是
+   * 「我的 API Key 怎麼被顯示出來了」——在一個專門用眼睛圖示遮住金鑰的介面裡，
+   * 標題上卻掛著金鑰尾巴，這個自相矛盾比它解決的問題更嚴重。
+   * 把它改回去，這組測試會紅。
    */
-  it('绝不把密钥的任何片段拼进标题', () => {
+  it('絕不把金鑰的任何片段拼進標題', () => {
     const key = 'sk-abcdef1234'
     const p = profile({ provider: 'qwen', apiKey: key })
     for (const siblings of [1, 2, 5]) {
@@ -871,44 +871,44 @@ describe('asrCardTitle', () => {
     }
   })
 
-  it('用户起了名字就用名字', () => {
-    expect(asrCardTitle(profile({ provider: 'qwen', name: '公司账号' }), 2)).toBe('公司账号')
-    // 只有一张卡时也用，名字是用户的选择、不是区分手段
-    expect(asrCardTitle(profile({ provider: 'qwen', name: '公司账号' }), 1)).toBe('公司账号')
-    // 纯空白当没填
+  it('使用者起了名字就用名字', () => {
+    expect(asrCardTitle(profile({ provider: 'qwen', name: '公司帳號' }), 2)).toBe('公司帳號')
+    // 只有一張卡時也用，名字是使用者的選擇、不是區分手段
+    expect(asrCardTitle(profile({ provider: 'qwen', name: '公司帳號' }), 1)).toBe('公司帳號')
+    // 純空白當沒填
     expect(asrCardTitle(profile({ provider: 'qwen', name: '   ' }), 1))
       .toBe(findAsrProvider('qwen')!.label)
   })
 
-  it('没起名字时只显示平台名', () => {
+  it('沒起名字時只顯示平台名', () => {
     expect(asrCardTitle(profile({ provider: 'qwen' }), 1)).toBe(findAsrProvider('qwen')!.label)
     expect(asrCardTitle(profile({ provider: 'qwen' }), 3)).toBe(findAsrProvider('qwen')!.label)
   })
 
-  /** 自建卡之间真正的差别是「连的是哪台」，主机名非机密，拿它区分正好。 */
-  it('自定义端点的多张卡用主机名区分', () => {
+  /** 自建卡之間真正的差別是「連的是哪台」，主機名非機密，拿它區分正好。 */
+  it('自定義端點的多張卡用主機名區分', () => {
     const p = profile({ provider: 'openai_compat', apiUrl: 'http://192.168.1.9:9000/v1' })
     expect(asrCardTitle(p, 2)).toContain('192.168.1.9:9000')
-    // 只有一张卡时不加后缀，标题保持干净
+    // 只有一張卡時不加字尾，標題保持乾淨
     expect(asrCardTitle(p, 1)).toBe(findAsrProvider('openai_compat')!.label)
   })
 
-  /** 内置卡即使档案里残留了 apiUrl 也不能显示它 —— 那个值不会被使用。 */
-  it('内置卡不显示残留的 apiUrl', () => {
+  /** 內建卡即使檔案裡殘留了 apiUrl 也不能顯示它 —— 那個值不會被使用。 */
+  it('內建卡不顯示殘留的 apiUrl', () => {
     const p = profile({ provider: 'qwen', apiUrl: 'http://leftover.example/v1' })
     expect(asrCardTitle(p, 2)).not.toContain('leftover')
   })
 })
 
 describe('gradeAsrLatency', () => {
-  // 口径是 RTF，不是绝对毫秒。3 秒音频花 1 秒是正常水平，
-  // 若照搬 AI 服务那套「1 秒就算慢」的阈值，所有 ASR 都会被标成太慢。
-  it('3 秒音频花 1 秒算正常，不算慢', () => {
+  // 口徑是 RTF，不是絕對毫秒。3 秒音訊花 1 秒是正常水平，
+  // 若照搬 AI 服務那套「1 秒就算慢」的閾值，所有 ASR 都會被標成太慢。
+  it('3 秒音訊花 1 秒算正常，不算慢', () => {
     expect(gradeAsrLatency(1000, 3).tone).toBe('ok')
     expect(gradeAsrLatency(1000, 3).label).toBe('正常')
   })
 
-  it('按 RTF 分档', () => {
+  it('按 RTF 分檔', () => {
     expect(gradeAsrLatency(300, 3).label).toBe('極速')
     expect(gradeAsrLatency(700, 3).label).toBe('很快')
     expect(gradeAsrLatency(1200, 3).label).toBe('正常')
@@ -916,23 +916,23 @@ describe('gradeAsrLatency', () => {
     expect(gradeAsrLatency(3000, 3).label).toBe('太慢')
   })
 
-  it('同样的毫秒数，音频越长档位越好', () => {
-    // 刻意不取边界值：阈值是「小于」，1500/10s 正好等于 0.15 会落进 fast 而非 instant
+  it('同樣的毫秒數，音訊越長檔位越好', () => {
+    // 刻意不取邊界值：閾值是「小於」，1500/10s 正好等於 0.15 會落進 fast 而非 instant
     expect(gradeAsrLatency(1000, 2).tier).toBe('slow')
     expect(gradeAsrLatency(1000, 10).tier).toBe('instant')
   })
 
-  it('阈值是「小于」，边界值落进下一档', () => {
+  it('閾值是「小於」，邊界值落進下一檔', () => {
     expect(gradeAsrLatency(150, 1).tier).toBe('fast')
     expect(gradeAsrLatency(149, 1).tier).toBe('instant')
   })
 
-  it('只有太慢才给 bad —— 红色留给「不可用」', () => {
+  it('只有太慢才給 bad —— 紅色留給「不可用」', () => {
     expect(gradeAsrLatency(2000, 3).tone).toBe('warn')
     expect(gradeAsrLatency(9000, 3).tone).toBe('bad')
   })
 
-  it('音频时长缺失时不硬猜档位', () => {
+  it('音訊時長缺失時不硬猜檔位', () => {
     expect(gradeAsrLatency(1000, 0).label).toBe('已測通')
     expect(gradeAsrLatency(1000, NaN).label).toBe('已測通')
   })

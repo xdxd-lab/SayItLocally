@@ -2,8 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({ appendDebugLog: vi.fn() }))
 
-// 只替换真正的落盘出口。debugLog 本体用真实实现 —— 这条测试要验的就是它里面那层
-// 白名单过滤，mock 掉它等于什么都没验。
+// 只替換真正的落盤出口。debugLog 本體用真實實現 —— 這條測試要驗的就是它裡面那層
+// 白名單過濾，mock 掉它等於什麼都沒驗。
 vi.mock('../bridge', () => ({ appendDebugLog: mocks.appendDebugLog }))
 
 import {
@@ -34,47 +34,47 @@ function mirroredMessages(): string[] {
 }
 
 /**
- * 这次排查真正卡住的地方：`polishWithClientAi` 里那条"低于门槛所以跳过"的 info 日志
- * **执行了但没落盘** —— 它的 source 是 'server' / 'local' / 'cloud_api'，三个都不在
- * debugLog 的白名单里，于是既不进 sayit.log 也不进内存环形缓冲。
+ * 這次排查真正卡住的地方：`polishWithClientAi` 裡那條"低於門檻所以跳過"的 info 日誌
+ * **執行了但沒落盤** —— 它的 source 是 'server' / 'local' / 'cloud_api'，三個都不在
+ * debugLog 的白名單裡，於是既不進 sayit.log 也不進記憶體環形緩衝。
  *
- * 所以只断言"我调了 addRuntimeEvent"是不够的（那在出 bug 的版本上也全绿）。
- * 这里断言的是"它确实穿过了过滤层"。
+ * 所以只斷言"我調了 addRuntimeEvent"是不夠的（那在出 bug 的版本上也全綠）。
+ * 這裡斷言的是"它確實穿過了過濾層"。
  *
- * 变异验证：把 debugLog.ts 里 `source === AI_LOG_SOURCE && AI_KEY_EVENTS.has(...)`
- * 那两处放行条件去掉，本文件的前两条用例必须失败。若仍全绿，说明测试没覆盖过滤机制。
+ * 變異驗證：把 debugLog.ts 裡 `source === AI_LOG_SOURCE && AI_KEY_EVENTS.has(...)`
+ * 那兩處放行條件去掉，本檔案的前兩條用例必須失敗。若仍全綠，說明測試沒覆蓋過濾機制。
  */
-describe('AI 事件必须真的穿过落盘过滤层', () => {
+describe('AI 事件必須真的穿過落盤過濾層', () => {
   beforeEach(() => {
     mocks.appendDebugLog.mockClear()
     clearRuntimeEvents()
   })
 
-  it.each([AI_EVENT_OUTCOME, AI_EVENT_REQUEST])('%s 会被镜像到主日志', (event) => {
+  it.each([AI_EVENT_OUTCOME, AI_EVENT_REQUEST])('%s 會被映象到主日誌', (event) => {
     addRuntimeEvent('info', AI_LOG_SOURCE, event, { operationId: 'op-x' })
     expect(mirroredMessages()).toContain(event)
   })
 
-  it.each([AI_EVENT_OUTCOME, AI_EVENT_REQUEST])('%s 也会进内存运行事件（两处判据必须同步）', (event) => {
+  it.each([AI_EVENT_OUTCOME, AI_EVENT_REQUEST])('%s 也會進記憶體執行事件（兩處判據必須同步）', (event) => {
     addRuntimeEvent('info', AI_LOG_SOURCE, event, { operationId: 'op-y' })
     const kept = getRuntimeEvents().filter((e) => e.message === event)
     expect(kept.length).toBeGreaterThan(0)
   })
 
-  it('同来源的其它 info 事件仍然被过滤掉（放行面只有这两个，不是整个 ai 来源）', () => {
+  it('同來源的其它 info 事件仍然被過濾掉（放行面只有這兩個，不是整個 ai 來源）', () => {
     addRuntimeEvent('info', AI_LOG_SOURCE, 'ai.some.debug.chatter', { noise: true })
     expect(mirroredMessages()).not.toContain('ai.some.debug.chatter')
   })
 
-  it('旧路径那条按 provider 命名的 info 依然不落盘（说明本轮的修法是必要的）', () => {
-    // 这几个 source 就是改之前 polishWithClientAi 用的 logSource
+  it('舊路徑那條按 provider 命名的 info 依然不落盤（說明本輪的修法是必要的）', () => {
+    // 這幾個 source 就是改之前 polishWithClientAi 用的 logSource
     for (const source of ['server', 'local', 'cloud_api', 'history']) {
       addRuntimeEvent('info', source, 'AI cleanup skipped below duration threshold', {})
     }
     expect(mirroredMessages()).not.toContain('AI cleanup skipped below duration threshold')
   })
 
-  it('warn 级别不受白名单限制（自配 AI 失败详情靠它落盘）', () => {
+  it('warn 級別不受白名單限制（自配 AI 失敗詳情靠它落盤）', () => {
     addRuntimeEvent('warn', 'server', 'Custom AI cleanup failed; using raw ASR text', { error: 'boom' })
     expect(mirroredMessages()).toContain('Custom AI cleanup failed; using raw ASR text')
   })

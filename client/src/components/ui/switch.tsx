@@ -3,23 +3,23 @@ import { cn } from '@/lib/utils'
 interface SwitchProps {
   checked: boolean
   onChange: () => void
-  /** 开关右侧的可见文字，同时作为无障碍名称 */
+  /** 開關右側的可見文字，同時作為無障礙名稱 */
   label?: string
-  /** 没有可见文字时，指向承担名称的元素 id（如卡片标题）。
-   *  两者都不给的话，读屏只会念出一个没有名字的「切换按钮」。 */
+  /** 沒有可見文字時，指向承擔名稱的元素 id（如卡片標題）。
+   *  兩者都不給的話，讀屏只會念出一個沒有名字的「切換按鈕」。 */
   labelledBy?: string
   disabled?: boolean
   className?: string
-  /** 'sm' 适合紧凑列表行 */
+  /** 'sm' 適合緊湊列表行 */
   size?: 'default' | 'sm'
-  /** 初始化阶段传 true：跳过颜色/位移过渡，避免「默认值→已保存值」被当成用户操作动画出来 */
+  /** 初始化階段傳 true：跳過顏色/位移過渡，避免「預設值→已儲存值」被當成使用者操作動畫出來 */
   noAnimation?: boolean
-  /** 初始化阶段传 true：占位但不可见（用内联 style，不依赖 Tailwind 产出 .invisible 类） */
+  /** 初始化階段傳 true：佔位但不可見（用內聯 style，不依賴 Tailwind 產出 .invisible 類） */
   hidden?: boolean
 }
 
 /**
- * 统一 Switch 开关组件
+ * 統一 Switch 開關元件
  * default: h-5 w-9 / sm: h-4 w-7
  */
 export function Switch({ checked, onChange, label, labelledBy, disabled, className, size = 'default', noAnimation, hidden }: SwitchProps) {

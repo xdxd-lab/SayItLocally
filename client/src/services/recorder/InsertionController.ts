@@ -2,7 +2,7 @@ import { addRuntimeEvent } from '../debugLog'
 import { isUnconfirmedPaste } from './helpers'
 import type { PasteService, ProbeResult } from './PasteService'
 
-/** 插字的结果。stale = 这一代中途失效了，调用方什么都不用做。 */
+/** 插字的結果。stale = 這一代中途失效了，呼叫方什麼都不用做。 */
 export type InsertionOutcome =
   | { kind: 'stale' }
   | { kind: 'inserted' }
@@ -12,21 +12,21 @@ const STALE: InsertionOutcome = { kind: 'stale' }
 
 export interface InsertionOptions {
   runId: number
-  /** 录音开始时拍的目标窗口快照；没有才现查（现查拿到的可能已经是别的窗口）。 */
+  /** 錄音開始時拍的目標視窗快照；沒有才現查（現查拿到的可能已經是別的視窗）。 */
   probeResult: ProbeResult | null
   finalReceivedAt: number
   protectClipboard: boolean
-  /** 每次 await 之后都要验：这一代还是不是当前代。 */
+  /** 每次 await 之後都要驗：這一代還是不是當前代。 */
   isCurrent: () => boolean
   waitForModifierRelease: () => Promise<void>
-  /** 真正粘贴之前的最后一步（关掉 Esc 取消）。粘贴一旦发出就撤不回来了。 */
+  /** 真正貼上之前的最後一步（關掉 Esc 取消）。貼上一旦發出就撤不回來了。 */
   beforeIrreversiblePaste: () => Promise<void>
 }
 
 /**
- * 把识别出的文字送进目标窗口：拿探测结果、判断能不能写、等修饰键松开、粘贴、给结果分类。
- * 从 RecorderOrchestrator.handleTextInsertion 拆出（模块 6），行为不变；
- * 根据结果改状态、弹卡片仍由编排器做。
+ * 把識別出的文字送進目標視窗：拿探測結果、判斷能不能寫、等修飾鍵鬆開、貼上、給結果分類。
+ * 從 RecorderOrchestrator.handleTextInsertion 拆出（模組 6），行為不變；
+ * 根據結果改狀態、彈卡片仍由編排器做。
  */
 export class InsertionController {
   constructor(private readonly paste: PasteService) {}
@@ -34,7 +34,7 @@ export class InsertionController {
   async insert(text: string, opts: InsertionOptions): Promise<InsertionOutcome> {
     const insertionStartedAt = Date.now()
     const { runId } = opts
-    // 始终使用本次 final 携带的 probe 快照，不能读取可能已被下一次录音覆盖的实例字段。
+    // 始終使用本次 final 攜帶的 probe 快照，不能讀取可能已被下一次錄音覆蓋的例項欄位。
     const capturedProbe = opts.probeResult
     const probe = capturedProbe ?? await this.paste.getProbeResult()
     if (!opts.isCurrent()) return STALE
@@ -69,9 +69,9 @@ export class InsertionController {
     })
 
     if (probe.isCurrentAppProcess) {
-      // SayIt 自身也是 Chromium 窗口，renderer 直插对 React 受控组件无效
-      // （DOM value 被设置但 React state 不同步，下次 re-render 会覆盖）。
-      // 所以不走 renderer 直插，而是和外部窗口一样走 Rust paste（Ctrl+V）。
+      // SayIt 自身也是 Chromium 視窗，renderer 直插對 React 受控元件無效
+      // （DOM value 被設定但 React state 不同步，下次 re-render 會覆蓋）。
+      // 所以不走 renderer 直插，而是和外部視窗一樣走 Rust paste（Ctrl+V）。
       addRuntimeEvent('info', 'recorder', 'Target is SayIt; using native paste instead of renderer insertion', {
         probeId: probe.probeId,
         editable: probe.editable,
@@ -81,7 +81,7 @@ export class InsertionController {
     }
 
     if (!probe.editable) {
-      // 目标不可编辑时只展示主动操作卡片，不提前改写用户剪贴板。
+      // 目標不可編輯時只展示主動操作卡片，不提前改寫使用者剪貼簿。
       addRuntimeEvent('info', 'recorder', 'Target is not editable; showing fallback card', {
         probeId: probe.probeId,
         pid: probe.pid,
@@ -107,7 +107,7 @@ export class InsertionController {
     if (!opts.isCurrent()) return STALE
     const pasteExecMs = Date.now() - pasteStartedAt
 
-    // 报成功但拿不准的：交给兜底卡片，文字可能已经进去了，也可能没有（判据见 isUnconfirmedPaste）。
+    // 報成功但拿不準的：交給兜底卡片，文字可能已經進去了，也可能沒有（判據見 isUnconfirmedPaste）。
     if (result.ok && isUnconfirmedPaste(result.strategy, pasteExecMs)) {
       addRuntimeEvent('warn', 'recorder', 'External text insertion unconfirmed; showing fallback card', {
         strategy: result.strategy,
@@ -122,9 +122,9 @@ export class InsertionController {
     if (result.ok) {
       addRuntimeEvent('info', 'recorder', 'External text insertion succeeded', {
         strategy: result.strategy,
-        // 成功侧也要留 gate：SendInput 返回成功并不代表文本真的落进了输入框
-        // （UIPI 拦截是静默的），用户报「显示成功但没插进去」时，这一个字段就能
-        // 说明当初是靠哪一层判据放行的，不必再让他复现一次。
+        // 成功側也要留 gate：SendInput 返回成功並不代表文本真的落進了輸入框
+        // （UIPI 攔截是靜默的），使用者報「顯示成功但沒插進去」時，這一個欄位就能
+        // 說明當初是靠哪一層判據放行的，不必再讓他復現一次。
         gate: probe.gate,
         detail: result.detail,
         attempts: result.attempts,

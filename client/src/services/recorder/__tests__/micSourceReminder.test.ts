@@ -7,14 +7,14 @@ import {
   micSourceChanged,
 } from '../micSourceReminder'
 
-/** 本机日志里的真实形状：结尾还挂着 USB 的 VID:PID。 */
-const HEADSET_RAW = '耳机式麦克风 (Plantronics Blackwire 5220 Series) (047f:c053)'
-/** 两处都该显示的这一串：剥掉本地化前缀与 USB 标识，括号里的型号保留。 */
-const HEADSET_SHOWN = '耳机式麦克风 (Plantronics Blackwire 5220 Series)'
+/** 本機日誌裡的真實形狀：結尾還掛著 USB 的 VID:PID。 */
+const HEADSET_RAW = '耳機式麥克風 (Plantronics Blackwire 5220 Series) (047f:c053)'
+/** 兩處都該顯示的這一串：剝掉本地化字首與 USB 標識，括號裡的型號保留。 */
+const HEADSET_SHOWN = '耳機式麥克風 (Plantronics Blackwire 5220 Series)'
 
 const headsetSnapshot: MicEndpoint[] = [
-  { deviceId: 'default', groupId: 'plt-group', label: `默认值 - ${HEADSET_RAW}` },
-  { deviceId: 'communications', groupId: 'plt-group', label: `通信设备 - ${HEADSET_RAW}` },
+  { deviceId: 'default', groupId: 'plt-group', label: `預設值 - ${HEADSET_RAW}` },
+  { deviceId: 'communications', groupId: 'plt-group', label: `通訊裝置 - ${HEADSET_RAW}` },
   { deviceId: 'real-headset', groupId: 'plt-group', label: HEADSET_RAW },
 ]
 
@@ -22,7 +22,7 @@ function followingSystemDefault(devices = headsetSnapshot) {
   return {
     deviceId: 'default',
     groupId: 'plt-group',
-    label: `默认值 - ${HEADSET_RAW}`,
+    label: `預設值 - ${HEADSET_RAW}`,
     devices,
   }
 }
@@ -39,7 +39,7 @@ describe('microphone source reminder', () => {
     expect(source).toEqual({
       identity: 'auto:group:plantronics-group:headset microphone (plantronics blackwire 5220 series)',
       mode: 'auto',
-      // 拿不到快照时只能靠字面清理剥前缀；括号里的型号照样保留。
+      // 拿不到快照時只能靠字面清理剝字首；括號裡的型號照樣保留。
       label: 'Headset Microphone (Plantronics Blackwire 5220 Series)',
     })
   })
@@ -76,14 +76,14 @@ describe('microphone source reminder', () => {
 
   describe('the overlay hint and the settings dropdown must agree', () => {
     it('shows the exact same string as the settings dropdown', () => {
-      // 同一个设备在两处叫不同的名字，用户得先在脑子里对一遍才能确认录音走的是他选的
-      // 那个 —— 这条断言就是为了把两边钉在一起，改任何一边都会在这里失败。
+      // 同一個裝置在兩處叫不同的名字，使用者得先在腦子裡對一遍才能確認錄音走的是他選的
+      // 那個 —— 這條斷言就是為了把兩邊釘在一起，改任何一邊都會在這裡失敗。
       const fromOverlay = describeMicSource(followingSystemDefault(), '', 'Microphone').label
       const fromSettings = buildMicOptions(headsetSnapshot, '', {
-        systemDefault: '系统默认',
-        systemDefaultWith: (device) => `系统默认（${device}）`,
-        unnamed: (idPrefix) => `麦克风 ${idPrefix}`,
-        unavailable: '上次选的麦克风当前不可用',
+        systemDefault: '系統預設',
+        systemDefaultWith: (device) => `系統預設（${device}）`,
+        unnamed: (idPrefix) => `麥克風 ${idPrefix}`,
+        unavailable: '上次選的麥克風當前不可用',
       }).find((option) => option.value === 'real-headset')?.label
 
       expect(fromOverlay).toBe(HEADSET_SHOWN)
@@ -92,20 +92,20 @@ describe('microphone source reminder', () => {
     })
 
     it('drops the localized pseudo-device prefix without matching it by text', () => {
-      // 「默认值 - 」剥掉不是靠正则认中文，而是靠 groupId 找到那个真实端点。
+      // 「預設值 - 」剝掉不是靠正則認中文，而是靠 groupId 找到那個真實端點。
       expect(describeMicSource(followingSystemDefault(), '', 'Microphone').label)
         .toBe(HEADSET_SHOWN)
     })
 
     it('drops the trailing USB vid:pid, which identifies nothing', () => {
-      // 同型号两台设备的 VID:PID 完全一样，留着只占宽度。
+      // 同型號兩台裝置的 VID:PID 完全一樣，留著只佔寬度。
       const label = describeMicSource(followingSystemDefault(), '', 'Microphone').label
       expect(label).not.toContain('047f')
     })
 
     it('falls back to suffix matching when the pseudo device carries no group id', () => {
       const snapshot: MicEndpoint[] = [
-        { deviceId: 'default', groupId: '', label: `默认值 - ${HEADSET_RAW}` },
+        { deviceId: 'default', groupId: '', label: `預設值 - ${HEADSET_RAW}` },
         { deviceId: 'real-headset', groupId: 'plt-group', label: HEADSET_RAW },
       ]
       const source = describeMicSource(
@@ -114,13 +114,13 @@ describe('microphone source reminder', () => {
         'Microphone',
       )
       expect(source.label).toBe(HEADSET_SHOWN)
-      // 解析到真实端点之后 identity 就是稳定的物理标识，不再掺 label ——
-      // 否则系统在 eConsole / eCommunications 之间切默认设备就会被当成换了麦克风。
+      // 解析到真實端點之後 identity 就是穩定的物理標識，不再摻 label ——
+      // 否則系統在 eConsole / eCommunications 之間切預設裝置就會被當成換了麥克風。
       expect(source.identity).toBe('auto:device:real-headset')
     })
 
     it('keeps the parent device name even when it is a sound-card driver name', () => {
-      // issue #72 那台机器。这一串长到会被截断，但两处一致比短更重要。
+      // issue #72 那台機器。這一串長到會被截斷，但兩處一致比短更重要。
       const array = 'Microphone Array (2- Intel(R) Smart Sound Technology for Digital Microphones)'
       const snapshot: MicEndpoint[] = [
         { deviceId: 'real-array', groupId: 'intel-group', label: array },
@@ -136,8 +136,8 @@ describe('microphone source reminder', () => {
       expect(describeMicSource(
         { deviceId: '', groupId: '', label: '', devices: [] },
         '',
-        '麦克风',
-      ).label).toBe('麦克风')
+        '麥克風',
+      ).label).toBe('麥克風')
     })
 
     it('still strips the usb id when the device snapshot is unavailable', () => {

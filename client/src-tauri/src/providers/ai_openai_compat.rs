@@ -1,5 +1,5 @@
-// OpenAI 兼容 AI 供应商
-// 覆盖所有支持 /v1/chat/completions 的服务：DeepSeek、通义、豆包（火山方舟）等
+// OpenAI 相容 AI 供應商
+// 覆蓋所有支援 /v1/chat/completions 的服務：DeepSeek、通義、豆包（火山方舟）等
 
 use super::diag;
 use super::prompt::wrap_user_text;
@@ -10,22 +10,22 @@ use std::time::{Duration, Instant};
 
 const SCOPE: &str = "ai/openai-compat";
 
-/// 共享客户端（带 User-Agent，缺了会被 nginx/WAF 网关拦成 403，见 `http_client`）
+/// 共享客戶端（帶 User-Agent，缺了會被 nginx/WAF 閘道器攔成 403，見 `http_client`）
 fn http() -> &'static reqwest::Client {
     super::http_client::shared()
 }
 
-/// 一份「通吃」的关闭思考参数。
+/// 一份「通吃」的關閉思考引數。
 ///
-/// 为什么是四个字段一起发，而不是按供应商挑一个：关闭思考的写法没有任何统一标准
-/// （`enable_thinking` / `thinking.type` / `reasoning.effort` / 顶层 `reasoning_effort`），
-/// 字段名、嵌套层级、取值各家都不同，而且新模型新格式一直在出。逐一适配意味着每出一家
-/// 就要发一次版，永远追不完 —— 智谱现在只能靠硬编码官方域名识别就是这个成本的证据，
-/// 用户换个反代域名那行就失效。
+/// 為什麼是四個欄位一起發，而不是按供應商挑一個：關閉思考的寫法沒有任何統一標準
+/// （`enable_thinking` / `thinking.type` / `reasoning.effort` / 頂層 `reasoning_effort`），
+/// 欄位名、巢狀層級、取值各家都不同，而且新模型新格式一直在出。逐一適配意味著每出一家
+/// 就要發一次版，永遠追不完 —— 智譜現在只能靠硬編碼官方域名識別就是這個成本的證據，
+/// 使用者換個反代域名那行就失效。
 ///
-/// 而 OpenAI 兼容服务对**不认识的顶层字段基本是忽略**，所以一次全发、谁认哪个哪个生效，
-/// 是覆盖面和维护成本都最划算的做法。少数严格的端点会因此返回 400，那条路由
-/// `send_chat_with_thinking_fallback` 自动降级兜住。
+/// 而 OpenAI 相容服務對**不認識的頂層欄位基本是忽略**，所以一次全發、誰認哪個哪個生效，
+/// 是覆蓋面和維護成本都最划算的做法。少數嚴格的端點會因此返回 400，那條路由
+/// `send_chat_with_thinking_fallback` 自動降級兜住。
 fn disable_thinking_overrides() -> serde_json::Value {
     serde_json::json!({
         "enable_thinking": false,
@@ -35,33 +35,33 @@ fn disable_thinking_overrides() -> serde_json::Value {
     })
 }
 
-/// 决定这次请求该注入哪些关闭思考的字段。`None` = 一个字段都不发。
+/// 決定這次請求該注入哪些關閉思考的欄位。`None` = 一個欄位都不發。
 ///
-/// 三档，从窄到宽：
-///   1. 已知供应商沿用各自**精确**的那一个字段。这些组合是实测通过的，不要顺手升级成
-///      通吃集合 —— 多注入未知字段只会给本来好用的路径引入 400 风险。
-///   2. OpenAI 官方与 Azure OpenAI **显式排除**。它们对未知顶层参数直接回 400
-///      （`Unrecognized request argument supplied`），而且连自家 `reasoning_effort` 的合法
-///      取值都依模型而异（老 GPT-5 认 `minimal`，新的只认 `none`，非推理模型两个都不认），
-///      猜不准。这两家真需要控制思考强度时走用户自定义参数，不由我们替它猜。
-///   3. 其余一切端点（自定义 OpenAI 兼容、聚合网关、豆包、Groq…）发通吃集合。
-///      这一档才是这个函数存在的理由：在此之前它们一个字段都不发，用户接一个默认思考的
-///      模型，我们没有任何手段让它别想 —— 语音输入场景下那几秒延迟是纯亏损。
+/// 三檔，從窄到寬：
+///   1. 已知供應商沿用各自**精確**的那一個欄位。這些組合是實測通過的，不要順手升級成
+///      通吃集合 —— 多注入未知欄位只會給本來好用的路徑引入 400 風險。
+///   2. OpenAI 官方與 Azure OpenAI **顯式排除**。它們對未知頂層引數直接回 400
+///      （`Unrecognized request argument supplied`），而且連自家 `reasoning_effort` 的合法
+///      取值都依模型而異（老 GPT-5 認 `minimal`，新的只認 `none`，非推理模型兩個都不認），
+///      猜不準。這兩家真需要控制思考強度時走使用者自定義引數，不由我們替它猜。
+///   3. 其餘一切端點（自定義 OpenAI 相容、聚合閘道器、豆包、Groq…）發通吃集合。
+///      這一檔才是這個函式存在的理由：在此之前它們一個欄位都不發，使用者接一個預設思考的
+///      模型，我們沒有任何手段讓它別想 —— 語音輸入場景下那幾秒延遲是純虧損。
 fn thinking_overrides(config: &AiProviderConfig) -> Option<serde_json::Value> {
-    // 通义千问 Qwen3 使用独立的开关。
+    // 通義千問 Qwen3 使用獨立的開關。
     if config.provider == "qwen" {
         return Some(serde_json::json!({ "enable_thinking": false }));
     }
 
-    // 已知「始终思考」的模型直接发最低强度那套，别先发一次注定被拒的 disabled。
-    // 放在最前面：它是按**模型**判的，比下面那些按供应商判的更具体。
+    // 已知「始終思考」的模型直接發最低強度那套，別先發一次註定被拒的 disabled。
+    // 放在最前面：它是按**模型**判的，比下面那些按供應商判的更具體。
     if model_forces_thinking(&config.model) {
         return Some(forced_thinking_overrides());
     }
 
-    // DeepSeek、小米 MiMo 和智谱 GLM 使用 thinking.type=disabled。
-    // 智谱两条都认：provider == "zhipu" 是内置卡，域名判断留给「用 OpenAI 兼容自己填
-    // 智谱地址」的老配置（这种存量配置不会因为新增内置卡而自动迁移）。
+    // DeepSeek、小米 MiMo 和智譜 GLM 使用 thinking.type=disabled。
+    // 智譜兩條都認：provider == "zhipu" 是內建卡，域名判斷留給「用 OpenAI 相容自己填
+    // 智譜地址」的老配置（這種存量配置不會因為新增內建卡而自動遷移）。
     if config.provider == "deepseek"
         || config.provider == "mimo"
         || config.provider == "zhipu"
@@ -94,7 +94,7 @@ fn is_zhipu_api_url(api_url: &str) -> bool {
     host_of(api_url).is_some_and(|host| host == "open.bigmodel.cn")
 }
 
-/// OpenAI 官方 / Azure OpenAI —— 对未知请求字段一律 400 的那一类端点。
+/// OpenAI 官方 / Azure OpenAI —— 對未知請求欄位一律 400 的那一類端點。
 fn is_strict_openai_host(api_url: &str) -> bool {
     host_of(api_url).is_some_and(|host| {
         host == "api.openai.com"
@@ -103,8 +103,8 @@ fn is_strict_openai_host(api_url: &str) -> bool {
     })
 }
 
-/// 把 overrides 合并进请求体。顶层同名字段**整体覆盖**，不做深合并 —— 深合并会让
-/// 两种风格的参数混出谁也说不清的结果。
+/// 把 overrides 合併進請求體。頂層同名欄位**整體覆蓋**，不做深合併 —— 深合併會讓
+/// 兩種風格的引數混出誰也說不清的結果。
 fn merge_overrides(body: &mut serde_json::Value, overrides: &serde_json::Value) {
     let (Some(target), Some(source)) = (body.as_object_mut(), overrides.as_object()) else {
         return;
@@ -114,16 +114,16 @@ fn merge_overrides(body: &mut serde_json::Value, overrides: &serde_json::Value) 
     }
 }
 
-/// 记住「这个端点该发哪套思考参数」的进程内结论。
+/// 記住「這個端點該發哪套思考引數」的程序內結論。
 ///
-/// 值是**降级后真正用的那套参数**，`None` 表示一个字段都别发。以前这里是
-/// `HashSet<端点>`，语义只有「拒绝思考参数」一种 —— 而强制思考的模型需要的不是
-/// 「什么都不发」，是「发一套更轻的」，一个布尔存不下这个区别
-/// （见 `forced_thinking_overrides` 的说明）。
+/// 值是**降級後真正用的那套引數**，`None` 表示一個欄位都別發。以前這裡是
+/// `HashSet<端點>`，語義只有「拒絕思考引數」一種 —— 而強制思考的模型需要的不是
+/// 「什麼都不發」，是「發一套更輕的」，一個布林存不下這個區別
+/// （見 `forced_thinking_overrides` 的說明）。
 ///
-/// 只放内存、不落盘：一次进程生命周期内够用，而端点行为会随供应商升级变化，
-/// 持久化反而会把一条过期结论永久钉住。key 带上模型名是因为这类拒绝是按模型判的，
-/// 同一网关换个模型结论可能不同。
+/// 只放記憶體、不落盤：一次程序生命週期內夠用，而端點行為會隨供應商升級變化，
+/// 持久化反而會把一條過期結論永久釘住。key 帶上模型名是因為這類拒絕是按模型判的，
+/// 同一閘道器換個模型結論可能不同。
 fn thinking_memo() -> &'static Mutex<HashMap<String, Option<serde_json::Value>>> {
     static MEMO: OnceLock<Mutex<HashMap<String, Option<serde_json::Value>>>> = OnceLock::new();
     MEMO.get_or_init(|| Mutex::new(HashMap::new()))
@@ -134,7 +134,7 @@ fn endpoint_key(config: &AiProviderConfig) -> String {
     format!("{}|{}", host, config.model)
 }
 
-/// 之前降级过吗？`Some(params)` 是那次成功的参数（内层 `None` = 一个字段都不发）。
+/// 之前降級過嗎？`Some(params)` 是那次成功的引數（內層 `None` = 一個欄位都不發）。
 fn remembered_thinking(config: &AiProviderConfig) -> Option<Option<serde_json::Value>> {
     thinking_memo()
         .lock()
@@ -148,12 +148,12 @@ fn remember_thinking(config: &AiProviderConfig, overrides: Option<serde_json::Va
     }
 }
 
-/// 「强制思考」模型该发的参数：思考开着，但用最低强度。
+/// 「強制思考」模型該發的引數：思考開著，但用最低強度。
 ///
-/// 为什么不能像别的端点那样直接把参数全去掉：这类模型**没有不思考这一档**，
-/// 去掉参数等于用它的默认强度，而智谱 GLM-5.3 的默认是 `reasoning_effort=max`
-/// （深度推理）—— 对语音输入来说那是最差的结果，比不降级还慢。官方给的迁移写法
-/// 正是把 `disabled` 换成 `enabled` + `reasoning_effort: "low"`。
+/// 為什麼不能像別的端點那樣直接把引數全去掉：這類模型**沒有不思考這一檔**，
+/// 去掉引數等於用它的預設強度，而智譜 GLM-5.3 的預設是 `reasoning_effort=max`
+/// （深度推理）—— 對語音輸入來說那是最差的結果，比不降級還慢。官方給的遷移寫法
+/// 正是把 `disabled` 換成 `enabled` + `reasoning_effort: "low"`。
 fn forced_thinking_overrides() -> serde_json::Value {
     serde_json::json!({
         "thinking": { "type": "enabled" },
@@ -161,45 +161,51 @@ fn forced_thinking_overrides() -> serde_json::Value {
     })
 }
 
-/// 模型名一眼能认出「始终思考」的那几个。
+/// 模型名一眼能認出「始終思考」的那幾個。
 ///
-/// 只为省掉一次注定失败的往返（否则用户在设置页点「测试」会先吃一个 400）。
-/// 这个名单一定会过期，所以它不是唯一防线 —— 真正兜底的是 `forced_thinking_error`
-/// 那条按响应内容判定的路径，将来新出的强制思考模型走那条也能自愈。
+/// 只為省掉一次註定失敗的往返（否則使用者在設定頁點「測試」會先吃一個 400）。
+/// 這個名單一定會過期，所以它不是唯一防線 —— 真正兜底的是 `forced_thinking_error`
+/// 那條按響應內容判定的路徑，將來新出的強制思考模型走那條也能自愈。
 fn model_forces_thinking(model: &str) -> bool {
     // glm-5.3 / glm-5.3-flash / glm-5.3-xxx 都算
     model.trim().to_ascii_lowercase().starts_with("glm-5.3")
 }
 
-/// 这个错误是不是在说「本模型不能关思考，请改用强度档位」。
+/// 這個錯誤是不是在說「本模型不能關思考，請改用強度檔位」。
 ///
-/// 智谱的原文是纯中文 + 一个错误码：
-/// `{"error":{"code":"1210","message":"该模型始终思考，不支持关闭思考；请使用 low、high 或 max。"}}`
+/// 智譜的原文是純中文 + 一個錯誤碼：
+/// `{"error":{"code":"1210","message":"該模型始終思考，不支援關閉思考；請使用 low、high 或 max。"}}`
 ///
-/// **`thinking` 这个词一次都没出现** —— 这正是旧判据（"响应体里有没有我们注入的键名"）
-/// 对它完全失效的原因：判据没命中 → 降级不执行 → 400 原样报给用户，界面上就是
-/// 「连接失败」。所以这里必须按语义匹配，不能只认字段名。
+/// **`thinking` 這個詞一次都沒出現** —— 這正是舊判據（"響應體裡有沒有我們注入的鍵名"）
+/// 對它完全失效的原因：判據沒命中 → 降級不執行 → 400 原樣報給使用者，介面上就是
+/// 「連線失敗」。所以這裡必須按語義匹配，不能只認欄位名。
 fn forced_thinking_error(body: &str) -> bool {
-    // 智谱的错误码，最稳的一条
+    // 智譜的錯誤碼，最穩的一條
     if body.contains("\"1210\"") || body.contains("\"code\":1210") {
         return true;
     }
-    // 中文原文（措辞可能随版本微调，取两个最稳的片段）
-    if body.contains("始终思考") || body.contains("不支持关闭思考") {
+    // 中文原文（措辭可能隨版本微調，取兩個最穩的片段）
+    // 簡體原文「始終思考」「不支援關閉思考」以 Unicode 跳脫保存，並列正體寫法
+    if body.contains("\u{59cb}\u{7ec8}\u{601d}\u{8003}")
+        || body.contains("\u{4e0d}\u{652f}\u{6301}\u{5173}\u{95ed}\u{601d}\u{8003}")
+        || body.contains("始終思考")
+        || body.contains("不支援關閉思考")
+        || body.contains("不支持關閉思考")
+    {
         return true;
     }
-    // 英文/其它网关的等价说法
+    // 英文/其它閘道器的等價說法
     let lower = body.to_ascii_lowercase();
     lower.contains("does not support disabling thinking")
         || lower.contains("thinking cannot be disabled")
         || (lower.contains("reasoning_effort") && lower.contains("low"))
 }
 
-/// 这个 400 是不是我们注入的思考参数引起的 —— 返回被点名的那个字段名。
+/// 這個 400 是不是我們注入的思考引數引起的 —— 返回被點名的那個欄位名。
 ///
-/// 判定刻意保守：**只有响应体里出现了我们实际注入的键名**才算。密钥错、模型不存在这些
-/// 400 绝不能触发降级重试，否则每次请求都要白发两遍。
-/// 供应商用自然语言描述、完全不提字段名的那一类，由 `forced_thinking_error` 单独认。
+/// 判定刻意保守：**只有響應體裡出現了我們實際注入的鍵名**才算。金鑰錯、模型不存在這些
+/// 400 絕不能觸發降級重試，否則每次請求都要白發兩遍。
+/// 供應商用自然語言描述、完全不提欄位名的那一類，由 `forced_thinking_error` 單獨認。
 fn rejected_thinking_field(body: &str, overrides: &serde_json::Value) -> Option<String> {
     let object = overrides.as_object()?;
     object
@@ -208,16 +214,16 @@ fn rejected_thinking_field(body: &str, overrides: &serde_json::Value) -> Option<
         .cloned()
 }
 
-/// 一次 chat/completions 往返的结果。响应体在这里就读完，调用方不必再和 `resp` 的
-/// 所有权打交道 —— 摘要必须在读 body 之前取（读 body 会消费掉 resp）。
+/// 一次 chat/completions 往返的結果。響應體在這裡就讀完，呼叫方不必再和 `resp` 的
+/// 所有權打交道 —— 摘要必須在讀 body 之前取（讀 body 會消費掉 resp）。
 struct ChatHttpResponse {
     status: reqwest::StatusCode,
     summary: String,
     body: String,
 }
 
-/// 发送失败和读响应体失败要分开报：前者是网络/DNS/TLS，后者是连接中途断了，
-/// 归成同一条日志会让排查时分不清该查哪一边。
+/// 傳送失敗和讀響應體失敗要分開報：前者是網路/DNS/TLS，後者是連線中途斷了，
+/// 歸成同一條日誌會讓排查時分不清該查哪一邊。
 enum ChatHttpError {
     Send(reqwest::Error),
     ReadBody(reqwest::Error),
@@ -233,7 +239,7 @@ async fn send_chat_once(
         .post(url)
         .header("Authorization", format!("Bearer {}", config.api_key))
         .header("Content-Type", "application/json");
-    // 小米 MiMo 规范鉴权头为 api-key（同时兼容 Bearer），两个都带最稳妥
+    // 小米 MiMo 規範鑑權頭為 api-key（同時相容 Bearer），兩個都帶最穩妥
     if config.provider == "mimo" {
         req = req.header("api-key", config.api_key.clone());
     }
@@ -256,15 +262,15 @@ async fn send_chat_once(
     })
 }
 
-/// 带关闭思考参数发一次；被端点拒绝就去掉参数重试一次，并记住这个结论。
+/// 帶關閉思考引數發一次；被端點拒絕就去掉引數重試一次，並記住這個結論。
 ///
-/// 为什么要自动降级而不是让用户去设置里勾一个开关：语音输入的立场是「越快越好」，
-/// 模型偷偷思考带来的几秒延迟是纯亏损，本来就不该等用户自己发现再去翻设置。代价是
-/// 严格端点首次会多一次往返（400 一般是网关层秒回，约多 0.3~1 秒），之后命中缓存不再发生。
+/// 為什麼要自動降級而不是讓使用者去設定裡勾一個開關：語音輸入的立場是「越快越好」，
+/// 模型偷偷思考帶來的幾秒延遲是純虧損，本來就不該等使用者自己發現再去翻設定。代價是
+/// 嚴格端點首次會多一次往返（400 一般是閘道器層秒回，約多 0.3~1 秒），之後命中快取不再發生。
 ///
-/// 校对和「测试连接」共用这一条：用户在设置页点过测试，结论就已经缓存好了，
-/// 正式校对时直接命中 —— 那次多出来的往返基本落在测试上，用户感知不到。
-/// 顺带也保证了「测试通了」和「实际请求」用的是同一组参数。
+/// 校對和「測試連線」共用這一條：使用者在設定頁點過測試，結論就已經快取好了，
+/// 正式校對時直接命中 —— 那次多出來的往返基本落在測試上，使用者感知不到。
+/// 順帶也保證了「測試通了」和「實際請求」用的是同一組引數。
 async fn send_chat_with_thinking_fallback(
     url: &str,
     config: &AiProviderConfig,
@@ -272,7 +278,7 @@ async fn send_chat_with_thinking_fallback(
     timeout: Duration,
     scope: &str,
 ) -> Result<ChatHttpResponse, ChatHttpError> {
-    // 之前降级过就直接用那次的结论，不再重复撞墙
+    // 之前降級過就直接用那次的結論，不再重複撞牆
     let overrides = match remembered_thinking(config) {
         Some(remembered) => remembered,
         None => thinking_overrides(config),
@@ -290,13 +296,13 @@ async fn send_chat_with_thinking_fallback(
         return Ok(resp);
     }
 
-    // 不限定状态码：多数端点回 400，也见过网关把参数校验失败报成 500
-    // （见 pitfalls「max_tokens 下限」那条）。真正的把关是下面这两句 —— 必须有一条
-    // 明确信号指向思考参数，否则密钥错、模型不存在这些 400 会被白重试一遍。
+    // 不限定狀態碼：多數端點回 400，也見過閘道器把引數校驗失敗報成 500
+    // （見 pitfalls「max_tokens 下限」那條）。真正的把關是下面這兩句 —— 必須有一條
+    // 明確訊號指向思考引數，否則金鑰錯、模型不存在這些 400 會被白重試一遍。
     //
-    // 两种信号分别对应两种降级目标：
-    //   · 「这个模型不能关思考」→ 换成最低强度（去掉参数会落到 max，反而更慢）
-    //   · 「不认识这个字段」    → 一个都不发
+    // 兩種訊號分別對應兩種降級目標：
+    //   · 「這個模型不能關思考」→ 換成最低強度（去掉引數會落到 max，反而更慢）
+    //   · 「不認識這個欄位」    → 一個都不發
     let (fallback, reason) = if forced_thinking_error(&resp.body) {
         (Some(forced_thinking_overrides()), "forced_thinking".to_string())
     } else if let Some(field) = rejected_thinking_field(&resp.body, &overrides) {
@@ -305,7 +311,7 @@ async fn send_chat_with_thinking_fallback(
         return Ok(resp);
     };
 
-    // 已经在发最低强度那套了还被拒，就别再原地重试同一份
+    // 已經在發最低強度那套了還被拒，就別再原地重試同一份
     if fallback.as_ref() == Some(&overrides) {
         return Ok(resp);
     }
@@ -331,8 +337,8 @@ async fn send_chat_with_thinking_fallback(
         None => send_chat_once(url, config, base_body, timeout).await?,
     };
 
-    // 只在降级真的成功时才记住它。失败还记的话会把一条错结论钉在这个端点上，
-    // 后面每次请求都按错的那套发（而真正的原因可能只是密钥错）。
+    // 只在降級真的成功時才記住它。失敗還記的話會把一條錯結論釘在這個端點上，
+    // 後面每次請求都按錯的那套發（而真正的原因可能只是金鑰錯）。
     if retried.status.is_success() {
         remember_thinking(config, fallback);
     }
@@ -340,7 +346,7 @@ async fn send_chat_with_thinking_fallback(
     Ok(retried)
 }
 
-/// 调用 OpenAI 兼容接口进行文本校对
+/// 呼叫 OpenAI 相容介面進行文本校對
 pub async fn polish(
     text: &str,
     config: &AiProviderConfig,
@@ -363,8 +369,8 @@ pub async fn polish(
     let sys_prompt = system_prompt.unwrap_or(super::prompt::DEFAULT_PROOFREAD_SYSTEM_PROMPT);
     let user_content = wrap_user_text(text, text_context);
 
-    // 思考参数不写在这里：由 send_chat_with_thinking_fallback 合并进来，
-    // 这样被端点拒绝时它手上还有一份「干净的 body」可以直接重试。
+    // 思考引數不寫在這裡：由 send_chat_with_thinking_fallback 合併進來，
+    // 這樣被端點拒絕時它手上還有一份「乾淨的 body」可以直接重試。
     let base_body = serde_json::json!({
         "model": config.model,
         "temperature": 0.2,
@@ -377,7 +383,7 @@ pub async fn polish(
 
     let start = Instant::now();
 
-    // 只记长度和模型，不记待校对的文本本身
+    // 只記長度和模型，不記待校對的文本本身
     diag::log(
         SCOPE,
         "start",
@@ -444,8 +450,8 @@ pub async fn polish(
         )
     })?;
 
-    // 取不到内容就回落成原文。这是**静默失败**：用户看到有字、以为校对生效了，
-    // 实际上 AI 那一步等于没跑。必须留证，否则「AI 好像没起作用」永远查不下去。
+    // 取不到內容就回落成原文。這是**靜默失敗**：使用者看到有字、以為校對生效了，
+    // 實際上 AI 那一步等於沒跑。必須留證，否則「AI 好像沒起作用」永遠查不下去。
     let result_text = match extract_chat_completion_text(&data) {
         Some(t) => t,
         None => {
@@ -462,7 +468,7 @@ pub async fn polish(
         }
     };
 
-    // 去除 <think>...</think> 标签（部分模型如 Qwen3 会输出思考过程）
+    // 去除 <think>...</think> 標籤（部分模型如 Qwen3 會輸出思考過程）
     let cleaned = strip_thinking(&result_text);
 
     if cleaned.is_empty() {
@@ -489,7 +495,7 @@ pub async fn polish(
     })
 }
 
-/// 测试 AI 连接 — 发送一个简短的聊天请求，验证地址、Key、模型是否都可用
+/// 測試 AI 連線 — 傳送一個簡短的聊天請求，驗證地址、Key、模型是否都可用
 pub async fn test_connection(config: &AiProviderConfig) -> TestResult {
     if is_forbidden_ai_host(&config.api_url) {
         return TestResult { ok: false, message: "DeepSeek endpoints are forbidden in this build".to_string(), elapsed_ms: 0, detail: String::new() };
@@ -500,15 +506,15 @@ pub async fn test_connection(config: &AiProviderConfig) -> TestResult {
     let system_prompt = "Reply with OK only. Do not output anything else.";
     let user_prompt = "Connection test";
 
-    // max_tokens 不能贴着 "OK" 两个字省：
-    //   1) 有网关直接规定下限 —— 实测某内网 LiteLLM 网关上的 gpt-5 系模型给 10 会返回
-    //      HTTP 500 `integer_below_min_value ... Expected a value >= 16`，看起来像服务坏了，
-    //      其实是我们把上限压得太低；
-    //   2) 推理型模型会先花掉一部分 output token 想事情，额度太小时 content 是空的，
-    //      测试就会显示「连接成功，回复：(空)」，等于白测。
-    // 曾经是 64。改成 512 是因为**强制思考的模型**（智谱 GLM-5.3 那一档）连最低强度
-    // 也要先想一轮，64 个 token 基本全花在 reasoning 上、content 什么都不剩 ——
-    // 那种「连上了但回复是空的」比报错更难判断。max_tokens 只是上限，不按它计费。
+    // max_tokens 不能貼著 "OK" 兩個字省：
+    //   1) 有閘道器直接規定下限 —— 實測某內網 LiteLLM 閘道器上的 gpt-5 系模型給 10 會返回
+    //      HTTP 500 `integer_below_min_value ... Expected a value >= 16`，看起來像服務壞了，
+    //      其實是我們把上限壓得太低；
+    //   2) 推理型模型會先花掉一部分 output token 想事情，額度太小時 content 是空的，
+    //      測試就會顯示「連線成功，回覆：(空)」，等於白測。
+    // 曾經是 64。改成 512 是因為**強制思考的模型**（智譜 GLM-5.3 那一檔）連最低強度
+    // 也要先想一輪，64 個 token 基本全花在 reasoning 上、content 什麼都不剩 ——
+    // 那種「連上了但回覆是空的」比報錯更難判斷。max_tokens 只是上限，不按它計費。
     let base_body = serde_json::json!({
         "model": config.model,
         "temperature": 0,
@@ -521,8 +527,8 @@ pub async fn test_connection(config: &AiProviderConfig) -> TestResult {
 
     let start = Instant::now();
 
-    // 走和校对完全相同的这一条：测试通了就意味着实际校对用的参数也通，
-    // 而且「该端点接不接受思考参数」的结论在这里就缓存好了，校对时不必再撞一次。
+    // 走和校對完全相同的這一條：測試通了就意味著實際校對用的引數也通，
+    // 而且「該端點接不接受思考引數」的結論在這裡就快取好了，校對時不必再撞一次。
     let result = send_chat_with_thinking_fallback(
         &url,
         config,
@@ -608,7 +614,7 @@ fn describe_reqwest_error(e: &reqwest::Error) -> String {
         return "Request timed out; check the network connection and API URL".to_string();
     }
     if e.is_connect() {
-        // 尝试区分 DNS / TLS / 连接拒绝
+        // 嘗試區分 DNS / TLS / 連線拒絕
         let lower = raw.to_lowercase();
         if lower.contains("dns") || lower.contains("resolve") || lower.contains("getaddrinfo") {
             return format!(
@@ -635,14 +641,14 @@ fn describe_reqwest_error(e: &reqwest::Error) -> String {
     raw
 }
 
-/// 规范化 base URL
+/// 規範化 base URL
 fn normalize_base_url(url: &str) -> String {
     let trimmed = url.trim().trim_end_matches('/');
-    // 用户把文档里的**完整端点**整条粘进来是最常见的填法 —— 各家文档（智谱、DeepSeek、
-    // 硅基流动…）示例里给的都是 `.../chat/completions`，而这一栏要的是它前面那一截。
-    // 不剥掉的话下面会再拼一次，得到 `.../chat/completions/v1/chat/completions` 然后 404，
-    // 而 404 的响应体只说路径不存在，用户完全看不出是自己多填了一段。
-    // ASR 那条路早就这么处理了（asr_openai_chat_audio.rs 的 chat_completions_url）。
+    // 使用者把文件裡的**完整端點**整條粘進來是最常見的填法 —— 各家文件（智譜、DeepSeek、
+    // 矽基流動…）示例裡給的都是 `.../chat/completions`，而這一欄要的是它前面那一截。
+    // 不剝掉的話下面會再拼一次，得到 `.../chat/completions/v1/chat/completions` 然後 404，
+    // 而 404 的響應體只說路徑不存在，使用者完全看不出是自己多填了一段。
+    // ASR 那條路早就這麼處理了（asr_openai_chat_audio.rs 的 chat_completions_url）。
     let trimmed = trimmed
         .strip_suffix("/chat/completions")
         .unwrap_or(trimmed)
@@ -653,7 +659,7 @@ fn normalize_base_url(url: &str) -> String {
         .and_then(|segment| segment.strip_prefix('v'))
         .is_some_and(|version| !version.is_empty() && version.chars().all(|c| c.is_ascii_digit()));
 
-    // 已经以 /v1、/v3、/v4 等版本路径结尾时直接使用
+    // 已經以 /v1、/v3、/v4 等版本路徑結尾時直接使用
     if has_version_suffix {
         trimmed.to_string()
     } else if trimmed.ends_with("/api") {
@@ -664,7 +670,7 @@ fn normalize_base_url(url: &str) -> String {
     }
 }
 
-/// 从 chat completion 响应中提取文本
+/// 從 chat completion 響應中提取文本
 fn extract_chat_completion_text(data: &serde_json::Value) -> Option<String> {
     let content = data
         .get("choices")?
@@ -692,18 +698,22 @@ fn extract_chat_completion_text(data: &serde_json::Value) -> Option<String> {
     }
 }
 
-/// 去除 <think>...</think> 标签
+/// 去除 <think>...</think> 標籤
 fn strip_thinking(text: &str) -> String {
     let re = regex::Regex::new(r"(?is)<think>.*?</think>").unwrap_or_else(|_| {
-        // fallback: 不做处理
+        // fallback: 不做處理
         regex::Regex::new(r"^$").unwrap()
     });
     let cleaned = re.replace_all(text, "");
     let cleaned = cleaned.trim();
 
-    // 如果有"最终答案"标记，取其后面的内容
-    if let Some(pos) = cleaned.find("最终答案") {
-        let after = &cleaned[pos + "最终答案".len()..];
+    // 如果有"最終答案"標記，取其後面的內容
+    // 模型輸出的簡體標記「最終答案」以 Unicode 跳脫保存，並列正體寫法
+    let marker = ["\u{6700}\u{7ec8}\u{7b54}\u{6848}", "最終答案"]
+        .into_iter()
+        .find_map(|m| cleaned.find(m).map(|pos| (pos, m)));
+    if let Some((pos, m)) = marker {
+        let after = &cleaned[pos + m.len()..];
         let after = after.trim_start_matches(|c: char| c == ':' || c == '：' || c.is_whitespace());
         return after.trim().to_string();
     }
@@ -735,8 +745,8 @@ mod tests {
 
     #[test]
     fn known_providers_keep_their_exact_field() {
-        // 这些组合是实测通过的，别顺手升级成通吃集合——多注入未知字段只会给
-        // 本来好用的路径引入 400 风险。
+        // 這些組合是實測通過的，別順手升級成通吃集合——多注入未知欄位只會給
+        // 本來好用的路徑引入 400 風險。
         let qwen = thinking_overrides(&config(
             "qwen",
             "https://dashscope.aliyuncs.com/compatible-mode/v1",
@@ -753,7 +763,7 @@ mod tests {
             assert_eq!(overrides["thinking"]["type"], serde_json::json!("disabled"));
         }
 
-        // 智谱走通用 provider，只能靠官方域名识别
+        // 智譜走通用 provider，只能靠官方域名識別
         let zhipu = thinking_overrides(&config(
             "openai_compat",
             "https://open.bigmodel.cn/api/paas/v4",
@@ -763,31 +773,31 @@ mod tests {
         assert_eq!(keys(&zhipu), vec!["thinking"]);
     }
 
-    /// 用户手填地址的几种真实形态都要落到同一个端点上。
+    /// 使用者手填地址的幾種真實形態都要落到同一個端點上。
     ///
-    /// 智谱那几条是照 B 站反馈复现的：用户填 `.../api/paas/v4` 曾经被补成 `/v4/v1`
-    /// （已修），填 `.../api/paas` 会被补成 `/api/paas/v1`，而把文档里的完整端点
-    /// 整条粘进来会被再拼一次。三种都返回 404，而 404 只说路径不存在。
+    /// 智譜那幾條是照 B 站反饋復現的：使用者填 `.../api/paas/v4` 曾經被補成 `/v4/v1`
+    /// （已修），填 `.../api/paas` 會被補成 `/api/paas/v1`，而把文件裡的完整端點
+    /// 整條粘進來會被再拼一次。三種都返回 404，而 404 只說路徑不存在。
     #[test]
     fn normalizes_user_typed_base_urls() {
         let cases = [
-            // 智谱：版本段是 /v4，必须原样保留
+            // 智譜：版本段是 /v4，必須原樣保留
             ("https://open.bigmodel.cn/api/paas/v4", "https://open.bigmodel.cn/api/paas/v4"),
             ("https://open.bigmodel.cn/api/paas/v4/", "https://open.bigmodel.cn/api/paas/v4"),
-            // 文档里给的完整端点，整条粘进来
+            // 文件裡給的完整端點，整條粘進來
             (
                 "https://open.bigmodel.cn/api/paas/v4/chat/completions",
                 "https://open.bigmodel.cn/api/paas/v4",
             ),
             ("https://api.deepseek.com/v1/chat/completions", "https://api.deepseek.com/v1"),
-            // 只给主机名 → 补 /v1（OpenAI 的形状）
+            // 只給主機名 → 補 /v1（OpenAI 的形狀）
             ("https://api.deepseek.com", "https://api.deepseek.com/v1"),
-            // 豆包：以 /api 结尾的补 /v3
+            // 豆包：以 /api 結尾的補 /v3
             (
                 "https://ark.cn-beijing.volces.com/api",
                 "https://ark.cn-beijing.volces.com/api/v3",
             ),
-            // 已带 /v1 的原样保留（Groq、MiMo 的默认地址就是这个形状）
+            // 已帶 /v1 的原樣保留（Groq、MiMo 的預設地址就是這個形狀）
             ("https://api.groq.com/openai/v1", "https://api.groq.com/openai/v1"),
         ];
         for (input, expected) in cases {
@@ -795,8 +805,8 @@ mod tests {
         }
     }
 
-    /// 智谱的 `thinking.type=disabled` 两条路都要认：内置卡靠 provider，
-    /// 「OpenAI 兼容 + 自己填智谱地址」的存量配置靠域名（那种配置不会自动迁移）。
+    /// 智譜的 `thinking.type=disabled` 兩條路都要認：內建卡靠 provider，
+    /// 「OpenAI 相容 + 自己填智譜地址」的存量配置靠域名（那種配置不會自動遷移）。
     #[test]
     fn zhipu_disables_thinking_via_provider_and_via_host() {
         let by_provider = thinking_overrides(&config(
@@ -808,7 +818,7 @@ mod tests {
         assert_eq!(keys(&by_provider), vec!["thinking"]);
         assert_eq!(by_provider["thinking"]["type"], serde_json::json!("disabled"));
 
-        // 存量配置：provider 还是 openai_compat，只能靠域名认出来
+        // 存量配置：provider 還是 openai_compat，只能靠域名認出來
         let by_host = thinking_overrides(&config(
             "openai_compat",
             "https://open.bigmodel.cn/api/paas/v4",
@@ -817,54 +827,65 @@ mod tests {
         .expect("legacy zhipu config should disable thinking");
         assert_eq!(keys(&by_host), vec!["thinking"]);
 
-        // 内置卡即便被改成中转地址（域名对不上）也仍然按智谱的字段发
+        // 內建卡即便被改成中轉地址（域名對不上）也仍然按智譜的欄位發
         let relayed = thinking_overrides(&config("zhipu", "https://relay.example/v4", "glm-4.7"))
             .expect("relayed zhipu card should still disable thinking");
         assert_eq!(keys(&relayed), vec!["thinking"]);
     }
 
-    /// 智谱 GLM-5.3 的真实错误体（2026-09-20 用户实测）。
+    /// 智譜 GLM-5.3 的真實錯誤體（2026-09-20 使用者實測）。
     ///
-    /// 它是这条链路上最有教育意义的一个样本：**整条消息里没有 "thinking" 这个词**，
-    /// 所以旧判据（响应体里有没有我们注入的键名）一次都不命中 —— 降级不执行、
-    /// 400 原样抛给用户、界面显示「连接失败」。这条测试就是钉住"按语义认"这件事。
+    /// 它是這條鏈路上最有教育意義的一個樣本：**整條訊息裡沒有 "thinking" 這個詞**，
+    /// 所以舊判據（響應體裡有沒有我們注入的鍵名）一次都不命中 —— 降級不執行、
+    /// 400 原樣拋給使用者、介面顯示「連線失敗」。這條測試就是釘住"按語義認"這件事。
     const ZHIPU_5_3_FORCED: &str =
-        r#"{"error":{"code":"1210","message":"该模型始终思考，不支持关闭思考；请使用 low、high 或 max。"}}"#;
+        // 簡體原文以 Unicode 跳脫保存：「該模型始終思考，不支援關閉思考；請使用 low、high 或 max。」
+        "{\"error\":{\"code\":\"1210\",\"message\":\"\u{8be5}\u{6a21}\u{578b}\u{59cb}\u{7ec8}\u{601d}\u{8003}\u{ff0c}\u{4e0d}\u{652f}\u{6301}\u{5173}\u{95ed}\u{601d}\u{8003}\u{ff1b}\u{8bf7}\u{4f7f}\u{7528} low\u{3001}high \u{6216} max\u{3002}\"}}";
 
     #[test]
     fn zhipu_forced_thinking_error_is_recognized_without_the_word_thinking() {
-        // 先确认前提：这个错误体确实不含 "thinking"，否则这条测试证明不了什么
+        // 先確認前提：這個錯誤體確實不含 "thinking"，否則這條測試證明不了什麼
         assert!(
             !ZHIPU_5_3_FORCED.to_ascii_lowercase().contains("thinking"),
-            "样本里出现了 thinking，这条测试的前提不成立了，请换一个真实样本"
+            "樣本裡出現了 thinking，這條測試的前提不成立了，請換一個真實樣本"
         );
-        // 旧判据对它无效 —— 这就是用户看到「连接失败」的直接原因
+        // 舊判據對它無效 —— 這就是使用者看到「連線失敗」的直接原因
         let old_signal = rejected_thinking_field(
             ZHIPU_5_3_FORCED,
             &serde_json::json!({ "thinking": { "type": "disabled" } }),
         );
-        assert!(old_signal.is_none(), "旧判据本来就认不出它");
-        // 新判据必须认出来
+        assert!(old_signal.is_none(), "舊判據本來就認不出它");
+        // 新判據必須認出來
         assert!(forced_thinking_error(ZHIPU_5_3_FORCED));
+    }
+
+    /// [自訂] F14 PR-C：「始終思考」與「最終答案」的簡體原文與正體寫法都要認得。
+    #[test]
+    fn simplified_and_traditional_markers_are_both_recognized() {
+        assert!(forced_thinking_error("\u{59cb}\u{7ec8}\u{601d}\u{8003}")); // 始終思考
+        assert!(forced_thinking_error("始終思考"));
+        assert!(forced_thinking_error("不支援關閉思考"));
+        assert_eq!(strip_thinking("推理過程\u{6700}\u{7ec8}\u{7b54}\u{6848}：結果"), "結果"); // 最終答案
+        assert_eq!(strip_thinking("推理過程最終答案：結果"), "結果");
     }
 
     #[test]
     fn forced_thinking_error_does_not_fire_on_unrelated_failures() {
-        // 这些都不能触发降级重试，否则每次请求白发两遍
+        // 這些都不能觸發降級重試，否則每次請求白發兩遍
         for body in [
             r#"{"error":{"message":"Incorrect API key provided","code":"invalid_api_key"}}"#,
             r#"{"error":{"message":"The model `glm-9` does not exist","code":"model_not_found"}}"#,
             r#"{"error":{"message":"Rate limit reached","code":"rate_limit_exceeded"}}"#,
-            r#"{"error":{"message":"余额不足","code":"1113"}}"#,
+            r#"{"error":{"message":"餘額不足","code":"1113"}}"#,
         ] {
-            assert!(!forced_thinking_error(body), "不该命中: {}", body);
+            assert!(!forced_thinking_error(body), "不該命中: {}", body);
         }
     }
 
-    /// 强制思考的模型要发「最低强度」，不是「什么都不发」。
+    /// 強制思考的模型要發「最低強度」，不是「什麼都不發」。
     ///
-    /// 直接不发参数会落到 GLM-5.3 的默认 `reasoning_effort=max`（深度推理），
-    /// 对语音输入是最差结果 —— 比不降级还慢。
+    /// 直接不發引數會落到 GLM-5.3 的預設 `reasoning_effort=max`（深度推理），
+    /// 對語音輸入是最差結果 —— 比不降級還慢。
     #[test]
     fn forced_thinking_models_get_low_effort_not_empty_params() {
         assert!(model_forces_thinking("glm-5.3"));
@@ -883,7 +904,7 @@ mod tests {
         assert_eq!(overrides["thinking"]["type"], serde_json::json!("enabled"));
         assert_eq!(overrides["reasoning_effort"], serde_json::json!("low"));
 
-        // 同一家的非强制模型仍然走 disabled（那是最快的一档）
+        // 同一家的非強制模型仍然走 disabled（那是最快的一檔）
         let flash = thinking_overrides(&config(
             "zhipu",
             "https://open.bigmodel.cn/api/paas/v4",
@@ -895,8 +916,8 @@ mod tests {
 
     #[test]
     fn strict_openai_hosts_get_no_thinking_params() {
-        // OpenAI / Azure 对未知顶层字段直接 400，且 reasoning_effort 的合法取值依模型而异，
-        // 猜不准就别猜——这两家保持「一个字段都不发」的现状。
+        // OpenAI / Azure 對未知頂層欄位直接 400，且 reasoning_effort 的合法取值依模型而異，
+        // 猜不準就別猜——這兩家保持「一個欄位都不發」的現狀。
         for url in [
             "https://api.openai.com/v1",
             "https://my-resource.openai.azure.com/openai/deployments/gpt5",
@@ -913,7 +934,7 @@ mod tests {
 
     #[test]
     fn unknown_endpoints_get_the_catch_all_set() {
-        // 这一档是整个改动的理由：在此之前这些端点一个字段都不发，模型默认思考就关不掉。
+        // 這一檔是整個改動的理由：在此之前這些端點一個欄位都不發，模型預設思考就關不掉。
         for (provider, url) in [
             ("openai_compat", "https://openrouter.ai/api/v1"),
             ("openai_compat", "http://192.168.1.10:3000/v1"),
@@ -945,7 +966,7 @@ mod tests {
         });
         merge_overrides(&mut body, &disable_thinking_overrides());
 
-        // 整体覆盖，不深合并：残留一个 budget 字段会让请求变成谁也说不清的状态
+        // 整體覆蓋，不深合併：殘留一個 budget 欄位會讓請求變成誰也說不清的狀態
         assert_eq!(body["thinking"], serde_json::json!({"type": "disabled"}));
         assert_eq!(body["model"], serde_json::json!("m"));
         assert!(body["messages"].is_array());
@@ -965,7 +986,7 @@ mod tests {
             r#"{"error":{"code":"unsupported_value","param":"reasoning_effort"}}"#;
         assert!(rejected_thinking_field(unsupported_value, &overrides).is_some());
 
-        // 密钥错、模型不存在这些 400 绝不能触发降级重试，否则每次请求都白发两遍
+        // 金鑰錯、模型不存在這些 400 絕不能觸發降級重試，否則每次請求都白發兩遍
         for body in [
             r#"{"error":{"message":"Incorrect API key provided"}}"#,
             r#"{"error":{"message":"The model `gpt-9` does not exist"}}"#,
@@ -981,22 +1002,22 @@ mod tests {
 
     #[test]
     fn rejection_cache_is_scoped_to_host_and_model() {
-        // 用独特的 host 名，避免和同进程里其他测试共用那个全局表时互相干扰
+        // 用獨特的 host 名，避免和同程序裡其他測試共用那個全域性表時互相干擾
         let a = config("openai_compat", "https://cache-test.invalid/v1", "model-a");
         let b = config("openai_compat", "https://cache-test.invalid/v1", "model-b");
 
         assert!(remembered_thinking(&a).is_none());
         remember_thinking(&a, None);
         assert_eq!(remembered_thinking(&a), Some(None));
-        // 同一网关换个模型结论可能不同（unsupported_value 是按模型判的），不能共用
+        // 同一閘道器換個模型結論可能不同（unsupported_value 是按模型判的），不能共用
         assert!(remembered_thinking(&b).is_none());
     }
 
-    /// 缓存要存「降级成什么」，不只是「降级过」。
+    /// 快取要存「降級成什麼」，不只是「降級過」。
     ///
-    /// 强制思考的模型降级目标是「最低强度」，别的端点是「什么都不发」。旧结构是
-    /// HashSet，只存得下后者 —— 于是 GLM-5.3 这类模型第二次请求会被当成"不发参数"，
-    /// 落回它的默认 reasoning_effort=max，比不降级还慢。
+    /// 強制思考的模型降級目標是「最低強度」，別的端點是「什麼都不發」。舊結構是
+    /// HashSet，只存得下後者 —— 於是 GLM-5.3 這類模型第二次請求會被當成"不發引數"，
+    /// 落回它的預設 reasoning_effort=max，比不降級還慢。
     #[test]
     fn cache_remembers_which_fallback_worked() {
         let forced = config("zhipu", "https://cache-forced.invalid/v4", "glm-5.3");

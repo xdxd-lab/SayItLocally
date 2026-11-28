@@ -1,4 +1,4 @@
-// 外观设置页面 — 主题 + 悬浮窗样式 + 预览
+// 外觀設定頁面 — 主題 + 懸浮窗樣式 + 預覽
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { open as shellOpen } from '@tauri-apps/plugin-shell'
@@ -36,14 +36,14 @@ const OVERLAY_OPTIONS: Array<{
     { theme: 'black-rainbow', labelKey: 'appearance.wave.blackRainbow', barColors: ['#4ade80', '#facc15', '#fb923c', '#f87171'] },
   ]
 
-/** 自定义配色连续拖动取色器时，写盘与刷新悬浮窗设置合并到停手之后。 */
+/** 自定義配色連續拖動取色器時，寫盤與重新整理懸浮窗設定合併到停手之後。 */
 // [自訂] S58：本 fork 只用本機模式，不顯示雲端供應商控制台／申請文件連結（點擊會開外部瀏覽器）。
 // 改回 true 即恢復上游行為。
 const SHOW_CLOUD_CONSOLE_LINKS = false
 
 const CUSTOM_WAVE_SAVE_DELAY_MS = 250
 
-// 由长到短排列：从「最完整」往「最克制」读，比反过来更符合挑尺寸的直觉。
+// 由長到短排列：從「最完整」往「最剋制」讀，比反過來更符合挑尺寸的直覺。
 const WIDTH_OPTIONS: Array<{ value: OverlayWidthPreset; labelKey: TranslationKey }> = [
   { value: 'long', labelKey: 'appearance.width.long' },
   { value: 'medium', labelKey: 'appearance.width.medium' },
@@ -63,7 +63,7 @@ function OverlayPreview({ theme, customWave, showDuration, barCount, streaming }
   const barRefs = useRef<Array<HTMLDivElement | null>>([])
   const [typed, setTyped] = useState('')
 
-  // 流式预览：循环把示例文字一个字一个字打出来，模拟"边说边出字"的动态效果
+  // 流式預覽：迴圈把示例文字一個字一個字打出來，模擬"邊說邊出字"的動態效果
   useEffect(() => {
     if (!streaming) {
       setTyped('')
@@ -77,7 +77,7 @@ function OverlayPreview({ theme, customWave, showDuration, barCount, streaming }
         i += 1
         timer = setTimeout(step, 130)
       } else {
-        // 打完停顿一下再从头循环
+        // 打完停頓一下再從頭迴圈
         timer = setTimeout(() => { i = 0; step() }, 1600)
       }
     }
@@ -90,7 +90,7 @@ function OverlayPreview({ theme, customWave, showDuration, barCount, streaming }
     let running = true
     let rafId = 0
     let lastFrame = 0
-    const FRAME_INTERVAL = 1000 / 30 // 30fps 足够流畅，且不占满主线程
+    const FRAME_INTERVAL = 1000 / 30 // 30fps 足夠流暢，且不佔滿主執行緒
 
     const animate = (now: number) => {
       if (!running) return
@@ -118,11 +118,11 @@ function OverlayPreview({ theme, customWave, showDuration, barCount, streaming }
 
   return (
     <div className="flex flex-col items-center gap-3">
-      {/* 流式实时字幕气泡（开启时显示，带打字动画） */}
+      {/* 流式即時字幕氣泡（開啟時顯示，帶打字動畫） */}
       {streaming && (
         <div className="relative w-[260px] rounded-2xl border border-slate-600 bg-black px-3.5 py-2.5 shadow-[0_6px_16px_rgba(0,0,0,0.35)]">
           <span className="mb-1 block text-[10px] font-medium tracking-[0.18em] text-slate-400">{t('appearance.streamingPreviewLabel')}</span>
-          {/* 内容驱动、底部对齐，和真实悬浮窗一致 */}
+          {/* 內容驅動、底部對齊，和真實懸浮窗一致 */}
           <div className="flex max-h-[40px] flex-col justify-end overflow-hidden text-left text-[13px] leading-5 text-slate-100">
             <div>
               {typed}
@@ -132,14 +132,14 @@ function OverlayPreview({ theme, customWave, showDuration, barCount, streaming }
               />
             </div>
           </div>
-          {/* 朝下尖角，指向下方录音胶囊 */}
+          {/* 朝下尖角，指向下方錄音膠囊 */}
           <span
             className="absolute left-1/2 -translate-x-1/2"
             style={{ bottom: '-7px', width: 0, height: 0, borderLeft: '7px solid transparent', borderRight: '7px solid transparent', borderTop: '7px solid #000' }}
           />
         </div>
       )}
-      {/* 1:1 还原真实悬浮窗样式 */}
+      {/* 1:1 還原真實懸浮窗樣式 */}
       <div className="flex items-center rounded-full border border-slate-600 bg-black px-4 py-2 shadow-[0_6px_16px_rgba(0,0,0,0.35)]">
         <div className="flex items-center gap-[2px]" style={{ height: '20px' }}>
           {Array.from({ length: barCount }, (_, index) => {
@@ -182,31 +182,31 @@ export default function AppearancePage() {
   const [overlayShowDuration, setOverlayShowDuration] = useState(true)
   const [overlayWidth, setOverlayWidth] = useState<OverlayWidthPreset>('medium')
   const [streamingDisplay, setStreamingDisplay] = useState(false)
-  // 读到已保存值之前，控件先隐藏、且不带过渡：避免「默认值 → 已保存值」闪一下。
-  // 注意过渡也必须一起关掉 —— visibility:hidden 只是看不见，CSS 过渡照样会跑；
-  // 隐藏期间选中项仍是默认值，揭开的同一刻颜色会从旧值过渡到新值，看起来就是
-  // 「默认项高亮淡出、已保存项淡入」（悬浮窗长度从「中」闪到「短」正是如此）。
-  // 隐藏一律用内联 style，不用 Tailwind 的 invisible 类：类要靠扫描源码产出，
-  // 一旦跑的是旧的 CSS 产物这层保护就整条失效（曾因此反复排查很久）。
+  // 讀到已儲存值之前，控制元件先隱藏、且不帶過渡：避免「預設值 → 已儲存值」閃一下。
+  // 注意過渡也必須一起關掉 —— visibility:hidden 只是看不見，CSS 過渡照樣會跑；
+  // 隱藏期間選中項仍是預設值，揭開的同一刻顏色會從舊值過渡到新值，看起來就是
+  // 「預設項高亮淡出、已儲存項淡入」（懸浮窗長度從「中」閃到「短」正是如此）。
+  // 隱藏一律用內聯 style，不用 Tailwind 的 invisible 類：類要靠掃描原始碼產出，
+  // 一旦跑的是舊的 CSS 產物這層保護就整條失效（曾因此反覆排查很久）。
   const [ready, setReady] = useState(false)
-  // animate 与 ready 必须分开：
-  // 按 CSS 过渡规范，浏览器看的是「变化之后」的样式里有没有 transition。若在揭开、
-  // 赋值的同一帧把 transition 加上，浏览器就会认为「有过渡且颜色变了」，于是把
-  // 「默认项高亮淡出、已保存项淡入」真的动画一遍 —— 那就是反复没修掉的那个「闪」。
-  // 因此：揭开的那一帧仍然不带过渡，等再下一帧才允许过渡（此时颜色已无变化）。
+  // animate 與 ready 必須分開：
+  // 按 CSS 過渡規範，瀏覽器看的是「變化之後」的樣式裡有沒有 transition。若在揭開、
+  // 賦值的同一幀把 transition 加上，瀏覽器就會認為「有過渡且顏色變了」，於是把
+  // 「預設項高亮淡出、已儲存項淡入」真的動畫一遍 —— 那就是反覆沒修掉的那個「閃」。
+  // 因此：揭開的那一幀仍然不帶過渡，等再下一幀才允許過渡（此時顏色已無變化）。
   const [animate, setAnimate] = useState(false)
   const [clickGlow, setClickGlow] = useState(true)
 
   useEffect(() => {
-    // 先把所有值取回，再在同一个同步块里一次性落值 + 置 ready：React 会把这批更新
-    // 合成一次渲染，因此不存在「已显示但值还没到」的中间态（那正是闪一下的成因）。
+    // 先把所有值取回，再在同一個同步塊裡一次性落值 + 置 ready：React 會把這批更新
+    // 合成一次渲染，因此不存在「已顯示但值還沒到」的中間態（那正是閃一下的成因）。
     //
-    // 两个坑都在这里躲掉了：
-    //  1. 每项自带 catch 兜底 —— Promise.all 是 fail-fast，只要有一项 reject 就会
-    //     立刻往下走，那时其它项还没回来，ready 会在值到位前就被置上（并留下一个
-    //     未处理的 rejection）。
-    //  2. 不用 requestAnimationFrame —— 那会把 setReady 丢到与赋值不同的批次里，
-    //     同样可能先提交出一帧「已显示但值是默认值」。
+    // 兩個坑都在這裡躲掉了：
+    //  1. 每項自帶 catch 兜底 —— Promise.all 是 fail-fast，只要有一項 reject 就會
+    //     立刻往下走，那時其它項還沒回來，ready 會在值到位前就被置上（並留下一個
+    //     未處理的 rejection）。
+    //  2. 不用 requestAnimationFrame —— 那會把 setReady 丟到與賦值不同的批次裡，
+    //     同樣可能先提交出一幀「已顯示但值是預設值」。
     let cancelled = false
     void (async () => {
       const [showDuration, streaming, waveTheme, waveCustom, width, glow] = await Promise.all([
@@ -240,7 +240,7 @@ export default function AppearancePage() {
 
   const themeCards: Array<{ theme: OverlayWaveTheme; labelKey: TranslationKey; barColors: string[] }> = [
     ...OVERLAY_OPTIONS,
-    // 自定义卡的色条直接取当前配色，改了颜色卡片上也跟着变
+    // 自定義卡的色條直接取當前配色，改了顏色卡片上也跟著變
     { theme: 'custom', labelKey: 'appearance.wave.custom', barColors: buildWavePalette(4, 'custom', customWave) },
   ]
 
@@ -255,8 +255,8 @@ export default function AppearancePage() {
     await refreshOverlaySettings()
   }
 
-  // 预览立刻跟手，写盘合并到停手之后：拖动取色器每秒会触发几十次 onChange，
-  // 每次都写库 + 让录音器重读设置没有意义。
+  // 預覽立刻跟手，寫盤合併到停手之後：拖動取色器每秒會觸發幾十次 onChange，
+  // 每次都寫庫 + 讓錄音器重讀設定沒有意義。
   const handleCustomWaveChange = (next: CustomWaveColors) => {
     setCustomWave(next)
     if (customWaveSaveRef.current) clearTimeout(customWaveSaveRef.current.timer)
@@ -267,7 +267,7 @@ export default function AppearancePage() {
     customWaveSaveRef.current = { timer, value: next }
   }
 
-  // 停手不到 250ms 就切走页面时，把还没写盘的那次补上，否则最后一下改动会丢。
+  // 停手不到 250ms 就切走頁面時，把還沒寫盤的那次補上，否則最後一下改動會丟。
   useEffect(() => () => {
     const pending = customWaveSaveRef.current
     if (!pending) return
@@ -298,7 +298,7 @@ export default function AppearancePage() {
   const handleToggleStreamingDisplay = () => {
     const next = !streamingDisplay
     setStreamingDisplay(next)
-    setStreamingDisplayCache(next) // 立即同步录音器缓存，无需重启即可生效
+    setStreamingDisplayCache(next) // 立即同步錄音器快取，無需重啟即可生效
     void setSetting('streamingDisplayEnabled', next)
   }
 
@@ -310,7 +310,7 @@ export default function AppearancePage() {
         <Card>
           <CardContent className="p-6">
             <h2 className="mb-4 text-lg font-semibold">{t('appearance.appTheme')}</h2>
-            {/* 按最小宽度自动分列：固定三列时，窗口拉到最窄（800）英文界面的「Light / Dark / Warm」会撑出卡片外 */}
+            {/* 按最小寬度自動分列：固定三列時，視窗拉到最窄（800）英文介面的「Light / Dark / Warm」會撐出卡片外 */}
             <div className="grid grid-cols-[repeat(auto-fit,minmax(11rem,1fr))] gap-3">
               {themeList.map((theme) => (
                 <button
@@ -357,13 +357,13 @@ export default function AppearancePage() {
           <CardContent className="p-6">
             <h2 className="mb-4 text-lg font-semibold">{t('appearance.overlayStyle')}</h2>
 
-            {/* 整块一起等值到位再显示。除了选择器，**悬浮窗预览**那颗胶囊的长度也跟着
-                overlayWidth 变（它有可见边框），只盖住选择器的话，仍会看到预览从「中」
-                的长度一下缩到「短」——那正是之前反复没修掉的那个「闪」。 */}
+            {/* 整塊一起等值到位再顯示。除了選擇器，**懸浮窗預覽**那顆膠囊的長度也跟著
+                overlayWidth 變（它有可見邊框），只蓋住選擇器的話，仍會看到預覽從「中」
+                的長度一下縮到「短」——那正是之前反覆沒修掉的那個「閃」。 */}
             <div className="space-y-4" style={ready ? undefined : { visibility: 'hidden' }}>
               <div>
                 <p className="mb-2 text-sm text-muted-foreground">{t('appearance.waveTheme')}</p>
-                {/* 四张卡：默认窗口宽度下排成一行；窗口拉窄到 lg 以下时两两一行，免得「黑底彩色」和色条挤在一起 */}
+                {/* 四張卡：預設視窗寬度下排成一行；視窗拉窄到 lg 以下時兩兩一行，免得「黑底彩色」和色條擠在一起 */}
                 <div className="grid grid-cols-2 gap-2 lg:grid-cols-4" style={ready ? undefined : { visibility: 'hidden' }}>
                   {themeCards.map((option) => (
                     <button
@@ -376,7 +376,7 @@ export default function AppearancePage() {
                         : 'border-border hover:bg-accent'
                         }`}
                     >
-                      {/* 选中只靠边框和底色表示；原来的圆点和边框是同一个意思说了两遍 */}
+                      {/* 選中只靠邊框和底色表示；原來的圓點和邊框是同一個意思說了兩遍 */}
                       <span className={overlayWaveTheme === option.theme ? 'font-medium' : ''}>{t(option.labelKey)}</span>
                       <span className="flex shrink-0 gap-0.5">
                         {option.barColors.map((c, i) => (
@@ -391,7 +391,7 @@ export default function AppearancePage() {
                   <CustomWaveEditor value={customWave} onChange={handleCustomWaveChange} animate={animate} />
                 )}
 
-                {/* 只有一两个字的选项用分段按钮（和「识别语言」一致）；带图样的波形主题才用卡片 */}
+                {/* 只有一兩個字的選項用分段按鈕（和「識別語言」一致）；帶圖樣的波形主題才用卡片 */}
                 <div className="mt-4 flex items-center justify-between gap-4">
                   <p id="overlay-width-label" className="text-sm font-medium">{t('appearance.overlayWidth')}</p>
                   <Segmented

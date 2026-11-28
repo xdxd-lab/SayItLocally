@@ -1,13 +1,13 @@
 /**
- * macOS 上让网页窗口的行为更像原生应用。只在 mac 的窗口入口里调用（main.tsx、overlay/main.tsx）。
+ * macOS 上讓網頁視窗的行為更像原生應用。只在 mac 的視窗入口裡呼叫（main.tsx、overlay/main.tsx）。
  *
- * - 给 <html> 加上 `platform-mac`：index.css 里 mac 专属的样式（系统滚动条、界面文字不可选、
- *   按钮用箭头光标）都挂在这个 class 下，Windows 没有它，样式与原来完全一致。
- * - 右键菜单：WebKit 默认在空白处弹「重新载入」、在链接上弹「打开链接」（会把主窗口导航到外部
- *   网页）。只在输入框里、或者已经选中了文字时保留系统的右键菜单（剪切 / 拷贝 / 粘贴、查询、翻译）。
+ * - 給 <html> 加上 `platform-mac`：index.css 裡 mac 專屬的樣式（系統捲軸、介面文字不可選、
+ *   按鈕用箭頭游標）都掛在這個 class 下，Windows 沒有它，樣式與原來完全一致。
+ * - 右鍵選單：WebKit 預設在空白處彈「重新載入」、在連結上彈「開啟連結」（會把主視窗導航到外部
+ *   網頁）。只在輸入框裡、或者已經選中了文字時保留系統的右鍵選單（剪下 / 拷貝 / 貼上、查詢、翻譯）。
  */
 
-/** 可编辑元素：右键要能剪切、拷贝、粘贴 */
+/** 可編輯元素：右鍵要能剪下、拷貝、貼上 */
 const EDITABLE_SELECTOR = 'input, textarea, select, [contenteditable]:not([contenteditable="false"])'
 
 interface ClosestCapable {
@@ -19,7 +19,7 @@ function canQueryClosest(target: unknown): target is ClosestCapable {
     && typeof (target as { closest?: unknown }).closest === 'function'
 }
 
-/** 这次右键要不要交给系统弹菜单。 */
+/** 這次右鍵要不要交給系統彈選單。 */
 export function shouldShowNativeContextMenu(target: EventTarget | null, selectedText: string): boolean {
   if (selectedText.trim().length > 0) return true
   if (!canQueryClosest(target)) return false

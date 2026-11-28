@@ -17,7 +17,21 @@
 
 ### 隨同引入的依賴
 
-ferrous-opencc-compiler（Apache-2.0）、rkyv、rkyv_derive、bytecheck、bytecheck_derive、munge、munge_macro、ptr_meta、ptr_meta_derive、rancor、rend（MIT）、fst（Unlicense 或 MIT）、hashbrown、simdutf8（MIT 或 Apache-2.0）。授權全文在各套件內。
+- Apache-2.0：ferrous-opencc-compiler 0.4.0（全文同上）。
+- MIT，或可選 MIT 的雙授權：下表各套件的 MIT 授權全文（含著作權聲明），逐字取自各套件隨附的授權檔，收在 [`licenses/MIT-ferrous-opencc-deps.txt`](licenses/MIT-ferrous-opencc-deps.txt)。
+
+| 套件 | 版本 | 授權 | 著作權 |
+|---|---|---|---|
+| rkyv、rkyv_derive | 0.8.18 | MIT | Copyright 2021 David Koloski |
+| ptr_meta、ptr_meta_derive | 0.3.2 | MIT | Copyright 2021 David Koloski |
+| rend | 0.5.4 | MIT | Copyright 2021 David Koloski |
+| bytecheck | 0.8.3 | MIT | Copyright 2023 David Koloski |
+| bytecheck_derive | 0.8.3 | MIT | Copyright 2020 David Koloski |
+| rancor | 0.1.3 | MIT | Copyright 2023 David Koloski |
+| munge、munge_macro | 0.4.7 | MIT | Copyright 2024 David Koloski |
+| fst | 0.4.7 | Unlicense 或 MIT（本 fork 依 MIT） | Copyright (c) 2015 Andrew Gallant |
+| hashbrown | 0.17.2 | MIT 或 Apache-2.0 | Copyright (c) 2016 Amanieu d'Antras |
+| simdutf8 | 0.1.5 | MIT 或 Apache-2.0 | 授權檔未寫著作權行；Cargo.toml 的作者為 Hans Kratz |
 
 ## 只用於測試、不隨 App 散布
 

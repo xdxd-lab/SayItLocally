@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-// 边录边发的那条连接在收尾时失败，完整录音还在手里：必须自动改走一次性上传，
-// 而不是把失败报给用户、让他自己去历史里重试（诊断包 61c93385，豆包长录音 4/10 失败）。
+// 邊錄邊發的那條連線在收尾時失敗，完整錄音還在手裡：必須自動改走一次性上傳，
+// 而不是把失敗報給使用者、讓他自己去歷史裡重試（診斷包 61c93385，豆包長錄音 4/10 失敗）。
 
 const mocks = vi.hoisted(() => ({
   invoke: vi.fn(),
@@ -30,7 +30,7 @@ vi.mock('../clientAiPolish', () => ({
 
 import { CloudAPIProvider } from '../CloudAPIProvider'
 
-/** 1 秒 16kHz 16bit 单声道 PCM */
+/** 1 秒 16kHz 16bit 單聲道 PCM */
 const oneSecond = () => new ArrayBuffer(32000)
 
 async function record(finish: () => Promise<unknown>) {
@@ -44,7 +44,7 @@ async function record(finish: () => Promise<unknown>) {
   await provider.connect({ onFinal, onError })
   provider.start({ runId: 1 })
   await vi.waitFor(() => expect(mocks.invoke).toHaveBeenCalledWith('doubao_stream_open', expect.anything()))
-  // 等 open 完成、streamReady 置位（open 之后还有一次 flush）
+  // 等 open 完成、streamReady 置位（open 之後還有一次 flush）
   await new Promise((resolve) => setTimeout(resolve, 0))
   provider.sendAudio(oneSecond())
   provider.stop()
@@ -55,7 +55,7 @@ async function record(finish: () => Promise<unknown>) {
 describe('cloud streaming finish failure', () => {
   beforeEach(() => {
     mocks.invoke.mockReset()
-    mocks.transcribe.mockReset().mockResolvedValue({ text: '完整的识别结果', elapsed_ms: 5100 })
+    mocks.transcribe.mockReset().mockResolvedValue({ text: '完整的識別結果', elapsed_ms: 5100 })
     mocks.settings = {
       'cloudAsr.provider': 'doubao_v2',
       'cloudAsr.apiKey': 'key',
@@ -74,14 +74,14 @@ describe('cloud streaming finish failure', () => {
     expect((pcm as Uint8Array).byteLength).toBe(32000)
     expect(request).toMatchObject({ asr_config: { provider: 'doubao_v2' } })
     expect(onError).not.toHaveBeenCalled()
-    expect(onFinal.mock.calls[0][0]).toMatchObject({ asrText: '完整的识别结果' })
+    expect(onFinal.mock.calls[0][0]).toMatchObject({ asrText: '完整的識別結果' })
   })
 
   it('keeps the streamed result and does not upload twice when finish succeeds', async () => {
-    const { onFinal } = await record(async () => '流式结果')
+    const { onFinal } = await record(async () => '流式結果')
 
     expect(mocks.transcribe).not.toHaveBeenCalled()
-    expect(onFinal.mock.calls[0][0]).toMatchObject({ asrText: '流式结果' })
+    expect(onFinal.mock.calls[0][0]).toMatchObject({ asrText: '流式結果' })
   })
 
   it('reports the error when the buffered retry fails too', async () => {

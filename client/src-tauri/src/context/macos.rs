@@ -1,11 +1,11 @@
-//! macOS 前台应用与焦点元素采集（对应 Windows 的 GetGUIThreadInfo + UI Automation）。
+//! macOS 前台應用與焦點元素採集（對應 Windows 的 GetGUIThreadInfo + UI Automation）。
 //!
-//! 字段沿用 Windows 的 AppContext，含义按 mac 填：
-//! - `hwnd`：前台应用的 pid（不透明 token，前端只会原样传回 paste_text）
-//! - `processName`：可执行文件名；`exePath`：可执行文件路径；`bundleId`：Bundle ID
-//! - `windowClass`：Bundle ID（mac 没有窗口类，借这个字段让日志/诊断能看到是哪个应用）
+//! 欄位沿用 Windows 的 AppContext，含義按 mac 填：
+//! - `hwnd`：前台應用的 pid（不透明 token，前端只會原樣傳回 paste_text）
+//! - `processName`：執行檔名；`exePath`：執行檔路徑；`bundleId`：Bundle ID
+//! - `windowClass`：Bundle ID（mac 沒有視窗類，借這個欄位讓日誌/診斷能看到是哪個應用）
 //! - `controlType` / `focusClass` / `automationId`：AXRole / AXSubrole / AXIdentifier
-//! - `hasCaret`：焦点元素有没有 AXSelectedTextRange
+//! - `hasCaret`：焦點元素有沒有 AXSelectedTextRange
 
 use super::{sanitize_uia_text, tail_chars, text_diag, AppContext, MonitorBounds, TextContext};
 use crate::platform::macos::{appkit, focus};
@@ -15,7 +15,7 @@ use crate::platform::macos::ffi::CFRange;
 const TEXT_BEFORE_LIMIT: usize = 500;
 const TEXT_AFTER_LIMIT: usize = 300;
 const SELECTED_TEXT_LIMIT: usize = 6000;
-/// 退回读整个 AXValue 时的上限（UTF-16 单元）。超大的文档不读，免得把编辑器卡住。
+/// 退回讀整個 AXValue 時的上限（UTF-16 單元）。超大的文件不讀，免得把編輯器卡住。
 const VALUE_FALLBACK_LIMIT: usize = 200_000;
 
 pub fn capture_context_with_text(reason: &str, include_text_context: bool) -> AppContext {
@@ -40,7 +40,7 @@ fn capture_context(
         ..Default::default()
     };
     let started = std::time::Instant::now();
-    // 请求了正文却在中途返回时，记下停在哪一步（原因码见 TextContextDiag）
+    // 請求了正文卻在中途返回時，記下停在哪一步（原因碼見 TextContextDiag）
     let give_up = |ctx: &mut AppContext, result: &str| {
         if include_text_context {
             ctx.text_context_diag = Some(text_diag(result, None, started));
@@ -70,7 +70,7 @@ fn capture_context(
         return ctx;
     }
 
-    // 没有辅助功能授权时只能拿到应用级信息；可编辑判据会退回 bundle 白名单。
+    // 沒有輔助功能授權時只能拿到應用級資訊；可編輯判據會退回 bundle 白名單。
     if !ax::is_trusted() {
         give_up(&mut ctx, "no_permission");
         return ctx;
@@ -81,7 +81,7 @@ fn capture_context(
     };
     app_element.set_timeout(ax::DEFAULT_TIMEOUT_SECS);
 
-    // Electron 应用默认不建无障碍树，只有真要读正文时才打开（会让对方多耗一点 CPU/内存）。
+    // Electron 應用預設不建無障礙樹，只有真要讀正文時才開啟（會讓對方多耗一點 CPU/記憶體）。
     if include_text_context {
         let _ = app_element.set_bool("AXManualAccessibility", true);
     }
@@ -116,7 +116,7 @@ fn capture_context(
     ctx.is_value_pattern_available = value_settable.is_some();
     ctx.is_read_only = value_settable.map(|settable| !settable);
 
-    // 密码框是硬边界：即使开了上下文感知也绝不读取。
+    // 密碼框是硬邊界：即使開了上下文感知也絕不讀取。
     if include_text_context {
         if ctx.is_password {
             give_up(&mut ctx, "password");
@@ -160,9 +160,9 @@ fn utf16_slice(units: &[u16], start: usize, end: usize) -> String {
     String::from_utf16_lossy(&units[start..end])
 }
 
-/// 光标前 500 字、选区（超过 6000 字不发）、光标后 300 字。
-/// 优先用 AXStringForRange 只取需要的那一小段；不支持的控件退回读 AXValue 再切。
-/// 读不到时返回 TextContextDiag 的原因码（no_caret / empty）。
+/// 游標前 500 字、選區（超過 6000 字不發）、游標後 300 字。
+/// 優先用 AXStringForRange 只取需要的那一小段；不支援的控制元件退回讀 AXValue 再切。
+/// 讀不到時返回 TextContextDiag 的原因碼（no_caret / empty）。
 fn capture_text_context(element: &AxElement, selection: CFRange) -> Result<TextContext, &'static str> {
     if selection.location < 0 || selection.length < 0 {
         return Err("no_caret");
@@ -171,7 +171,7 @@ fn capture_text_context(element: &AxElement, selection: CFRange) -> Result<TextC
     let length = selection.length as usize;
     let total = element.attr_i64("AXNumberOfCharacters").map(|n| n.max(0) as usize);
 
-    // AX 的区间以 UTF-16 为单位；限额按字符数近似，前后各多取一点再按字符截。
+    // AX 的區間以 UTF-16 為單位；限額按字元數近似，前後各多取一點再按字元截。
     let before_start = location.saturating_sub(TEXT_BEFORE_LIMIT);
     let after_start = location + length;
     let after_len = match total {
@@ -207,7 +207,7 @@ fn capture_text_context(element: &AxElement, selection: CFRange) -> Result<TextC
         }
     }
 
-    // 控件不支持按区间取字：退回读整个值（太大的不读）
+    // 控制元件不支援按區間取字：退回讀整個值（太大的不讀）
     if text_before.is_none() || text_after.is_none() {
         if total.map(|t| t <= VALUE_FALLBACK_LIMIT).unwrap_or(true) {
             if let Some(value) = element.attr_string("AXValue") {
@@ -238,11 +238,11 @@ fn capture_text_context(element: &AxElement, selection: CFRange) -> Result<TextC
     })
 }
 
-/// 前台应用焦点窗口的位置（**逻辑点**，左上角为原点的全局坐标）。
+/// 前台應用焦點視窗的位置（**邏輯點**，左上角為原點的全域性座標）。
 ///
-/// 与 Windows 不同，这里返回的不是显示器工作区，而是窗口矩形本身：mac 上各显示器缩放
-/// 可以不同，物理像素坐标不能跨屏比较，悬浮窗定位改在 window 模块里按逻辑坐标找显示器、
-/// 取它的工作区（见 window::macos_overlay_bounds）。
+/// 與 Windows 不同，這裡返回的不是顯示器工作區，而是視窗矩形本身：mac 上各顯示器縮放
+/// 可以不同，物理畫素座標不能跨屏比較，懸浮窗定位改在 window 模組裡按邏輯座標找顯示器、
+/// 取它的工作區（見 window::macos_overlay_bounds）。
 pub fn capture_foreground_monitor() -> Option<MonitorBounds> {
     if !ax::is_trusted() {
         return None;

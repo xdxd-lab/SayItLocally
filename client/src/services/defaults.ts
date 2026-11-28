@@ -1,14 +1,14 @@
 /**
- * 集中式默认配置
+ * 集中式預設配置
  *
- * 所有 getSetting() 的默认值统一在此定义。
- * 修改默认值只需改这一个文件，无需全局搜索替换。
+ * 所有 getSetting() 的預設值統一在此定義。
+ * 修改預設值只需改這一個檔案，無需全域性搜尋替換。
  *
- * Prompt 相关配置（内容较长，单独存放）：
- *   - 内置润色模式 → src/services/store.ts 的 BUILTIN_PRESETS
- *   - 应用 Prompt 规则 → src/services/personalization/defaults.ts 的 BUILTIN_APP_RULES
+ * Prompt 相關配置（內容較長，單獨存放）：
+ *   - 內建潤色模式 → src/services/store.ts 的 BUILTIN_PRESETS
+ *   - 應用 Prompt 規則 → src/services/personalization/defaults.ts 的 BUILTIN_APP_RULES
  *
- * macOS 上个别默认值不同，见文件末尾的 MAC_DEFAULT_OVERRIDES。
+ * macOS 上個別預設值不同，見檔案末尾的 MAC_DEFAULT_OVERRIDES。
  */
 
 import { IS_MAC } from '@/lib/platform'
@@ -16,194 +16,194 @@ import { DEFAULT_CUSTOM_WAVE } from '@/lib/overlayWaveColors'
 
 export const DEFAULTS: Record<string, unknown> = {
 
-  // ── 界面语言 ──
-  // 只管**界面文字**，不改识别语种。设置层已经有三个"语言"了
-  // （localAsr.language / server.language 是 ASR 语种，Preset 决定输出语种），
-  // 所以这个键必须带 ui. 前缀，别再起名叫 language。
+  // ── 介面語言 ──
+  // 只管**介面文字**，不改識別語種。設定層已經有三個"語言"了
+  // （localAsr.language / server.language 是 ASR 語種，Preset 決定輸出語種），
+  // 所以這個鍵必須帶 ui. 字首，別再起名叫 language。
   'ui.language': 'auto', // 可選: 'auto'（跟隨系統）| 'zh-TW' | 'en'
 
   // ── 工作模式 ──
   workMode: 'local', // [自訂 local-only] 只支援 'local'
 
-  // ── 快捷键 ──
-  // 按住说话。旧单键保持 DOM code；组合键使用物理 code 格式，如 'ControlLeft+MetaLeft' 或 'ControlLeft+KeyK'。
-  // ⚠️ 默认键不能用 Shift：长按右 Shift 约 8 秒会触发 Windows 筛选键，导致松开后录音停不下来
-  // （详见 lib/shortcutKeys.ts 的 PTT_FORBIDDEN_CODES）。这里曾经是 'ShiftRight'，
-  // 于是每台新装的机器开箱就绑在那个键上。右 Ctrl 位置相近、没有辅助功能陷阱，
-  // 也不和免提的默认键（右 Alt）撞。
-  // ⚠️ 改这里要同步 Rust：src-tauri/src/defaults.rs 和 storage/mod.rs 的种子。
-  // defaults.rs 里有读本文件的对账测试，漏改 cargo test 会红。
-  // 对账测试按「key: '值',」逐行解析，这几行保持单行字面量。
+  // ── 快捷鍵 ──
+  // 按住說話。舊單鍵保持 DOM code；組合鍵使用物理 code 格式，如 'ControlLeft+MetaLeft' 或 'ControlLeft+KeyK'。
+  // ⚠️ 預設鍵不能用 Shift：長按右 Shift 約 8 秒會觸發 Windows 篩選鍵，導致鬆開後錄音停不下來
+  // （詳見 lib/shortcutKeys.ts 的 PTT_FORBIDDEN_CODES）。這裡曾經是 'ShiftRight'，
+  // 於是每台新裝的機器開箱就綁在那個鍵上。右 Ctrl 位置相近、沒有輔助功能陷阱，
+  // 也不和免持的預設鍵（右 Alt）撞。
+  // ⚠️ 改這裡要同步 Rust：src-tauri/src/defaults.rs 和 storage/mod.rs 的種子。
+  // defaults.rs 裡有讀本檔案的對帳測試，漏改 cargo test 會紅。
+  // 對帳測試按「key: '值',」逐行解析，這幾行保持單行字面量。
   shortcutPTT: 'ControlRight',
-  shortcutHandsFree: 'AltRight', // 免提模式。默认右 Alt 单键。也支持组合键格式如 'Control+Shift+S'
-  // AI 整理总开关。留空 = 不注册，避免升级时意外占用用户已有的全局组合键。
+  shortcutHandsFree: 'AltRight', // 免持模式。預設右 Alt 單鍵。也支援組合鍵格式如 'Control+Shift+S'
+  // AI 整理總開關。留空 = 不註冊，避免升級時意外佔用使用者已有的全域性組合鍵。
   shortcutToggleAi: '',
 
-  // ── 麦克风 ──
-  selectedMic: '', // 设备 ID，空字符串 = 系统默认
-  muteSystemAudioWhileRecording: false, // 按住说话期间静音系统其他声音（防外放被麦克风回采）。默认关闭
-  // 浏览器降噪。默认开（底噪大的机器需要）；降噪按"人听得舒服"优化，
-  // 可能削掉 ASR 要的细节，麦克风环境干净时可以关掉对比准确度。
+  // ── 麥克風 ──
+  selectedMic: '', // 裝置 ID，空字串 = 系統預設
+  muteSystemAudioWhileRecording: false, // 按住說話期間靜音系統其他聲音（防外放被麥克風回採）。預設關閉
+  // 瀏覽器降噪。預設開（底噪大的機器需要）；降噪按"人聽得舒服"最佳化，
+  // 可能削掉 ASR 要的細節，麥克風環境乾淨時可以關掉對比準確度。
   micNoiseSuppression: true,
 
   // ── 文本插入 ──
-  protectClipboard: true, // 插入文本后自动还原剪贴板为插入前内容，避免占用用户剪贴板。默认开启
+  protectClipboard: true, // 插入文本後自動還原剪貼簿為插入前內容，避免佔用使用者剪貼簿。預設開啟
 
-  // ── AI 校对 ──
-  aiEnabled: false, // [自訂：預設關閉] 是否开启 AI 校对。可选: true | false
-  // 0 = 每段语音都整理；大于 0 时，仅录音达到该秒数才调用 AI（最多 300 秒）。
+  // ── AI 校對 ──
+  aiEnabled: false, // [自訂：預設關閉] 是否開啟 AI 校對。可選: true | false
+  // 0 = 每段語音都整理；大於 0 時，僅錄音達到該秒數才呼叫 AI（最多 300 秒）。
   aiMinDurationSec: 0,
-  // 读取光标附近文字/选区并交给 AI，用于上下文续写与语音编辑。涉及正文读取，默认关闭。
+  // 讀取游標附近文字/選區並交給 AI，用於上下文續寫與語音編輯。涉及正文讀取，預設關閉。
   contextAwareWritingEnabled: false,
-  contextSelectionAiProfileId: '', // 空字符串 = 选区编辑沿用当前 AI；否则引用已保存的 AI 服务
+  contextSelectionAiProfileId: '', // 空字串 = 選區編輯沿用當前 AI；否則引用已儲存的 AI 服務
   aiPromptAppend: '', // 全局附加 prompt
   'ai.builtinPromptLanguage': 'zh-TW', // 內建 Prompt 內容語言；與介面語言相互獨立
 
-  // ── AI 供应商 ──
-  // 下面这四个是**运行时生效的那一份**，录音链路、历史重跑、诊断页、反馈上报都只认它们。
-  // 它们由「AI 服务」页在启用/保存时整份写入，不要在别处单独改其中一个
-  // （历史 bug：切了模型但地址和密钥还是上一家的）。
+  // ── AI 供應商 ──
+  // 下面這四個是**執行時生效的那一份**，錄音鏈路、歷史重跑、診斷頁、反饋上報都只認它們。
+  // 它們由「AI 服務」頁在啟用/儲存時整份寫入，不要在別處單獨改其中一個
+  // （歷史 bug：切了模型但地址和金鑰還是上一家的）。
   // [自訂] S34：預設改為本機 Ollama（原為 'deepseek'、apiUrl ''）。Rust 端只接受 ollama＋loopback。
   'cloudAi.provider': 'ollama', // [自訂] 本 fork 只允許 'ollama'
   'cloudAi.apiUrl': 'http://127.0.0.1:11434', // [自訂] 本機 Ollama 預設位址
   'cloudAi.apiKey': '',
   'cloudAi.model': '',
-  // 「AI 服务」列表本身：一条 = 供应商 + 地址 + 密钥 + 模型，只有设置页读写。
+  // 「AI 服務」列表本身：一條 = 供應商 + 地址 + 金鑰 + 模型，只有設定頁讀寫。
   'cloudAi.profiles': [],
   'cloudAi.activeProfileId': '',
-  // 老的「每供应商一组配置」（cloudAi.<provider>.*）只摊平迁移一次。
-  // 没有这个标记，用户删光列表后下次进页面又会被"救回来"。老键一律不删，方便降级。
+  // 老的「每供應商一組配置」（cloudAi.<provider>.*）只攤平遷移一次。
+  // 沒有這個標記，使用者刪光列表後下次進頁面又會被"救回來"。老鍵一律不刪，方便降級。
   'cloudAi.profilesMigrated': false,
 
-  // ── ASR（云 API）──
-  // 可选值以 features/settings/asrProviderCatalog.ts 的 ASR_PROVIDERS 为准：
+  // ── ASR（雲 API）──
+  // 可選值以 features/settings/asrProviderCatalog.ts 的 ASR_PROVIDERS 為準：
   // 'doubao_v2' | 'qwen' | 'qwen_audio_stream' | 'qwen_realtime' | 'qwen_omni_35_*'
   // | 'mimo' | 'groq_whisper' | 'openai_transcribe' | 'openai_live_transcribe'
   // | 'gemini_transcribe' | 'gemini_live_transcribe' | 'openrouter_transcribe'
   'cloudAsr.provider': 'doubao_v2',
-  // 启用服务选定的模型。只有「同协议多模型」的服务（Groq / OpenAI）用得上，
-  // 空串 = 让后端用它自己的默认。写入前已由 resolveAsrModel 归一，见 asrProfileStore。
+  // 啟用服務選定的模型。只有「同協議多模型」的服務（Groq / OpenAI）用得上，
+  // 空串 = 讓後端用它自己的預設。寫入前已由 resolveAsrModel 歸一，見 asrProfileStore。
   'cloudAsr.model': '',
-  // 运行时读的「本次生效凭据」镜像。豆包按控制台代次算出来后写进这两个键：
-  // 新版控制台只有一个 API Key、appId 必为空串（Rust 侧靠它区分两代鉴权头）。
+  // 執行時讀的「本次生效憑據」映象。豆包按控制台代次算出來後寫進這兩個鍵：
+  // 新版控制台只有一個 API Key、appId 必為空串（Rust 側靠它區分兩代鑑權頭）。
   'cloudAsr.apiKey': '',
-  'cloudAsr.appId': '', // 仅豆包旧版控制台需要
-  // 豆包控制台代次与各自的密钥（两代的密钥不是同一个东西，分开存，切换不丢）
+  'cloudAsr.appId': '', // 僅豆包舊版控制台需要
+  // 豆包控制台代次與各自的金鑰（兩代的金鑰不是同一個東西，分開存，切換不丟）
   'cloudAsr.doubao.console': 'new', // 'new' = 只要 API Key | 'legacy' = App ID + Access Token
   'cloudAsr.doubao.consoleKey': '', // 新版控制台的 API Key
-  'cloudAsr.omniSystemPrompt': '', // 千问 Omni 模式的 system prompt
-  // 服务列表：一张卡 = 一份完整配置（供应商 + 该平台凭据），同一家可存多份
+  'cloudAsr.omniSystemPrompt': '', // 千問 Omni 模式的 system prompt
+  // 服務列表：一張卡 = 一份完整配置（供應商 + 該平台憑據），同一家可存多份
   'cloudAsr.profiles': [],
   'cloudAsr.activeProfileId': '',
-  // 已经自动补建过哪些服务。刻意不是「迁移完成」那种布尔标记 —— 记「补过谁」才能
-  // 既在逻辑修好后自愈，又不把用户主动删掉的卡救回来。
+  // 已經自動補建過哪些服務。刻意不是「遷移完成」那種布林標記 —— 記「補過誰」才能
+  // 既在邏輯修好後自愈，又不把使用者主動刪掉的卡救回來。
   'cloudAsr.autoCreatedProviders': [],
 
   // ── ASR（本地）──
-  // 可选值就是 catalog.rs 里那几个 id：'sensevoice-small-gguf'（默认，最快）
+  // 可選值就是 catalog.rs 裡那幾個 id：'sensevoice-small-gguf'（預設，最快）
   // | 'funasr-nano-2512-gguf' | 'qwen3-asr-0.6b-gguf'
-  // | 'qwen3-asr-1.7b-q4-gguf' | 'qwen3-asr-1.7b-gguf'（最准）
+  // | 'qwen3-asr-1.7b-q4-gguf' | 'qwen3-asr-1.7b-gguf'（最準）
   'localAsr.modelId': 'sensevoice-small-gguf',
-  'localAsr.language': 'auto', // 可选: 'auto' | 'zh' | 'en' | 'ja' | 'ko'
-  // GGUF 权重目前只发在 HuggingFace（handy-computer 组织下），国内走镜像更稳。
-  // 值要和 catalog 里 DownloadSource.source 的名字完全一致，否则会回落到第一个源。
+  'localAsr.language': 'auto', // 可選: 'auto' | 'zh' | 'en' | 'ja' | 'ko'
+  // GGUF 權重目前只發在 HuggingFace（handy-computer 組織下），國內走映象更穩。
+  // 值要和 catalog 裡 DownloadSource.source 的名字完全一致，否則會回落到第一個源。
   'localAsr.downloadSource': 'HuggingFace', // [自訂] S25：預設官方 huggingface.co（原為 'HuggingFace Mirror'）
   'localAsr.model': '',
-  // GGUF 引擎的计算后端偏好。'auto' = 有 GPU 用 GPU、没有自动用 CPU。
-  // 没装 GPU 加速包的机器永远是 CPU，这个值不影响功能，只影响速度。
-  'localAsr.accelerator': 'auto', // 可选: 'auto' | 'cpu' | 'gpu'
-  // 多显卡机器上指定用哪张卡。空串 = 交给引擎自动挑（独显优先）。
-  // 值是 GgufDevice.id（后端报的 PCI 总线 id，拿不到时回落成 "kind:name"），
-  // **不是** registry 索引 —— 索引会随驱动更新变动，存索引等于让用户的选择
-  // 在某次驱动更新后静默指向另一张卡。设置界面只在检测到两张以上 GPU 时出现。
+  // GGUF 引擎的計算後端偏好。'auto' = 有 GPU 用 GPU、沒有自動用 CPU。
+  // 沒裝 GPU 加速包的機器永遠是 CPU，這個值不影響功能，只影響速度。
+  'localAsr.accelerator': 'auto', // 可選: 'auto' | 'cpu' | 'gpu'
+  // 多顯示卡機器上指定用哪張卡。空串 = 交給引擎自動挑（獨顯優先）。
+  // 值是 GgufDevice.id（後端報的 PCI 匯流排 id，拿不到時回落成 "kind:name"），
+  // **不是** registry 索引 —— 索引會隨驅動更新變動，存索引等於讓使用者的選擇
+  // 在某次驅動更新後靜默指向另一張卡。設定介面只在檢測到兩張以上 GPU 時出現。
   'localAsr.gpuDevice': '',
-  // 本地模型空闲多少分钟后卸载（实测释放 350 MB ~ 2.6 GB 内存）。0 = 从不卸载。
-  // 默认常驻，保证下一次识别无需重新付“加载 + 预热”的等待；内存紧张的用户可在
-  // 本地模式设置中选择空闲 10 / 30 / 60 分钟后自动释放。
+  // 本地模型空閒多少分鐘後解除安裝（實測釋放 350 MB ~ 2.6 GB 記憶體）。0 = 從不解除安裝。
+  // 預設常駐，保證下一次識別無需重新付“載入 + 預熱”的等待；記憶體緊張的使用者可在
+  // 本地模式設定中選擇空閒 10 / 30 / 60 分鐘後自動釋放。
   'localAsr.unloadIdleMinutes': 0,
 
-  // ── 服务器 ──
-  // 可选: 'auto' | 'zh' | 'en'。随每次识别发给服务端，由 asr.py 的 _resolve_language
-  // 映射成 Chinese / English；'auto' = 交给模型自检。
-  // （注释原来写的是 'Chinese' | 'English' | 'Cantonese'，那是服务端内部的取值，
-  //   客户端从来没写过这几个字符串。）
-  // 服务器模式下的 AI 来源。managed = 服务器内置；custom = 服务器只做 ASR，客户端调用当前 AI 档案。
-  'server.aiSource': 'managed', // 可选: 'managed' | 'custom'
+  // ── 伺服器 ──
+  // 可選: 'auto' | 'zh' | 'en'。隨每次識別發給服務端，由 asr.py 的 _resolve_language
+  // 對映成 Chinese / English；'auto' = 交給模型自檢。
+  // （註釋原來寫的是 'Chinese' | 'English' | 'Cantonese'，那是服務端內部的取值，
+  //   客戶端從來沒寫過這幾個字串。）
+  // 伺服器模式下的 AI 來源。managed = 伺服器內建；custom = 伺服器只做 ASR，客戶端呼叫當前 AI 檔案。
+  'server.aiSource': 'managed', // 可選: 'managed' | 'custom'
   'server.language': 'auto',
 
-  // ── 悬浮窗 ──
-  overlayWaveTheme: 'black-rainbow', // 可选: 'black-rainbow' | 'black-blue' | 'black-white' | 'custom'
-  // 波形主题选 'custom' 时用的配色：{ mode: 'solid' | 'gradient', from: '#rrggbb', to: '#rrggbb' }。
-  // 太暗的颜色在黑底胶囊上会被自动调亮，见 lib/overlayWaveColors.ts。
+  // ── 懸浮窗 ──
+  overlayWaveTheme: 'black-rainbow', // 可選: 'black-rainbow' | 'black-blue' | 'black-white' | 'custom'
+  // 波形主題選 'custom' 時用的配色：{ mode: 'solid' | 'gradient', from: '#rrggbb', to: '#rrggbb' }。
+  // 太暗的顏色在黑底膠囊上會被自動調亮，見 lib/overlayWaveColors.ts。
   overlayWaveCustom: DEFAULT_CUSTOM_WAVE,
-  overlayShowDuration: true, // 是否显示录音时长。可选: true | false
-  overlayWidth: 'short', // 可选: 'short' | 'medium' | 'long'
+  overlayShowDuration: true, // 是否顯示錄音時長。可選: true | false
+  overlayWidth: 'short', // 可選: 'short' | 'medium' | 'long'
 
-  // ── 流式实时显示 ──
-  // 打开后，支持流式的 ASR 模型（豆包、千问实时）在识别阶段会把实时文字显示在悬浮窗上。
-  // 识别完成后文本仍会照常交给 AI 处理。可选: true | false
+  // ── 流式即時顯示 ──
+  // 開啟後，支援流式的 ASR 模型（豆包、千問即時）在識別階段會把即時文字顯示在懸浮窗上。
+  // 識別完成後文本仍會照常交給 AI 處理。可選: true | false
   streamingDisplayEnabled: false,
 
-  // ── 热词注入 AI 提示词 ──
-  // 打开后，AI 整理时会收到你的热词表，帮助纠正/保留专有名词。默认关闭。可选: true | false
+  // ── 熱詞注入 AI 提示詞 ──
+  // 開啟後，AI 整理時會收到你的熱詞表，幫助糾正/保留專有名詞。預設關閉。可選: true | false
   injectHotwordsToPrompt: false,
 
   // ── 提示音 ──
-  readySoundEnabled: true, // 录音就绪提示音。可选: true | false
+  readySoundEnabled: true, // 錄音就緒提示音。可選: true | false
 
-  // ── 应用设置 ──
-  // autoCheckUpdate 在界面上已经没有开关了（更新是必走的：后台下载 + 用户点击或退出时安装）。
-  // 这里保留默认值与读取，是给更新链路自己出故障时留一条不用发新版的止血通道
-  // （0.0.8 那次更新器把用户锁在死循环里，当时只能靠这个开关关掉）。
-  autoCheckUpdate: false, // [自訂] 更新功能已移除；此值保留為 false // 是否检查更新。可选: true | false
-  // 已下载待安装的更新包 { version, filePath, sha512 }。Rust 侧退出时会读它做兜底安装。
+  // ── 應用設定 ──
+  // autoCheckUpdate 在介面上已經沒有開關了（更新是必走的：後台下載 + 使用者點選或退出時安裝）。
+  // 這裡保留預設值與讀取，是給更新鏈路自己出故障時留一條不用發新版的止血通道
+  // （0.0.8 那次更新器把使用者鎖在死迴圈裡，當時只能靠這個開關關掉）。
+  autoCheckUpdate: false, // [自訂] 更新功能已移除；此值保留為 false // 是否檢查更新。可選: true | false
+  // 已下載待安裝的更新包 { version, filePath, sha512 }。Rust 側退出時會讀它做兜底安裝。
   pendingUpdate: null,
-  historyEnabled: false, // [自訂：預設關閉] 保存历史记录（文本+录音）。关闭后不再保存新记录，适合共享电脑。可选: true | false
-  audioRetentionEnabled: false, // [自訂：預設關閉] 保留录音文件。可选: true | false
-  audioRetentionDays: 7, // [自訂] S61：預設由 -1（永久）改為 7 天。录音保留天数。可选: 7 | 30 | 90 | -1（永久）
-  logRetentionDays: 30, // 日志保留天数。可选: 7 | 15 | 30 | 90
+  historyEnabled: false, // [自訂：預設關閉] 儲存歷史記錄（文本+錄音）。關閉後不再儲存新記錄，適合共享電腦。可選: true | false
+  audioRetentionEnabled: false, // [自訂：預設關閉] 保留錄音檔案。可選: true | false
+  audioRetentionDays: 7, // [自訂] S61：預設由 -1（永久）改為 7 天。錄音保留天數。可選: 7 | 30 | 90 | -1（永久）
+  logRetentionDays: 30, // 日誌保留天數。可選: 7 | 15 | 30 | 90
 
-  // ── WebDAV 备份 ──
-  // 备份包一定含配置，历史与录音可选。两个都默认 false：录音库能有几个 GB，而网盘
-  // （尤其坚果云免费版）有月流量额度，默认打开等于替用户做了一个很贵的决定。
-  // ⚠️ Rust 侧在 src-tauri/src/defaults.rs 有一份（includeHistory / includeAudio / keepCount），
-  // 改这里要一起改 —— 两份不一致时界面显示的和实际上传的就不是一回事了。那边有读本文件的
-  // 对账测试，漏改 cargo test 会红。
-  'webdav.enabled': false, // 自动定期备份。可选: true | false
-  'webdav.url': '', // 目录地址，只接受 https（Basic 认证等于明文发密码）
+  // ── WebDAV 備份 ──
+  // 備份包一定含配置，歷史與錄音可選。兩個都預設 false：錄音庫能有幾個 GB，而網盤
+  // （尤其堅果雲免費版）有月流量額度，預設開啟等於替使用者做了一個很貴的決定。
+  // ⚠️ Rust 側在 src-tauri/src/defaults.rs 有一份（includeHistory / includeAudio / keepCount），
+  // 改這裡要一起改 —— 兩份不一致時介面顯示的和實際上傳的就不是一回事了。那邊有讀本檔案的
+  // 對帳測試，漏改 cargo test 會紅。
+  'webdav.enabled': false, // 自動定期備份。可選: true | false
+  'webdav.url': '', // 目錄地址，只接受 https（Basic 認證等於明文發密碼）
   'webdav.username': '',
-  'webdav.password': '', // 坚果云要用「应用密码」，不是登录密码
-  'webdav.includeHistory': false, // 备份含历史记录
-  'webdav.includeAudio': false, // 备份含录音文件（体积大，打开时会提醒）
-  'webdav.intervalHours': 24, // 备份间隔小时数。可选: 24 | 72 | 168
-  'webdav.keepCount': 5, // 服务器上保留的份数。可选: 3 | 5 | 10
-  'webdav.lastBackupAt': 0, // 上次**成功**的时刻（ms）。间隔判定只看这个
-  'webdav.lastAttemptAt': 0, // 上次尝试的时刻（ms），失败退避用
-  // 上次备份结果 { at, ok, fileName, bytes, includeHistory, includeAudio, error }。
-  // 失败也记：静默失败几个月的备份在界面上和正常备份长得一模一样。
+  'webdav.password': '', // 堅果雲要用「應用密碼」，不是登入密碼
+  'webdav.includeHistory': false, // 備份含歷史記錄
+  'webdav.includeAudio': false, // 備份含錄音檔案（體積大，開啟時會提醒）
+  'webdav.intervalHours': 24, // 備份間隔小時數。可選: 24 | 72 | 168
+  'webdav.keepCount': 5, // 伺服器上保留的份數。可選: 3 | 5 | 10
+  'webdav.lastBackupAt': 0, // 上次**成功**的時刻（ms）。間隔判定只看這個
+  'webdav.lastAttemptAt': 0, // 上次嘗試的時刻（ms），失敗退避用
+  // 上次備份結果 { at, ok, fileName, bytes, includeHistory, includeAudio, error }。
+  // 失敗也記：靜默失敗幾個月的備份在介面上和正常備份長得一模一樣。
   'webdav.lastResult': null,
 
-  // ── 文本后处理（不依赖 AI 的客户端文本规范化）──
+  // ── 文本後處理（不依賴 AI 的客戶端文本規範化）──
   textPostProcess: {
-    autoSegment: true, // 智能分段（仅极速模式生效），默认开启
-    normalizeNumbers: true, // 数字规范化：百分之/小数/分之/结构化整数，默认开启
-    stripTrailingPunctuation: false, // 去除句末标点
-    punctuationToSpace: false, // 标点符号替换为空格
+    autoSegment: true, // 智慧分段（僅極速模式生效），預設開啟
+    normalizeNumbers: true, // 數字規範化：百分之/小數/分之/結構化整數，預設開啟
+    stripTrailingPunctuation: false, // 去除句末標點
+    punctuationToSpace: false, // 標點符號替換為空格
   },
 
-  // ── 热词 ──
+  // ── 熱詞 ──
   hotwordLearning: null,
 
-  // ── 引导 ──
-  onboardingVersion: '', // 已完成引导的版本号，空字符串 = 未完成
+  // ── 引導 ──
+  onboardingVersion: '', // 已完成引導的版本號，空字串 = 未完成
 
-  // ── 远程公告 ──
-  dismissedNoticeIds: [], // 已被用户关闭的公告 id 列表
+  // ── 遠端公告 ──
+  dismissedNoticeIds: [], // 已被使用者關閉的公告 id 列表
 }
 
 /**
- * macOS 上覆盖的默认值。MacBook 内置键盘没有右 Ctrl，所以按住说话改成右 ⌥、免提改成右 ⌘。
- * ⚠ 同样要和 Rust 对账（defaults.rs 的宏），对账测试逐行解析，保持单行字面量。
+ * macOS 上覆蓋的預設值。MacBook 內建鍵盤沒有右 Ctrl，所以按住說話改成右 ⌥、免持改成右 ⌘。
+ * ⚠ 同樣要和 Rust 對帳（defaults.rs 的宏），對帳測試逐行解析，保持單行字面量。
  */
 export const MAC_DEFAULT_OVERRIDES: Record<string, unknown> = {
   shortcutPTT: 'AltRight',
@@ -211,7 +211,7 @@ export const MAC_DEFAULT_OVERRIDES: Record<string, unknown> = {
 }
 
 /**
- * 获取指定 key 的默认值。
+ * 獲取指定 key 的預設值。
  * 如果 key 不在 DEFAULTS 中，返回提供的 fallback。
  */
 export function getDefault<T>(key: string, fallback?: T): T {

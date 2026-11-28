@@ -249,9 +249,9 @@ pub fn write_log_line(line: &str) {
 }
 
 fn write_log_line_at(line: &str, now: chrono::DateTime<chrono::Local>) {
-    // 用 unwrap_or_else 而非 unwrap()：即使这个 Mutex 曾在某次 panic 中被"污染"
-    // （poisoned），日志功能也不能跟着永久失效——否则会形成"一次意外 panic 导致
-    // 之后所有诊断日志都写不出来"的雪崩，恰恰是排查间歇性问题最怕遇到的情况。
+    // 用 unwrap_or_else 而非 unwrap()：即使這個 Mutex 曾在某次 panic 中被"汙染"
+    // （poisoned），日誌功能也不能跟著永久失效——否則會形成"一次意外 panic 導致
+    // 之後所有診斷日誌都寫不出來"的雪崩，恰恰是排查間歇性問題最怕遇到的情況。
     let mut guard = LOG_FILE.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let incoming = line.len() as u64 + 32;
     if incoming > MAX_LOG_SIZE {
@@ -520,7 +520,7 @@ mod log_retention_tests {
 fn get_os_version() -> String {
     #[cfg(target_os = "windows")]
     {
-        // 从注册表读取，不弹窗口
+        // 從登錄檔讀取，不彈視窗
         use std::process::Command;
         Command::new("cmd")
             .args(["/C", "ver"])
@@ -553,8 +553,8 @@ fn get_local_ip() -> String {
 }
 
 fn get_system_locale() -> String {
-    // 用原生 Win32 API 取区域设置，避免拉起 PowerShell（冷启动 1-2 秒）。
-    // GetUserDefaultLocaleName 返回形如 "zh-CN" 的 BCP-47 名称，与原 (Get-Culture).Name 一致。
+    // 用原生 Win32 API 取區域設定，避免拉起 PowerShell（冷啟動 1-2 秒）。
+    // GetUserDefaultLocaleName 返回形如 "zh-CN" 的 BCP-47 名稱，與原 (Get-Culture).Name 一致。
     #[cfg(target_os = "windows")]
     {
         use windows::Win32::Globalization::GetUserDefaultLocaleName;
@@ -562,13 +562,13 @@ fn get_system_locale() -> String {
         let mut buf = [0u16; 85];
         let len = unsafe { GetUserDefaultLocaleName(&mut buf) };
         if len > 1 {
-            // 返回值含结尾的 NUL，切掉它。
+            // 返回值含結尾的 NUL，切掉它。
             String::from_utf16_lossy(&buf[..(len as usize - 1)])
         } else {
             "unknown".to_string()
         }
     }
-    // macOS：区域格式（CFLocale），不能读 LANG（Finder 启动的 App 没有这个变量）。
+    // macOS：區域格式（CFLocale），不能讀 LANG（Finder 啟動的 App 沒有這個變數）。
     #[cfg(target_os = "macos")]
     {
         crate::platform::macos::sysinfo::locale_identifier().unwrap_or_else(|| "unknown".to_string())
@@ -580,8 +580,8 @@ fn get_system_locale() -> String {
 }
 
 fn get_total_memory_mb() -> u64 {
-    // 用原生 GlobalMemoryStatusEx 取物理内存，避免拉起 PowerShell。
-    // ullTotalPhys 为字节，/ 1MB 与原 TotalPhysicalMemory / 1MB 语义一致。
+    // 用原生 GlobalMemoryStatusEx 取實體記憶體，避免拉起 PowerShell。
+    // ullTotalPhys 為位元組，/ 1MB 與原 TotalPhysicalMemory / 1MB 語義一致。
     #[cfg(target_os = "windows")]
     {
         use windows::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
@@ -617,7 +617,7 @@ pub struct ClientRuntimeInfo {
     #[serde(rename = "clientVersion")]
     pub client_version: String,
     pub platform: String,
-    /// CPU 架构（std::env::consts::ARCH：x86_64 / aarch64），更新通道按它选安装包。
+    /// CPU 架構（std::env::consts::ARCH：x86_64 / aarch64），更新通道按它選安裝包。
     pub arch: String,
     #[serde(rename = "osVersion")]
     pub os_version: String,
@@ -658,12 +658,12 @@ pub fn get_client_runtime_info(_storage: State<Storage>) -> Result<ClientRuntime
     })
 }
 
-/// 系统**显示语言**，返回前端 `Locale` 用的标签（`zh-CN` / `en`）。
+/// 系統**顯示語言**，返回前端 `Locale` 用的標籤（`zh-CN` / `en`）。
 ///
-/// 前端 `ui.language = 'auto'` 时靠这个定语言。刻意不让前端用
-/// `navigator.language` 自己判：那个跟的是 WebView 的语言，与托盘用的
-/// `GetUserDefaultUILanguage` 可能给出不同结论，会出现「托盘中文、界面英文」。
-/// 判定只保留一处（`locale::system_ui_lang`），两边都问它。
+/// 前端 `ui.language = 'auto'` 時靠這個定語言。刻意不讓前端用
+/// `navigator.language` 自己判：那個跟的是 WebView 的語言，與托盤用的
+/// `GetUserDefaultUILanguage` 可能給出不同結論，會出現「托盤中文、介面英文」。
+/// 判定只保留一處（`locale::system_ui_lang`），兩邊都問它。
 #[tauri::command]
 pub fn get_system_ui_language() -> String {
     crate::locale::system_ui_lang().tag().to_string()
@@ -686,38 +686,38 @@ pub fn set_auto_launch(app: AppHandle, _enable: bool) -> Result<(), String> {
     }
 }
 
-// ─── 自动更新 ───
+// ─── 自動更新 ───
 //
-// 分工：版本检查在前端（updateChecker.ts 拉 manifest 比版本号），Rust 只负责
-// 下载、校验完整性、以及把安装程序拉起来。四个入口：
-//   · download_update            下载并校验 SHA-512
-//   · verify_update_package      启动时确认上次下载的包还在、还完整（省掉重复下载整包）
-//   · install_downloaded_update  用户主动点「立即更新」时装，装完重新拉起
-//   · install_pending_update_on_exit  用户没点就直接退出时，在退出路径上静默装掉
+// 分工：版本檢查在前端（updateChecker.ts 拉 manifest 比版本號），Rust 只負責
+// 下載、校驗完整性、以及把安裝程式拉起來。四個入口：
+//   · download_update            下載並校驗 SHA-512
+//   · verify_update_package      啟動時確認上次下載的包還在、還完整（省掉重複下載整包）
+//   · install_downloaded_update  使用者主動點「立即更新」時裝，裝完重新拉起
+//   · install_pending_update_on_exit  使用者沒點就直接退出時，在退出路徑上靜默裝掉
 //
-// 最后那个是"强制更新"真正落地的地方：只靠用户点图标，不点的人永远留在旧版。
+// 最後那個是"強制更新"真正落地的地方：只靠使用者點圖示，不點的人永遠留在舊版。
 
-/// 安装程序是否已经被拉起过。
+/// 安裝程式是否已經被拉起過。
 ///
-/// 用户主动安装与退出兜底安装共用同一个 spawn，必须互斥：install_downloaded_update
-/// 自己就会 app.exit(0)，那次退出同样会走 RunEvent::Exit，不拦住就会起两个安装程序
-/// 互相抢文件锁。suppress_exit_install() 也靠它屏蔽掉"重启回同一版本"那种退出。
+/// 使用者主動安裝與退出兜底安裝共用同一個 spawn，必須互斥：install_downloaded_update
+/// 自己就會 app.exit(0)，那次退出同樣會走 RunEvent::Exit，不攔住就會起兩個安裝程式
+/// 互相搶檔案鎖。suppress_exit_install() 也靠它遮蔽掉"重啟回同一版本"那種退出。
 static INSTALLER_SPAWNED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
-/// 让本次退出不要触发兜底安装。用于导入配置后的重启：用户要的是重启回同一个版本，
-/// 不是更新；若在这里把新版装下去，重启拉起来的会是正在被覆盖的 exe。
+/// 讓本次退出不要觸發兜底安裝。用於匯入配置後的重啟：使用者要的是重啟回同一個版本，
+/// 不是更新；若在這裡把新版裝下去，重啟拉起來的會是正在被覆蓋的 exe。
 pub fn suppress_exit_install() {
     INSTALLER_SPAWNED.store(true, std::sync::atomic::Ordering::SeqCst);
 }
 
-/// 计算文件 SHA-512 并输出 **Base64** —— 与 manifest 的 sha512 字段同一种编码。
-/// （gen-latest-yml.ps1 把 Get-FileHash 的 hex 转成了 Base64，别按 hex 去比。）
+/// 計算檔案 SHA-512 並輸出 **Base64** —— 與 manifest 的 sha512 欄位同一種編碼。
+/// （gen-latest-yml.ps1 把 Get-FileHash 的 hex 轉成了 Base64，別按 hex 去比。）
 fn file_sha512_base64(path: &std::path::Path) -> Result<String, String> {
     use sha2::{Digest, Sha512};
     let mut file = std::fs::File::open(path)
         .map_err(|e| format!("Failed to open the installer file: {}", e))?;
     let mut hasher = Sha512::new();
-    // 安装包有几十 MB，分块读，别整个塞进内存
+    // 安裝包有幾十 MB，分塊讀，別整個塞進記憶體
     let mut buffer = vec![0u8; 1024 * 1024];
     loop {
         let read = std::io::Read::read(&mut file, &mut buffer)
@@ -730,14 +730,14 @@ fn file_sha512_base64(path: &std::path::Path) -> Result<String, String> {
     Ok(base64::engine::general_purpose::STANDARD.encode(hasher.finalize()))
 }
 
-/// 确认磁盘上那个安装包仍然可用（存在 + 哈希对得上）。
+/// 確認磁碟上那個安裝包仍然可用（存在 + 雜湊對得上）。
 ///
-/// 启动时用它决定「上次下载的包还能不能直接装」。没有这一步，"下载完等用户点"
-/// 会让每次开机都把整包重下一遍 —— 旧流程下载完立刻安装，所以从来没暴露过。
+/// 啟動時用它決定「上次下載的包還能不能直接裝」。沒有這一步，"下載完等使用者點"
+/// 會讓每次開機都把整包重下一遍 —— 舊流程下載完立刻安裝，所以從來沒暴露過。
 #[tauri::command]
 pub fn verify_update_package(file_path: String, sha512: Option<String>) -> Result<bool, String> {
-    // 没记哈希的包（0.1.x 早期下载的）不再复用，宁可重下一遍：
-    // 「只确认文件在」正是恶意备份能把任意 exe 塞进待安装的那个口子。
+    // 沒記雜湊的包（0.1.x 早期下載的）不再複用，寧可重下一遍：
+    // 「只確認檔案在」正是惡意備份能把任意 exe 塞進待安裝的那個口子。
     let (Ok(path), Some(expected)) = (resolve_update_package(&file_path), non_empty(sha512.as_deref())) else {
         return Ok(false);
     };
@@ -748,19 +748,19 @@ fn non_empty(value: Option<&str>) -> Option<&str> {
     value.map(str::trim).filter(|v| !v.is_empty())
 }
 
-/// 更新包只放在这一个目录里。安装前一律核对路径确实在这里面。
+/// 更新包只放在這一個目錄裡。安裝前一律核對路徑確實在這裡面。
 fn update_dir() -> std::path::PathBuf {
     std::env::temp_dir().join("sayit-update")
 }
 
-/// 更新包的扩展名：Windows 是 NSIS 安装程序，macOS 是装着 SayIt.app 的 zip（见 spawn_installer）。
+/// 更新包的副檔名：Windows 是 NSIS 安裝程式，macOS 是裝著 SayIt.app 的 zip（見 spawn_installer）。
 #[cfg(not(target_os = "macos"))]
 const UPDATE_PACKAGE_EXTENSION: &str = "exe";
 #[cfg(target_os = "macos")]
 const UPDATE_PACKAGE_EXTENSION: &str = "zip";
 
-/// 安装包落盘用的文件名：只取 URL 路径的最后一段，而且必须是普通的 `xxx.exe`（mac 上是 `xxx.zip`）。
-/// 原来直接 `url.split('/').last()`，一个带查询串或奇怪字符的地址就能让文件名跑偏。
+/// 安裝包落盤用的檔名：只取 URL 路徑的最後一段，而且必須是普通的 `xxx.exe`（mac 上是 `xxx.zip`）。
+/// 原來直接 `url.split('/').last()`，一個帶查詢串或奇怪字元的地址就能讓檔名跑偏。
 fn installer_file_name(url: &str) -> Option<String> {
     let parsed = reqwest::Url::parse(url).ok()?;
     let last = parsed.path_segments()?.last()?.to_string();
@@ -771,10 +771,10 @@ fn installer_file_name(url: &str) -> Option<String> {
     valid.then_some(last)
 }
 
-/// 把前端或设置里给的安装包路径解析成真实路径，并确认它在更新目录里、是 .exe。
+/// 把前端或設定裡給的安裝包路徑解析成真實路徑，並確認它在更新目錄裡、是 .exe。
 ///
-/// 安装程序是以用户身份静默执行的，所以这里是"SayIt 会运行哪个文件"的最后一道关。
-/// 恶意备份曾经能把 pendingUpdate 指到 audio 目录里伪装成录音的 exe（审核 S3）。
+/// 安裝程式是以使用者身份靜默執行的，所以這裡是"SayIt 會執行哪個檔案"的最後一道關。
+/// 惡意備份曾經能把 pendingUpdate 指到 audio 目錄裡偽裝成錄音的 exe（稽核 S3）。
 fn resolve_update_package(file_path: &str) -> Result<std::path::PathBuf, String> {
     let path = std::fs::canonicalize(file_path)
         .map_err(|_| "The installer file does not exist".to_string())?;
@@ -790,8 +790,8 @@ fn resolve_update_package(file_path: &str) -> Result<std::path::PathBuf, String>
     Ok(path)
 }
 
-/// 安装前的完整核对：路径在更新目录里，且哈希等于设置里 pendingUpdate 记的那个值。
-/// 用户主动安装和退出兜底安装共用，两条路都不能跳过。
+/// 安裝前的完整核對：路徑在更新目錄裡，且雜湊等於設定裡 pendingUpdate 記的那個值。
+/// 使用者主動安裝和退出兜底安裝共用，兩條路都不能跳過。
 fn checked_pending_installer(storage: &Storage, file_path: &str) -> Result<std::path::PathBuf, String> {
     let path = resolve_update_package(file_path)?;
     let pending = storage.get("pendingUpdate", None);
@@ -839,9 +839,9 @@ fn emit_update_progress(app: &AppHandle, downloaded: u64, total: u64, status: &s
     );
 }
 
-/// 下载更新安装包到临时目录，下载过程中通过 update-download-progress 事件上报真实字节进度。
-/// sha512（manifest 里的 Base64）必须有，落盘后校验，不通过直接删掉并报错。
-/// 下载地址必须与服务器设置或官方地址同源（net_policy::update_url_allowed）。
+/// 下載更新安裝包到臨時目錄，下載過程中透過 update-download-progress 事件上報真實位元組進度。
+/// sha512（manifest 裡的 Base64）必須有，落盤後校驗，不透過直接刪掉並報錯。
+/// 下載地址必須與伺服器設定或官方地址同源（net_policy::update_url_allowed）。
 #[tauri::command]
 pub async fn download_update(
     app: AppHandle,
@@ -868,7 +868,7 @@ pub async fn download_update(
     if !crate::net_policy::update_url_allowed(&url, &configured) {
         return Err(fail("Update download address is not on the configured or official server".to_string()));
     }
-    // 两个更新通道的 manifest 都带 sha512（2026-10 核对过）。没有哈希就无从确认下到的是什么，不下。
+    // 兩個更新通道的 manifest 都帶 sha512（2026-10 核對過）。沒有雜湊就無從確認下到的是什麼，不下。
     let Some(expected_sha512) = non_empty(sha512.as_deref()).map(str::to_string) else {
         return Err(fail("Update manifest has no SHA-512 checksum".to_string()));
     };
@@ -876,7 +876,7 @@ pub async fn download_update(
         return Err(fail("Update download address does not point to an installer".to_string()));
     };
 
-    // 必须带 User-Agent：生产环境 AWS WAF 的 NoUserAgent_HEADER 规则会拦截无 UA 的请求（403）
+    // 必須帶 User-Agent：生產環境 AWS WAF 的 NoUserAgent_HEADER 規則會攔截無 UA 的請求（403）
     let client = reqwest::Client::builder()
         .user_agent(concat!("SayIt/", env!("CARGO_PKG_VERSION")))
         .build()
@@ -885,22 +885,22 @@ pub async fn download_update(
     let temp_dir = update_dir();
     std::fs::create_dir_all(&temp_dir).map_err(|e| format!("Failed to create temporary directory: {}", e))?;
     let file_path = temp_dir.join(&filename);
-    // 先写到 .part，校验通过才改名：半截文件永远不会被当成可安装的包。
+    // 先寫到 .part，校驗通過才改名：半截檔案永遠不會被當成可安裝的包。
     let part_path = temp_dir.join(format!("{}.part", filename));
     let (downloaded, total) = fetch_installer_part(&client, &url, &part_path, &mut |done, total, status, error| {
         emit_update_progress(&app, done, total, status, error)
     })
     .await?;
 
-    // 校验放在"completed"之前：前端收到 completed 就会把这个包记成待安装，
-    // 先报完成再发现哈希不对，等于让一个坏包进入待安装状态。
+    // 校驗放在"completed"之前：前端收到 completed 就會把這個包記成待安裝，
+    // 先報完成再發現雜湊不對，等於讓一個壞包進入待安裝狀態。
     {
         let actual = file_sha512_base64(&part_path).map_err(|e| {
             emit_update_progress(&app, downloaded, total, "failed", Some(&e));
             e
         })?;
         if actual != expected_sha512 {
-            // 坏包必须删掉（续传接错了版本也会走到这里）：下次从头下。
+            // 壞包必須刪掉（續傳接錯了版本也會走到這裡）：下次從頭下。
             let _ = std::fs::remove_file(&part_path);
             let msg = "Update package integrity check failed (SHA-512 mismatch)".to_string();
             write_log_line("[update] downloaded package failed SHA-512 verification, discarded");
@@ -909,9 +909,9 @@ pub async fn download_update(
         }
     }
 
-    // 新包已经校验通过，把同目录里其它版本的安装包删掉。
-    // 旧流程下载完立刻安装，包只存在几秒；现在它按设计等到用户点更新或退出时才用，
-    // 于是每升一次版就在 %TEMP% 里多躺一个十几 MB 的安装包，没人清。
+    // 新包已經校驗通過，把同目錄裡其它版本的安裝包刪掉。
+    // 舊流程下載完立刻安裝，包只存在幾秒；現在它按設計等到使用者點更新或退出時才用，
+    // 於是每升一次版就在 %TEMP% 裡多躺一個十幾 MB 的安裝包，沒人清。
     std::fs::rename(&part_path, &file_path)
         .map_err(|e| format!("Failed to finalize the downloaded installer: {}", e))?;
     prune_stale_packages(&temp_dir, &filename);
@@ -921,10 +921,10 @@ pub async fn download_update(
     Ok(file_path.to_string_lossy().to_string())
 }
 
-/// 把安装包下载（或接着下载）到 `part_path`。返回 (已下载字节, 总字节)。
+/// 把安裝包下載（或接著下載）到 `part_path`。返回 (已下載位元組, 總位元組)。
 ///
-/// 已有 .part 就用 Range 续传；服务器回 200 就整包重下。没有总超时，只在 60 秒收不到
-/// 任何数据时判定中断，.part 留着下次接着下。拆成独立函数是为了能用本地 HTTP 服务器测。
+/// 已有 .part 就用 Range 續傳；伺服器回 200 就整包重下。沒有總超時，只在 60 秒收不到
+/// 任何資料時判定中斷，.part 留著下次接著下。拆成獨立函式是為了能用本地 HTTP 伺服器測。
 async fn fetch_installer_part(
     client: &reqwest::Client,
     url: &str,
@@ -938,8 +938,8 @@ async fn fetch_installer_part(
 
     progress(resume_from, 0, "downloading", None);
 
-    // 不设整次请求的总超时：原来是 300 秒，网慢的用户（14.8 MB 在 50 KB/s 下要 5 分钟）
-    // 永远下不完、每次都从头来。现在只限制连接和「多久一个字节都没收到」（见下面的 STALL）。
+    // 不設整次請求的總超時：原來是 300 秒，網慢的使用者（14.8 MB 在 50 KB/s 下要 5 分鐘）
+    // 永遠下不完、每次都從頭來。現在只限制連線和「多久一個位元組都沒收到」（見下面的 STALL）。
     let mut request = client.get(url);
     if resume_from > 0 {
         request = request.header(reqwest::header::RANGE, format!("bytes={}-", resume_from));
@@ -956,14 +956,14 @@ async fn fetch_installer_part(
     if !resp.status().is_success() {
         let msg = format!("Download failed: HTTP {}", resp.status());
         progress(resume_from, 0, "failed", Some(&msg));
-        // 416：.part 已经比服务器上的文件还长（多半是换了版本、同名），扔掉重来。
+        // 416：.part 已經比伺服器上的檔案還長（多半是換了版本、同名），扔掉重來。
         if resp.status() == reqwest::StatusCode::RANGE_NOT_SATISFIABLE {
             let _ = std::fs::remove_file(part_path);
         }
         return Err(msg);
     }
 
-    // 206 = 服务器接着给；200 = 不支持续传，整包重下。
+    // 206 = 伺服器接著給；200 = 不支援續傳，整包重下。
     let resumed = resume_from > 0 && resp.status() == reqwest::StatusCode::PARTIAL_CONTENT;
     let mut downloaded: u64 = if resumed { resume_from } else { 0 };
     let total = resp.content_length().map(|len| len + downloaded).unwrap_or(0);
@@ -985,7 +985,7 @@ async fn fetch_installer_part(
 
     let mut stream = resp.bytes_stream();
     let mut last_emit = std::time::Instant::now();
-    // 60 秒一个字节都没收到才算断：慢网照样能下完，真断线也不会一直挂着。
+    // 60 秒一個位元組都沒收到才算斷：慢網照樣能下完，真斷線也不會一直掛著。
     const STALL: std::time::Duration = std::time::Duration::from_secs(60);
 
     loop {
@@ -994,7 +994,7 @@ async fn fetch_installer_part(
             Err(_) => {
                 let msg = "Download stalled: no data for 60 seconds".to_string();
                 progress(downloaded, total, "failed", Some(&msg));
-                // .part 留着，下次接着下
+                // .part 留著，下次接著下
                 return Err(msg);
             }
         };
@@ -1007,7 +1007,7 @@ async fn fetch_installer_part(
         file.write_all(&chunk).map_err(|e| format!("Failed to write file: {}", e))?;
         downloaded += chunk.len() as u64;
 
-        // 每 200ms 发送一次进度，避免刷屏
+        // 每 200ms 傳送一次進度，避免刷屏
         if last_emit.elapsed().as_millis() >= 200 {
             progress(downloaded, total, "downloading", None);
             last_emit = std::time::Instant::now();
@@ -1020,11 +1020,11 @@ async fn fetch_installer_part(
     Ok((downloaded, total))
 }
 
-/// 删掉更新目录里除 keep 之外的所有文件。
+/// 刪掉更新目錄裡除 keep 之外的所有檔案。
 ///
-/// 只在新包**校验通过之后**调用：下载失败时磁盘上那个旧包可能还是待安装的有效包，
-/// 提前清理等于把用户已经下好的更新弄丢，还得重下一遍。
-/// 删不掉（被占用等）只记日志不报错 —— 清理失败不该让一次成功的下载变成失败。
+/// 只在新包**校驗通過之後**呼叫：下載失敗時磁碟上那個舊包可能還是待安裝的有效包，
+/// 提前清理等於把使用者已經下好的更新弄丟，還得重下一遍。
+/// 刪不掉（被佔用等）只記日誌不報錯 —— 清理失敗不該讓一次成功的下載變成失敗。
 fn prune_stale_packages(dir: &std::path::Path, keep: &str) {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return;
@@ -1056,20 +1056,20 @@ fn prune_stale_packages(dir: &std::path::Path, keep: &str) {
     }
 }
 
-/// 拉起 NSIS 安装程序（/S 静默）。
+/// 拉起 NSIS 安裝程式（/S 靜默）。
 ///
-/// 静默模式下 NSIS 不提供"安装完成后运行"，所以自己接管：起一个不依赖当前进程存活的
-/// "看门人" cmd 进程，等安装进程真正退出（文件覆盖完成）后再决定要不要拉起新 exe。
-/// 必须等旧进程完全退出才能覆盖 exe（Windows 文件锁），所以看门人要活在本进程之外。
+/// 靜默模式下 NSIS 不提供"安裝完成後執行"，所以自己接管：起一個不依賴當前程序存活的
+/// "看門人" cmd 程序，等安裝程序真正退出（檔案覆蓋完成）後再決定要不要拉起新 exe。
+/// 必須等舊程序完全退出才能覆蓋 exe（Windows 檔案鎖），所以看門人要活在本程序之外。
 ///
-/// 关键：不要把带引号、含 && 的复合命令直接塞给 `cmd /C` —— Rust 会把这个含空格的
-/// 参数整体再套引号并把内部 " 转义成 \"，而 cmd.exe 不认识 \" 转义，路径会被啃坏
-/// （历史 bug：装完自动重启报「找不到 \ 文件」）。脚本文件里的引号是文件字面量，
-/// 不经过参数转义层；给 cmd /C 传单个脚本路径是 cmd 唯一能干净处理的情形。
+/// 關鍵：不要把帶引號、含 && 的複合命令直接塞給 `cmd /C` —— Rust 會把這個含空格的
+/// 引數整體再套引號並把內部 " 轉義成 \"，而 cmd.exe 不認識 \" 轉義，路徑會被啃壞
+/// （歷史 bug：裝完自動重啟報「找不到 \ 檔案」）。指令碼檔案裡的引號是檔案字面量，
+/// 不經過引數轉義層；給 cmd /C 傳單個指令碼路徑是 cmd 唯一能幹淨處理的情形。
 ///
-/// relaunch=false 会装完就结束、不碰应用。目前两个调用方都传 true（用户点「立即安装」
-/// 和退出兜底安装都要让用户看到新版本的关于页），参数保留是因为"装完别拉起来"这个选项
-/// 一旦需要就必须立刻可用 —— 关机前退出那种场景下拉起应用是明确的错误行为。
+/// relaunch=false 會裝完就結束、不碰應用。目前兩個呼叫方都傳 true（使用者點「立即安裝」
+/// 和退出兜底安裝都要讓使用者看到新版本的關於頁），引數保留是因為"裝完別拉起來"這個選項
+/// 一旦需要就必須立刻可用 —— 關機前退出那種場景下拉起應用是明確的錯誤行為。
 #[cfg(target_os = "windows")]
 fn spawn_installer(installer_path: &str, relaunch: bool) -> Result<(), String> {
     use std::process::Command;
@@ -1078,16 +1078,16 @@ fn spawn_installer(installer_path: &str, relaunch: bool) -> Result<(), String> {
     let relaunch_line = if relaunch {
         let current_exe = std::env::current_exe()
             .map_err(|e| format!("Failed to get the current executable path: {}", e))?;
-        // 同一路径：currentUser 安装模式下更新会装回原目录。--open-about 跳关于页，
-        // 让用户能确认更新真的生效了。
+        // 同一路徑：currentUser 安裝模式下更新會裝回原目錄。--open-about 跳關於頁，
+        // 讓使用者能確認更新真的生效了。
         format!("start \"\" \"{}\" --open-about\r\n", current_exe.to_string_lossy())
     } else {
         String::new()
     };
 
-    //   - ping 兜 ~1s，等旧进程完全退出，避免安装程序覆盖 exe 时撞文件锁
-    //   - start /wait 等静默安装结束
-    //   - del "%~f0" 让脚本运行完自删
+    //   - ping 兜 ~1s，等舊程序完全退出，避免安裝程式覆蓋 exe 時撞檔案鎖
+    //   - start /wait 等靜默安裝結束
+    //   - del "%~f0" 讓指令碼執行完自刪
     let script = format!(
         "@echo off\r\n\
          ping -n 2 127.0.0.1 >nul\r\n\
@@ -1108,19 +1108,19 @@ fn spawn_installer(installer_path: &str, relaunch: bool) -> Result<(), String> {
     Ok(())
 }
 
-/// 把字符串包成 sh 的单引号字面量。
+/// 把字串包成 sh 的單引號字面量。
 #[cfg(target_os = "macos")]
 fn sh_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', r"'\''"))
 }
 
-/// macOS：更新包是装着 `SayIt.app` 的 zip。和 Windows 一样起一个不依赖本进程存活的
-/// 「看门人」脚本：等本进程退出 → 解压 → 校验签名完整性 → 原地替换 `.app` → 拉起新版。
+/// macOS：更新包是裝著 `SayIt.app` 的 zip。和 Windows 一樣起一個不依賴本程序存活的
+/// 「看門人」指令碼：等本程序退出 → 解壓 → 校驗簽名完整性 → 原地替換 `.app` → 拉起新版。
 ///
-/// 替换走「先拷到旁边、再两次 rename」，不是先删再拷：关机或断电时脚本被杀在半路，
-/// 最坏也只是留下一个 `.sayit-new`/`.sayit-old` 目录，而不是一个被删掉一半的 SayIt。
-/// `/Applications` 没有写权限（非管理员账户）时替换会失败，此时在 Finder 里选中更新包，
-/// 让用户手动拖进去。
+/// 替換走「先拷到旁邊、再兩次 rename」，不是先刪再拷：關機或斷電時指令碼被殺在半路，
+/// 最壞也只是留下一個 `.sayit-new`/`.sayit-old` 目錄，而不是一個被刪掉一半的 SayIt。
+/// `/Applications` 沒有寫許可權（非管理員帳戶）時替換會失敗，此時在 Finder 裡選中更新包，
+/// 讓使用者手動拖進去。
 #[cfg(target_os = "macos")]
 fn spawn_installer(installer_path: &str, relaunch: bool) -> Result<(), String> {
     let bundle = crate::platform::macos::permissions::current_bundle_path()
@@ -1142,8 +1142,8 @@ fn spawn_installer(installer_path: &str, relaunch: bool) -> Result<(), String> {
     Ok(())
 }
 
-/// 生成 macOS 更新看门人脚本：等 `pid` 退出 → 解压 `installer_path` → 校验签名 → 替换 `bundle` →
-/// （可选）重新打开。单独拆出来是为了能在单测里真跑一遍。
+/// 生成 macOS 更新看門人指令碼：等 `pid` 退出 → 解壓 `installer_path` → 校驗簽名 → 替換 `bundle` →
+/// （可選）重新開啟。單獨拆出來是為了能在單測裡真跑一遍。
 #[cfg(target_os = "macos")]
 fn macos_installer_script(installer_path: &str, bundle: &str, pid: u32, relaunch: bool) -> String {
     let relaunch_line = if relaunch {
@@ -1179,14 +1179,14 @@ rm -rf "$APP.sayit-old" "$WORK"
     )
 }
 
-/// 系统是否正在关机或注销（GetSystemMetrics(SM_SHUTTINGDOWN)）。
+/// 系統是否正在關機或登出（GetSystemMetrics(SM_SHUTTINGDOWN)）。
 #[cfg(target_os = "windows")]
 fn system_is_shutting_down() -> bool {
     use windows::Win32::UI::WindowsAndMessaging::{GetSystemMetrics, SM_SHUTTINGDOWN};
     unsafe { GetSystemMetrics(SM_SHUTTINGDOWN) != 0 }
 }
 
-/// 用户主动点「立即更新」：装完重新拉起应用。
+/// 使用者主動點「立即更新」：裝完重新拉起應用。
 #[tauri::command]
 pub fn install_downloaded_update(
     file_path: String,
@@ -1203,8 +1203,8 @@ pub fn install_downloaded_update(
     #[cfg(any(target_os = "windows", target_os = "macos"))]
     {
         use std::sync::atomic::Ordering;
-        // 抢在 app.exit(0) 之前置位：那次退出同样会走 RunEvent::Exit，
-        // 退出兜底安装必须让开，否则两个安装程序抢同一个 exe。
+        // 搶在 app.exit(0) 之前置位：那次退出同樣會走 RunEvent::Exit，
+        // 退出兜底安裝必須讓開，否則兩個安裝程式搶同一個 exe。
         INSTALLER_SPAWNED.store(true, Ordering::SeqCst);
         if let Err(e) = spawn_installer(&file_path, relaunch) {
             INSTALLER_SPAWNED.store(false, Ordering::SeqCst);
@@ -1219,25 +1219,25 @@ pub fn install_downloaded_update(
         return Err("Automatic installation is not supported on this platform".to_string());
     }
 
-    // 退出当前应用，让安装程序能够覆盖 exe 文件
+    // 退出當前應用，讓安裝程式能夠覆蓋 exe 檔案
     app.exit(0);
     Ok(())
 }
 
-/// 退出时的兜底安装，由 main.rs 的 RunEvent::Exit 调用。
+/// 退出時的兜底安裝，由 main.rs 的 RunEvent::Exit 呼叫。
 ///
-/// 用户没点「立即更新」就直接关掉了 SayIt —— 那就在退出路径上装掉。
-/// 少了这一步，"发现新版就更新"完全依赖用户去点那个图标。
+/// 使用者沒點「立即更新」就直接關掉了 SayIt —— 那就在退出路徑上裝掉。
+/// 少了這一步，"發現新版就更新"完全依賴使用者去點那個圖示。
 ///
-/// 装完会把应用重新拉起来并跳到关于页（`relaunch=true`）。这一条 2026-08 改过方向：
-/// 原本传 false，理由是"用户是要关掉它，装完又拉起来像关不掉"。改回 true 的理由是
-/// 升级完全无声时用户根本不知道版本变了，而这个"又自己开了"每个版本最多发生一次
-/// （pendingUpdate 装完即清），代价比"永远不知道更新了什么"小。取舍记在
+/// 裝完會把應用重新拉起來並跳到關於頁（`relaunch=true`）。這一條 2026-08 改過方向：
+/// 原本傳 false，理由是"使用者是要關掉它，裝完又拉起來像關不掉"。改回 true 的理由是
+/// 升級完全無聲時使用者根本不知道版本變了，而這個"又自己開了"每個版本最多發生一次
+/// （pendingUpdate 裝完即清），代價比"永遠不知道更新了什麼"小。取捨記在
 /// .kiro/decisions.md。
 ///
-/// 装之前与用户主动安装同一套核对（路径在更新目录里 + 哈希对得上）。原来这里只看文件在不在，
-/// 理由是退出路径不能卡几百毫秒；实际 15 MB 的包算一次 SHA-512 是几十毫秒，
-/// 而"只看文件在不在"正是恶意备份能让退出时运行任意 exe 的那个口子（审核 S3）。
+/// 裝之前與使用者主動安裝同一套核對（路徑在更新目錄裡 + 雜湊對得上）。原來這裡只看檔案在不在，
+/// 理由是退出路徑不能卡幾百毫秒；實際 15 MB 的包算一次 SHA-512 是幾十毫秒，
+/// 而"只看檔案在不在"正是惡意備份能讓退出時執行任意 exe 的那個口子（稽核 S3）。
 pub fn install_pending_update_on_exit(app: &AppHandle) {
     // [自訂] 結束時自動安裝已停用：絕不以官方安裝檔覆蓋自建版本。
     let _ = app;
@@ -1247,14 +1247,14 @@ pub fn install_pending_update_on_exit(app: &AppHandle) {
     use std::sync::atomic::Ordering;
     use tauri::Manager;
 
-    // swap 而不是 load + store：退出事件理论上只来一次，但这里是唯一没有其它
-    // 互斥保护的路径，用原子交换把"检查过了"和"占位"合成一步。
+    // swap 而不是 load + store：退出事件理論上只來一次，但這裡是唯一沒有其它
+    // 互斥保護的路徑，用原子交換把"檢查過了"和"佔位"合成一步。
     if INSTALLER_SPAWNED.swap(true, Ordering::SeqCst) {
         return;
     }
 
-    // 关机 / 注销时不装：系统几秒内就会结束所有进程，安装程序可能被杀在一半，
-    // 下次开机就是一个装了一半的 SayIt。待安装包留着，下次正常退出时再装。
+    // 關機 / 登出時不裝：系統幾秒內就會結束所有程序，安裝程式可能被殺在一半，
+    // 下次開機就是一個裝了一半的 SayIt。待安裝包留著，下次正常退出時再裝。
     #[cfg(target_os = "windows")]
     if system_is_shutting_down() {
         write_log_line("[update] system is shutting down; leaving the pending update for the next exit");
@@ -1277,7 +1277,7 @@ pub fn install_pending_update_on_exit(app: &AppHandle) {
 
     #[cfg(any(target_os = "windows", target_os = "macos"))]
     {
-        // relaunch=true：装完把应用拉回来并跳到关于页。见本函数上方注释里的取舍说明。
+        // relaunch=true：裝完把應用拉回來並跳到關於頁。見本函式上方註釋裡的取捨說明。
         match spawn_installer(&file_path, true) {
             Ok(()) => write_log_line("[update] pending update is being installed on exit (will relaunch)"),
             Err(e) => write_log_line(&format!("[update] exit-path install failed: {}", e)),
@@ -1505,7 +1505,7 @@ pub fn save_audio_to_downloads(base64_data: String, filename: String) -> Result<
     let downloads = dirs::download_dir()
         .ok_or_else(|| "Could not locate the Downloads directory".to_string())?;
 
-    // filename 会拼进下载目录，带 `..\` 就能写到别处（比如开机启动目录）。只收单段的 .wav 名字。
+    // filename 會拼進下載目錄，帶 `..\` 就能寫到別處（比如開機啟動目錄）。只收單段的 .wav 名字。
     if !crate::path_guard::is_plain_file_name(&filename, "wav") {
         return Err("Invalid audio file name".to_string());
     }
@@ -1522,18 +1522,18 @@ pub fn save_audio_to_downloads(base64_data: String, filename: String) -> Result<
     Ok(path_str)
 }
 
-/// 打开文件所在的文件夹（并选中文件）
+/// 開啟檔案所在的資料夾（並選中檔案）
 #[tauri::command]
 pub fn reveal_file_in_folder(file_path: String) -> Result<(), String> {
-    // 只对真实存在的本地文件/目录调 explorer。explorer 的参数里塞 URL 或 shell: 路径
-    // 会被它当成要打开的东西，不再是"在文件夹里选中"。
+    // 只對真實存在的本地檔案/目錄調 explorer。explorer 的引數裡塞 URL 或 shell: 路徑
+    // 會被它當成要開啟的東西，不再是"在資料夾裡選中"。
     let path = std::path::Path::new(&file_path);
     if !path.is_absolute() || !path.exists() {
         return Err(format!("File does not exist: {}", file_path));
     }
     #[cfg(target_os = "windows")]
     {
-        // explorer /select, 会打开文件夹并高亮选中文件
+        // explorer /select, 會開啟資料夾並高亮選中檔案
         std::process::Command::new("explorer")
             .arg("/select,")
             .arg(&file_path)
@@ -1560,7 +1560,7 @@ pub fn reveal_file_in_folder(file_path: String) -> Result<(), String> {
     Ok(())
 }
 
-/// 直接打开指定文件夹。
+/// 直接開啟指定資料夾。
 #[tauri::command]
 pub fn open_folder(folder_path: String) -> Result<(), String> {
     let path = std::path::PathBuf::from(&folder_path);
@@ -1642,7 +1642,7 @@ mod resume_download_tests {
     use std::io::{Read, Write};
     use std::net::TcpListener;
 
-    /// 每个连接回一个预先写好的响应，并把收到的请求头记下来。
+    /// 每個連線回一個預先寫好的響應，並把收到的請求頭記下來。
     fn serve(responses: Vec<Vec<u8>>) -> (String, std::thread::JoinHandle<Vec<String>>) {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let addr = listener.local_addr().unwrap();
@@ -1726,15 +1726,15 @@ mod resume_download_tests {
     }
 }
 
-/// macOS 更新脚本端到端：用两个 ad-hoc 签名的假 .app 真跑一遍「解压 → 验签 → 替换」。
-/// 路径里故意带空格和单引号，钉住 sh_quote。
+/// macOS 更新指令碼端到端：用兩個 ad-hoc 簽名的假 .app 真跑一遍「解壓 → 驗籤 → 替換」。
+/// 路徑裡故意帶空格和單引號，釘住 sh_quote。
 #[cfg(all(test, target_os = "macos"))]
 mod macos_installer_tests {
     use super::macos_installer_script;
     use std::path::{Path, PathBuf};
     use std::process::Command;
 
-    /// 最小的 .app：可执行文件拷自 /usr/bin/true，版本号写进 Info.plist 用来区分新旧。
+    /// 最小的 .app：執行檔拷自 /usr/bin/true，版本號寫進 Info.plist 用來區分新舊。
     fn make_app(dir: &Path, version: &str) -> PathBuf {
         let app = dir.join("SayIt.app");
         let macos = app.join("Contents").join("MacOS");
@@ -1776,7 +1776,7 @@ mod macos_installer_tests {
             .unwrap();
         assert!(zipped.success());
 
-        // 一个已经退出的进程号：脚本不用等
+        // 一個已經退出的程序號：指令碼不用等
         let mut child = Command::new("/usr/bin/true").spawn().unwrap();
         let pid = child.id();
         child.wait().unwrap();
@@ -1785,19 +1785,19 @@ mod macos_installer_tests {
         let script = macos_installer_script(&pkg.to_string_lossy(), &installed.to_string_lossy(), pid, false);
         std::fs::write(&script_path, script).unwrap();
         let status = Command::new("/bin/sh").arg(&script_path).status().unwrap();
-        assert!(status.success(), "更新脚本失败");
+        assert!(status.success(), "更新指令碼失敗");
 
         let plist = std::fs::read_to_string(installed.join("Contents").join("Info.plist")).unwrap();
-        assert!(plist.contains("2.0.0"), "旧版没被换掉");
+        assert!(plist.contains("2.0.0"), "舊版沒被換掉");
         assert!(!installed_dir.join("SayIt.app.sayit-new").exists());
         assert!(!installed_dir.join("SayIt.app.sayit-old").exists());
-        assert!(!script_path.exists(), "脚本结束时应删掉自己");
+        assert!(!script_path.exists(), "指令碼結束時應刪掉自己");
         let verified = Command::new("/usr/bin/codesign")
             .args(["--verify", "--deep", "--strict"])
             .arg(&installed)
             .status()
             .unwrap();
-        assert!(verified.success(), "换上去的 .app 签名应完好");
+        assert!(verified.success(), "換上去的 .app 簽名應完好");
 
         let _ = std::fs::remove_dir_all(&root);
     }

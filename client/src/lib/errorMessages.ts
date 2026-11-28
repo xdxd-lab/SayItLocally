@@ -1,11 +1,11 @@
 /**
- * 把底层异常翻译成用户能据此行动的一句话。
+ * 把底層異常翻譯成使用者能據此行動的一句話。
  *
- * 为什么需要这个：设置页原来直接把 `String(error)` 贴到界面上，用户看到的是
- * 「连接失败：TypeError: Failed to fetch」——这句话不区分「网址打错了」「本机没网」
- * 「服务挂了」「被 WAF 拦了」，四种情况的下一步完全不同，用户无从下手。
+ * 為什麼需要這個：設定頁原來直接把 `String(error)` 貼到介面上，使用者看到的是
+ * 「連線失敗：TypeError: Failed to fetch」——這句話不區分「網址打錯了」「本機沒網」
+ * 「服務掛了」「被 WAF 攔了」，四種情況的下一步完全不同，使用者無從下手。
  *
- * 原始文本不丢弃：`detail` 保留原文给能看懂的人排查，UI 以次要字号展示。
+ * 原始文本不丟棄：`detail` 保留原文給能看懂的人排查，UI 以次要字號展示。
  */
 
 import { t } from '@/i18n'
@@ -45,13 +45,13 @@ export type FriendlyErrorCode =
   | 'connect_failed'
 
 export interface FriendlyError {
-  /** 稳定分类；可持久化，展示时再按当前界面语言取文案。 */
+  /** 穩定分類；可持久化，展示時再按當前介面語言取文案。 */
   code: FriendlyErrorCode
-  /** 一句话说清发生了什么，以及该往哪个方向查 */
+  /** 一句話說清發生了什麼，以及該往哪個方向查 */
   message: string
-  /** 原始异常文本，供排查用；UI 以次要字号展示 */
+  /** 原始異常文本，供排查用；UI 以次要字號展示 */
   detail: string
-  /** 建议提供的动作按钮类型，由调用方决定要不要渲染 */
+  /** 建議提供的動作按鈕型別，由呼叫方決定要不要渲染 */
   action: ErrorActionHint
 }
 
@@ -112,19 +112,19 @@ function decodeError(error: unknown): DecodedError {
     : { code: null, text }
 }
 
-/** 去掉 `sayit_error:<code>:` 协议前缀后的原始说明，给只需要「原样告诉用户哪里错了」的地方用。 */
+/** 去掉 `sayit_error:<code>:` 協議字首後的原始說明，給只需要「原樣告訴使用者哪裡錯了」的地方用。 */
 export function errorDetailText(error: unknown): string {
   return decodeError(error).text
 }
 
 /**
- * 从各种异常文本里抠出 HTTP 状态码（`HTTP 401` / `status: 403` / `http=403` / `(404)`）。
+ * 從各種異常文本裡摳出 HTTP 狀態碼（`HTTP 401` / `status: 403` / `http=403` / `(404)`）。
  *
- * `http=403` 这一种是**我们自己**的格式：Rust 侧 `diag::http_summary` 写的就是
- * `[http=403 x-request-id=…]`。原来的正则把 `[:=]?` 只挂在 status 那个分支上，
- * 于是 `http=403` 认不出来 —— 我们自己产出的诊断串，自己的解析器读不懂。
- * 平时不显形是因为 Rust 会把稳定错误码一起带过来（走 stableCode 分支），
- * 只有拿不到错误码、退回按文本分类时才会暴露成"认不出的错误"。
+ * `http=403` 這一種是**我們自己**的格式：Rust 側 `diag::http_summary` 寫的就是
+ * `[http=403 x-request-id=…]`。原來的正則把 `[:=]?` 只掛在 status 那個分支上，
+ * 於是 `http=403` 認不出來 —— 我們自己產出的診斷串，自己的解析器讀不懂。
+ * 平時不顯形是因為 Rust 會把穩定錯誤碼一起帶過來（走 stableCode 分支），
+ * 只有拿不到錯誤碼、退回按文本分類時才會暴露成"認不出的錯誤"。
  */
 function extractHttpStatus(text: string): number | null {
   const match = text.match(/\b(?:HTTP|status(?:\s*code)?)\s*[:=]?\s*(\d{3})\b/i)
@@ -135,17 +135,17 @@ function extractHttpStatus(text: string): number | null {
 }
 
 function isNetworkFailure(text: string): boolean {
-  return /failed to fetch|networkerror|error sending request|econnrefused|enotfound|dns|connection refused|unreachable|websocket 连接失败/i // i18n-allow: 匹配底层中文错误串
+  return /failed to fetch|networkerror|error sending request|econnrefused|enotfound|dns|connection refused|unreachable|websocket \u8fde\u63a5\u5931\u8d25|websocket 連線失敗|websocket 連接失敗/i // i18n-allow: 匹配底層中文錯誤串（簡體以 Unicode 跳脫保存，並列正體）
     .test(text)
 }
 
 function isTimeout(text: string): boolean {
-  return /timeout|timed out|超时/i.test(text) // i18n-allow: 匹配底层中文错误串
+  return /timeout|timed out|\u8d85\u65f6|超時/i.test(text) // i18n-allow: 匹配底層中文錯誤串（簡體以 Unicode 跳脫保存，並列正體）
 }
 
 /**
- * 服务器地址类错误（健康检查、WebSocket 连接）。
- * `hasCustomUrl` 为 true 时才建议「恢复默认地址」——地址本来就是默认值时这个动作没意义。
+ * 伺服器地址類錯誤（健康檢查、WebSocket 連線）。
+ * `hasCustomUrl` 為 true 時才建議「恢復預設地址」——地址本來就是預設值時這個動作沒意義。
  */
 export function describeServerError(error: unknown, hasCustomUrl: boolean): FriendlyError {
   const { code: stableCode, text } = decodeError(error)
@@ -231,10 +231,10 @@ export function describeProviderError(error: unknown): FriendlyError {
       action: 'retry',
     }
   }
-  // 401 才是明确的鉴权失败。403 单独一类（见下方分支）：403 的常见成因是
-  // 「这个请求根本不该到这儿」——CDN 按地区拒绝、账号没开通该模型，响应里
-  // 一个字都不提密钥。把它报成密钥问题只会让用户反复重建密钥。
-  if (stableCode === 'provider_bad_key' || status === 401 || /invalid.*(key|token)|unauthorized|认证失败|鉴权/i.test(text)) { // i18n-allow: 匹配底层中文错误串
+  // 401 才是明確的鑑權失敗。403 單獨一類（見下方分支）：403 的常見成因是
+  // 「這個請求根本不該到這兒」——CDN 按地區拒絕、帳號沒開通該模型，響應裡
+  // 一個字都不提金鑰。把它報成金鑰問題只會讓使用者反覆重建金鑰。
+  if (stableCode === 'provider_bad_key' || status === 401 || /invalid.*(key|token)|unauthorized|\u8ba4\u8bc1\u5931\u8d25|\u9274\u6743|認證失敗|鑑權/i.test(text)) { // i18n-allow: 匹配底層中文錯誤串（簡體以 Unicode 跳脫保存，並列正體）
     return {
       code: 'provider_bad_key',
       message: t('err.provider.badKey'),
@@ -242,13 +242,13 @@ export function describeProviderError(error: unknown): FriendlyError {
       action: 'check_key',
     }
   }
-  // 402 必须排在限流之前，且不能和它合并：两者给用户的动作是相反的 ——
-  // 限流等一会儿就好，余额不足等下去永远不会好，得去充值。
-  // action 用 check_key 而不是 retry：它会把用户带到那份配置上，
-  // 而充值入口就在同一个服务商后台（detail 里带着服务商给的具体金额和链接）。
+  // 402 必須排在限流之前，且不能和它合併：兩者給使用者的動作是相反的 ——
+  // 限流等一會兒就好，餘額不足等下去永遠不會好，得去充值。
+  // action 用 check_key 而不是 retry：它會把使用者帶到那份配置上，
+  // 而充值入口就在同一個服務商後台（detail 裡帶著服務商給的具體金額和連結）。
   if (stableCode === 'provider_insufficient_balance'
     || status === 402
-    || /payment required|insufficient balance|in balance|insufficient_quota|余额不足/i.test(text)) { // i18n-allow: 匹配底层中文错误串
+    || /payment required|insufficient balance|in balance|insufficient_quota|\u4f59\u989d\u4e0d\u8db3|餘額不足/i.test(text)) { // i18n-allow: 匹配底層中文錯誤串（簡體以 Unicode 跳脫保存，並列正體）
     return {
       code: 'provider_insufficient_balance',
       message: t('err.provider.insufficientBalance'),
@@ -256,7 +256,7 @@ export function describeProviderError(error: unknown): FriendlyError {
       action: 'check_key',
     }
   }
-  if (stableCode === 'provider_rate_limit' || status === 429 || /rate.?limit|quota|欠费|余额/i.test(text)) { // i18n-allow: 匹配底层中文错误串
+  if (stableCode === 'provider_rate_limit' || status === 429 || /rate.?limit|quota|\u6b20\u8d39|\u4f59\u989d|欠費|餘額/i.test(text)) { // i18n-allow: 匹配底層中文錯誤串（簡體以 Unicode 跳脫保存，並列正體）
     return {
       code: 'provider_rate_limit',
       message: t('err.provider.rateLimit'),
@@ -264,9 +264,9 @@ export function describeProviderError(error: unknown): FriendlyError {
       action: 'retry',
     }
   }
-  // 排在限流之后：403 + quota 字样更可能是配额问题。
-  // action 用 switch_source 而不是 retry —— 地区不可用重试一万次也是同一个结果，
-  // 能解决问题的动作是换一家供应商。
+  // 排在限流之後：403 + quota 字樣更可能是配額問題。
+  // action 用 switch_source 而不是 retry —— 地區不可用重試一萬次也是同一個結果，
+  // 能解決問題的動作是換一家供應商。
   if (stableCode === 'provider_forbidden' || status === 403) {
     return {
       code: 'provider_forbidden',
@@ -303,7 +303,7 @@ export function describeModelsDirError(error: unknown): { message: string; detai
   }
 }
 
-/** 模型下载类错误 */
+/** 模型下載類錯誤 */
 export function describeDownloadError(error: unknown): FriendlyError {
   const { code: stableCode, text } = decodeError(error)
 
@@ -331,7 +331,7 @@ export function describeDownloadError(error: unknown): FriendlyError {
       action: 'switch_source',
     }
   }
-  if (stableCode === 'download_no_space' || /no space|磁盘|disk full|not enough space/i.test(text)) { // i18n-allow: 匹配底层中文错误串
+  if (stableCode === 'download_no_space' || /no space|\u78c1\u76d8|磁碟|磁盤|disk full|not enough space/i.test(text)) { // i18n-allow: 匹配底層中文錯誤串（簡體以 Unicode 跳脫保存，並列正體）
     return {
       code: 'download_no_space',
       message: t('err.download.noSpace'),
@@ -339,7 +339,7 @@ export function describeDownloadError(error: unknown): FriendlyError {
       action: 'none',
     }
   }
-  if (stableCode === 'download_permission' || /permission|denied|access is denied|拒绝访问/i.test(text)) { // i18n-allow: 匹配底层中文错误串
+  if (stableCode === 'download_permission' || /permission|denied|access is denied|\u62d2\u7edd\u8bbf\u95ee|拒絕存取|拒絕訪問/i.test(text)) { // i18n-allow: 匹配底層中文錯誤串（簡體以 Unicode 跳脫保存，並列正體）
     return {
       code: 'download_permission',
       message: t('err.download.permission'),
@@ -347,7 +347,7 @@ export function describeDownloadError(error: unknown): FriendlyError {
       action: 'none',
     }
   }
-  if (stableCode === 'download_checksum' || /checksum|sha256|校验/i.test(text)) { // i18n-allow: 匹配底层中文错误串
+  if (stableCode === 'download_checksum' || /checksum|sha256|\u6821\u9a8c|校驗/i.test(text)) { // i18n-allow: 匹配底層中文錯誤串（簡體以 Unicode 跳脫保存，並列正體）
     return {
       code: 'download_checksum',
       message: t('err.download.checksum'),

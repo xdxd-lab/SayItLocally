@@ -15,36 +15,36 @@ function rule(from: string, to: string, enabled = true): TextReplacementRule {
 }
 
 describe('applyReplacements', () => {
-  it('替换匹配的文本', () => {
+  it('替換匹配的文本', () => {
     const rules = [rule('你好', 'Hello')]
     expect(applyReplacements('你好世界', rules)).toBe('Hello世界')
   })
 
-  it('替换多次出现', () => {
+  it('替換多次出現', () => {
     const rules = [rule('啊', '')]
-    expect(applyReplacements('啊这个啊那个啊', rules)).toBe('这个那个')
+    expect(applyReplacements('啊這個啊那個啊', rules)).toBe('這個那個')
   })
 
-  it('禁用的规则不生效', () => {
+  it('停用的規則不生效', () => {
     const rules = [rule('你好', 'Hello', false)]
     expect(applyReplacements('你好世界', rules)).toBe('你好世界')
   })
 
-  it('空 from 不替换', () => {
+  it('空 from 不替換', () => {
     const rules = [rule('', 'Hello')]
     expect(applyReplacements('你好世界', rules)).toBe('你好世界')
   })
 
-  it('多条规则按顺序执行', () => {
+  it('多條規則按順序執行', () => {
     const rules = [
       rule('A', 'B'),
       rule('B', 'C'),
     ]
-    // A → B → C（链式替换）
+    // A → B → C（鏈式替換）
     expect(applyReplacements('A', rules)).toBe('C')
   })
 
-  it('空规则列表返回原文', () => {
+  it('空規則列表返回原文', () => {
     expect(applyReplacements('你好', [])).toBe('你好')
   })
 
@@ -54,25 +54,25 @@ describe('applyReplacements', () => {
 })
 
 describe('parseBatchReplacements', () => {
-  it('英文逗号分隔', () => {
-    expect(parseBatchReplacements('安卓说话,按住说话')).toEqual([
-      { from: '安卓说话', to: '按住说话' },
+  it('英文逗號分隔', () => {
+    expect(parseBatchReplacements('安卓說話,按住說話')).toEqual([
+      { from: '安卓說話', to: '按住說話' },
     ])
   })
 
-  it('中文逗号分隔', () => {
-    expect(parseBatchReplacements('安卓说话，按住说话')).toEqual([
-      { from: '安卓说话', to: '按住说话' },
+  it('中文逗號分隔', () => {
+    expect(parseBatchReplacements('安卓說話，按住說話')).toEqual([
+      { from: '安卓說話', to: '按住說話' },
     ])
   })
 
-  it('制表符分隔（从表格粘贴）', () => {
+  it('製表符分隔（從表格貼上）', () => {
     expect(parseBatchReplacements('Cloud Code\tClaude Code')).toEqual([
       { from: 'Cloud Code', to: 'Claude Code' },
     ])
   })
 
-  it('=> 与 -> 分隔', () => {
+  it('=> 與 -> 分隔', () => {
     expect(parseBatchReplacements('a => b\nc -> d')).toEqual([
       { from: 'a', to: 'b' },
       { from: 'c', to: 'd' },
@@ -80,54 +80,54 @@ describe('parseBatchReplacements', () => {
   })
 
   it('多行、忽略空行、去除首尾空白', () => {
-    const input = ' 原文1, 替换1 \n\n原文2,替换2\n'
+    const input = ' 原文1, 替換1 \n\n原文2,替換2\n'
     expect(parseBatchReplacements(input)).toEqual([
-      { from: '原文1', to: '替换1' },
-      { from: '原文2', to: '替换2' },
+      { from: '原文1', to: '替換1' },
+      { from: '原文2', to: '替換2' },
     ])
   })
 
-  it('无分隔符的行：替换为留空（删除）', () => {
+  it('無分隔符的行：替換為留空（刪除）', () => {
     expect(parseBatchReplacements('嗯')).toEqual([{ from: '嗯', to: '' }])
   })
 
-  it('取最靠前的分隔符，替换内容可含其它逗号', () => {
+  it('取最靠前的分隔符，替換內容可含其它逗號', () => {
     expect(parseBatchReplacements('abc,a, b')).toEqual([{ from: 'abc', to: 'a, b' }])
   })
 
-  it('原文为空的行忽略', () => {
-    expect(parseBatchReplacements(',只有替换')).toEqual([])
+  it('原文為空的行忽略', () => {
+    expect(parseBatchReplacements(',只有替換')).toEqual([])
   })
 })
 
-describe('applyReplacements 的顺序语义', () => {
+describe('applyReplacements 的順序語義', () => {
   const rule = (id: string, from: string, to: string) => ({ id, from, to, enabled: true })
 
-  it('顺序即执行顺序：前一条的结果会参与后一条的匹配（级联）', () => {
-    // A: 甲 → 乙，B: 乙 → 丙。A 在前时会一路级联成"丙"
+  it('順序即執行順序：前一條的結果會參與後一條的匹配（級聯）', () => {
+    // A: 甲 → 乙，B: 乙 → 丙。A 在前時會一路級聯成"丙"
     const cascade = applyReplacements('甲', [rule('a', '甲', '乙'), rule('b', '乙', '丙')])
     expect(cascade).toBe('丙')
 
-    // 换成 B 在前，"乙 → 丙"先跑（此时还没有"乙"），结果停在"乙"
+    // 換成 B 在前，"乙 → 丙"先跑（此時還沒有"乙"），結果停在"乙"
     const noCascade = applyReplacements('甲', [rule('b', '乙', '丙'), rule('a', '甲', '乙')])
     expect(noCascade).toBe('乙')
   })
 
-  it('两条规则匹配同一段文本时，靠前的先生效', () => {
-    const first = applyReplacements('安卓说话', [
-      rule('a', '安卓说话', '按住说话'),
+  it('兩條規則匹配同一段文本時，靠前的先生效', () => {
+    const first = applyReplacements('安卓說話', [
+      rule('a', '安卓說話', '按住說話'),
       rule('b', '安卓', 'Android'),
     ])
-    expect(first).toBe('按住说话')
+    expect(first).toBe('按住說話')
 
-    const second = applyReplacements('安卓说话', [
+    const second = applyReplacements('安卓說話', [
       rule('b', '安卓', 'Android'),
-      rule('a', '安卓说话', '按住说话'),
+      rule('a', '安卓說話', '按住說話'),
     ])
-    expect(second).toBe('Android说话')
+    expect(second).toBe('Android說話')
   })
 
-  it('禁用的规则不参与，也不影响其余规则的顺序', () => {
+  it('停用的規則不參與，也不影響其餘規則的順序', () => {
     const result = applyReplacements('甲', [
       { ...rule('a', '甲', '乙'), enabled: false },
       rule('b', '甲', '丙'),

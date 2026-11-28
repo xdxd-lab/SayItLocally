@@ -1,4 +1,4 @@
-// 反馈意见服务 — 发送用户反馈到后端
+// 反饋意見服務 — 傳送使用者反饋到後端
 
 import { getBackendBaseUrl } from './runtimeConfig'
 import { getClientRuntimeInfo } from './bridge'
@@ -11,12 +11,12 @@ export interface FeedbackPayload {
   app_version: string
   timestamp: string
   feedback_text: string
-  // 转录 + 该次会话的排错信息（仅在用户保留转录时发送）
+  // 轉錄 + 該次會話的排錯資訊（僅在使用者保留轉錄時傳送）
   transcript: {
     asr_text: string
     ai_text: string
     duration_sec: number
-    // 会话排错信息
+    // 會話排錯資訊
     app_name?: string
     app_id?: string
     window_title?: string
@@ -44,7 +44,7 @@ export interface FeedbackPayload {
     ai_preset_name: string
     ai_system_prompt: string
     ai_prompt_append: string
-    // 客户端环境（非个人信息，用于排错；不含 IP）
+    // 客戶端環境（非個人資訊，用於排錯；不含 IP）
     platform: string
     os_version: string
     system_locale: string
@@ -58,21 +58,21 @@ export interface FeedbackResult {
   message: string
 }
 
-/** 获取最后一条转录记录 */
+/** 獲取最後一條轉錄記錄 */
 export async function getLastTranscript(): Promise<HistoryRecord | null> {
   const records = await listHistory({ limit: 1, offset: 0 })
   return records.length > 0 ? records[0] : null
 }
 
-/** 收集当前配置上下文 */
+/** 收集當前配置上下文 */
 async function collectContext(
   clientInfo: Awaited<ReturnType<typeof getClientRuntimeInfo>>,
 ): Promise<FeedbackPayload['context']> {
   const workMode = getWorkMode()
   const aiEnabled = await getSetting('aiEnabled', false) as boolean
   const aiProvider = await getSetting('cloudAi.provider', '') as string
-  // 运行时生效的模型只认扁平键。原来这里读的是 `cloudAi.<provider>.model`，那是
-  // AI 服务页自己的存储命名空间；页面改成服务列表后那个键不再更新，会报出过期的模型名。
+  // 執行時生效的模型只認扁平鍵。原來這裡讀的是 `cloudAi.<provider>.model`，那是
+  // AI 服務頁自己的儲存名稱空間；頁面改成服務列表後那個鍵不再更新，會報出過期的模型名。
   const aiModel = await getSetting('cloudAi.model', '') as string
   const activePreset = await getActivePreset()
   const aiPromptAppend = await getSetting('aiPromptAppend', '') as string
@@ -109,7 +109,7 @@ async function collectContext(
   }
 }
 
-/** 发送反馈到后端 */
+/** 傳送反饋到後端 */
 export async function submitFeedback(feedbackText: string, options?: { includeTranscript?: boolean }): Promise<FeedbackResult> {
   // [自訂] 意見回饋上傳已停用：不送出任何文字或視窗資訊。
   void feedbackText; void options
@@ -119,7 +119,7 @@ export async function submitFeedback(feedbackText: string, options?: { includeTr
 export async function _disabledSubmitFeedback(feedbackText: string, options?: { includeTranscript?: boolean }): Promise<FeedbackResult> {
   const includeTranscript = options?.includeTranscript ?? true
 
-  // 校验
+  // 校驗
   const trimmed = feedbackText.trim()
   if (trimmed.length < 2) {
     return { ok: false, message: t('feedback.tooShort') }
@@ -143,7 +143,7 @@ export async function _disabledSubmitFeedback(feedbackText: string, options?: { 
         asr_text: (lastRecord.asrText || '').slice(0, 5000),
         ai_text: (lastRecord.llmText || '').slice(0, 5000),
         duration_sec: lastRecord.durationSec || 0,
-        // 该次会话的排错信息
+        // 該次會話的排錯資訊
         app_name: lastRecord.appName || undefined,
         app_id: lastRecord.appId || undefined,
         window_title: lastRecord.windowTitle || undefined,
@@ -168,7 +168,7 @@ export async function _disabledSubmitFeedback(feedbackText: string, options?: { 
     context,
   }
 
-  // 发送
+  // 傳送
   const baseUrl = getBackendBaseUrl()
   const res = await fetch(`${baseUrl}/api/feedback`, {
     method: 'POST',

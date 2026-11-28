@@ -1,24 +1,24 @@
-// 「AI 服务」—— 一张卡 = 一份完整可用的配置（供应商 + 地址 + 密钥 + 模型）。
+// 「AI 服務」—— 一張卡 = 一份完整可用的配置（供應商 + 地址 + 金鑰 + 模型）。
 //
-// 为什么不是原来的「先选供应商、再填一套」：那个形状下存储按供应商分槽
-// （`cloudAi.<provider>.*`），于是
-//   1. 两个不同端点的「OpenAI 兼容」物理上存不下第二份——点模型只改 model 字段、
-//      地址和密钥不动，两个模型实际都打向同一个端点，其中一个必然是错的；
-//   2. 候选模型按当前供应商过滤，想比较 DeepSeek 和千问哪个出字快，得来回拨下拉，
-//      而出字快慢是口述场景里选 LLM 唯一压倒性重要的指标。
-// 现在一张卡就是一份完整配置，点一下整份生效；网格是平的，所有候选同屏可比。
+// 為什麼不是原來的「先選供應商、再填一套」：那個形狀下儲存按供應商分槽
+// （`cloudAi.<provider>.*`），於是
+//   1. 兩個不同端點的「OpenAI 相容」物理上存不下第二份——點模型只改 model 欄位、
+//      地址和金鑰不動，兩個模型實際都打向同一個端點，其中一個必然是錯的；
+//   2. 候選模型按當前供應商過濾，想比較 DeepSeek 和千問哪個出字快，得來回撥下拉，
+//      而出字快慢是口述場景裡選 LLM 唯一壓倒性重要的指標。
+// 現在一張卡就是一份完整配置，點一下整份生效；網格是平的，所有候選同屏可比。
 //
-// 形状不是新造的，是本仓库既有的两处房规：
-//   - 单选卡片网格 = `WorkModeSection`（工作模式）与外观页主题：
-//     `role="radiogroup"` + `grid gap-3 sm:grid-cols-3`，选中态 `border-primary bg-primary/5`
-//     再加一个对勾（不让"当前是哪个"只依赖颜色）。
-//   - 新建 / 编辑 / 删除走 `Modal`（和「更改模型目录」「确认删除模型」同一个壳）：
-//     它自带 Esc、焦点陷阱、关闭后还原焦点。上一版把编辑面板挂在页面下方，
-//     点「新建」屏幕上毫无变化，用户以为按钮坏了；弹窗从根上没有这个问题。
+// 形狀不是新造的，是本倉庫既有的兩處房規：
+//   - 單選卡片網格 = `WorkModeSection`（工作模式）與外觀頁主題：
+//     `role="radiogroup"` + `grid gap-3 sm:grid-cols-3`，選中態 `border-primary bg-primary/5`
+//     再加一個對勾（不讓"當前是哪個"只依賴顏色）。
+//   - 新建 / 編輯 / 刪除走 `Modal`（和「更改模型目錄」「確認刪除模型」同一個殼）：
+//     它自帶 Esc、焦點陷阱、關閉後還原焦點。上一版把編輯面板掛在頁面下方，
+//     點「新建」螢幕上毫無變化，使用者以為按鈕壞了；彈窗從根上沒有這個問題。
 //
-// 卡上显示什么，标准是"能不能把两张卡区分开"：模型名 + 供应商永远显示；
-// 主机名只在它不是该供应商默认地址时才显示（见 profileCustomHost 的注释）；
-// 完整 URL 只在编辑弹窗里。耗时是这一页唯一属于 SayIt 的信息，常显。
+// 卡上顯示什麼，標準是"能不能把兩張卡區分開"：模型名 + 供應商永遠顯示；
+// 主機名只在它不是該供應商預設地址時才顯示（見 profileCustomHost 的註釋）；
+// 完整 URL 只在編輯彈窗裡。耗時是這一頁唯一屬於 SayIt 的資訊，常顯。
 
 import { useEffect, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
@@ -71,7 +71,7 @@ interface Notice {
   tone: FeedbackTone
   message: string
   detail?: string
-  /** 结果显示在哪：弹窗里（保存/测试）还是网格下方（卡上的测速） */
+  /** 結果顯示在哪：彈窗裡（儲存/測試）還是網格下方（卡上的測速） */
   scope: 'editor' | 'list'
 }
 
@@ -83,7 +83,7 @@ interface TestOutcome {
   detail?: string
 }
 
-/** 「未保存」的判断基准：模型清单也算在内，但检测结论不算（它不是用户填的东西） */
+/** 「未儲存」的判斷基準：模型清單也算在內，但檢測結論不算（它不是使用者填的東西） */
 function draftSnapshot(draft: AiProfile, models: string[]): string {
   return JSON.stringify({
     provider: draft.provider,
@@ -93,7 +93,7 @@ function draftSnapshot(draft: AiProfile, models: string[]): string {
   })
 }
 
-/** 把一次测试的结果收成落盘用的结论。失败原因只留那句人话，原始异常不进存储 */
+/** 把一次測試的結果收成落盤用的結論。失敗原因只留那句人話，原始異常不進儲存 */
 function outcomeToCheck(outcome: TestOutcome): AiProfileCheck {
   return outcome.ok
     ? { ok: true, at: Date.now(), latencyMs: outcome.elapsedMs }
@@ -101,25 +101,25 @@ function outcomeToCheck(outcome: TestOutcome): AiProfileCheck {
 }
 
 interface CardStatus {
-  /** 卡上那枚标签的可见文字。可用时只放数字（320ms），档位靠颜色区分，把宽度让给模型名 */
+  /** 卡上那枚標籤的可見文字。可用時只放數字（320ms），檔位靠顏色區分，把寬度讓給模型名 */
   text: string
-  /** 标签的底色 + 文字色（tone 就靠它表达，不再另画圆点） */
+  /** 標籤的底色 + 文字色（tone 就靠它表達，不再另畫圓點） */
   box: string
-  /** 读屏用的完整说法：数字之外还念出结论词（可用 · 很快），补上视力用户靠颜色获得的信息 */
+  /** 讀屏用的完整說法：數字之外還念出結論詞（可用 · 很快），補上視力使用者靠顏色獲得的資訊 */
   spoken: string
-  /** tooltip 文案。空串 = 不挂 tooltip */
+  /** tooltip 文案。空串 = 不掛 tooltip */
   hint: string
 }
 
 /**
- * 测通了但很慢，结果不该报成一片绿色的「成功」。
- * 分档标准见 gradeLatency：口述时超过 1 秒就能感觉到停顿，超过 2 秒基本没法用来干活。
+ * 測通了但很慢，結果不該報成一片綠色的「成功」。
+ * 分檔標準見 gradeLatency：口述時超過 1 秒就能感覺到停頓，超過 2 秒基本沒法用來幹活。
  */
 function latencyTone(ms: number): FeedbackTone {
   return gradeLatency(ms).tone === 'ok' ? 'success' : 'warning'
 }
 
-/** 一句话结论。慢到不该用的时候，第一句就得说出来，别让用户从数字里自己算 */
+/** 一句話結論。慢到不該用的時候，第一句就得說出來，別讓使用者從數字裡自己算 */
 function successMessage(model: string, ms: number): string {
   const grade = gradeLatency(ms)
   if (grade.tier === 'tooSlow') {
@@ -132,11 +132,11 @@ function successMessage(model: string, ms: number): string {
 }
 
 /**
- * 测试通过后的完整交代。
+ * 測試通過後的完整交代。
  *
- * 为什么要这么全：这行结果是用户唯一能核对"我到底测的是哪一份配置"的地方。
- * 只报一个耗时的话，两张卡都叫 gpt-4o-mini 时根本分不清刚才测的是哪个端点。
- * 排成一列「字段：值」，不是写句子——它是一份记录，不是一段说明。
+ * 為什麼要這麼全：這行結果是使用者唯一能核對"我到底測的是哪一份配置"的地方。
+ * 只報一個耗時的話，兩張卡都叫 gpt-4o-mini 時根本分不清剛才測的是哪個端點。
+ * 排成一列「欄位：值」，不是寫句子——它是一份記錄，不是一段說明。
  */
 function successDetail(profile: AiProfile, outcome: TestOutcome): string {
   const grade = gradeLatency(outcome.elapsedMs)
@@ -163,7 +163,7 @@ function renderStatusChip(status: CardStatus) {
     </span>
   )
   if (!status.hint) return <span className="shrink-0">{chip}</span>
-  // 指针事件要单独收回来：外面那层把点击让给了铺满整卡的单选按钮
+  // 指標事件要單獨收回來：外面那層把點選讓給了鋪滿整卡的單選按鈕
   return (
     <Tooltip variant="light" className="pointer-events-auto relative z-10 shrink-0" content={status.hint}>
       {chip}
@@ -174,16 +174,16 @@ function renderStatusChip(status: CardStatus) {
 const NEUTRAL_BOX = 'bg-muted text-muted-foreground'
 
 /**
- * 卡上那枚状态标签。
+ * 卡上那枚狀態標籤。
  *
- * 设计取舍：可用时标签**只显示耗时数字**（如「320ms」），快慢档位完全靠颜色区分，
- * 不再把「很快 / 太慢」这些字塞进去——那几个字会挤占模型名的横向空间，而模型名
- * 动辄二十多个字符，宁可把地方让给它。档位词移进 tooltip；读屏另有 spoken 完整念出。
+ * 設計取捨：可用時標籤**只顯示耗時數字**（如「320ms」），快慢檔位完全靠顏色區分，
+ * 不再把「很快 / 太慢」這些字塞進去——那幾個字會擠佔模型名的橫向空間，而模型名
+ * 動輒二十多個字元，寧可把地方讓給它。檔位詞移進 tooltip；讀屏另有 spoken 完整念出。
  *
- * 另外两条老规矩不变：
- *   - 颜色只在结论新鲜时才给。超过保鲜期（CHECK_FRESH_MS）一律收回中性灰——
- *     三天前测出的绿色和刚测的一样，那是在替供应商做无限期担保。
- *   - 红色表示"别用这个"，所以「不可用」和「太慢」共用它——后者是能连上但等不起。
+ * 另外兩條老規矩不變：
+ *   - 顏色只在結論新鮮時才給。超過保鮮期（CHECK_FRESH_MS）一律收回中性灰——
+ *     三天前測出的綠色和剛測的一樣，那是在替供應商做無限期擔保。
+ *   - 紅色表示"別用這個"，所以「不可用」和「太慢」共用它——後者是能連上但等不起。
  */
 function describeStatus(profile: AiProfile, checking: boolean): CardStatus {
   if (checking) {
@@ -198,7 +198,7 @@ function describeStatus(profile: AiProfile, checking: boolean): CardStatus {
   }
 
   const fresh = isCheckFresh(check)
-  // 迁移来的老结论没有时间戳，所以「什么时候」这句要么给准，要么明说不知道
+  // 遷移來的老結論沒有時間戳，所以「什麼時候」這句要麼給準，要麼明說不知道
   const when = (verdict: string): string =>
     check.at
       ? t('ai.status.whenKnown', { when: formatCheckedAt(check.at), verdict })
@@ -206,7 +206,7 @@ function describeStatus(profile: AiProfile, checking: boolean): CardStatus {
   const staleNote = fresh ? '' : t('ai.status.staleNote')
 
   if (!check.ok) {
-    // 失败没有数字可显示，只能出词
+    // 失敗沒有數字可顯示，只能出詞
     return {
       text: t('ai.status.unavailable'),
       box: fresh ? 'bg-destructive/10 text-destructive-strong' : NEUTRAL_BOX,
@@ -217,7 +217,7 @@ function describeStatus(profile: AiProfile, checking: boolean): CardStatus {
 
   const ms = check.latencyMs
   if (ms === undefined) {
-    // 迁移来的老结论可能只知道"通过"、没有耗时
+    // 遷移來的老結論可能只知道"通過"、沒有耗時
     return {
       text: t('ai.status.available'),
       box: fresh ? 'bg-success/10 text-success-strong' : NEUTRAL_BOX,
@@ -236,7 +236,7 @@ function describeStatus(profile: AiProfile, checking: boolean): CardStatus {
         : 'bg-success/10 text-success-strong'
 
   return {
-    // 只放数字，档位靠颜色 + tooltip
+    // 只放數字，檔位靠顏色 + tooltip
     text: formatLatency(ms),
     box,
     spoken: t('ai.status.availableSpoken', { grade: grade.label, latency: formatLatency(ms) }),
@@ -250,8 +250,8 @@ function describeStatus(profile: AiProfile, checking: boolean): CardStatus {
 }
 
 
-// ⓘ 里只放"选哪家"这一件事。"点一张即启用"写在卡头副标题上，不重复说；
-// 卡上标签的含义由标签自己和它的 tooltip 承担。
+// ⓘ 裡只放"選哪家"這一件事。"點一張即啟用"寫在卡頭副標題上，不重複說；
+// 卡上標籤的含義由標籤自己和它的 tooltip 承擔。
 const pickAdvice = () => t('ai.pickAdvice')
 
 const inputClass = 'h-9 w-full rounded-md border border-input-border bg-input-bg px-3 text-sm transition-colors focus:border-input-focus-border'
@@ -269,19 +269,19 @@ export default function AIProviderSection() {
   const [profiles, setProfiles] = useState<AiProfile[]>([])
   const [activeId, setActiveId] = useState('')
   const [loaded, setLoaded] = useState(false)
-  /** 弹窗里正在编辑的那份（新建也走这里）。null = 弹窗关着 */
+  /** 彈窗裡正在編輯的那份（新建也走這裡）。null = 彈窗關著 */
   const [draft, setDraft] = useState<AiProfile | null>(null)
   const [draftIsNew, setDraftIsNew] = useState(false)
   /**
-   * 弹窗里待保存的模型清单。
+   * 彈窗裡待儲存的模型清單。
    *
-   * 为什么是一个清单而不是一个字段：最常见的一次操作是"同一个供应商、同一个地址和密钥，
-   * 想再挂两三个模型比一比"。此前那样一次只能填一个，剩下的得重开弹窗、重粘密钥。
-   * 现在填几个就存几张卡，地址和密钥共用。
+   * 為什麼是一個清單而不是一個欄位：最常見的一次操作是"同一個供應商、同一個地址和金鑰，
+   * 想再掛兩三個模型比一比"。此前那樣一次只能填一個，剩下的得重開彈窗、重粘金鑰。
+   * 現在填幾個就存幾張卡，地址和金鑰共用。
    */
   const [draftModels, setDraftModels] = useState<string[]>([])
   const [modelInput, setModelInput] = useState('')
-  /** 打开弹窗时的快照，用来判断「未保存」 */
+  /** 開啟彈窗時的快照，用來判斷「未儲存」 */
   const [draftBaseline, setDraftBaseline] = useState('')
   const [saving, setSaving] = useState(false)
   const [checkingId, setCheckingId] = useState('')
@@ -290,23 +290,23 @@ export default function AIProviderSection() {
   const [serverAiSource, setServerAiSource] = useState<ServerAiSource>('managed')
   const [savingServerAiSource, setSavingServerAiSource] = useState(false)
   const [serverAiSourceError, setServerAiSourceError] = useState(false)
-  /** 工作模式与来源都读回后才渲染那一段（见 useEffect 里的注释） */
+  /** 工作模式與來源都讀回後才渲染那一段（見 useEffect 裡的註釋） */
   const [serverAiSourceLoaded, setServerAiSourceLoaded] = useState(false)
   const [isServerMode, setIsServerMode] = useState(false)
   const aiEnabled = useAiEnabled()
   /**
-   * 下面这组服务此刻会不会被调用。不会的时候照样能编辑、测速（服务器模式下先调好再切过去是正常用法），
-   * 但要让人一眼看出「选中的那张现在没在用」，否则打着勾的卡片会被当成正在整理文字的那个。
-   * 来源没读回之前按「生效」画，免得本地/云模式的用户看见标记闪一下。
+   * 下面這組服務此刻會不會被呼叫。不會的時候照樣能編輯、測速（伺服器模式下先調好再切過去是正常用法），
+   * 但要讓人一眼看出「選中的那張現在沒在用」，否則打著勾的卡片會被當成正在整理文字的那個。
+   * 來源沒讀回之前按「生效」畫，免得本地/雲模式的使用者看見標記閃一下。
    */
   const servicesInactiveReason: 'aiOff' | 'serverManaged' | null = !aiEnabled
     ? 'aiOff'
     : serverAiSourceLoaded && isServerMode && serverAiSource === 'managed'
       ? 'serverManaged'
       : null
-  /** 「测试全部」的进度；null = 没在批量测试 */
+  /** 「測試全部」的進度；null = 沒在批次測試 */
   const [batch, setBatch] = useState<{ done: number; total: number } | null>(null)
-  /** 批量测试是并发的，所以「正在测哪个」是一组而不是一个 */
+  /** 批次測試是併發的，所以「正在測哪個」是一組而不是一個 */
   const [checkingIds, setCheckingIds] = useState<string[]>([])
 
   const draftProvider = findProvider(draft?.provider ?? '')
@@ -314,16 +314,16 @@ export default function AIProviderSection() {
   const draftUrlError = draft ? checkApiUrl(draft.apiUrl) : ''
   const draftKeyHint = draft && draftNeedsKey ? checkAiKeyFormat(draft.provider, draft.apiKey) : ''
   const draftSignature = draft ? draftSnapshot(draft, draftModels) : ''
-  // 输入框里打了字但没按回车也算改动——保存时会自动收编它，所以现在就得算"未保存"
+  // 輸入框裡打了字但沒按回車也算改動——儲存時會自動收編它，所以現在就得算"未儲存"
   const draftDirty = draft !== null && (draftSignature !== draftBaseline || modelInput.trim() !== '')
-  // 新建时密钥是自动带过来的（同供应商上一份），界面上要交代一句它从哪来。
-  // 用"当前值是否还等于那份配置的密钥"来判断：用户一改成别的，这句提示自己就消失
+  // 新建時金鑰是自動帶過來的（同供應商上一份），介面上要交代一句它從哪來。
+  // 用"當前值是否還等於那份配置的金鑰"來判斷：使用者一改成別的，這句提示自己就消失
   const draftKeyInherited = draft !== null
     && draftIsNew
     && draft.apiKey.trim() !== ''
     && lastProfileOf(draft.provider)?.apiKey === draft.apiKey
   const busy = saving || checkingId !== '' || batch !== null
-  /** 这个卡正在测吗 —— 单个测试和并发批量测试都要算上 */
+  /** 這個卡正在測嗎 —— 單個測試和併發批次測試都要算上 */
   const isChecking = (id: string) => checkingId === id || checkingIds.includes(id)
   const pendingDelete = profiles.find((p) => p.id === pendingDeleteId) ?? null
 
@@ -335,10 +335,10 @@ export default function AIProviderSection() {
       setActiveId(state.activeId)
       setLoaded(true)
     })()
-    // 两个值一起等（Promise.all + 各自 catch 兜底），到齐后同一批渲染。
-    // 分两次落值会出两种假象：默认是服务器模式，本地/云模式的用户会看见这一段先出现再消失；
-    // 来源默认 managed，已保存 custom 的用户会看见开关自己滑一下（pitfalls #11）。
-    // 只在值到齐后才首次渲染，两者都不存在，也就不需要 ready/animate 那套过渡开关。
+    // 兩個值一起等（Promise.all + 各自 catch 兜底），到齊後同一批渲染。
+    // 分兩次落值會出兩種假象：預設是伺服器模式，本地/雲模式的使用者會看見這一段先出現再消失；
+    // 來源預設 managed，已儲存 custom 的使用者會看見開關自己滑一下（pitfalls #11）。
+    // 只在值到齊後才首次渲染，兩者都不存在，也就不需要 ready/animate 那套過渡開關。
     void Promise.all([
       getSetting('workMode', 'local').catch(() => 'local'),
       getSetting(SERVER_AI_SOURCE_KEY, 'managed').catch(() => 'managed'),
@@ -350,7 +350,7 @@ export default function AIProviderSection() {
       setIsServerMode(mode === 'server')
       setServerAiSourceLoaded(true)
     })
-    // 切走路由时复位「有未保存改动」，别把脏状态留给下一次进入
+    // 切走路由時復位「有未儲存改動」，別把髒狀態留給下一次進入
     return () => {
       cancelled = true
       setEngineDraftDirty(false)
@@ -377,7 +377,7 @@ export default function AIProviderSection() {
     }
   }
 
-  /** 唯一的写入点：列表 + 启用项一起落盘，并由 store 同步运行时那四个扁平键 */
+  /** 唯一的寫入點：列表 + 啟用項一起落盤，並由 store 同步執行時那四個扁平鍵 */
   async function persist(nextProfiles: AiProfile[], nextActiveId: string) {
     const active = resolveActiveProfile(nextProfiles, nextActiveId)
     setProfiles(nextProfiles)
@@ -430,26 +430,26 @@ export default function AIProviderSection() {
     setPendingDeleteId('')
     if (draft?.id === id) closeEditor()
     setNotice(null)
-    // 删掉的正是启用项时，启用第一条；一条不剩就写空，下游自己跳过 AI 环节
+    // 刪掉的正是啟用項時，啟用第一條；一條不剩就寫空，下游自己跳過 AI 環節
     await persist(next, id === activeId ? '' : activeId)
   }
 
   /**
-   * 换供应商时，地址与模型只在「还是上一家的样板值」时才跟着换。
-   * 用户自己敲过的自定义端点或模型名不能被一次误点的下拉抹掉。
+   * 換供應商時，地址與模型只在「還是上一家的樣板值」時才跟著換。
+   * 使用者自己敲過的自定義端點或模型名不能被一次誤點的下拉抹掉。
    */
   function handleDraftProvider(value: string) {
     if (!draft) return
     const from = findProvider(draft.provider)
     const to = findProvider(value)
     const previous = lastProfileOf(value)
-    // 地址：自己敲过的自定义端点不能被一次误点的下拉抹掉，只有还是样板值时才跟着换；
-    // 换到一个已经配过的供应商，就用那份配过的地址，而不是清单里的默认值
+    // 地址：自己敲過的自定義端點不能被一次誤點的下拉抹掉，只有還是樣板值時才跟著換；
+    // 換到一個已經配過的供應商，就用那份配過的地址，而不是清單裡的預設值
     const boilerplate = draft.apiUrl.trim() === '' || draft.apiUrl.trim() === from.defaultUrl
     const url = boilerplate ? previous?.apiUrl || to.defaultUrl : draft.apiUrl
-    // 密钥：空着才自动带上同供应商已配过的那把，绝不覆盖用户已经填进去的
+    // 金鑰：空著才自動帶上同供應商已配過的那把，絕不覆蓋使用者已經填進去的
     const apiKey = draft.apiKey.trim() === '' ? previous?.apiKey ?? '' : draft.apiKey
-    // 模型清单同理：还全是上一家的样板值时才换成新家的推荐，用户自己敲的一律留着
+    // 模型清單同理：還全是上一家的樣板值時才換成新家的推薦，使用者自己敲的一律留著
     const stillBoilerplate = draftModels.length === 0
       || draftModels.every((m) => from.defaultModels.includes(m))
     if (stillBoilerplate) {
@@ -459,24 +459,24 @@ export default function AIProviderSection() {
     setNotice(null)
   }
 
-  /** 改了任何一格，上一次的检测结论就不再描述这份配置了，一并作废（别让卡上留着旧的「可用」） */
+  /** 改了任何一格，上一次的檢測結論就不再描述這份配置了，一併作廢（別讓卡上留著舊的「可用」） */
   function patchDraft(patch: Partial<AiProfile>) {
     if (!draft) return
     setDraft({ ...draft, ...patch, check: undefined })
     setNotice(null)
   }
 
-  /** 同供应商最近配过的那份（用来给新草稿带上地址和密钥） */
+  /** 同供應商最近配過的那份（用來給新草稿帶上地址和金鑰） */
   function lastProfileOf(providerValue: string): AiProfile | undefined {
     return [...profiles].reverse().find((p) => p.provider === providerValue && p.apiUrl.trim() !== '')
   }
 
   /**
-   * 新建草稿：供应商默认跟当前启用的那份一致，地址和密钥沿用同供应商已配过的最近一份。
+   * 新建草稿：供應商預設跟當前啟用的那份一致，地址和金鑰沿用同供應商已配過的最近一份。
    *
-   * 这是「另存为新的一份」那个按钮的替代品——它想解决的是"同一个端点再加一个模型，
-   * 不用重新粘一遍密钥"，但一个叫「另存为」的链接摆在模型输入框旁边，谁也看不出这层意思。
-   * 换成默认值来做：新建时该带的东西自己就带上了，用户只需要改模型名。不需要多一个控件。
+   * 這是「另存為新的一份」那個按鈕的替代品——它想解決的是"同一個端點再加一個模型，
+   * 不用重新粘一遍金鑰"，但一個叫「另存為」的連結擺在模型輸入框旁邊，誰也看不出這層意思。
+   * 換成預設值來做：新建時該帶的東西自己就帶上了，使用者只需要改模型名。不需要多一個控制元件。
    */
   function makeDraft(providerValue?: string): AiProfile {
     const active = resolveActiveProfile(profiles, activeId)
@@ -510,18 +510,18 @@ export default function AIProviderSection() {
   }
 
   /**
-   * 保存（可选择顺手测一遍）。
+   * 儲存（可選擇順手測一遍）。
    *
-   * 两个按钮共用这一段：「保存」只落盘，「保存并测试」落盘后逐个真调一次。
-   * 此前只有「保存并测试」一个入口——想改个地址、或者先把几个模型填上待会儿再测，
-   * 都被强迫付一次（计费的）调用。
+   * 兩個按鈕共用這一段：「儲存」只落盤，「儲存並測試」落盤後逐個真調一次。
+   * 此前只有「儲存並測試」一個入口——想改個地址、或者先把幾個模型填上待會兒再測，
+   * 都被強迫付一次（計費的）呼叫。
    *
-   * 落盘一定在测试之前：测失败不该把用户刚粘进来的密钥弄丢。
+   * 落盤一定在測試之前：測失敗不該把使用者剛粘進來的金鑰弄丟。
    */
   async function handleSave(withTest: boolean) {
     if (!draft || busy) return
 
-    // 输入框里打了字但没按回车，保存时自动收编——这是最容易发生的操作，别让它白费
+    // 輸入框裡打了字但沒按回車，儲存時自動收編——這是最容易發生的操作，別讓它白費
     const models = modelInput.trim() && !draftModels.includes(modelInput.trim())
       ? [...draftModels, modelInput.trim()]
       : draftModels
@@ -545,14 +545,14 @@ export default function AIProviderSection() {
       return
     }
 
-    // 第一个模型沿用当前这份的 id（编辑就是改它），其余各自成为新的一张卡
+    // 第一個模型沿用當前這份的 id（編輯就是改它），其餘各自成為新的一張卡
     const targets: AiProfile[] = models.length === 0
       ? [{ ...draft, ...base, model: '' }]
       : models.map((model, index) => index === 0
         ? { ...draft, ...base, model }
         : { ...blankProfile(draft.provider), ...base, model })
 
-    // 检测结论只在"这份配置一个字都没变"时才留着；改了任何一格，旧结论就不再描述它
+    // 檢測結論只在"這份配置一個字都沒變"時才留著；改了任何一格，舊結論就不再描述它
     const withChecks = targets.map((target) => {
       const stored = profiles.find((p) => p.id === target.id)
       const unchanged = stored
@@ -571,7 +571,7 @@ export default function AIProviderSection() {
     const existingIds = new Set(profiles.map((p) => p.id))
     let nextProfiles = profiles.map((p) => withChecks.find((t) => t.id === p.id) ?? p)
     nextProfiles = [...nextProfiles, ...withChecks.filter((t) => !existingIds.has(t.id))]
-    // 新建的第一份保存后即启用（刚配完就是想用它）；编辑已有的不抢当前启用项
+    // 新建的第一份儲存後即啟用（剛配完就是想用它）；編輯已有的不搶當前啟用項
     const nextActiveId = draftIsNew ? withChecks[0].id : activeId
 
     try {
@@ -587,7 +587,7 @@ export default function AIProviderSection() {
     setDraftBaseline(draftSnapshot(withChecks[0], models))
 
     const created = withChecks.length
-    // 多个模型一次存完，弹窗就没有"正在编辑哪一份"了——关掉，结果落到网格下面
+    // 多個模型一次存完，彈窗就沒有"正在編輯哪一份"了——關掉，結果落到網格下面
     const scope: Notice['scope'] = created > 1 ? 'list' : 'editor'
     const finish = (notice: Notice) => {
       if (created > 1) closeEditor()
@@ -613,7 +613,7 @@ export default function AIProviderSection() {
       return
     }
 
-    // 逐个测：结论一律写回（通不过也要写，卡上得显示「不可用」而不是停在「未测试」）
+    // 逐個測：結論一律寫回（通不過也要寫，卡上得顯示「不可用」而不是停在「未測試」）
     const results: Array<{ profile: AiProfile; outcome: TestOutcome }> = []
     let working = nextProfiles
     for (const target of withChecks) {
@@ -660,11 +660,11 @@ export default function AIProviderSection() {
   }
 
   /**
-   * 卡上的「测试」：拿这份配置真的发一句话过去，看拿不拿得到回复。
+   * 卡上的「測試」：拿這份配置真的發一句話過去，看拿不拿得到回覆。
    *
-   * 它回答的是"这条能不能用"（密钥对不对、模型开通了没、网络通不通），耗时是可用之后的
-   * 第二个维度。原来这个按钮叫「测速」，把结论说成了一个速度数字——用户按下它时想问的
-   * 其实是"这个模型好不好用"。
+   * 它回答的是"這條能不能用"（金鑰對不對、模型開通了沒、網路通不通），耗時是可用之後的
+   * 第二個維度。原來這個按鈕叫「測速」，把結論說成了一個速度數字——使用者按下它時想問的
+   * 其實是"這個模型好不好用"。
    */
   async function handleCheck(profile: AiProfile) {
     if (busy) return
@@ -704,18 +704,18 @@ export default function AIProviderSection() {
   }
 
   /**
-   * 一键测试全部：**并发**真发一句话过去，一次点击直接开始（没有二次确认）。
+   * 一鍵測試全部：**併發**真發一句話過去，一次點選直接開始（沒有二次確認）。
    *
-   * ⚠️ 并发的代价，改回串行前先想清楚：卡上的耗时是用来横向比较「哪个更快」的，
-   * 并发跑出来的数字互相污染 —— 同一个地址和密钥下挂着好几个模型时尤其明显，
-   * 还可能撞上限流被记成「不可用」。所以批量结果里会注明这批耗时不宜横向比较；
-   * 要拿准数字，用卡上的单张测试。
+   * ⚠️ 併發的代價，改回序列前先想清楚：卡上的耗時是用來橫向比較「哪個更快」的，
+   * 併發跑出來的數字互相汙染 —— 同一個地址和金鑰下掛著好幾個模型時尤其明顯，
+   * 還可能撞上限流被記成「不可用」。所以批次結果裡會註明這批耗時不宜橫向比較；
+   * 要拿準數字，用卡上的單張測試。
    *
-   * 另外两个决定：
-   *  · **一次性落盘**，不逐张写。并发下每个回调拿到的都是同一份旧 profiles，
-   *    逐张 persist 会互相覆盖，只剩最后一个的结论。
-   *  · **跳过没填完的**，不给它们写「不可用」——它们缺的是配置而不是可用性，
-   *    写进结论只会污染卡片状态；跳过几个会在结果里说明。
+   * 另外兩個決定：
+   *  · **一次性落盤**，不逐張寫。併發下每個回撥拿到的都是同一份舊 profiles，
+   *    逐張 persist 會互相覆蓋，只剩最後一個的結論。
+   *  · **跳過沒填完的**，不給它們寫「不可用」——它們缺的是配置而不是可用性，
+   *    寫進結論只會汙染卡片狀態；跳過幾個會在結果裡說明。
    */
   async function handleCheckAll() {
     if (busy) return
@@ -737,7 +737,7 @@ export default function AIProviderSection() {
     let done = 0
     const results = await Promise.all(targets.map(async (target) => {
       const outcome = await runTest(target)
-      // 每个自己测完就把图标停下、进度加一，不用等整批结束
+      // 每個自己測完就把圖示停下、進度加一，不用等整批結束
       done += 1
       setBatch({ done, total: targets.length })
       setCheckingIds((prev) => prev.filter((id) => id !== target.id))
@@ -781,14 +781,14 @@ export default function AIProviderSection() {
   }
 
   /**
-   * 一张卡就两行，约 70px：
-   *   第一行  ✓ 模型名 ……… 状态标签（可用 1.2s / 不可用 / 未测试）
-   *   第二行  供应商 · 主机名 ……… 测试 / 编辑 / 删除（划过才显形）
+   * 一張卡就兩行，約 70px：
+   *   第一行  ✓ 模型名 ……… 狀態標籤（可用 1.2s / 不可用 / 未測試）
+   *   第二行  供應商 · 主機名 ……… 測試 / 編輯 / 刪除（劃過才顯形）
    *
-   * 两个颜色的分工是刻意的，也是上一版最误导的地方：
-   *   - 对勾是**主题色**，只表示"这份正在被使用"（和工作模式卡一致）；
-   *   - **绿色只属于状态标签**，只有真的测通过才会出现。
-   * 上一版把对勾涂成绿的，等于一选中就宣布"能用"——而它可能密钥都没填对。
+   * 兩個顏色的分工是刻意的，也是上一版最誤導的地方：
+   *   - 對勾是**主題色**，只表示"這份正在被使用"（和工作模式卡一致）；
+   *   - **綠色只屬於狀態標籤**，只有真的測通過才會出現。
+   * 上一版把對勾塗成綠的，等於一選中就宣佈"能用"——而它可能金鑰都沒填對。
    */
   function renderCard(profile: AiProfile) {
     const isActive = profile.id === activeId
@@ -803,8 +803,8 @@ export default function AIProviderSection() {
           isActive ? 'border-primary bg-primary/5' : 'border-border hover:bg-accent/50',
         )}
       >
-        {/* 铺满整卡的单选按钮：卡上还有自己的图标按钮，所以不能把整张卡做成 <button>
-            （按钮套按钮，读屏和键盘都会错）。文字是静态的，点哪儿都落到这个按钮上。 */}
+        {/* 鋪滿整卡的單選按鈕：卡上還有自己的圖示按鈕，所以不能把整張卡做成 <button>
+            （按鈕套按鈕，讀屏和鍵盤都會錯）。文字是靜態的，點哪兒都落到這個按鈕上。 */}
         <button
           type="button"
           role="radio"
@@ -819,16 +819,16 @@ export default function AIProviderSection() {
         />
 
         <div className="flex items-center gap-1.5">
-          {/* 「使用中」用实心绿勾，和诊断页表示"正常"的 CheckCircle2 是同一个图标。
-              它和右边的状态标签分工不同：勾说的是"这份在被用"，标签说的是"上次测得如何"，
-              所以勾旁边挂一个 tooltip 明说，避免又被读成"能用" */}
+          {/* 「使用中」用實心綠勾，和診斷頁表示"正常"的 CheckCircle2 是同一個圖示。
+              它和右邊的狀態標籤分工不同：勾說的是"這份在被用"，標籤說的是"上次測得如何"，
+              所以勾旁邊掛一個 tooltip 明說，避免又被讀成"能用" */}
           {isActive && (
             <Tooltip className="pointer-events-auto relative z-10 shrink-0" content={t('common.inUse')}>
               <CheckCircle2 className="h-4 w-4 shrink-0 cursor-help text-success-strong" aria-label={t('common.inUse')} />
             </Tooltip>
           )}
-          {/* 字号压到 12px：模型名动辄 20 多个字符（doubao-seed-2-0-lite-260215），
-              三列排布下 14px 装不住 */}
+          {/* 字號壓到 12px：模型名動輒 20 多個字元（doubao-seed-2-0-lite-260215），
+              三列排佈下 14px 裝不住 */}
           <span className="min-w-0 flex-1 truncate text-xs font-medium" title={profileTitle(profile)}>
             {profileTitle(profile)}
           </span>
@@ -836,8 +836,8 @@ export default function AIProviderSection() {
         </div>
 
         <div className="mt-1 flex items-center gap-1.5">
-          {/* 供应商 · 主机名合成一行；主机名只在不是该供应商默认地址时才出现
-              （两张都叫「OpenAI 兼容」的卡靠它区分）。完整地址悬停可见，也在编辑弹窗里 */}
+          {/* 供應商 · 主機名合成一行；主機名只在不是該供應商預設地址時才出現
+              （兩張都叫「OpenAI 相容」的卡靠它區分）。完整地址懸停可見，也在編輯彈窗裡 */}
           <span
             className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground"
             title={profile.apiUrl}
@@ -845,9 +845,9 @@ export default function AIProviderSection() {
             {profileSubtitle(profile)}
           </span>
           <div className="pointer-events-none relative z-10 flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
-            {/* 图标 tooltip 一律是"这个按钮叫什么"，两三个字（对齐诊断页的「刷新状态」等）。
-                「会真实调用一次、按供应商计费」这种前提不属于 tooltip：它太长，
-                而且用户按下按钮的那一刻已经知道自己在测一个云服务了 */}
+            {/* 圖示 tooltip 一律是"這個按鈕叫什麼"，兩三個字（對齊診斷頁的「重新整理狀態」等）。
+                「會真實呼叫一次、按供應商計費」這種前提不屬於 tooltip：它太長，
+                而且使用者按下按鈕的那一刻已經知道自己在測一個雲服務了 */}
             <Tooltip className="pointer-events-auto" content={t('common.test')}>
               <button
                 type="button"
@@ -888,18 +888,18 @@ export default function AIProviderSection() {
   return (
     <Card>
       <CardContent className="p-6">
-        {/* 只在服务器模式出现：本地/云 API 模式下 AI 整理本来就走下面选中的服务，没有第二个
-            选项可选，摆一个恒定生效的开关只会让人以为它还管着别的事。
-            形态用设置页里那 8 处同构的开关行 —— 分段控件在本应用表示页面/短枚举切换，
-            而两个短选项撑成等宽卡会留一大片空白，还会和下方真正的服务卡争层级。
-            说明文字跟着开关状态走，直接说“当前由谁整理”，比让用户从「关」反推更省事。 */}
+        {/* 只在伺服器模式出現：本地/雲 API 模式下 AI 整理本來就走下面選中的服務，沒有第二個
+            選項可選，擺一個恆定生效的開關只會讓人以為它還管著別的事。
+            形態用設定頁裡那 8 處同構的開關行 —— 分段控制元件在本應用表示頁面/短列舉切換，
+            而兩個短選項撐成等寬卡會留一大片空白，還會和下方真正的服務卡爭層級。
+            說明文字跟著開關狀態走，直接說“當前由誰整理”，比讓使用者從「關」反推更省事。 */}
         {serverAiSourceLoaded && isServerMode && (
           <section className="mb-4 border-b border-border pb-4" aria-labelledby="server-ai-source-heading">
             <div className="flex items-start justify-between gap-4">
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
-                  {/* 字号与图标间距都对齐下面的「AI 服务」标题：两者是同一层级的两块内容，
-                      标题小一号会让它看着像附属于下面那块 */}
+                  {/* 字號與圖示間距都對齊下面的「AI 服務」標題：兩者是同一層級的兩塊內容，
+                      標題小一號會讓它看著像附屬於下面那塊 */}
                   <h2 id="server-ai-source-heading" className="text-lg font-semibold">
                     {t('ai.serverSource.title')}
                   </h2>
@@ -950,8 +950,8 @@ export default function AIProviderSection() {
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            {/* 并发跑，所以没有「停止」：invoke 发出去的请求没法撤回，
-                摆一颗停不掉任何东西的按钮比没有更糟。整批只等最慢那个，很快。 */}
+            {/* 併發跑，所以沒有「停止」：invoke 發出去的請求沒法撤回，
+                擺一顆停不掉任何東西的按鈕比沒有更糟。整批只等最慢那個，很快。 */}
             <Button
               variant="outline"
               size="sm"
@@ -962,8 +962,8 @@ export default function AIProviderSection() {
               <RefreshCw className={cn('mr-1 h-3.5 w-3.5', batch && 'animate-spin')} aria-hidden />
               {batch ? t('ai.testingBatch', { done: batch.done, total: batch.total }) : t('ai.testAll')}
             </Button>
-            {/* 「新建」回到卡头右上角（和「润色模式」页同一个位置）。
-                它开的是弹窗，所以不会再出现"点了按钮、变化发生在屏幕外"的问题 */}
+            {/* 「新建」回到卡頭右上角（和「潤色模式」頁同一個位置）。
+                它開的是彈窗，所以不會再出現"點了按鈕、變化發生在螢幕外"的問題 */}
             <Button
               variant="outline"
               size="sm"
@@ -976,7 +976,7 @@ export default function AIProviderSection() {
           </div>
         </div>
 
-        {/* 自定义服务始终可编辑和测试；服务器模式是否实际使用由上方来源选择决定。 */}
+        {/* 自定義服務始終可編輯和測試；伺服器模式是否實際使用由上方來源選擇決定。 */}
         <fieldset className="min-w-0">
           {!loaded ? (
             <p className="py-2 text-sm text-muted-foreground">{t('ai.loading')}</p>
@@ -988,7 +988,7 @@ export default function AIProviderSection() {
             <div
               role="radiogroup"
               aria-labelledby="ai-service-heading"
-              // 未生效时整组调淡；鼠标移上去或键盘聚焦时恢复，表示仍然可以编辑和测试
+              // 未生效時整組調淡；滑鼠移上去或鍵盤聚焦時恢復，表示仍然可以編輯和測試
               className={cn(
                 'grid gap-2.5 sm:grid-cols-3',
                 servicesInactiveReason && 'opacity-60 transition-opacity focus-within:opacity-100 hover:opacity-100',
@@ -998,7 +998,7 @@ export default function AIProviderSection() {
             </div>
           )}
 
-          {/* 卡上动作（测速）的结果没有弹窗可归，落在网格下方 */}
+          {/* 卡上動作（測速）的結果沒有彈窗可歸，落在網格下方 */}
           {notice?.scope === 'list' && (
             <Feedback className="mt-3" tone={notice.tone} message={notice.message} detail={notice.detail} />
           )}
@@ -1050,8 +1050,8 @@ export default function AIProviderSection() {
             </div>
 
             {draftNeedsKey && (
-              // data-modal-autofocus：弹窗打开时焦点落在密钥上（这才是要干的事），
-              // 而不是第一个可聚焦元素——那是右上角的关闭按钮
+              // data-modal-autofocus：彈窗開啟時焦點落在金鑰上（這才是要乾的事），
+              // 而不是第一個可聚焦元素——那是右上角的關閉按鈕
               <div data-modal-autofocus>
                 <label htmlFor="ai-api-key" className="mb-1 block text-sm text-muted-foreground">API Key</label>
                 <PasswordInput
@@ -1064,17 +1064,17 @@ export default function AIProviderSection() {
                   className={inputClass}
                 />
                 {!notice && draftKeyHint && <FormatHint text={draftKeyHint} />}
-                {/* 密钥不是凭空出现的：说一句它从哪来，免得用户以为自己看错了 */}
+                {/* 金鑰不是憑空出現的：說一句它從哪來，免得使用者以為自己看錯了 */}
                 {draftKeyInherited && (
                   <p className="mt-1 text-[11px] text-muted-foreground">
                     {t('ai.keyReused', { provider: draftProvider.label })}
                   </p>
                 )}
-                {/* 密钥入口放在密钥这一格里。
-                    这里原来还有一个「怎么申请密钥？看配置文档」的链接，去掉了：AI 服务
-                    要做的只有「去控制台复制一把 Key」，上面那个控制台链接就是最短路径，
-                    再挂一篇文档反而暗示这件事很复杂。
-                    （语音识别那边保留了，但只对豆包显示 —— 只有它要在新旧两代控制台之间选。）*/}
+                {/* 金鑰入口放在金鑰這一格裡。
+                    這裡原來還有一個「怎麼申請金鑰？看配置文件」的連結，去掉了：AI 服務
+                    要做的只有「去控制台複製一把 Key」，上面那個控制台連結就是最短路徑，
+                    再掛一篇文件反而暗示這件事很複雜。
+                    （語音識別那邊保留了，但只對豆包顯示 —— 只有它要在新舊兩代控制台之間選。）*/}
                 <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1">
                   {SHOW_CLOUD_CONSOLE_LINKS && draftProvider.consoleUrl && (
                     <button
@@ -1092,8 +1092,8 @@ export default function AIProviderSection() {
 
             <div>
               <label htmlFor="ai-model" className="mb-1 block text-sm text-muted-foreground">{t('ai.model')}</label>
-              {/* 原来这里是 <input list=...>：Chromium 会画一个下拉箭头，但它其实是个自由文本框，
-                  "又是下拉又要我填"两头都不像。现在拆开——输入框只管输入，推荐名做成可点的小按钮 */}
+              {/* 原來這裡是 <input list=...>：Chromium 會畫一個下拉箭頭，但它其實是個自由文本框，
+                  "又是下拉又要我填"兩頭都不像。現在拆開——輸入框只管輸入，推薦名做成可點的小按鈕 */}
               <div className="flex items-center gap-2">
                 <input
                   id="ai-model"
@@ -1139,9 +1139,9 @@ export default function AIProviderSection() {
                 </div>
               )}
 
-              {/* 这里原来还有一排「推荐模型」小按钮，去掉了：新建时该供应商的推荐模型
-                  已经预先躺在上面的清单里，输入框的 placeholder 也写着它，
-                  再摆一排按钮是把同一件事说第三遍。 */}
+              {/* 這裡原來還有一排「推薦模型」小按鈕，去掉了：新建時該供應商的推薦模型
+                  已經預先躺在上面的清單裡，輸入框的 placeholder 也寫著它，
+                  再擺一排按鈕是把同一件事說第三遍。 */}
               <p className="mt-1.5 text-[11px] text-muted-foreground">
                 {t('ai.multiModelHint')}
               </p>
@@ -1151,11 +1151,11 @@ export default function AIProviderSection() {
               <Feedback tone={notice.tone} message={notice.message} detail={notice.detail} />
             )}
 
-            {/* 只留一个主按钮。关闭走右上角那个叉（Esc、点背板也行），
-                不用再摆一个和它同义的「取消」 */}
-            {/* 两个入口：「保存」只落盘，「保存并测试」额外真调一次。
-                此前只有后者——想改个地址、或者先把几个模型填上待会儿再测，
-                都被强迫付一次计费调用。关闭走右上角那个叉（Esc、点背板也行）。 */}
+            {/* 只留一個主按鈕。關閉走右上角那個叉（Esc、點背板也行），
+                不用再擺一個和它同義的「取消」 */}
+            {/* 兩個入口：「儲存」只落盤，「儲存並測試」額外真調一次。
+                此前只有後者——想改個地址、或者先把幾個模型填上待會兒再測，
+                都被強迫付一次計費呼叫。關閉走右上角那個叉（Esc、點背板也行）。 */}
             <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border pt-3">
               <Button
                 variant="outline"

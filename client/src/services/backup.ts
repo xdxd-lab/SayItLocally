@@ -1,8 +1,8 @@
-// 备份 / 恢复：配置（JSON）与全部数据（zip，含音频）的导入导出。
+// 備份 / 恢復：配置（JSON）與全部資料（zip，含音訊）的匯入匯出。
 //
-// 配置导出支持完整配置或热词组、文本替换、润色模式的自定义选择。
-// 配置导入先由 Rust 识别文件并生成变更预览，再由用户二次确认。
-// 全量导出与导入保持原有覆盖语义；导入完成后重启应用使运行时状态重载。
+// 配置匯出支援完整配置或熱片語、文本替換、潤色模式的自定義選擇。
+// 配置匯入先由 Rust 識別檔案並生成變更預覽，再由使用者二次確認。
+// 全量匯出與匯入保持原有覆蓋語義；匯入完成後重啟應用使執行時狀態過載。
 
 import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
@@ -129,18 +129,18 @@ export function onBackupExportProgress(
   return listen<BackupExportProgress>('backup-export-progress', (event) => handler(event.payload))
 }
 
-/** 导出完整配置，或导出选中的热词组、文本替换和自定义润色模式。 */
+/** 匯出完整配置，或匯出選中的熱片語、文本替換和自定義潤色模式。 */
 export async function exportConfigFile(selection: ConfigExportSelection): Promise<ExportResult> {
   const path = await invoke<string>('export_config', { selection })
   return { canceled: false, filePath: path }
 }
 
 /**
- * 本地「全部数据」导出：配置 + 历史 + 录音，直接写入默认备份目录。
+ * 本地「全部資料」匯出：配置 + 歷史 + 錄音，直接寫入預設備份目錄。
  *
- * scope 显式传全 true —— Rust 侧刻意不给这两个字段 serde 默认值，漏传就反序列化失败。
- * 宁可报一条看得见的错，也不要让「默认全都要」在 WebDAV 自动备份那边变成
- * 每天悄悄上传几个 GB 音频。
+ * scope 顯式傳全 true —— Rust 側刻意不給這兩個欄位 serde 預設值，漏傳就反序列化失敗。
+ * 寧可報一條看得見的錯，也不要讓「預設全都要」在 WebDAV 自動備份那邊變成
+ * 每天悄悄上傳幾個 GB 音訊。
  */
 export async function exportFullFile(): Promise<ExportResult> {
   const path = await invoke<string>('export_full', {
@@ -149,7 +149,7 @@ export async function exportFullFile(): Promise<ExportResult> {
   return { canceled: false, filePath: path }
 }
 
-/** 让用户选择要导入的备份文件；返回路径，取消则返回 null。文件选择走系统原生对话框。 */
+/** 讓使用者選擇要匯入的備份檔案；返回路徑，取消則返回 null。檔案選擇走系統原生對話方塊。 */
 export async function pickImportFile(kind: 'config' | 'full'): Promise<string | null> {
   const filters =
     kind === 'config'
@@ -159,12 +159,12 @@ export async function pickImportFile(kind: 'config' | 'full'): Promise<string | 
   return typeof picked === 'string' ? picked : null
 }
 
-/** 检查配置文件并按当前本地数据计算新增、更新和跳过数量，不写入任何数据。 */
+/** 檢查配置檔案並按當前本地資料計算新增、更新和跳過數量，不寫入任何資料。 */
 export function inspectConfigImport(inPath: string): Promise<ConfigImportPreview> {
   return invoke<ConfigImportPreview>('inspect_config_import', { inPath })
 }
 
-/** 执行已确认的导入；配置返回合并结果，全部数据保持原有流程。 */
+/** 執行已確認的匯入；配置返回合併結果，全部資料保持原有流程。 */
 export async function runImport(
   kind: 'config' | 'full',
   inPath: string,
@@ -178,7 +178,7 @@ export async function runImport(
   return null
 }
 
-/** 重启应用（Tauri 内置 app.restart()）。 */
+/** 重啟應用（Tauri 內建 app.restart()）。 */
 export function restartApp(): Promise<void> {
   return invoke('restart_app')
 }

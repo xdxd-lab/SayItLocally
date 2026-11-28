@@ -12,7 +12,7 @@ interface Props {
   actionFailed?: boolean
 }
 
-/** 纯展示组件，同时用于桌面浮窗和开发预览。 */
+/** 純展示元件，同時用於桌面浮窗和開發預覽。 */
 export default function UpdateReadyCard({ data, onInstall, onDismiss, sending, actionFailed }: Props) {
   const t = useT()
   const busy = data.installing || sending

@@ -1,18 +1,18 @@
-// 列表拖拽排序 —— 用原生 HTML5 拖拽，不引入拖拽库。
+// 列表拖拽排序 —— 用原生 HTML5 拖拽，不引入拖拽庫。
 //
-// 为什么不装 dnd-kit 之类：桌面端只有鼠标（不需要触摸/指针兼容），列表都是简单的一维
-// 纵向列表，原生 API 足够；装库要多背几十 KB，而且此前全应用没有任何拖拽依赖。
+// 為什麼不裝 dnd-kit 之類：桌面端只有滑鼠（不需要觸控/指標相容），列表都是簡單的一維
+// 縱向列表，原生 API 足夠；裝庫要多背幾十 KB，而且此前全應用沒有任何拖拽依賴。
 //
-// ⚠️ Tauri 前置条件：窗口必须配 `"dragDropEnabled": false`（tauri.conf.json）。
-// Tauri 默认开启自己的「文件拖放」处理器，它在 Windows 上会拦掉 OS 层的拖放，
-// 导致 webview 里的 HTML5 拖拽事件根本不触发 —— 表现就是"手柄拖不动"。
-// 参考 tauri-apps/tauri#14373。本项目没有用到文件拖放，关掉无副作用。
+// ⚠️ Tauri 前置條件：視窗必須配 `"dragDropEnabled": false`（tauri.conf.json）。
+// Tauri 預設開啟自己的「檔案拖放」處理器，它在 Windows 上會攔掉 OS 層的拖放，
+// 導致 webview 裡的 HTML5 拖拽事件根本不觸發 —— 表現就是"手柄拖不動"。
+// 參考 tauri-apps/tauri#14373。本專案沒有用到檔案拖放，關掉無副作用。
 //
-// 两个刻意的设计：
-//  1. **只有拖拽柄可拖**，不是整行可拖 —— 行内有输入框（如热词分类的添加框），整行可拖
-//     会把框里的文字选择也变成拖拽。拖起来时用 setDragImage 把整行作为拖影，观感不受影响。
-//  2. **拖拽柄可聚焦，聚焦后按 ↑/↓ 也能移动** —— 原生拖拽对键盘和读屏用户完全不可用，
-//     这样不必在界面上常驻一对上下按钮，也不会把这两类用户挡在外面。
+// 兩個刻意的設計：
+//  1. **只有拖拽柄可拖**，不是整行可拖 —— 行內有輸入框（如熱詞分類的新增框），整行可拖
+//     會把框裡的文字選擇也變成拖拽。拖起來時用 setDragImage 把整行作為拖影，觀感不受影響。
+//  2. **拖拽柄可聚焦，聚焦後按 ↑/↓ 也能移動** —— 原生拖拽對鍵盤和讀屏使用者完全不可用，
+//     這樣不必在介面上常駐一對上下按鈕，也不會把這兩類使用者擋在外面。
 
 import { useRef, useState, type ComponentPropsWithoutRef, type DragEvent, type KeyboardEvent } from 'react'
 import { GripVertical } from 'lucide-react'
@@ -20,7 +20,7 @@ import { useT } from '@/i18n/useT'
 import { cn } from '@/lib/utils'
 
 export interface SortableOptions {
-  /** 把第 from 项移到第 to 项的位置（越界由调用方忽略） */
+  /** 把第 from 項移到第 to 項的位置（越界由呼叫方忽略） */
   onMove: (from: number, to: number) => void
 }
 
@@ -41,7 +41,7 @@ export function useSortable({ onMove }: SortableOptions) {
     onDragStart: (event: DragEvent) => {
       setDragIndex(index)
       event.dataTransfer.effectAllowed = 'move'
-      // 必须写点数据，否则部分平台不认为这是一次有效拖拽
+      // 必須寫點資料，否則部分平台不認為這是一次有效拖拽
       event.dataTransfer.setData('text/plain', String(index))
       const row = rowRefs.current[index]
       if (row) event.dataTransfer.setDragImage(row, 16, row.offsetHeight / 2)
@@ -61,7 +61,7 @@ export function useSortable({ onMove }: SortableOptions) {
     },
   })
 
-  /** 加在每一行（拖拽的落点）上 */
+  /** 加在每一行（拖拽的落點）上 */
   const rowProps = (index: number) => ({
     ref: registerRow(index),
     onDragOver: (event: DragEvent) => {
@@ -81,7 +81,7 @@ export function useSortable({ onMove }: SortableOptions) {
     },
   })
 
-  /** 行的状态样式：拖起来的那行变淡，当前落点给一条指示线 */
+  /** 行的狀態樣式：拖起來的那行變淡，當前落點給一條指示線 */
   const rowClassName = (index: number) => cn(
     dragIndex === index && 'opacity-40',
     overIndex === index && dragIndex !== null && dragIndex !== index && (
@@ -93,11 +93,11 @@ export function useSortable({ onMove }: SortableOptions) {
 }
 
 /**
- * 拖拽柄。默认淡显，鼠标移到所在行（group）时显现。
+ * 拖拽柄。預設淡顯，滑鼠移到所在行（group）時顯現。
  *
- * 用 div + role="button" 而不是真的 <button>：Chromium 对表单控件的拖拽支持不一致，
- * `<button draggable>` 经常不触发 dragstart（另一个"拖不动"的来源）。
- * 配 tabIndex 与 role 后，键盘与读屏的语义不受影响。
+ * 用 div + role="button" 而不是真的 <button>：Chromium 對錶單控制元件的拖拽支援不一致，
+ * `<button draggable>` 經常不觸發 dragstart（另一個"拖不動"的來源）。
+ * 配 tabIndex 與 role 後，鍵盤與讀屏的語義不受影響。
  */
 export function DragHandle({
   className,
@@ -108,7 +108,7 @@ export function DragHandle({
       role="button"
       tabIndex={0}
       className={cn(
-        // 平时常显一个很淡的手柄：完全透明时，行首那块空白看着像排版没对齐
+        // 平時常顯一個很淡的手柄：完全透明時，行首那塊空白看著像排版沒對齊
         'shrink-0 cursor-grab select-none rounded p-1 text-muted-foreground/30 transition-colors',
         'group-hover:text-muted-foreground/60 hover:bg-accent hover:text-foreground',
         'focus-visible:text-muted-foreground active:cursor-grabbing',
@@ -121,7 +121,7 @@ export function DragHandle({
   )
 }
 
-/** 数组换位：把 from 移到 to（越界原样返回）。拖拽是"插入到某个位置"，不是两两交换。 */
+/** 陣列換位：把 from 移到 to（越界原樣返回）。拖拽是"插入到某個位置"，不是兩兩交換。 */
 export function moveItem<T>(list: T[], from: number, to: number): T[] {
   if (from === to || from < 0 || to < 0 || from >= list.length || to >= list.length) return list
   const next = [...list]

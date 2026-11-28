@@ -1,17 +1,17 @@
-// 「AI 服务」列表的持久化，以及与运行时配置的同步。
+// 「AI 服務」列表的持久化，以及與執行時配置的同步。
 //
-// 这里有两套键，职责必须分清：
-//   1. 列表本身 —— `cloudAi.profiles` + `cloudAi.activeProfileId`，只有本页读写；
-//   2. 运行时生效的那一份 —— `cloudAi.provider / apiUrl / apiKey / model`，
-//      由录音链路（CloudAPIProvider、LocalProvider）、历史记录重跑、诊断页、反馈上报
-//      六处消费。它们只认这四个扁平键，**这个契约不能动**。
+// 這裡有兩套鍵，職責必須分清：
+//   1. 列表本身 —— `cloudAi.profiles` + `cloudAi.activeProfileId`，只有本頁讀寫；
+//   2. 執行時生效的那一份 —— `cloudAi.provider / apiUrl / apiKey / model`，
+//      由錄音鏈路（CloudAPIProvider、LocalProvider）、歷史記錄重跑、診斷頁、反饋上報
+//      六處消費。它們只認這四個扁平鍵，**這個契約不能動**。
 //
-// 所以规则是：列表是真相，每次列表或启用项变化都把启用的那条整份写进那四个键。
-// 「切了模型但地址/密钥还是上一家的」这个 bug 之所以可能存在，就是因为过去这四个键
-// 是分别维护的；现在它们只有一个写入点。
+// 所以規則是：列表是真相，每次列表或啟用項變化都把啟用的那條整份寫進那四個鍵。
+// 「切了模型但地址/金鑰還是上一家的」這個 bug 之所以可能存在，就是因為過去這四個鍵
+// 是分別維護的；現在它們只有一個寫入點。
 //
-// profiles 里带 apiKey，会跟着配置导出走（Rust 侧 export_app_settings 是整表导出，
-// 无需登记新键）。诊断报告不受影响：collect_settings 用的是固定白名单，不含 cloudAi.*。
+// profiles 裡帶 apiKey，會跟著配置匯出走（Rust 側 export_app_settings 是整表匯出，
+// 無需登記新鍵）。診斷報告不受影響：collect_settings 用的是固定白名單，不含 cloudAi.*。
 
 import { getSetting, setSetting } from '@/services/store'
 import {
@@ -27,7 +27,7 @@ import {
 
 export const AI_PROFILES_KEY = 'cloudAi.profiles'
 export const AI_ACTIVE_PROFILE_KEY = 'cloudAi.activeProfileId'
-/** 老数据只迁一次。没有这个标记，用户删光列表后下次进页面又会被"救回来" */
+/** 老資料只遷一次。沒有這個標記，使用者刪光列表後下次進頁面又會被"救回來" */
 export const AI_PROFILES_MIGRATED_KEY = 'cloudAi.profilesMigrated'
 
 export interface AiProfileState {
@@ -35,7 +35,7 @@ export interface AiProfileState {
   activeId: string
 }
 
-/** 把启用的那条写进运行时四个键。没有可用的服务时写空串，让下游自己跳过 AI 环节 */
+/** 把啟用的那條寫進執行時四個鍵。沒有可用的服務時寫空串，讓下游自己跳過 AI 環節 */
 async function syncRuntimeActive(profile: AiProfile | null): Promise<void> {
   await Promise.all([
     setSetting('cloudAi.provider', profile?.provider ?? ''),
@@ -45,7 +45,7 @@ async function syncRuntimeActive(profile: AiProfile | null): Promise<void> {
   ])
 }
 
-/** 读出老的「每供应商一组配置」。键一律不删：降级回旧版本还能用 */
+/** 讀出老的「每供應商一組配置」。鍵一律不刪：降級回舊版本還能用 */
 async function readLegacyData(): Promise<LegacyProviderData[]> {
   return Promise.all(
     AI_PROVIDERS.map(async (provider): Promise<LegacyProviderData> => {
@@ -69,10 +69,10 @@ async function readLegacyData(): Promise<LegacyProviderData[]> {
 }
 
 /**
- * 加载服务列表。首次进入会把老的按供应商存的配置摊平成列表。
+ * 載入服務列表。首次進入會把老的按供應商存的配置攤平成列表。
  *
- * 返回前会把 activeId 归一化（指向已不存在的 id 时回落到第一条），并在确实写过东西时
- * 顺手同步运行时那四个键——否则会出现"列表里高亮着 A，实际在用 B"。
+ * 返回前會把 activeId 歸一化（指向已不存在的 id 時回落到第一條），並在確實寫過東西時
+ * 順手同步執行時那四個鍵——否則會出現"列表裡高亮著 A，實際在用 B"。
  */
 export async function loadAiProfiles(): Promise<AiProfileState> {
   const [migrated, rawProfiles, storedActiveId] = await Promise.all([
@@ -86,7 +86,7 @@ export async function loadAiProfiles(): Promise<AiProfileState> {
   let needsWrite = false
 
   if (!migrated) {
-    // 老用户：把每家的候选模型摊平成一条条服务；新用户这里得到空列表，走空状态引导
+    // 老使用者：把每家的候選模型攤平成一條條服務；新使用者這裡得到空列表，走空狀態引導
     if (profiles.length === 0) {
       const [legacy, legacyProvider, legacyModel] = await Promise.all([
         readLegacyData(),
@@ -118,7 +118,7 @@ export async function loadAiProfiles(): Promise<AiProfileState> {
   return { profiles, activeId }
 }
 
-/** 落盘列表 + 启用项，并把启用的那条同步进运行时四个键。所有写路径都必须走这里 */
+/** 落盤列表 + 啟用項，並把啟用的那條同步進執行時四個鍵。所有寫路徑都必須走這裡 */
 export async function saveAiProfiles(state: AiProfileState): Promise<void> {
   const active = resolveActiveProfile(state.profiles, state.activeId)
   await Promise.all([

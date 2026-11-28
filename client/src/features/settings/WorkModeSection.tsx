@@ -1,23 +1,23 @@
-// 工作模式切换卡片
+// 工作模式切換卡片
 
 import { useEffect, useSyncExternalStore } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Tooltip } from '@/components/ui/tooltip'
 import { useConnectionStatus } from '@/hooks/useConnectionStatus'
 import { getModeStatus, refreshModeStatus, subscribeModeStatus } from '@/stores/modeStatus'
-// 这三个图标是在给模式**起名**，不是报状态，所以选的是"这个模式是什么"的最短表达：
-// 本地在本机算 → Cpu，云 API 用你自己的云厂商 → Cloud，服务器模式连的是一台服务器 → Server。
-// 比原来的 Monitor（显示器）/ Globe（地球）/ HardDrive（硬盘）都更贴。
+// 這三個圖示是在給模式**起名**，不是報狀態，所以選的是"這個模式是什麼"的最短表達：
+// 本地在本機算 → Cpu，雲 API 用你自己的雲廠商 → Cloud，伺服器模式連的是一台伺服器 → Server。
+// 比原來的 Monitor（顯示器）/ Globe（地球）/ HardDrive（硬碟）都更貼。
 //
-// 左下角的引擎指示里，服务器模式用的是信号图标而不是 Server——那里报的是"此刻通不通"，
-// 有一条真在跑的连接可报；这张卡不做这种断言（连接状态由卡组右上角那枚徽标负责）。
-// 两处对本地 / 云 API 用同一个图标，对服务器模式刻意不同，因为它们说的不是同一件事。
+// 左下角的引擎指示裡，伺服器模式用的是訊號圖示而不是 Server——那裡報的是"此刻通不通"，
+// 有一條真在跑的連線可報；這張卡不做這種斷言（連線狀態由卡組右上角那枚徽標負責）。
+// 兩處對本地 / 雲 API 用同一個圖示，對伺服器模式刻意不同，因為它們說的不是同一件事。
 import { Cpu, Cloud, Server, CheckCircle2, type LucideIcon } from 'lucide-react'
 import type { WorkMode } from '@/services/transcription'
 import type { TranslationKey } from '@/i18n'
 import { useT } from '@/i18n/useT'
 
-// 模块级常量只求值一次，所以存 key、渲染时才翻。
+// 模組級常量只求值一次，所以存 key、渲染時才翻。
 const modes: Array<{ value: WorkMode; labelKey: TranslationKey; descKey: TranslationKey; privacyKey: TranslationKey; icon: LucideIcon }> = [
   {
     value: 'local', labelKey: 'mode.local',
@@ -44,16 +44,16 @@ export default function WorkModeSection({ value, onChange }: Props) {
   const wsStatus = useConnectionStatus()
   const { ready, blockedReason } = useSyncExternalStore(subscribeModeStatus, getModeStatus)
 
-  // 徽标反映真实就绪状态，所以本组件也要在挂载时拉一次（页面可能是直接深链进来的）
+  // 徽標反映真實就緒狀態，所以本元件也要在掛載時拉一次（頁面可能是直接深鏈進來的）
   useEffect(() => { void refreshModeStatus() }, [])
 
   /**
-   * 状态徽标。
+   * 狀態徽標。
    *
-   * 这里曾经是三个三元：服务器模式看真实连接状态，本地/云 API **一律**绿点 +「就绪」。
-   * 结果是模型没下载、密钥没填也显示绿灯，而卡片正下方同时写着「模型尚未下载」——
-   * 同屏自相矛盾。现在本地/云 API 的就绪判断来自 modeStatus（见该 store 的注释），
-   * 未就绪时显示「待配置」并可点击滚到对应的配置卡。
+   * 這裡曾經是三個三元：伺服器模式看真實連線狀態，本地/雲 API **一律**綠點 +「就緒」。
+   * 結果是模型沒下載、金鑰沒填也顯示綠燈，而卡片正下方同時寫著「模型尚未下載」——
+   * 同屏自相矛盾。現在本地/雲 API 的就緒判斷來自 modeStatus（見該 store 的註釋），
+   * 未就緒時顯示「待配置」並可點選滾到對應的配置卡。
    */
   const badge = value === 'server'
     ? { dot: statusConfig[wsStatus].dot, bg: statusConfig[wsStatus].bg, text: t(statusConfig[wsStatus].textKey), hint: '' }
@@ -62,7 +62,7 @@ export default function WorkModeSection({ value, onChange }: Props) {
         dot: 'bg-warning',
         text: t('workMode.badge.needsSetup'),
         bg: 'bg-warning/10 text-warning-strong',
-        // blockedReason 仍是服务层给的中文串（P2-1 会 code 化），这里只保证外壳跟随语言
+        // blockedReason 仍是服務層給的中文串（P2-1 會 code 化），這裡只保證外殼跟隨語言
         hint: blockedReason ? t('workMode.hintBlocked', { reason: blockedReason }) : t('workMode.hintIncomplete'),
       }
       : ready === true
@@ -126,13 +126,13 @@ export default function WorkModeSection({ value, onChange }: Props) {
                   className={`absolute right-3 top-3 h-5 w-5 transition-colors ${isActive ? 'text-primary' : 'text-muted-foreground'}`}
                   aria-hidden
                 />
-                {/* 选中态原来只有颜色（1px 边框 + 图标变色 + 5% 的淡底）。加一个对勾，
-                    让"当前是哪个"不依赖颜色感知。
-                    用 CheckCircle2 + success-strong 而不是裸 Check + primary，是为了和
-                    「语音识别服务」卡片上的「使用中」标记完全一致 —— 两页都是在选一张卡，
-                    同一个含义不该长成两个样子。别顺手把它统一回 primary。
-                    图标保持 aria-hidden：选中状态已经由外层 role="radio" 的 aria-checked
-                    如实报给读屏，再给图标加一个 label 只会让它念两遍。 */}
+                {/* 選中態原來只有顏色（1px 邊框 + 圖示變色 + 5% 的淡底）。加一個對勾，
+                    讓"當前是哪個"不依賴顏色感知。
+                    用 CheckCircle2 + success-strong 而不是裸 Check + primary，是為了和
+                    「語音識別服務」卡片上的「使用中」標記完全一致 —— 兩頁都是在選一張卡，
+                    同一個含義不該長成兩個樣子。別順手把它統一回 primary。
+                    圖示保持 aria-hidden：選中狀態已經由外層 role="radio" 的 aria-checked
+                    如實報給讀屏，再給圖示加一個 label 只會讓它念兩遍。 */}
                 <div className="flex items-center gap-1.5 pr-7 text-sm font-medium">
                   {isActive && <CheckCircle2 className="h-4 w-4 shrink-0 text-success-strong" aria-hidden />}
                   {t(m.labelKey)}
@@ -142,7 +142,7 @@ export default function WorkModeSection({ value, onChange }: Props) {
             )
           })}
         </div>
-        {/* 「数据去哪儿」原来三张卡各写一段，一屏六段字。只写当前选中的那个，放在卡组下面 */}
+        {/* 「資料去哪兒」原來三張卡各寫一段，一屏六段字。只寫當前選中的那個，放在卡組下面 */}
         <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
           {t(modes.find((m) => m.value === value)?.privacyKey ?? 'workMode.server.privacy')}
         </p>

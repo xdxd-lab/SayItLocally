@@ -20,21 +20,21 @@ export const OVERLAY_WIDTH_PRESETS: Record<OverlayWidthPreset, OverlayWidthConfi
 export interface OverlayCommonPayload {
   theme: OverlayWaveTheme
   /**
-   * 自定义配色。不管当前是不是 custom 主题都带上：原生侧对 payload 是整份替换，
-   * 只在 custom 时才带的话，重放底稿时这个字段可能恰好缺席（见 OverlayService 里
-   * activeFailureCard 的说明）。三个短字符串，成本可以忽略。
+   * 自定義配色。不管當前是不是 custom 主題都帶上：原生側對 payload 是整份替換，
+   * 只在 custom 時才帶的話，重放底稿時這個欄位可能恰好缺席（見 OverlayService 裡
+   * activeFailureCard 的說明）。三個短字串，成本可以忽略。
    */
   customWave: CustomWaveColors
   showDuration: boolean
   baseWidth?: number
   barCount?: number
   /**
-   * 界面语言，随每次 overlay 更新一起下发。
+   * 介面語言，隨每次 overlay 更新一起下發。
    *
-   * 悬浮窗是**独立的 React 根**，读不到主窗的内存状态；而它必须在按下快捷键后
-   * 立刻出现，不能为了读一次设置加一条异步初始化（overlay 创建本身就脆，
-   * 见 pitfalls 7）。所以复用这条现成通道 —— payload 在 Rust 侧是不透明 JSON，
-   * 多带一个字段是零成本的。
+   * 懸浮窗是**獨立的 React 根**，讀不到主窗的記憶體狀態；而它必須在按下快捷鍵後
+   * 立刻出現，不能為了讀一次設定加一條非同步初始化（overlay 建立本身就脆，
+   * 見 pitfalls 7）。所以複用這條現成通道 —— payload 在 Rust 側是不透明 JSON，
+   * 多帶一個欄位是零成本的。
    */
   locale?: string
 }
@@ -52,17 +52,17 @@ export interface PTTEventPayload {
 }
 
 /**
- * 单次录音上限（秒）。到点会自动结束本次录音并进入识别。
+ * 單次錄音上限（秒）。到點會自動結束本次錄音並進入識別。
  *
- * ⚠️ 必须与 Rust 侧 `keyboard/mod.rs` 的 HARD_RELEASE_AFTER_SECS 保持一致
- * （按住说话的硬释放在 Rust 看门狗里；免提的自动停止在 RecorderOrchestrator）。
+ * ⚠️ 必須與 Rust 側 `keyboard/mod.rs` 的 HARD_RELEASE_AFTER_SECS 保持一致
+ * （按住說話的硬釋放在 Rust 看門狗裡；免持的自動停止在 RecorderOrchestrator）。
  */
 export const MAX_RECORDING_SEC = 300
 
-/** 距上限还剩多少秒时，计时区改为显示倒计时（提醒即将到点） */
+/** 距上限還剩多少秒時，計時區改為顯示倒計時（提醒即將到點） */
 export const RECORDING_COUNTDOWN_SEC = 60
 
-/** 上限的可读说明（如「5 分钟」/「5 min」）。界面文案一律用它，避免改了上限忘了改文案。 */
+/** 上限的可讀說明（如「5 分鐘」/「5 min」）。介面文案一律用它，避免改了上限忘了改文案。 */
 export function formatRecordingLimit(): string {
   if (MAX_RECORDING_SEC < 60) return t('duration.seconds', { count: MAX_RECORDING_SEC })
   const minutes = Math.floor(MAX_RECORDING_SEC / 60)
@@ -73,10 +73,10 @@ export function formatRecordingLimit(): string {
 }
 
 /**
- * 悬浮窗计时区要显示的内容。
+ * 懸浮窗計時區要顯示的內容。
  *
- * 最后一分钟把"已录多久"换成"还剩多久"：到点会自动结束，此时用户更需要知道剩余时间。
- * 文案保持紧凑（`剩余 47s`）—— 胶囊宽度按波形条数固定，太长会被裁掉。
+ * 最後一分鐘把"已錄多久"換成"還剩多久"：到點會自動結束，此時使用者更需要知道剩餘時間。
+ * 文案保持緊湊（`剩餘 47s`）—— 膠囊寬度按波形條數固定，太長會被裁掉。
  */
 export function formatRecordingTimer(elapsedSec: number): {
   text: string

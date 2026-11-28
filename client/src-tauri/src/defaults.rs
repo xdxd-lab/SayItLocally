@@ -1,16 +1,16 @@
-//! 前端 `src/services/defaults.ts` 里也有、Rust 侧要用到的默认值，Rust 这边只在这里写一份。
+//! 前端 `src/services/defaults.ts` 裡也有、Rust 側要用到的預設值，Rust 這邊只在這裡寫一份。
 //!
-//! 原来同一个默认键在 Rust 里抄了四处（storage 种子、main.rs 兜底、shortcuts.rs 两处、
-//! keyboard 的 fallback），改漏一处就是"界面显示一个键、实际监听另一个键"。
-//! 两种语言没法共用一个常量，所以下面的测试直接读 defaults.ts 的源码对账：
-//! 任何一边改了、另一边没跟上，`cargo test` 就红。
+//! 原來同一個預設鍵在 Rust 裡抄了四處（storage 種子、main.rs 兜底、shortcuts.rs 兩處、
+//! keyboard 的 fallback），改漏一處就是"介面顯示一個鍵、實際監聽另一個鍵"。
+//! 兩種語言沒法共用一個常量，所以下面的測試直接讀 defaults.ts 的原始碼對帳：
+//! 任何一邊改了、另一邊沒跟上，`cargo test` 就紅。
 
-// 两个快捷键默认值按平台不同，先用宏给出字面量：storage 的种子是 JSON 字面量，
+// 兩個快捷鍵預設值按平台不同，先用宏給出字面量：storage 的種子是 JSON 字面量，
 // `concat!` 只吃字面量，用不了下面的 const。
 //
-// Windows：按住说话 = 右 Ctrl，免提 = 右 Alt。
-// macOS：MacBook 内置键盘没有右 Ctrl，改成按住说话 = 右 ⌥（AltRight），免提 = 右 ⌘（MetaRight）。
-// 前端对应 services/defaults.ts 的 DEFAULTS 与 MAC_DEFAULT_OVERRIDES，下面的测试会对账。
+// Windows：按住說話 = 右 Ctrl，免持 = 右 Alt。
+// macOS：MacBook 內建鍵盤沒有右 Ctrl，改成按住說話 = 右 ⌥（AltRight），免持 = 右 ⌘（MetaRight）。
+// 前端對應 services/defaults.ts 的 DEFAULTS 與 MAC_DEFAULT_OVERRIDES，下面的測試會對帳。
 #[cfg(not(target_os = "macos"))]
 #[macro_export]
 macro_rules! default_shortcut_ptt {
@@ -40,15 +40,15 @@ macro_rules! default_shortcut_hands_free {
     };
 }
 
-/// 按住说话的默认键。不能是 Shift：长按右 Shift 约 8 秒会触发 Windows 筛选键，
-/// 松开后录音停不下来（前端 lib/shortcutKeys.ts 的 PTT_FORBIDDEN_CODES）。
+/// 按住說話的預設鍵。不能是 Shift：長按右 Shift 約 8 秒會觸發 Windows 篩選鍵，
+/// 鬆開後錄音停不下來（前端 lib/shortcutKeys.ts 的 PTT_FORBIDDEN_CODES）。
 pub const SHORTCUT_PTT: &str = crate::default_shortcut_ptt!();
-/// 免提模式的默认键。
+/// 免持模式的預設鍵。
 pub const SHORTCUT_HANDS_FREE: &str = crate::default_shortcut_hands_free!();
-/// AI 整理开关的快捷键。留空 = 不注册，避免升级时意外占用用户已有的全局组合键。
+/// AI 整理開關的快捷鍵。留空 = 不註冊，避免升級時意外佔用使用者已有的全域性組合鍵。
 pub const SHORTCUT_TOGGLE_AI: &str = "";
 
-/// WebDAV 备份默认只含配置：录音库能有几个 GB，网盘有流量额度，默认打开等于替用户做了很贵的决定。
+/// WebDAV 備份預設只含配置：錄音庫能有幾個 GB，網盤有流量額度，預設開啟等於替使用者做了很貴的決定。
 pub const WEBDAV_INCLUDE_HISTORY: bool = false;
 pub const WEBDAV_INCLUDE_AUDIO: bool = false;
 pub const WEBDAV_KEEP_COUNT: u64 = 5;
@@ -60,7 +60,7 @@ mod tests {
 
     const DEFAULTS_TS: &str = include_str!("../../src/services/defaults.ts");
 
-    /// macOS 上覆盖默认值的那一段（`MAC_DEFAULT_OVERRIDES = { … }`）。
+    /// macOS 上覆蓋預設值的那一段（`MAC_DEFAULT_OVERRIDES = { … }`）。
     fn mac_overrides_block() -> &'static str {
         let start = DEFAULTS_TS
             .find("export const MAC_DEFAULT_OVERRIDES")
@@ -79,8 +79,8 @@ mod tests {
             .find(|l| l.starts_with(&bare) || l.starts_with(&quoted))
     }
 
-    /// 取 defaults.ts 里 `key: 值,` 那一行的值，按 JSON 解析（只支持字符串、布尔、数字这类单行字面量）。
-    /// macOS 上先看 MAC_DEFAULT_OVERRIDES，那里没有才用通用 DEFAULTS。
+    /// 取 defaults.ts 裡 `key: 值,` 那一行的值，按 JSON 解析（只支援字串、布林、數字這類單行字面量）。
+    /// macOS 上先看 MAC_DEFAULT_OVERRIDES，那裡沒有才用通用 DEFAULTS。
     fn ts_default(key: &str) -> Value {
         let mac_line = if cfg!(target_os = "macos") {
             find_line(mac_overrides_block(), key)
@@ -111,7 +111,7 @@ mod tests {
         assert!(!SHORTCUT_PTT.contains("Shift"));
     }
 
-    /// storage 的种子是 JSON 字面量，用不了常量，所以单独对一遍。
+    /// storage 的種子是 JSON 字面量，用不了常量，所以單獨對一遍。
     #[test]
     fn storage_seed_matches_defaults() {
         let seed = |key: &str| -> Value {

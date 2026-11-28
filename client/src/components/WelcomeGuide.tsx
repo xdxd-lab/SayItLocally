@@ -25,15 +25,15 @@ import { IS_MAC } from '@/lib/platform'
 import { getDefault } from '@/services/defaults'
 import { MacPermissionsPanel } from '@/components/MacPermissionsPanel'
 
-/** 免提的默认键（Windows 右 Alt，mac 右 ⌘） */
+/** 免持的預設鍵（Windows 右 Alt，mac 右 ⌘） */
 const DEFAULT_HANDS_FREE: string = getDefault<string>('shortcutHandsFree') || 'AltRight'
 
 /**
- * 免提键与「按住说话」撞在同一个键上时，两个功能会被同一次按键同时触发。
+ * 免持鍵與「按住說話」撞在同一個鍵上時，兩個功能會被同一次按鍵同時觸發。
  *
- * 模块级函数而不是 useCallback：它进 effect 的依赖数组，引用一变就会把整个录制
- * effect（连带 begin/endShortcutCapture）重启一遍。PTT 设置在这里现读现用，
- * 不需要组件 state。
+ * 模組級函式而不是 useCallback：它進 effect 的依賴陣列，引用一變就會把整個錄製
+ * effect（連帶 begin/endShortcutCapture）重啟一遍。PTT 設定在這裡現讀現用，
+ * 不需要元件 state。
  */
 async function validateHandsFreeAgainstPTT(value: string): Promise<string | null> {
   if (!value) return null
@@ -43,15 +43,15 @@ async function validateHandsFreeAgainstPTT(value: string): Promise<string | null
     : null
 }
 
-/** 保存免提键并让原生侧立刻用上：三步缺一不可，所以只留这一个出口。 */
+/** 儲存免持鍵並讓原生側立刻用上：三步缺一不可，所以只留這一個出口。 */
 async function persistHandsFreeShortcut(value: string): Promise<void> {
   await setSetting('shortcutHandsFree', value)
   bridge.notifyShortcutsChanged()
-  // 同步刷新 webview 回退缓存，否则向导内（SayItLocally 窗口聚焦）测试时新键不生效
+  // 同步重新整理 webview 回退快取，否則嚮導內（SayItLocally 視窗聚焦）測試時新鍵不生效
   await refreshPTTSetting()
 }
 
-/** 简化键盘布局，高亮当前快捷键（可以是一组 —— 组合键会同时按住几个） */
+/** 簡化鍵盤佈局，高亮當前快捷鍵（可以是一組 —— 組合鍵會同時按住幾個） */
 function KeyboardHint({ activeKeys, pressed }: { activeKeys: string[]; pressed?: boolean }) {
   const rows: { code: string; label: string; w?: number }[][] = [
     [
@@ -65,7 +65,7 @@ function KeyboardHint({ activeKeys, pressed }: { activeKeys: string[]; pressed?:
     ],
     IS_MAC
       ? [
-        // MacBook 的最下面一行：fn ⌃ ⌥ ⌘ 空格 ⌘ ⌥（右侧没有 ⌃）
+        // MacBook 的最下面一行：fn ⌃ ⌥ ⌘ 空格 ⌘ ⌥（右側沒有 ⌃）
         { code: 'Fn', label: 'fn', w: 30 },
         { code: 'ControlLeft', label: '⌃', w: 30 },
         { code: 'AltLeft', label: '⌥', w: 30 },
@@ -123,8 +123,8 @@ const MODE_LABEL_KEYS: Record<string, TranslationKey> = {
 }
 
 /**
- * 把带 `{key}` 占位的句子渲染成「文字 + 加粗键名 + 文字」。
- * 按占位符切分，键名在句中的位置就由译文决定（中英语序不同）。
+ * 把帶 `{key}` 佔位的句子渲染成「文字 + 加粗鍵名 + 文字」。
+ * 按佔位符切分，鍵名在句中的位置就由譯文決定（中英語序不同）。
  */
 function HotkeyPrompt({ template, keyLabel }: { template: string; keyLabel: string }) {
   const [before, after = ''] = template.split('{key}')
@@ -137,7 +137,7 @@ function HotkeyPrompt({ template, keyLabel }: { template: string; keyLabel: stri
   )
 }
 
-/** 同 HotkeyPrompt，只是键名用键帽样式。 */
+/** 同 HotkeyPrompt，只是鍵名用鍵帽樣式。 */
 function ReadyHint({ template, keyLabel }: { template: string; keyLabel: string }) {
   const [before, after = ''] = template.split('{key}')
   return (
@@ -153,7 +153,7 @@ interface WelcomeGuideProps {
   onComplete: () => void
 }
 
-/** 向导步骤。mac 多一步「权限」：没有辅助功能授权，热键和插字都用不了。 */
+/** 嚮導步驟。mac 多一步「許可權」：沒有輔助功能授權，熱鍵和插字都用不了。 */
 const STEP_IDS = ['welcome', 'features', ...(IS_MAC ? ['permissions'] : []), 'hotkey', 'try', 'done'] as const
 type StepId = (typeof STEP_IDS)[number]
 
@@ -166,27 +166,27 @@ export default function WelcomeGuide({ onComplete }: WelcomeGuideProps) {
   const [workMode, setWorkMode] = useState('')
   const [serverOk, setServerOk] = useState<boolean | null>(null)
   const [testText, setTestText] = useState('')
-  // 热键确认步骤的状态
+  // 熱鍵確認步驟的狀態
   const [keyConfirmed, setKeyConfirmed] = useState(false)
-  /** 手指还按着的那个候选值（未提交）。空串 = 没在按 */
+  /** 手指還按著的那個候選值（未提交）。空串 = 沒在按 */
   const [capturing, setCapturing] = useState('')
-  /** 当前物理按住的 DOM code。组合键会同时有多个，键盘图靠它高亮 */
+  /** 當前物理按住的 DOM code。組合鍵會同時有多個，鍵盤圖靠它高亮 */
   const [pressedCodes, setPressedCodes] = useState<string[]>([])
-  /** 这次按键为什么没被采纳（系统保留组合、被别的程序占用、和 PTT 撞） */
+  /** 這次按鍵為什麼沒被採納（系統保留組合、被別的程式佔用、和 PTT 撞） */
   const [captureError, setCaptureError] = useState('')
   const hfKeyRef = useRef(DEFAULT_HANDS_FREE)
   const settingsDirtyRef = useRef(false)
 
-  /** 手指还按着时大号键帽跟着候选走，松开后回到已确认的那个 */
+  /** 手指還按著時大號鍵帽跟著候選走，鬆開後回到已確認的那個 */
   const shownKey = capturing || hfKey
   const shownLabel = displayShortcut(shownKey).join(' + ')
   const isPressing = pressedCodes.length > 0
   /**
-   * 键盘示意图只在「单键」时留着。
+   * 鍵盤示意圖只在「單鍵」時留著。
    *
-   * 它的用途是帮新手找到"右 Alt 在哪"，而图上只有 Shift 那行和最下面一行 ——
-   * 组合键的主键（D）本来就不在图上，把图补成整块键盘会把这一步的卡片撑爆。
-   * 已经会按组合键的用户也不需要这张图。按下过程中保持显示，避免中途闪一下。
+   * 它的用途是幫新手找到"右 Alt 在哪"，而圖上只有 Shift 那行和最下面一行 ——
+   * 組合鍵的主鍵（D）本來就不在圖上，把圖補成整塊鍵盤會把這一步的卡片撐爆。
+   * 已經會按組合鍵的使用者也不需要這張圖。按下過程中保持顯示，避免中途閃一下。
    */
   const showKeyboardHint = isPressing || isSingleKeySetting(shownKey)
   const hintActiveKeys = isPressing ? pressedCodes : [shownKey]
@@ -204,26 +204,26 @@ export default function WelcomeGuide({ onComplete }: WelcomeGuideProps) {
     }
   }, [])
 
-  // 热键确认步骤：录制免提热键。
+  // 熱鍵確認步驟：錄製免持熱鍵。
   //
-  // **单键和组合键（Ctrl+D）都要能录。** 判定与提交校验都复用设置页那两个函数，
-  // 口径必须一致 —— 这里以前自己写了一份只认单键白名单的版本，于是按 Ctrl+D 时
-  // Ctrl 的 keydown 先到、`ControlLeft` 恰好在白名单里，免提键被静默存成「左 Ctrl」，
-  // D 根本没轮到，而用户看到的现象是"组合键不支持"。
+  // **單鍵和組合鍵（Ctrl+D）都要能錄。** 判定與提交校驗都複用設定頁那兩個函式，
+  // 口徑必須一致 —— 這裡以前自己寫了一份只認單鍵白名單的版本，於是按 Ctrl+D 時
+  // Ctrl 的 keydown 先到、`ControlLeft` 恰好在白名單裡，免持鍵被靜默存成「左 Ctrl」，
+  // D 根本沒輪到，而使用者看到的現象是"組合鍵不支援"。
   //
-  // 只依赖 step，避免 hfKey 等 state 变化导致 effect 反复运行、钩子反复重启。
+  // 只依賴 step，避免 hfKey 等 state 變化導致 effect 反覆執行、鉤子反覆重啟。
   useEffect(() => {
     if (stepId !== 'hotkey') return
     setPttSuppressed(true)
-    // 挂起本应用自己的全部热键（同设置页录制）：不挂起的话，按一个已经注册过的组合键
-    // 会被 RegisterHotKey 抢走、webview 收不到 keydown，等于永远录不进来。
-    // 副作用是这一步里热键都不响应 —— 正好，这一步只确认键位，不该开始录音。
+    // 掛起本應用自己的全部熱鍵（同設定頁錄製）：不掛起的話，按一個已經註冊過的組合鍵
+    // 會被 RegisterHotKey 搶走、webview 收不到 keydown，等於永遠錄不進來。
+    // 副作用是這一步裡熱鍵都不響應 —— 正好，這一步只確認鍵位，不該開始錄音。
     setShortcutCaptureActive(true)
     void bridge.beginShortcutCapture()
 
-    /** 当前按住的物理 code：既给键盘图高亮用，也用来判断某条事件路径是否该让位 */
+    /** 當前按住的物理 code：既給鍵盤圖高亮用，也用來判斷某條事件路徑是否該讓位 */
     const pressed = new Set<string>()
-    /** 本次按键周期的状态。用普通对象而非 state：读写要同步，且不能触发 effect 重启 */
+    /** 本次按鍵週期的狀態。用普通物件而非 state：讀寫要同步，且不能觸發 effect 重啟 */
     const session = { candidate: '', committing: false }
 
     const syncPressed = () => setPressedCodes([...pressed])
@@ -236,7 +236,7 @@ export default function WelcomeGuide({ onComplete }: WelcomeGuideProps) {
         if (error) {
           setCaptureError(error)
         } else {
-          // 存进 ref：state 更新不会重启 effect（state 不在依赖里），ref 才是 cleanup 落盘时的真相
+          // 存進 ref：state 更新不會重啟 effect（state 不在依賴裡），ref 才是 cleanup 落盤時的真相
           hfKeyRef.current = value
           settingsDirtyRef.current = true
           setHfKey(value)
@@ -253,21 +253,21 @@ export default function WelcomeGuide({ onComplete }: WelcomeGuideProps) {
       event.key === 'Control' || event.key === 'Alt'
       || event.key === 'Shift' || event.key === 'Meta'
 
-    // 路径 1：webview 收到的按键。捕获模式下原生钩子会放行已绑定的单键，
-    // 所以右 Alt 这类平时被吞掉的键在这一步也走这条路。
+    // 路徑 1：webview 收到的按鍵。捕獲模式下原生鉤子會放行已繫結的單鍵，
+    // 所以右 Alt 這類平時被吞掉的鍵在這一步也走這條路。
     const onDown = (event: KeyboardEvent) => {
       if (event.repeat) return
       const candidate = keyEventToShortcutCandidate(event)
-      // **录不成快捷键的键一律放行，不要 preventDefault。**
-      // 裸 Tab、裸 Enter 都不是合法的免提键（candidate 为 null），拦下来只会把
-      // 键盘用户困在这一步：Tab 移不了焦点，Enter 点不了「下一步」。
-      // 修饰键自己也返回 null，但它是组合键的一半，要照常吞掉并记账。
+      // **錄不成快捷鍵的鍵一律放行，不要 preventDefault。**
+      // 裸 Tab、裸 Enter 都不是合法的免持鍵（candidate 為 null），攔下來只會把
+      // 鍵盤使用者困在這一步：Tab 移不了焦點，Enter 點不了「下一步」。
+      // 修飾鍵自己也返回 null，但它是組合鍵的一半，要照常吞掉並記帳。
       if (!candidate && !isModifierKey(event)) return
       event.preventDefault()
       pressed.add(event.code)
       syncPressed()
-      // candidate 为 null（单按 Ctrl）时保留上一个候选，别覆盖成空 ——
-      // 否则 Ctrl+D 里任何一个不成型的中间事件都会把已经录到的组合键抹掉。
+      // candidate 為 null（單按 Ctrl）時保留上一個候選，別覆蓋成空 ——
+      // 否則 Ctrl+D 裡任何一個不成型的中間事件都會把已經錄到的組合鍵抹掉。
       if (candidate) {
         session.candidate = candidate
         setCapturing(candidate)
@@ -275,16 +275,16 @@ export default function WelcomeGuide({ onComplete }: WelcomeGuideProps) {
       }
     }
     const onUp = (event: KeyboardEvent) => {
-      // delete 返回 false = 这个键的 down 被放行过（如 Tab），它的 up 也不该拦
+      // delete 返回 false = 這個鍵的 down 被放行過（如 Tab），它的 up 也不該攔
       if (!pressed.delete(event.code)) return
       event.preventDefault()
       syncPressed()
-      // 第一次松开就提交本次按住过的候选；session.committing 挡掉后续 keyup
+      // 第一次鬆開就提交本次按住過的候選；session.committing 擋掉後續 keyup
       if (session.candidate) commit(session.candidate)
     }
 
-    // 路径 2：兜底。万一某个键仍被原生钩子吞掉（只 emit 事件、webview 收不到 keydown），
-    // 就按老办法确认一次，让这一步不至于卡死。webview 已经在处理时让位，避免重复提交。
+    // 路徑 2：兜底。萬一某個鍵仍被原生鉤子吞掉（只 emit 事件、webview 收不到 keydown），
+    // 就按老辦法確認一次，讓這一步不至於卡死。webview 已經在處理時讓位，避免重複提交。
     const unlistenHf = bridge.listen('toggle-hands-free', () => {
       if (pressed.size === 0) commit(hfKeyRef.current || DEFAULT_HANDS_FREE)
     })
@@ -294,9 +294,9 @@ export default function WelcomeGuide({ onComplete }: WelcomeGuideProps) {
       if (setting && pressed.size === 0) commit(setting)
     })
 
-    // 路径 3：鼠标侧键/中键。webview 收不到（会被当成前进/后退导航），由 Rust 底层
-    // 鼠标钩子在 OS 层吞掉后回报。延迟提交见 ShortcutInputs 里的同一处说明；
-    // 原生侧捕到一次就自动退出捕获模式，所以提交完要重新打开，否则后面就录不动了。
+    // 路徑 3：滑鼠側鍵/中鍵。webview 收不到（會被當成前進/後退導航），由 Rust 底層
+    // 滑鼠鉤子在 OS 層吞掉後回報。延遲提交見 ShortcutInputs 裡的同一處說明；
+    // 原生側捕到一次就自動退出捕獲模式，所以提交完要重新開啟，否則後面就錄不動了。
     const offMouse = bridge.onMouseShortcutCaptured(({ setting }) => {
       if (!setting) return
       window.setTimeout(() => {
@@ -318,15 +318,15 @@ export default function WelcomeGuide({ onComplete }: WelcomeGuideProps) {
       unlistenPttDown.then((fn) => fn())
       offMouse()
 
-      // 立刻退出捕获模式，**不等落盘**。
+      // 立刻退出捕獲模式，**不等落盤**。
       //
-      // 顺序反过来（先 await 落盘）会留一个竞态：下一步那个录制控件自己会
-      // beginShortcutCapture，而这边迟到的 endShortcutCapture 会把它刚开的捕获关掉，
-      // 于是用户在「试一试」里按组合键录不进去。
-      // 两个命令都是「从存储读当前值重新注册一遍」，谁后执行都不会注册到错的键上：
-      // notifyShortcutsChanged 一定排在 setSetting 之后发出。
+      // 順序反過來（先 await 落盤）會留一個競態：下一步那個錄製控制元件自己會
+      // beginShortcutCapture，而這邊遲到的 endShortcutCapture 會把它剛開的捕獲關掉，
+      // 於是使用者在「試一試」裡按組合鍵錄不進去。
+      // 兩個命令都是「從儲存讀當前值重新註冊一遍」，誰後執行都不會註冊到錯的鍵上：
+      // notifyShortcutsChanged 一定排在 setSetting 之後發出。
       //
-      // **退出必须无条件执行** —— 漏掉的话用户走完向导会发现所有热键都不响应了。
+      // **退出必須無條件執行** —— 漏掉的話使用者走完嚮導會發現所有熱鍵都不響應了。
       void bridge.endShortcutCapture()
       if (settingsDirtyRef.current) {
         settingsDirtyRef.current = false
@@ -341,7 +341,7 @@ export default function WelcomeGuide({ onComplete }: WelcomeGuideProps) {
 
   const renderStep = () => {
     switch (stepId) {
-      // Step 0: 欢迎
+      // Step 0: 歡迎
       case 'welcome':
         return (
           <div className="flex flex-col items-center text-center">
@@ -379,7 +379,7 @@ export default function WelcomeGuide({ onComplete }: WelcomeGuideProps) {
           </div>
         )
 
-      // macOS：辅助功能 + 麦克风授权（Windows 没有这一步）
+      // macOS：輔助功能 + 麥克風授權（Windows 沒有這一步）
       case 'permissions':
         return (
           <div>
@@ -389,7 +389,7 @@ export default function WelcomeGuide({ onComplete }: WelcomeGuideProps) {
           </div>
         )
 
-      // Step 2: 热键确认
+      // Step 2: 熱鍵確認
       case 'hotkey':
         return (
           <div className="flex flex-col items-center text-center">
@@ -403,7 +403,7 @@ export default function WelcomeGuide({ onComplete }: WelcomeGuideProps) {
                 : <HotkeyPrompt template={t('welcome.hotkeyPrompt')} keyLabel={getSingleKeyDisplay(DEFAULT_HANDS_FREE)} />}
             </p>
 
-            {/* 大号按键展示 */}
+            {/* 大號按鍵展示 */}
             <div className="my-6">
               <div
                 className={`inline-flex items-center justify-center rounded-xl border-2 px-8 py-4 text-lg font-bold transition-all ${isPressing
@@ -417,7 +417,7 @@ export default function WelcomeGuide({ onComplete }: WelcomeGuideProps) {
               </div>
             </div>
 
-            {/* 键盘位置示意 */}
+            {/* 鍵盤位置示意 */}
             {showKeyboardHint && (
               <div className="w-full rounded-xl border bg-card p-3">
                 <p className="mb-2 text-[11px] text-muted-foreground">{t('welcome.keyPosition')}</p>
@@ -425,7 +425,7 @@ export default function WelcomeGuide({ onComplete }: WelcomeGuideProps) {
               </div>
             )}
 
-            {/* 按键没被采纳时必须说清为什么：不然用户只看到"按了没变化" */}
+            {/* 按鍵沒被採納時必須說清為什麼：不然使用者只看到"按了沒變化" */}
             {captureError && (
               <p role="alert" className="mt-4 text-xs text-destructive">{captureError}</p>
             )}
@@ -442,15 +442,15 @@ export default function WelcomeGuide({ onComplete }: WelcomeGuideProps) {
           </div>
         )
 
-      // Step 3: 试一试
+      // Step 3: 試一試
       case 'try':
         return (
           <div>
             <h2 className="mb-5 text-center text-xl font-bold">{t('welcome.tryTitle')}</h2>
 
-            {/* 用设置页那个录制控件，不再自己写一份：组合键、系统保留组合校验、
-                「已被别的程序占用」探测全都在里面。allowClear=false —— 向导的目的是
-                让用户拿到一个能用的键，一个把它清成"未设置"的按钮在这里只会制造问题。 */}
+            {/* 用設定頁那個錄製控制元件，不再自己寫一份：組合鍵、系統保留組合校驗、
+                「已被別的程式佔用」探測全都在裡面。allowClear=false —— 嚮導的目的是
+                讓使用者拿到一個能用的鍵，一個把它清成"未設定"的按鈕在這裡只會製造問題。 */}
             <Card className="mb-4">
               <CardContent className="p-4">
                 <ComboShortcutInput
@@ -542,7 +542,7 @@ export default function WelcomeGuide({ onComplete }: WelcomeGuideProps) {
       <div className="custom-scrollbar w-full max-w-lg max-h-[90vh] overflow-y-auto px-6 py-8">
         {renderStep()}
 
-        {/* 底部导航 */}
+        {/* 底部導航 */}
         <div className="mt-8 flex items-center justify-between">
           <div className="flex gap-1.5">
             {Array.from({ length: totalSteps }, (_, i) => (

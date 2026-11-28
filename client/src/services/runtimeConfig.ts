@@ -43,7 +43,7 @@ function resolveEnvOverrideBaseUrl(): string {
 let backendBaseUrl = resolveBuiltinDefaultBaseUrl()
 
 export async function initRuntimeConfig(): Promise<void> {
-  // 用户主动保存的地址优先于环境变量
+  // 使用者主動儲存的地址優先於環境變數
   const stored = await bridge.storeGet(BACKEND_BASE_URL_STORE_KEY)
   const normalized = normalizeUrl(typeof stored === 'string' ? stored : '')
   if (normalized) {
@@ -67,31 +67,31 @@ export function getBackendBaseUrl(): string {
 }
 
 /**
- * 检查更新时用的地址 —— **跟随** getBackendBaseUrl()：服务器地址填哪个，就找哪个要更新。
+ * 檢查更新時用的地址 —— **跟隨** getBackendBaseUrl()：伺服器地址填哪個，就找哪個要更新。
  *
- * 这么定是为了「填一个地址就能整体切到测试环境」这件事足够简单，不用第二个设置项。
- * 代价与配套约束（改这里之前先看 .kiro/decisions.md 的「更新通道」一节）：
- *  · 自建后端的用户，他的服务器上没有 manifest。**所以 checkVersionUpdate 必须保留
- *    回落到官方地址的那一步** —— 没有它，这些用户会拿到 404、被静默当成"没有新版"，
- *    从此永远收不到更新。那一步不是优化，是这个设计能成立的前提。
- *  · 更新包没有签名（所以没用 Tauri 的 updater 插件），manifest 的 SHA-512 只证明
- *    "下载的字节与 manifest 一致"、不证明"这个包是我们发的"。也就是说这个地址同时
- *    决定了「谁能在这台机器上装程序」。因此非官方地址时，关于页必须把更新来源显示
- *    出来（见 isOfficialUpdateChannel 的用处），别让它悄无声息。
+ * 這麼定是為了「填一個地址就能整體切到測試環境」這件事足夠簡單，不用第二個設定項。
+ * 代價與配套約束（改這裡之前先看 .kiro/decisions.md 的「更新通道」一節）：
+ *  · 自建後端的使用者，他的伺服器上沒有 manifest。**所以 checkVersionUpdate 必須保留
+ *    回落到官方地址的那一步** —— 沒有它，這些使用者會拿到 404、被靜默當成"沒有新版"，
+ *    從此永遠收不到更新。那一步不是最佳化，是這個設計能成立的前提。
+ *  · 更新包沒有簽名（所以沒用 Tauri 的 updater 外掛），manifest 的 SHA-512 只證明
+ *    "下載的位元組與 manifest 一致"、不證明"這個包是我們發的"。也就是說這個地址同時
+ *    決定了「誰能在這台機器上裝程式」。因此非官方地址時，關於頁必須把更新來源顯示
+ *    出來（見 isOfficialUpdateChannel 的用處），別讓它悄無聲息。
  */
 export function getUpdateBaseUrl(): string {
   return getBackendBaseUrl()
 }
 
-/** 内置的官方更新地址。回落用，也用于判断当前是否偏离了官方通道。 */
+/** 內建的官方更新地址。回落用，也用於判斷當前是否偏離了官方通道。 */
 export function getOfficialUpdateBaseUrl(): string {
   return resolveBuiltinDefaultBaseUrl()
 }
 
 /**
- * 更新是否来自官方地址。
- * 为 false 时关于页会把实际来源显示出来 —— 一台从别处取更新的机器如果看起来和
- * 正常机器一样，早晚会被当成正常机器用。
+ * 更新是否來自官方地址。
+ * 為 false 時關於頁會把實際來源顯示出來 —— 一台從別處取更新的機器如果看起來和
+ * 正常機器一樣，早晚會被當成正常機器用。
  */
 export function isOfficialUpdateChannel(): boolean {
   return normalizeUrl(getUpdateBaseUrl()) === normalizeUrl(getOfficialUpdateBaseUrl())

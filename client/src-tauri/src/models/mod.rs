@@ -1,4 +1,4 @@
-// 本地模型管理模块 — 模型元信息、下载、存储
+// 本地模型管理模組 — 模型元資訊、下載、儲存
 
 pub mod catalog;
 pub mod downloader;

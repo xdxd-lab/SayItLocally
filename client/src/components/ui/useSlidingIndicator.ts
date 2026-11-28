@@ -1,27 +1,27 @@
 import { useLayoutEffect, useRef, type RefObject } from 'react'
 
 /**
- * 一块"选中底色"在选项之间滑动，而不是旧格褪色、新格变色（单选胶囊 / 历史页筛选 / 侧栏）。
+ * 一塊"選中底色"在選項之間滑動，而不是舊格褪色、新格變色（單選膠囊 / 歷史頁篩選 / 側欄）。
  *
- * 用法：容器 `position: relative`，里面放一个 `<span ref={indicatorRef} className="sliding-indicator ..." />`
- * （`space-y-*` 容器里要放最后，否则它会给第一个真选项加 margin-top），
- * 选项本身不画选中底色、`position: relative` 盖在它上面。选中项靠 `activeSelector` 找
- * （默认 `[aria-checked="true"]`，侧栏用 NavLink 自带的 `[aria-current="page"]`）。
+ * 用法：容器 `position: relative`，裡面放一個 `<span ref={indicatorRef} className="sliding-indicator ..." />`
+ * （`space-y-*` 容器裡要放最後，否則它會給第一個真選項加 margin-top），
+ * 選項本身不畫選中底色、`position: relative` 蓋在它上面。選中項靠 `activeSelector` 找
+ * （預設 `[aria-checked="true"]`，側欄用 NavLink 自帶的 `[aria-current="page"]`）。
  *
- * 位置是**直接写 DOM**、不走 state：写 state 会多一次渲染，而且量尺寸必须在布局之后，
- * 绕一圈 setState 只会让第一帧画在错的地方。
+ * 位置是**直接寫 DOM**、不走 state：寫 state 會多一次渲染，而且量尺寸必須在佈局之後，
+ * 繞一圈 setState 只會讓第一幀畫在錯的地方。
  *
- * 三种情况**不能滑**，只能原地出现：
- *  1. 首次定位（挂载时从 0,0 滑过来，看着像设置被改了一次 —— pitfalls 11 同一类问题）；
- *  2. 上一次没有可见的选中项（容器 display:none、或侧栏选中项跑到了另一组）；
- *  3. 调用方说现在不许动画（设置值刚异步读回来、`animated=false`）。
- * 窗口缩放 / 字体加载导致的位移也不滑，跟着 ResizeObserver 直接贴过去。
+ * 三種情況**不能滑**，只能原地出現：
+ *  1. 首次定位（掛載時從 0,0 滑過來，看著像設定被改了一次 —— pitfalls 11 同一類問題）；
+ *  2. 上一次沒有可見的選中項（容器 display:none、或側欄選中項跑到了另一組）；
+ *  3. 呼叫方說現在不許動畫（設定值剛非同步讀回來、`animated=false`）。
+ * 視窗縮放 / 字型載入導致的位移也不滑，跟著 ResizeObserver 直接貼過去。
  */
 /**
- * 选中项相对容器内边距框的位置。用 offset* 逐级累加而不是 getBoundingClientRect：
- * 弹窗入场时整块面板带着 scale，rect 量出来是缩小后的值，滑块会差几个像素停在那里
- * （transform 不触发 ResizeObserver，事后也不会被纠正）。offset* 不受 transform 影响。
- * 选项外面包了一层定位元素（如 Tooltip 的包裹）时，offsetParent 是那一层，所以要一路加上去。
+ * 選中項相對容器內邊距框的位置。用 offset* 逐級累加而不是 getBoundingClientRect：
+ * 彈窗入場時整塊面板帶著 scale，rect 量出來是縮小後的值，滑塊會差幾個畫素停在那裡
+ * （transform 不觸發 ResizeObserver，事後也不會被糾正）。offset* 不受 transform 影響。
+ * 選項外面包了一層定位元素（如 Tooltip 的包裹）時，offsetParent 是那一層，所以要一路加上去。
  */
 function offsetWithin(el: HTMLElement, container: HTMLElement): { x: number; y: number } {
   let x = 0
@@ -38,7 +38,7 @@ function offsetWithin(el: HTMLElement, container: HTMLElement): { x: number; y: 
     node = parent
   }
   if (node === container) return { x, y }
-  // 容器不是 offsetParent 链上的一环（忘了给它 position: relative）：退回按视口坐标算。
+  // 容器不是 offsetParent 鏈上的一環（忘了給它 position: relative）：退回按視口座標算。
   const er = el.getBoundingClientRect()
   const cr = container.getBoundingClientRect()
   return { x: er.left - cr.left - container.clientLeft, y: er.top - cr.top - container.clientTop }
@@ -63,8 +63,8 @@ export function useSlidingIndicator(
     if (!container || !indicator) return
 
     const place = (allowSlide: boolean) => {
-      // 多个匹配时取最后一个：NavLink 的 "/" 在某些路由版本下会对所有路径都算 active，
-      // 真正的当前页总在它后面。
+      // 多個匹配時取最後一個：NavLink 的 "/" 在某些路由版本下會對所有路徑都算 active，
+      // 真正的當前頁總在它後面。
       const matches = container.querySelectorAll<HTMLElement>(activeSelector)
       const target = matches.length > 0 ? matches[matches.length - 1] : null
       if (!target || target.offsetWidth === 0) {
@@ -77,14 +77,14 @@ export function useSlidingIndicator(
       const { x, y } = offsetWithin(target, container)
       const geom = { x, y, w: target.offsetWidth, h: target.offsetHeight }
       const last = geomRef.current
-      // ResizeObserver 在 observe() 时**一定**先回调一次，哪怕什么都没变。那一次如果也按
-      // "尺寸变了、直接贴过去"处理，会把刚开始的滑动当场掐掉（实测：滑块一格都不动）。
-      // 所以只有几何真的变了才动它。
+      // ResizeObserver 在 observe() 時**一定**先回撥一次，哪怕什麼都沒變。那一次如果也按
+      // "尺寸變了、直接貼過去"處理，會把剛開始的滑動當場掐掉（實測：滑塊一格都不動）。
+      // 所以只有幾何真的變了才動它。
       if (!allowSlide && last && last.x === geom.x && last.y === geom.y && last.w === geom.w && last.h === geom.h) return
       geomRef.current = geom
 
       const slide = allowSlide && placedRef.current && animatedRef.current
-      // 从"本组没有选中项"回来（侧栏在两组之间切换）：不滑，但淡入，否则像凭空闪出来。
+      // 從"本組沒有選中項"回來（側欄在兩組之間切換）：不滑，但淡入，否則像憑空閃出來。
       const fadeIn = !placedRef.current && fadedOutRef.current && animatedRef.current
       indicator.style.transition = slide ? '' : 'none'
       indicator.style.width = `${geom.w}px`
@@ -92,7 +92,7 @@ export function useSlidingIndicator(
       indicator.style.transform = `translate(${geom.x}px, ${geom.y}px)`
       if (!fadeIn) indicator.style.opacity = '1'
       if (!slide) {
-        // 先让"无过渡"的位置生效，再把过渡还回去；不读一次布局，浏览器会把两次写合并成一次滑动。
+        // 先讓"無過渡"的位置生效，再把過渡還回去；不讀一次佈局，瀏覽器會把兩次寫合併成一次滑動。
         void indicator.offsetWidth
         indicator.style.transition = ''
         if (fadeIn) indicator.style.opacity = '1'
@@ -105,7 +105,7 @@ export function useSlidingIndicator(
 
     if (typeof ResizeObserver === 'undefined') return
     const observer = new ResizeObserver(() => place(false))
-    // 子元素也要盯：切界面语言时选项文字变宽，而撑满一行的容器自己的尺寸可能纹丝不动。
+    // 子元素也要盯：切介面語言時選項文字變寬，而撐滿一行的容器自己的尺寸可能紋絲不動。
     observer.observe(container)
     for (const child of Array.from(container.children)) {
       if (child !== indicator) observer.observe(child)

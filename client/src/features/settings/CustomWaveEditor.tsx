@@ -1,7 +1,7 @@
-// 波形主题「自定义」展开后的编辑区：一行，推荐色块 + 自选，单色 / 渐变切换放在行尾。
+// 波形主題「自定義」展開後的編輯區：一行，推薦色塊 + 自選，單色 / 漸變切換放在行尾。
 //
-// 刻意只有一行（用户 2026-11-03 连着否了两版：画成小悬浮窗的推荐配色「更丑」，带标题、
-// 起点/终点标签和色值输入框的「还是复杂」）。效果看下面原有的悬浮窗预览，这里不再画预览。
+// 刻意只有一行（使用者 2026-11-03 連著否了兩版：畫成小懸浮窗的推薦配色「更醜」，帶標題、
+// 起點/終點標籤和色值輸入框的「還是複雜」）。效果看下面原有的懸浮窗預覽，這裡不再畫預覽。
 
 import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
@@ -21,22 +21,22 @@ import {
   type CustomWaveMode,
 } from '@/lib/overlayWaveColors'
 
-/** 色块背景：用调色板采样拼 linear-gradient，和悬浮窗实际画出来的一致（深色已调亮）。 */
+/** 色塊背景：用調色盤取樣拼 linear-gradient，和懸浮窗實際畫出來的一致（深色已調亮）。 */
 function swatchBackground(custom: CustomWaveColors): string {
   const stops = buildWavePalette(custom.mode === 'solid' ? 1 : 5, 'custom', custom)
   return stops.length === 1 ? stops[0] : `linear-gradient(to right, ${stops.join(', ')})`
 }
 
 /**
- * 悬停提示：用应用自己的 Tooltip，不用原生 title（WebView 画的是系统样式的小框，和界面不搭；用户 2026-11-03）。
- * 写出色值，和点开后取色面板里的色值框是同一种写法。
+ * 懸停提示：用應用自己的 Tooltip，不用原生 title（WebView 畫的是系統樣式的小框，和介面不搭；使用者 2026-11-03）。
+ * 寫出色值，和點開後取色面板裡的色值框是同一種寫法。
  */
 function tipText(label: string, hex: string): string {
   return `${label} ${hex.toUpperCase()}`
 }
 
-// 选中只用一圈细环表示，环和色块之间留一道底色缝。1.5px 半透明前景色：
-// 原来 2px 纯前景色的环用户嫌「又粗又黑」（2026-11-03），这个粗细在浅色、深色主题下都还认得出。
+// 選中只用一圈細環表示，環和色塊之間留一道底色縫。1.5px 半透明前景色：
+// 原來 2px 純前景色的環使用者嫌「又粗又黑」（2026-11-03），這個粗細在淺色、深色主題下都還認得出。
 const SELECTED_RING = 'ring-[1.5px] ring-foreground/50 ring-offset-2 ring-offset-background'
 const ringClass = (active: boolean) => cn(
   'outline-none transition-shadow focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
@@ -47,14 +47,14 @@ const PANEL_GAP = 8
 const VIEWPORT_MARGIN = 8
 
 /**
- * 自己的取色弹窗：颜色区 + 色相条 + HEX 输入框。
+ * 自己的取色彈窗：顏色區 + 色相條 + HEX 輸入框。
  *
- * 为什么不用原生 <input type="color">：Windows 上 WebView2 弹的是 Chromium 自带取色框，默认只显示 RGB，
- * 切到 HEX 要点数字旁一个不起眼的箭头；mac 上又是一块单独漂着的系统颜色面板。用户 2026-11-03 指出
- * 悬停提示写着 HEX、点进去却只有 RGB，「完全没有办法发现」。两个平台现在是同一个面板。
+ * 為什麼不用原生 <input type="color">：Windows 上 WebView2 彈的是 Chromium 自帶取色框，預設只顯示 RGB，
+ * 切到 HEX 要點數字旁一個不起眼的箭頭；mac 上又是一塊單獨漂著的系統顏色面板。使用者 2026-11-03 指出
+ * 懸停提示寫著 HEX、點進去卻只有 RGB，「完全沒有辦法發現」。兩個平台現在是同一個面板。
  *
- * 面板挂在 body 上、fixed 定位：设置卡片有 overflow，放在卡片里会被裁掉。
- * 拖动时连续触发 onChange，写盘由上层合并节流。
+ * 面板掛在 body 上、fixed 定位：設定卡片有 overflow，放在卡片裡會被裁掉。
+ * 拖動時連續觸發 onChange，寫盤由上層合併節流。
  */
 function ColorPopover({ color, label, onChange, className, style, children }: {
   color: string
@@ -69,7 +69,7 @@ function ColorPopover({ color, label, onChange, className, style, children }: {
   const triggerRef = useRef<HTMLButtonElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
 
-  // 默认放在触发点下方居中；下面放不下就翻到上方，左右贴着窗口边收住。
+  // 預設放在觸發點下方居中；下面放不下就翻到上方，左右貼著視窗邊收住。
   const place = () => {
     const trigger = triggerRef.current
     const panel = panelRef.current
@@ -101,7 +101,7 @@ function ColorPopover({ color, label, onChange, className, style, children }: {
       setOpen(false)
       triggerRef.current?.focus()
     }
-    // 设置页在 main 里滚动，不是 window：用捕获阶段接住任何一层的滚动，跟着重新定位
+    // 設定頁在 main 裡滾動，不是 window：用捕獲階段接住任何一層的滾動，跟著重新定位
     const onMove = () => place()
     document.addEventListener('mousedown', onDown)
     document.addEventListener('keydown', onKey, true)
@@ -157,11 +157,11 @@ function ColorPopover({ color, label, onChange, className, style, children }: {
   )
 }
 
-/** 推荐色块：一个按钮，点一下就用这组颜色。 */
+/** 推薦色塊：一個按鈕，點一下就用這組顏色。 */
 function PresetSwatch({ name, active, wide, background, onPick }: {
   name: string
   active: boolean
-  /** 渐变胶囊比单色圆点宽 */
+  /** 漸變膠囊比單色圓點寬 */
   wide?: boolean
   background: string
   onPick: () => void
@@ -180,12 +180,12 @@ function PresetSwatch({ name, active, wide, background, onPick }: {
   )
 }
 
-/** 单色自选：一颗色块，点开取色弹窗。 */
+/** 單色自選：一顆色塊，點開取色彈窗。 */
 function PickDot({ color, label, active, empty, onChange }: {
   color: string
   label: string
   active: boolean
-  /** 还没自选过（当前值是推荐色）时画成虚线圈 + 加号，免得和推荐色块混在一起 */
+  /** 還沒自選過（當前值是推薦色）時畫成虛線圈 + 加號，免得和推薦色塊混在一起 */
   empty?: boolean
   onChange: (hex: string) => void
 }) {
@@ -209,12 +209,12 @@ function PickDot({ color, label, active, empty, onChange }: {
 }
 
 /**
- * 自选渐变：两颗色点（左 = 起点，右 = 终点）用一根 2px 的渐变细线连起来。
- * 演变（用户 2026-11-03）：「圆点—横杠—圆点」嫌横杠多余 → 一整颗胶囊看不出起点终点 → 现在这样，
- * 细线就是这两色的渐变；6px 嫌粗，改 2px；外面原来有一圈选中框，点到框中间什么都不发生，用户以为不能改。
- * 所以：没有外框，整条分成左右两半，各是一个按钮，点到线上也能打开；鼠标在哪一半，那头的点就放大一点。
- * 选中（当前是自选）时，两颗点各带一圈和推荐色块同样的细环；正在改的那一头放大一点并带同样的细环。
- * 当前是推荐配色时也照常画出那两色，点一下就是从这个推荐色开始改。
+ * 自選漸變：兩顆色點（左 = 起點，右 = 終點）用一根 2px 的漸變細線連起來。
+ * 演變（使用者 2026-11-03）：「圓點—橫槓—圓點」嫌橫槓多餘 → 一整顆膠囊看不出起點終點 → 現在這樣，
+ * 細線就是這兩色的漸變；6px 嫌粗，改 2px；外面原來有一圈選中框，點到框中間什麼都不發生，使用者以為不能改。
+ * 所以：沒有外框，整條分成左右兩半，各是一個按鈕，點到線上也能開啟；滑鼠在哪一半，那頭的點就放大一點。
+ * 選中（當前是自選）時，兩顆點各帶一圈和推薦色塊同樣的細環；正在改的那一頭放大一點並帶同樣的細環。
+ * 當前是推薦配色時也照常畫出那兩色，點一下就是從這個推薦色開始改。
  */
 function GradientPick({ value, active, labels, onChange }: {
   value: CustomWaveColors
@@ -245,7 +245,7 @@ function GradientPick({ value, active, labels, onChange }: {
   )
   return (
     <span className="relative inline-flex h-6 w-[4.5rem] shrink-0 items-center">
-      {/* 2px：再粗就成了一根抢眼的色条（用户 2026-11-03 嫌 6px 太粗），细线只负责把两头连起来 */}
+      {/* 2px：再粗就成了一根搶眼的色條（使用者 2026-11-03 嫌 6px 太粗），細線只負責把兩頭連起來 */}
       <span aria-hidden className="pointer-events-none absolute inset-x-2 top-1/2 h-0.5 -translate-y-1/2 rounded-full" style={{ background: swatchBackground(value) }} />
       {half('from')}
       {half('to')}
@@ -268,7 +268,7 @@ export function CustomWaveEditor({ value, onChange, animate }: {
 
   return (
     <div className="mt-3 space-y-2">
-      {/* 色块从左边起排，和上面的主题卡对齐；单色 / 渐变是次要切换，缩成 xs 放在行尾（用户 2026-11-03：放在最前面偏大、位置别扭） */}
+      {/* 色塊從左邊起排，和上面的主題卡對齊；單色 / 漸變是次要切換，縮成 xs 放在行尾（使用者 2026-11-03：放在最前面偏大、位置彆扭） */}
       <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
         <span id={presetsId} className="sr-only">{t('appearance.wave.presets')}</span>
         <div role="group" aria-labelledby={presetsId} className="flex flex-wrap items-center gap-2.5">
@@ -296,7 +296,7 @@ export function CustomWaveEditor({ value, onChange, animate }: {
               />
             ))}
 
-          {/* 自选：和推荐色块之间一道细竖线隔开 */}
+          {/* 自選：和推薦色塊之間一道細豎線隔開 */}
           <span aria-hidden className="mx-0.5 h-4 w-px bg-border" />
           {gradient ? (
             <GradientPick
@@ -324,7 +324,7 @@ export function CustomWaveEditor({ value, onChange, animate }: {
         />
       </div>
 
-      {/* 面板里是用户选的原色，这里把调亮后的实际颜色画出来，免得以为没生效 */}
+      {/* 面板裡是使用者選的原色，這裡把調亮後的實際顏色畫出來，免得以為沒生效 */}
       {brightened && (
         <p className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
           <span>{t('appearance.wave.brightened')}</span>

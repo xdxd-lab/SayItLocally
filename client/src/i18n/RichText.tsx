@@ -1,12 +1,12 @@
 /**
- * 把 `**加粗**` 标记渲染成 <strong>。
+ * 把 `**加粗**` 標記渲染成 <strong>。
  *
- * 为什么需要它：有些说明句里有强调（"热词只提高**命中概率**"），原来是把句子
- * 拆成几段 JSX、中间夹 `<span className="font-semibold">`。一旦要翻译，这种写法
- * 就要求中英**语序一致**才拼得对 —— 而语序恰恰是最先不一致的东西。
+ * 為什麼需要它：有些說明句裡有強調（"熱詞只提高**命中機率**"），原來是把句子
+ * 拆成幾段 JSX、中間夾 `<span className="font-semibold">`。一旦要翻譯，這種寫法
+ * 就要求中英**語序一致**才拼得對 —— 而語序恰恰是最先不一致的東西。
  *
- * 改成让译文自己带标记：强调落在哪里由译者决定，代码不关心。
- * 只支持加粗一种标记，够用就不要再往上加（Markdown 子集会越滚越大）。
+ * 改成讓譯文自己帶標記：強調落在哪裡由譯者決定，程式碼不關心。
+ * 只支援加粗一種標記，夠用就不要再往上加（Markdown 子集會越滾越大）。
  */
 import type { ReactNode } from 'react'
 
@@ -18,7 +18,7 @@ export function RichText({ text, strongClassName = 'font-semibold' }: {
   return (
     <>
       {parts.map((part, index): ReactNode => (
-        // 奇数段落在一对 ** 之间 —— split 的结果天然交替
+        // 奇數段落在一對 ** 之間 —— split 的結果天然交替
         index % 2 === 1
           ? <span key={index} className={strongClassName}>{part}</span>
           : part

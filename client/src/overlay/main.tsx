@@ -8,7 +8,7 @@ import '../index.css'
 import { IS_MAC } from '../lib/platform'
 import { installMacWebviewBehavior } from '../lib/macWebview'
 
-// mac：悬浮窗上的提示文字不可选、右键不弹「重新载入」；兜底卡片里的识别结果仍可选中、右键拷贝
+// mac：懸浮窗上的提示文字不可選、右鍵不彈「重新載入」；兜底卡片裡的識別結果仍可選中、右鍵拷貝
 if (IS_MAC) installMacWebviewBehavior()
 
 // Transparent background for overlay window

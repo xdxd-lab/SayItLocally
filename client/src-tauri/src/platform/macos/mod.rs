@@ -1,15 +1,15 @@
-//! macOS 系统集成。
+//! macOS 系統整合。
 //!
-//! - `ffi`：CoreFoundation / CoreGraphics / Accessibility / Carbon / CoreAudio 的 C 声明
-//! - `cf`：CF 对象所有权与字符串互转
-//! - `ax`：Accessibility（对应 Windows 的 UI Automation）
-//! - `keycodes`：macOS 键码 ↔ 内部键 ID（沿用 Windows VK）
+//! - `ffi`：CoreFoundation / CoreGraphics / Accessibility / Carbon / CoreAudio 的 C 宣告
+//! - `cf`：CF 物件所有權與字串互轉
+//! - `ax`：Accessibility（對應 Windows 的 UI Automation）
+//! - `keycodes`：macOS 鍵碼 ↔ 內部鍵 ID（沿用 Windows VK）
 //! - `appkit`：NSWorkspace / NSPasteboard / NSWindow（objc2）
-//! - `audio`：CoreAudio 静音
-//! - `sysinfo`：系统版本、内存、语言
-//! - `permissions`：辅助功能 / 麦克风授权状态与引导
+//! - `audio`：CoreAudio 靜音
+//! - `sysinfo`：系統版本、記憶體、語言
+//! - `permissions`：輔助功能 / 麥克風授權狀態與引導
 
-// 平台封装层：部分接口给诊断与后续功能预留，未全部被调用。
+// 平台封裝層：部分介面給診斷與後續功能預留，未全部被呼叫。
 #![allow(dead_code)]
 
 pub mod appkit;

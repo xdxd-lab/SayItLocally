@@ -26,21 +26,21 @@ export interface HistoryRecord {
   favorite?: boolean
   isEmpty?: boolean  // true if no valid audio/text
   /**
-   * 这条为什么没出文本（仅 isEmpty 记录有）。
+   * 這條為什麼沒出文本（僅 isEmpty 記錄有）。
    *
-   * 「无有效声音」这个结果有很多种成因：用户真的没说话、供应商额度耗尽、资源未开通、
-   * 服务端提前断连、文本后处理失败。以前这些一律显示成同一句话，用户和我们都只能猜。
-   * 这里存的是可以直接给用户看的一句话，展开详情时显示。
+   * 「無有效聲音」這個結果有很多種成因：使用者真的沒說話、供應商額度耗盡、資源未開通、
+   * 服務端提前斷連、文本後處理失敗。以前這些一律顯示成同一句話，使用者和我們都只能猜。
+   * 這裡存的是可以直接給使用者看的一句話，展開詳情時顯示。
    *
-   * 老记录没有这个字段，渲染处必须容错。
+   * 老記錄沒有這個欄位，渲染處必須容錯。
    */
   failReason?: string
-  /** 新记录保存稳定分类，展示时再翻译；没有该字段的老记录继续显示 failReason 原文。 */
+  /** 新記錄儲存穩定分類，展示時再翻譯；沒有該欄位的老記錄繼續顯示 failReason 原文。 */
   failReasonCode?: HistoryFailReasonCode
   audioFilePath?: string
   appId?: string
   appName?: string
-  // 录音时聚焦窗口的原始信息（用于反馈排错）
+  // 錄音時聚焦視窗的原始資訊（用於反饋排錯）
   windowTitle?: string
   processName?: string
   windowClass?: string
@@ -52,18 +52,18 @@ export interface HistoryRecord {
   autoAppliedHotwords?: string[]
   manualEditedAt?: number
   /**
-   * 已提交的 ASR 纠错编号（见 services/asrCorrection.ts）。有值即代表这条提交过，
-   * 入口显示成「已提交」而不是再让用户提交一遍。
+   * 已提交的 ASR 糾錯編號（見 services/asrCorrection.ts）。有值即代表這條提交過，
+   * 入口顯示成「已提交」而不是再讓使用者提交一遍。
    *
-   * 允许 null 不是随手写的：撤回时要把这几个字段清掉，而 `updateHistoryRecord`
-   * 的 patch 会过一次 JSON.stringify —— **值为 undefined 的键会被整个丢掉**，
-   * 于是"清空"变成"什么都没做"，本地永远显示已提交。必须显式写 null。
+   * 允許 null 不是隨手寫的：撤回時要把這幾個欄位清掉，而 `updateHistoryRecord`
+   * 的 patch 會過一次 JSON.stringify —— **值為 undefined 的鍵會被整個丟掉**，
+   * 於是"清空"變成"什麼都沒做"，本地永遠顯示已提交。必須顯式寫 null。
    */
   asrCorrectionId?: string | null
   asrCorrectionSubmittedAt?: number | null
-  /** 用户当时给出的正确文本。本地留一份，方便回看自己改了什么。 */
+  /** 使用者當時給出的正確文本。本地留一份，方便回看自己改了什麼。 */
   asrCorrectedText?: string | null
-  // 推理来源信息
+  // 推理來源資訊
   workMode?: 'server' | 'cloud_api' | 'local'
   asrProvider?: string   // 例如 "server" / "doubao" / "sensevoice-small"
   aiProvider?: string    // 例如 "server" / "openai_compat" / "ollama"
@@ -82,9 +82,9 @@ export type HistoryFailReasonCode =
   | 'provider_rate_limit'
   | 'provider_no_model'
   | 'provider_failed'
-  /** 等结果等到超时，一个字都没回来（音频已存档，可重新识别）。 */
+  /** 等結果等到超時，一個字都沒回來（音訊已存檔，可重新識別）。 */
   | 'processing_timeout'
-  /** 录音期间或发送时连接已断开，这段语音从未送达服务端。 */
+  /** 錄音期間或傳送時連線已斷開，這段語音從未送達服務端。 */
   | 'connection_lost'
 
 export interface Stats {
@@ -97,11 +97,11 @@ export interface PromptPreset {
   name: string
   systemPrompt: string
   builtin?: boolean  // built-in presets can't be deleted
-  /** 内置 Prompt 的内容语言；用户自建模式没有这个字段。 */
+  /** 內建 Prompt 的內容語言；使用者自建模式沒有這個欄位。 */
   builtinPromptLanguage?: BuiltinPromptLanguage
-  /** 保存内置修改时对应的官方 Prompt 指纹，用于识别后续内置更新。 */
+  /** 儲存內建修改時對應的官方 Prompt 指紋，用於識別後續內建更新。 */
   builtinPromptBaseHash?: string
-  /** 以下两个只在读取后的视图模型中存在，不写入自建模式。 */
+  /** 以下兩個只在讀取後的檢視模型中存在，不寫入自建模式。 */
   builtinPromptModified?: boolean
   builtinPromptUpdateAvailable?: boolean
 }
@@ -147,7 +147,7 @@ export interface ManualCorrectionRecord {
 }
 
 // Fixed user prompt prefix - prepended to ASR text when sending to LLM
-export const USER_PROMPT_PREFIX = '请处理以下语音转写文本：\n\n' // i18n-allow: 中文口述整理 Prompt
+export const USER_PROMPT_PREFIX = '請處理以下語音轉寫文字：\n\n' // i18n-allow: 中文口述整理 Prompt
 
 // Built-in presets
 // i18n-allow-start: 內建中文口述整理 Prompt；介面名稱由穩定 id 單獨翻譯
@@ -297,7 +297,7 @@ export const BUILTIN_PRESETS: PromptPreset[] = [
 ]
 // i18n-allow-end
 
-/** 根据 Prompt 内容语言取得一份新的内置定义，避免调用方意外改写模块级常量。 */
+/** 根據 Prompt 內容語言取得一份新的內建定義，避免呼叫方意外改寫模組級常量。 */
 export function getBuiltinPromptPresets(language: BuiltinPromptLanguage): PromptPreset[] {
   return BUILTIN_PRESETS.map((preset) => ({
     ...preset,
@@ -394,7 +394,7 @@ export async function getSetting<T>(key: string, fallback?: T): Promise<T> {
   }
   const val = await client.storeGet(key)
   if (val === null || val === undefined) return defaultValue
-  // 运行时类型校验：如果 defaultValue 有明确类型，检查返回值类型是否匹配
+  // 執行時型別校驗：如果 defaultValue 有明確型別，檢查返回值型別是否匹配
   if (defaultValue !== null && defaultValue !== undefined) {
     const expectedType = typeof defaultValue
     if (expectedType === 'string' || expectedType === 'number' || expectedType === 'boolean') {
@@ -415,7 +415,7 @@ export function normalizeBuiltinPromptLanguage(value: unknown): BuiltinPromptLan
   return value === 'en' ? 'en' : 'zh-TW'
 }
 
-/** 轻量稳定指纹；不用于安全校验，只判断内置 Prompt 是否换过版本。 */
+/** 輕量穩定指紋；不用於安全校驗，只判斷內建 Prompt 是否換過版本。 */
 export function builtinPromptContentHash(content: string): string {
   let hash = 0x811c9dc5
   for (let index = 0; index < content.length; index += 1) {
@@ -455,7 +455,7 @@ export function isLegacySimplifiedBuiltinPrompt(preset: PromptPreset): boolean {
 }
 
 function overrideLanguage(preset: PromptPreset): BuiltinPromptLanguage {
-  // 旧版本没有语言字段，当时只有中文 Prompt，因此安全地归到中文。
+  // 舊版本沒有語言欄位，當時只有中文 Prompt，因此安全地歸到中文。
   return normalizeBuiltinPromptLanguage(preset.builtinPromptLanguage)
 }
 
@@ -466,8 +466,8 @@ export async function getPromptPresets(languageOverride?: BuiltinPromptLanguage)
   const builtinIds = new Set(BUILTIN_PRESETS.map((preset) => preset.id))
   const definitionById = new Map(definitions.map((definition) => [definition.id, definition]))
 
-  // 旧版本“打开内置模式、一个字没改也保存”会留下整份快照。内容与当前官方定义
-  // 逐字相同时可无损删除；若不清，下一次官方定义更新后它又会反过来覆盖新版。
+  // 舊版本“開啟內建模式、一個字沒改也儲存”會留下整份快照。內容與當前官方定義
+  // 逐字相同時可無損刪除；若不清，下一次官方定義更新後它又會反過來覆蓋新版。
   const cleaned = custom.filter((candidate) => {
     if (!builtinIds.has(candidate.id)) return true
     if (isLegacySimplifiedBuiltinPrompt(candidate)) return false
@@ -483,14 +483,14 @@ export async function getPromptPresets(languageOverride?: BuiltinPromptLanguage)
     const override = custom.find((candidate) => (
       candidate.id === definition.id && overrideLanguage(candidate) === language
     ))
-    // 内置 name 永远来自稳定 id 的定义；override 只覆盖 Prompt 内容。
+    // 內建 name 永遠來自穩定 id 的定義；override 只覆蓋 Prompt 內容。
     if (!override || override.systemPrompt === definition.systemPrompt) return definition
     const currentBaseHash = builtinPromptContentHash(definition.systemPrompt)
     return {
       ...definition,
       systemPrompt: override.systemPrompt,
       builtinPromptModified: true,
-      // 旧版没有指纹，不能武断地说官方版已更新；只标记“已修改”。
+      // 舊版沒有指紋，不能武斷地說官方版已更新；只標記“已修改”。
       builtinPromptUpdateAvailable: Boolean(
         override.builtinPromptBaseHash
         && override.builtinPromptBaseHash !== currentBaseHash
@@ -511,8 +511,8 @@ export async function setActivePresetId(id: string): Promise<void> {
   await api().storeSet('activePresetId', id)
 }
 
-// 润色模式切换快捷键：presetId -> 组合键（如 "Alt+1"）。独立于 PromptPreset 存储，
-// 便于 Rust 端直接读取并注册（内置预设定义在 TS，不在 store 中）。
+// 潤色模式切換快捷鍵：presetId -> 組合鍵（如 "Alt+1"）。獨立於 PromptPreset 儲存，
+// 便於 Rust 端直接讀取並註冊（內建預設定義在 TS，不在 store 中）。
 export async function getPresetShortcuts(): Promise<Record<string, string>> {
   return ((await api().storeGet('presetShortcuts')) as Record<string, string>) || {}
 }
@@ -541,7 +541,7 @@ export async function savePromptPreset(preset: PromptPreset): Promise<void> {
       item.id === preset.id && overrideLanguage(item) === language
     ))
 
-    // 没改 Prompt 就不保存 override，避免一次无改动保存永久冻结旧内置内容。
+    // 沒改 Prompt 就不儲存 override，避免一次無改動儲存永久凍結舊內建內容。
     if (preset.systemPrompt !== definition.systemPrompt) {
       withoutCurrentOverride.push({
         id: preset.id,
@@ -573,11 +573,11 @@ export async function savePromptPreset(preset: PromptPreset): Promise<void> {
 }
 
 /**
- * 拖拽调整**自定义**润色模式的顺序（下标是在"自定义"这一段里的下标）。
+ * 拖拽調整**自定義**潤色模式的順序（下標是在"自定義"這一段裡的下標）。
  *
- * 内置模式的顺序固定（getPromptPresets 里内置永远排在前面），所以这里只在
- * "用户自建"这一段里换位；`promptPresets` 这个数组同时还存着对内置模式的覆盖，
- * 换位时必须原样保留它们，否则会把用户改过的内置模式弄丢。
+ * 內建模式的順序固定（getPromptPresets 裡內建永遠排在前面），所以這裡只在
+ * "使用者自建"這一段裡換位；`promptPresets` 這個陣列同時還存著對內建模式的覆蓋，
+ * 換位時必須原樣保留它們，否則會把使用者改過的內建模式弄丟。
  */
 export async function moveCustomPromptPreset(from: number, to: number): Promise<void> {
   const builtinIds = new Set(BUILTIN_PRESETS.map((p) => p.id))

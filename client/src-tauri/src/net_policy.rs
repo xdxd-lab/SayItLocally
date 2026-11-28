@@ -1,24 +1,24 @@
-//! 网络来源的判定规则：哪些证书错误可以放行、哪些地址可以下载更新。
+//! 網路來源的判定規則：哪些證書錯誤可以放行、哪些地址可以下載更新。
 //!
-//! 两条规则共用同一个前提 —— 「用户在服务器设置里保存的地址」与「官方地址」是仅有的两个可信来源。
-//! 写成纯函数单独放，是为了能逐条钉测试：这里判错一次，要么自建用户连不上，要么官方域名被降级成不校验。
+//! 兩條規則共用同一個前提 —— 「使用者在伺服器設定裡儲存的地址」與「官方地址」是僅有的兩個可信來源。
+//! 寫成純函式單獨放，是為了能逐條釘測試：這裡判錯一次，要麼自建使用者連不上，要麼官方域名被降級成不校驗。
 
 use reqwest::Url;
 
-/// 内置官方地址。与 vite.config.ts 的 `SAYIT_DEFAULT_SERVER_URL` 同一个来源：
-/// 打包时两边读同一个环境变量，不设就都是 sayitapp.site。
+/// 內建官方地址。與 vite.config.ts 的 `SAYIT_DEFAULT_SERVER_URL` 同一個來源：
+/// 打包時兩邊讀同一個環境變數，不設就都是 sayitapp.site。
 pub const OFFICIAL_SERVER_URL: &str = match option_env!("SAYIT_DEFAULT_SERVER_URL") {
     Some(value) => value,
     None => "https://sayitapp.site",
 };
 
-/// 服务器设置在数据库里的 key（前端 runtimeConfig.ts 的 BACKEND_BASE_URL_STORE_KEY）。
+/// 伺服器設定在資料庫裡的 key（前端 runtimeConfig.ts 的 BACKEND_BASE_URL_STORE_KEY）。
 pub const BACKEND_BASE_URL_KEY: &str = "backendBaseUrl";
 
 #[cfg_attr(not(windows), allow(dead_code))]
 const OFFICIAL_DOMAIN: &str = "sayitapp.site";
 
-/// 官方域名及其子域。这些主机**永远**严格校验证书，哪怕用户把服务器地址填成了它们。
+/// 官方域名及其子域。這些主機**永遠**嚴格校驗證書，哪怕使用者把伺服器地址填成了它們。
 #[cfg_attr(not(windows), allow(dead_code))]
 pub fn is_official_host(host: &str) -> bool {
     let host = host.trim_end_matches('.').to_ascii_lowercase();
@@ -33,8 +33,8 @@ fn parse(value: &str) -> Option<Url> {
     Url::parse(value).ok()
 }
 
-/// (主机, 端口)。wss 与 https 同端口默认值，ws 与 http 同端口默认值，
-/// 所以证书放行时 `https://h` 和 `wss://h` 视为同一个目标。
+/// (主機, 埠)。wss 與 https 同埠預設值，ws 與 http 同埠預設值，
+/// 所以證書放行時 `https://h` 和 `wss://h` 視為同一個目標。
 #[cfg_attr(not(windows), allow(dead_code))]
 fn host_port(url: &Url) -> Option<(String, u16)> {
     let host = url.host_str()?.to_ascii_lowercase();
@@ -42,11 +42,11 @@ fn host_port(url: &Url) -> Option<(String, u16)> {
     Some((host, port))
 }
 
-/// 证书错误能不能放行。
+/// 證書錯誤能不能放行。
 ///
-/// 只有一种情况放行：请求的主机和端口正好是用户保存的服务器地址，那个地址是 https，
-/// 且不是官方域名。这是给"自建服务器 + 自签名证书"留的口子（仓库的 Docker 镜像默认就是自签名）。
-/// 其余一律拒绝 —— 这条原来是 `--ignore-certificate-errors`，对所有主机都不校验。
+/// 只有一種情況放行：請求的主機和埠正好是使用者儲存的伺服器地址，那個地址是 https，
+/// 且不是官方域名。這是給"自建伺服器 + 自簽名證書"留的口子（倉庫的 Docker 映象預設就是自簽名）。
+/// 其餘一律拒絕 —— 這條原來是 `--ignore-certificate-errors`，對所有主機都不校驗。
 #[cfg_attr(not(windows), allow(dead_code))]
 pub fn cert_error_allowed(request_uri: &str, configured_backend: &str) -> bool {
     let (Some(request), Some(configured)) = (parse(request_uri), parse(configured_backend)) else {
@@ -64,11 +64,11 @@ pub fn cert_error_allowed(request_uri: &str, configured_backend: &str) -> bool {
     !is_official_host(&allowed.0) && target == allowed
 }
 
-/// 更新包的下载地址是否可信：必须与用户保存的服务器地址同源，或与官方地址同源。
+/// 更新包的下載地址是否可信：必須與使用者儲存的伺服器地址同源，或與官方地址同源。
 ///
-/// 官方地址也要放进来：自建服务器上没有 manifest 时前端会回落到官方 manifest
-/// （见 updateChecker.ts 的 checkVersionUpdate），那时下载地址是官方的。
-/// 只认 https，自建服务器用 http 时更新也只能走官方回落。
+/// 官方地址也要放進來：自建伺服器上沒有 manifest 時前端會回落到官方 manifest
+/// （見 updateChecker.ts 的 checkVersionUpdate），那時下載地址是官方的。
+/// 只認 https，自建伺服器用 http 時更新也只能走官方回落。
 pub fn update_url_allowed(download_url: &str, configured_backend: &str) -> bool {
     let Some(url) = parse(download_url) else {
         return false;
@@ -223,7 +223,7 @@ mod tests {
         let cfg = "https://my.server:8443";
         assert!(update_url_allowed("https://my.server:8443/api/desktop-updates/win32/x64/a.exe", cfg));
         assert!(update_url_allowed("https://sayitapp.site/api/desktop-updates/win32/x64/a.exe", cfg));
-        // 拼接攻击：`${base}.attacker.example/x.exe`
+        // 拼接攻擊：`${base}.attacker.example/x.exe`
         assert!(!update_url_allowed("https://sayitapp.site.attacker.example/x.exe", "https://sayitapp.site"));
         assert!(!update_url_allowed("https://my.server:9443/a.exe", cfg));
         assert!(!update_url_allowed("http://sayitapp.site/a.exe", "https://sayitapp.site"));

@@ -1,14 +1,14 @@
 import diff from 'fast-diff'
 
 /**
- * ASR 纠错面板用的 diff：原始识别文本 → 用户修正后的文本。
+ * ASR 糾錯面板用的 diff：原始識別文本 → 使用者修正後的文本。
  *
- * 渲染层不参与计算，是为了能在没有 jsdom 的环境里单测（本项目 vitest 没装 jsdom）。
+ * 渲染層不參與計算，是為了能在沒有 jsdom 的環境裡單測（本專案 vitest 沒裝 jsdom）。
  *
- * 用 fast-diff 而不是自己写：它就是 diff-match-patch 的算法，自带
- * `cleanupSemantic` / `cleanupSemanticLossless`，会把改动边界往空白和标点上挪。
- * 这对英文很关键 —— 纯字符级 diff 会把 "recognize"→"recognise" 切成
- * 「recogni + s/z + e」这种碎片，读起来像乱码。中文没有词边界，天然按字，正好。
+ * 用 fast-diff 而不是自己寫：它就是 diff-match-patch 的演算法，自帶
+ * `cleanupSemantic` / `cleanupSemanticLossless`，會把改動邊界往空白和標點上挪。
+ * 這對英文很關鍵 —— 純字元級 diff 會把 "recognize"→"recognise" 切成
+ * 「recogni + s/z + e」這種碎片，讀起來像亂碼。中文沒有詞邊界，天然按字，正好。
  */
 export type AsrDiffKind = 'equal' | 'delete' | 'insert'
 
@@ -17,7 +17,7 @@ export interface AsrDiffSegment {
   text: string
 }
 
-/** 统一行尾并去掉首尾空白：只有行尾不同不该显示成"有改动"。 */
+/** 統一行尾並去掉首尾空白：只有行尾不同不該顯示成"有改動"。 */
 export function normalizeForDiff(text: string): string {
   return text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim()
 }
@@ -27,7 +27,7 @@ export function computeAsrDiff(original: string, corrected: string): AsrDiffSegm
   const b = normalizeForDiff(corrected)
   if (a === b) return a ? [{ kind: 'equal', text: a }] : []
 
-  // 第 4 个参数 = 语义整理，别省
+  // 第 4 個引數 = 語義整理，別省
   return diff(a, b, undefined, true)
     .filter(([, text]) => text.length > 0)
     .map(([op, text]): AsrDiffSegment => ({
@@ -36,7 +36,7 @@ export function computeAsrDiff(original: string, corrected: string): AsrDiffSegm
     }))
 }
 
-/** 改动处数（连续的一删一插算一处），用于给用户一个"改了几处"的量感。 */
+/** 改動處數（連續的一刪一插算一處），用於給使用者一個"改了幾處"的量感。 */
 export function countAsrDiffChanges(segments: AsrDiffSegment[]): number {
   let count = 0
   let inChange = false

@@ -15,18 +15,18 @@ import { InfoTip } from '@/components/ui/info-tip'
 import { IS_MAC } from '@/lib/platform'
 
 /**
- * 「检测当前应用」的倒计时秒数。
+ * 「檢測當前應用」的倒計時秒數。
  *
- * 这段时间是留给用户切窗口的：点完按钮得 Alt+Tab 或用鼠标找到目标程序并点进去，
- * 3 秒对着一堆窗口翻找根本不够，超时后读到的还是 SayIt 自己，白跑一轮。
- * 界面上的按钮文字与提示都从这个值推导，改这里一处即可。
+ * 這段時間是留給使用者切視窗的：點完按鈕得 Alt+Tab 或用滑鼠找到目標程式並點進去，
+ * 3 秒對著一堆視窗翻找根本不夠，超時後讀到的還是 SayIt 自己，白跑一輪。
+ * 介面上的按鈕文字與提示都從這個值推導，改這裡一處即可。
  */
 const DETECT_COUNTDOWN_SEC = 5
 
 /**
- * 只展示"真正决定命中"的条件。
- * 写了进程名的规则一律只按进程名判定（见 promptRouter.matchesAppPromptRule），
- * 此时再把窗口标题/类名列出来会让人误以为它们也会触发。
+ * 只展示"真正決定命中"的條件。
+ * 寫了程序名的規則一律只按程序名判定（見 promptRouter.matchesAppPromptRule），
+ * 此時再把視窗標題/類名列出來會讓人誤以為它們也會觸發。
  */
 function formatMatcher(rule: AppPromptRule, t: ReturnType<typeof useT>) {
   if (rule.matcher.processNames.length > 0) {
@@ -67,7 +67,7 @@ export default function AppPromptRulesSection({
   presets: PromptPreset[]
   rules: AppPromptRule[]
   onSaveRule: (rule: AppPromptRule) => Promise<void> | void
-  /** 开关不走草稿，按下即落库（并把启用的规则置顶），见 AIInstructionsPage.handleToggleAppRule */
+  /** 開關不走草稿，按下即落庫（並把啟用的規則置頂），見 AIInstructionsPage.handleToggleAppRule */
   onToggleRule: (ruleId: string, enabled: boolean) => Promise<void> | void
   onMoveRule: (from: number, to: number) => Promise<void> | void
   onResetRule: (ruleId: string) => Promise<void> | void
@@ -78,13 +78,13 @@ export default function AppPromptRulesSection({
   const [drafts, setDrafts] = useState<Record<string, AppPromptRule>>({})
   const [expandedRules, setExpandedRules] = useState<Set<string>>(new Set())
   const [savingId, setSavingId] = useState<string | null>(null)
-  // 新建规则表单（null = 未展开）
+  // 新建規則表單（null = 未展開）
   const [newRule, setNewRule] = useState<{ name: string; processName: string; presetId: string; promptAppend: string } | null>(null)
-  // 「检测当前应用」倒计时：给用户时间切到目标程序，否则测到的就是 SayIt 自己
+  // 「檢測當前應用」倒計時：給使用者時間切到目標程式，否則測到的就是 SayIt 自己
   const [countdown, setCountdown] = useState(0)
   const [detectHint, setDetectHint] = useState<DetectHint>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
-  /** 上一轮的已存值，用来分辨"外部真改了内容"和"只是开关或顺序变了" */
+  /** 上一輪的已存值，用來分辨"外部真改了內容"和"只是開關或順序變了" */
   const savedSnapshot = useRef<Record<string, AppPromptRule>>({})
 
   const canSort = rules.length > 1
@@ -96,9 +96,9 @@ export default function AppPromptRulesSection({
       for (const rule of rules) {
         const previous = savedSnapshot.current[rule.id]
         const draft = current[rule.id]
-        // 开关和拖拽都是即时落库的，一动就会走到这里。此时若把草稿整个重置，
-        // 用户正在编辑、还没点"保存规则"的附加提示词就被静默冲掉了。
-        // 所以只在「除 enabled 之外确实变了」（保存过、恢复默认）时才用已存值覆盖草稿。
+        // 開關和拖拽都是即時落庫的，一動就會走到這裡。此時若把草稿整個重置，
+        // 使用者正在編輯、還沒點"儲存規則"的附加提示詞就被靜默沖掉了。
+        // 所以只在「除 enabled 之外確實變了」（儲存過、恢復預設）時才用已存值覆蓋草稿。
         const contentChanged = !previous || !isSameRule({ ...previous, enabled: rule.enabled }, rule)
         nextDrafts[rule.id] = draft && !contentChanged
           ? { ...draft, enabled: rule.enabled }
@@ -129,12 +129,12 @@ export default function AppPromptRulesSection({
   }
 
   /**
-   * 启用/停用即时落库（不需要再点"保存规则"）—— 开关是个状态类控件，
-   * 按下去却要另外点保存才算数，用户会以为已经生效了。
+   * 啟用/停用即時落庫（不需要再點"儲存規則"）—— 開關是個狀態類控制元件，
+   * 按下去卻要另外點儲存才算數，使用者會以為已經生效了。
    *
-   * 展开状态只由用户点标题行决定：载入时一律折叠，启用/停用也不碰它。
-   * 以前「已启用就展开、刚启用就展开」，规则一多，页面一进来就是一长串展开的配置，
-   * 用户明确要求改掉（2026-10）。别加回去。
+   * 展開狀態只由使用者點標題行決定：載入時一律摺疊，啟用/停用也不碰它。
+   * 以前「已啟用就展開、剛啟用就展開」，規則一多，頁面一進來就是一長串展開的配置，
+   * 使用者明確要求改掉（2026-10）。別加回去。
    */
   const handleToggle = (rule: AppPromptRule) => {
     void onToggleRule(rule.id, !rule.enabled)
@@ -153,8 +153,8 @@ export default function AppPromptRulesSection({
   }
 
   /**
-   * 检测当前应用：先倒计时，让用户切到目标程序，再读前台窗口的进程名。
-   * 直接读的话只会读到 SayIt 自己（用户正在点这个按钮）。
+   * 檢測當前應用：先倒計時，讓使用者切到目標程式，再讀前台視窗的程序名。
+   * 直接讀的話只會讀到 SayIt 自己（使用者正在點這個按鈕）。
    */
   const detectCurrentApp = async () => {
     setDetectHint(null)
@@ -165,7 +165,7 @@ export default function AppPromptRulesSection({
     setCountdown(0)
     try {
       const ctx = await bridge.getActiveAppContext()
-      // mac 上可执行文件名不可靠（VS Code 叫 Electron），优先用 Bundle ID
+      // mac 上執行檔名不可靠（VS Code 叫 Electron），優先用 Bundle ID
       const raw = String(((IS_MAC ? ctx?.bundleId || ctx?.processName : ctx?.processName) as string) || '').trim()
       if (!raw) {
         setDetectHint({ kind: 'missing' })
@@ -219,7 +219,7 @@ export default function AppPromptRulesSection({
           <div>
             <div className="flex items-center gap-1.5">
               <h2 className="text-lg font-semibold">{t('appPrompt.title')}</h2>
-              {/* 完整说明（内置了哪些应用、匹配顺序）收进 ⓘ：应用清单就在下面，正文再列一遍是重复 */}
+              {/* 完整說明（內建了哪些應用、匹配順序）收進 ⓘ：應用清單就在下面，正文再列一遍是重複 */}
               <InfoTip
                 content={(
                   <div className="space-y-2">
@@ -247,7 +247,7 @@ export default function AppPromptRulesSection({
           )}
         </div>
 
-        {/* 新建规则表单 */}
+        {/* 新建規則表單 */}
         {newRule && (
           <div className="rounded-lg border border-dashed p-4">
             <div className="space-y-3">
@@ -351,7 +351,7 @@ export default function AppPromptRulesSection({
                 {...(canSort ? ruleSortable.rowProps(index) : {})}
                 className={cn('group rounded-lg border bg-card', canSort && ruleSortable.rowClassName(index))}
               >
-                {/* 标题栏 */}
+                {/* 標題欄 */}
                 <div
                   className="flex cursor-pointer items-center justify-between gap-4 rounded-t-lg bg-muted/30 px-4 py-2.5"
                   onClick={() => toggleExpanded(rule.id)}
@@ -384,7 +384,7 @@ export default function AppPromptRulesSection({
                   </div>
                 </div>
 
-                {/* 展开内容 */}
+                {/* 展開內容 */}
                 {isExpanded && (
                   <div className="border-t px-4 pb-3 pt-3">
                     <div className="space-y-3">

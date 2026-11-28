@@ -4,44 +4,44 @@ import { saveRecordingAudio } from '../audioFileService'
 import { getSetting, updateHistoryRecord } from '../store'
 
 /**
- * 等音频落盘的上限。
+ * 等音訊落盤的上限。
  *
- * 存档是为了兜底，不该反过来把结果处理挂死：写盘走一次大 payload IPC（长录音的 PCM 有
- * 好几 MB），一旦它不返回，等它的那条链路就永远出不来，界面停在「处理中」什么也不说。
- * 超时后先按无音频写记录，落盘真的完成时再把路径补回去。
+ * 存檔是為了兜底，不該反過來把結果處理掛死：寫盤走一次大 payload IPC（長錄音的 PCM 有
+ * 好幾 MB），一旦它不返回，等它的那條鏈路就永遠出不來，介面停在「處理中」什麼也不說。
+ * 超時後先按無音訊寫記錄，落盤真的完成時再把路徑補回去。
  */
 const AUDIO_ARCHIVE_WAIT_MS = 30_000
 
 /**
- * 一次录音的音频存档。
+ * 一次錄音的音訊存檔。
  *
- * 关键点：写盘在**停止录音时立刻**开始，不等 ASR/AI 结果。以前音频只在某个终态分支里
- * 才落盘，于是任何一条没走到终态的路（超时后被新录音顶掉、连接断了在假等待、进程退出）
- * 都会让整段录音消失得无声无息。现在结果只决定历史记录里写什么，不再决定音频是否存在。
+ * 關鍵點：寫盤在**停止錄音時立刻**開始，不等 ASR/AI 結果。以前音訊只在某個終態分支裡
+ * 才落盤，於是任何一條沒走到終態的路（超時後被新錄音頂掉、連線斷了在假等待、程序退出）
+ * 都會讓整段錄音消失得無聲無息。現在結果只決定歷史記錄裡寫什麼，不再決定音訊是否存在。
  */
 interface AudioArchive {
   runId: number
-  /** 本代唯一的历史记录 id。所有终态路径必须复用它，保证一次录音只有一条记录、一份文件。 */
+  /** 本代唯一的歷史記錄 id。所有終態路徑必須複用它，保證一次錄音只有一條記錄、一份檔案。 */
   recordId: string
-  /** 落盘任务；resolve 为 WAV 路径，null = 未保存（关了音频保留 / 无数据 / 写失败）。 */
+  /** 落盤任務；resolve 為 WAV 路徑，null = 未儲存（關了音訊保留 / 無資料 / 寫失敗）。 */
   promise: Promise<string | null>
-  /** 用户显式取消后置位；写盘可能还没结束，所以要等 promise 出来才知道删哪个文件。 */
+  /** 使用者顯式取消後置位；寫盤可能還沒結束，所以要等 promise 出來才知道刪哪個檔案。 */
   discarded: boolean
 }
 
 /**
- * 每一代录音的音频存档，按 runId 索引。从 RecorderOrchestrator 拆出（模块 6），行为不变。
+ * 每一代錄音的音訊存檔，按 runId 索引。從 RecorderOrchestrator 拆出（模組 6），行為不變。
  *
- * 必须按代保存、不能只留一份：超时兜底要等 15 秒宽限，这期间用户完全可能已经录完了
- * 下一段。只留一份的话，旧代来取存档时拿到的是新代的，只能放弃 —— 音频又成了孤儿文件、
- * 历史里依旧什么都没有。
+ * 必須按代儲存、不能只留一份：超時兜底要等 15 秒寬限，這期間使用者完全可能已經錄完了
+ * 下一段。只留一份的話，舊代來取存檔時拿到的是新代的，只能放棄 —— 音訊又成了孤兒檔案、
+ * 歷史裡依舊什麼都沒有。
  */
 export class AudioArchiveService {
   private archives = new Map<number, AudioArchive>()
 
   /**
-   * @param onLateAttached 落盘超时、之后又成功补进历史时调用（用来把失败卡上的
-   *   「尚未确定」升级成明确去处）。
+   * @param onLateAttached 落盤超時、之後又成功補進歷史時呼叫（用來把失敗卡上的
+   *   「尚未確定」升級成明確去處）。
    */
   constructor(private readonly onLateAttached: (runId: number) => void) {}
 
@@ -50,10 +50,10 @@ export class AudioArchiveService {
   }
 
   /**
-   * 停止录音后立刻把音频写盘，不等识别结果。
+   * 停止錄音後立刻把音訊寫盤，不等識別結果。
    *
-   * 返回本代的 recordId：所有终态路径（正常 final / 空识别 / 报错 / 超时兜底）都必须用
-   * take 取回它，绝不再自己生成 id、自己保存一遍。
+   * 返回本代的 recordId：所有終態路徑（正常 final / 空識別 / 報錯 / 超時兜底）都必須用
+   * take 取回它，絕不再自己生成 id、自己儲存一遍。
    */
   begin(runId: number, chunks: ArrayBuffer[]): string {
     const recordId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
@@ -83,7 +83,7 @@ export class AudioArchiveService {
       }
     })()
     this.archives.set(runId, { runId, recordId, promise, discarded: false })
-    // 正常情况下每条存档都会被某个终态取走；关掉历史等分支不会取，这里兜一下上限。
+    // 正常情況下每條存檔都會被某個終態取走；關掉歷史等分支不會取，這裡兜一下上限。
     if (this.archives.size > 8) {
       const oldest = this.archives.keys().next()
       if (!oldest.done) this.archives.delete(oldest.value)
@@ -92,23 +92,23 @@ export class AudioArchiveService {
   }
 
   /**
-   * 确保本代音频已经在落盘。
+   * 確保本代音訊已經在落盤。
    *
-   * 正常路径由 stopRecording 发起；错误可能在**录音进行中**就到达（连接断开），那时还没
-   * 走到 stopRecording，必须在这里补一次，否则这段音频没人保存。
+   * 正常路徑由 stopRecording 發起；錯誤可能在**錄音進行中**就到達（連線斷開），那時還沒
+   * 走到 stopRecording，必須在這裡補一次，否則這段音訊沒人儲存。
    */
   ensure(runId: number, chunks: ArrayBuffer[]): void {
     if (this.archives.has(runId)) return
     this.begin(runId, chunks)
   }
 
-  /** 取回本代已存档的音频；返回 null 表示这一代没有存档（例如时长不足没进 processing）。 */
+  /** 取回本代已存檔的音訊；返回 null 表示這一代沒有存檔（例如時長不足沒進 processing）。 */
   async take(
     runId: number,
   ): Promise<{ recordId: string; audioFilePath?: string; pendingLate?: boolean } | null> {
     const archive = this.archives.get(runId)
     if (!archive) return null
-    // 取走即移交：一次录音只有一条终态路径会走到这里（finalHandled / settled 互斥保证）。
+    // 取走即移交：一次錄音只有一條終態路徑會走到這裡（finalHandled / settled 互斥保證）。
     this.archives.delete(runId)
     let timedOutWaiting = false
     const savedPath = await Promise.race([
@@ -120,8 +120,8 @@ export class AudioArchiveService {
     ])
     if (archive.discarded) return null
     if (timedOutWaiting) {
-      // 落盘 IPC 卡住时绝不能把整条结果处理一起挂死（那正是「悬浮条无限转圈、什么都不说」
-      // 的成因之一）。记录先写出去，音频路径等落盘真的完成再补上。
+      // 落盤 IPC 卡住時絕不能把整條結果處理一起掛死（那正是「懸浮條無限轉圈、什麼都不說」
+      // 的成因之一）。記錄先寫出去，音訊路徑等落盤真的完成再補上。
       addRuntimeEvent('warn', 'recorder', 'Audio archive did not finish in time; writing history without the audio path', {
         runId,
         recordId: archive.recordId,
@@ -135,8 +135,8 @@ export class AudioArchiveService {
           addRuntimeEvent('info', 'recorder', 'Attached late audio archive to its history record', {
             recordId: archive.recordId,
           })
-          // 落盘终于成功了：若那张失败卡还开着，把"尚未确定"升级成明确的去处。
-          // updateFailureRecovery 自己校验 token 与当前状态，卡片已关时是空操作。
+          // 落盤終於成功了：若那張失敗卡還開著，把"尚未確定"升級成明確的去處。
+          // updateFailureRecovery 自己校驗 token 與當前狀態，卡片已關時是空操作。
           this.onLateAttached(archive.runId)
         } catch (error) {
           addRuntimeEvent('warn', 'recorder', 'Failed to attach late audio archive', {
@@ -145,14 +145,14 @@ export class AudioArchiveService {
           })
         }
       })
-      // pendingLate：落盘还在继续，稍后大概率会成功并补进历史。调用方据此说
-      // "尚未确定"，绝不能说成"没有留下录音" —— 那是错的，而且不可挽回地误导用户。
+      // pendingLate：落盤還在繼續，稍後大機率會成功並補進歷史。呼叫方據此說
+      // "尚未確定"，絕不能說成"沒有留下錄音" —— 那是錯的，而且不可挽回地誤導使用者。
       return { recordId: archive.recordId, pendingLate: true }
     }
     return { recordId: archive.recordId, audioFilePath: savedPath ?? undefined }
   }
 
-  /** 用户主动取消：把这份存档标为废弃，写盘完成后删掉文件。 */
+  /** 使用者主動取消：把這份存檔標為廢棄，寫盤完成後刪掉檔案。 */
   discard(runId: number) {
     const archive = this.archives.get(runId)
     if (!archive || archive.discarded) return
@@ -160,7 +160,7 @@ export class AudioArchiveService {
     this.archives.delete(runId)
     void archive.promise.then((savedPath) => {
       if (!savedPath) return
-      void bridge.deleteAudioFile(savedPath).catch(() => { /* 孤儿文件删除失败不影响状态复位 */ })
+      void bridge.deleteAudioFile(savedPath).catch(() => { /* 孤兒檔案刪除失敗不影響狀態復位 */ })
     })
   }
 }

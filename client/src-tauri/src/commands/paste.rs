@@ -134,9 +134,9 @@ fn capture_probe(detector: &ContextDetector) -> Value {
     probe_result_for_context(&ctx, started_at, completed_at)
 }
 
-/// 录音启动只捕获一次前台窗口，同时返回提示词路由所需的完整上下文与插字探测结果。
-/// 过去前端连续调用 get_active_app_context + get_probe_result，底层 UI Automation 会
-/// 对同一个窗口完整扫描两遍，既增加热键延迟，也给两次捕获之间的焦点变化留下竞态。
+/// 錄音啟動只捕獲一次前台視窗，同時返回提示詞路由所需的完整上下文與插字探測結果。
+/// 過去前端連續呼叫 get_active_app_context + get_probe_result，底層 UI Automation 會
+/// 對同一個視窗完整掃描兩遍，既增加熱鍵延遲，也給兩次捕獲之間的焦點變化留下競態。
 #[cfg(not(target_os = "macos"))]
 #[tauri::command]
 pub fn get_recording_context(
@@ -193,7 +193,7 @@ fn recording_context_response(
 }
 
 fn probe_result_for_context(ctx: &AppContext, started_at: i64, completed_at: i64) -> Value {
-    // 与 inject 共用同一个判据实现，顺带拿到「结论是哪一层给出的」
+    // 與 inject 共用同一個判據實現，順帶拿到「結論是哪一層給出的」
     let gate = crate::inject::editability_gate(ctx);
     let editable = gate.is_editable();
 
@@ -221,11 +221,11 @@ fn probe_result_for_context(ctx: &AppContext, started_at: i64, completed_at: i64
         "pid": ctx.pid,
         "tid": ctx.tid,
         "process": &ctx.process_name,
-        // not_editable 时前端只把这个 detail 串记进日志（见 RecorderOrchestrator 的
-        // "Target is not editable"），所以四层判据的输入和结论都得在里面 —— 缺了的话
-        // 日志只能说明"被拦了"，说不出是哪一层落空。
+        // not_editable 時前端只把這個 detail 串記進日誌（見 RecorderOrchestrator 的
+        // "Target is not editable"），所以四層判據的輸入和結論都得在裡面 —— 缺了的話
+        // 日誌只能說明"被攔了"，說不出是哪一層落空。
         "detail": crate::inject::describe_editability(ctx, gate),
-        // 结构化的同一件事，供诊断界面直接展示，不必让前端再解析 detail 串
+        // 結構化的同一件事，供診斷介面直接展示，不必讓前端再解析 detail 串
         "gate": gate.as_str(),
         "hasCaret": ctx.has_caret,
         "windowClass": &ctx.window_class,
