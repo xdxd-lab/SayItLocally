@@ -342,7 +342,7 @@ mod tests {
             }
             assert_eq!(count_simplified_only(&to_taiwan(input, "auto")), 0, "{input}");
         }
-        // 字表抓不到「后、里、干、只、内」這類正體也用的字（見模組說明），只要求至少一半的樣本被抓到。
+        // 字表抓不到「后、里、干、只」這類正體也用的字與「內」的簡體寫法（見模組說明），只要求至少一半的樣本被抓到。
         assert!(inputs_with_hits * 2 >= CASES.len(), "{inputs_with_hits}");
     }
 
