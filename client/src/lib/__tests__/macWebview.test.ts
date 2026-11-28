@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { shouldShowNativeContextMenu } from '../macWebview'
 
-/** 只造出 shouldShowNativeContextMenu 会用到的 closest()：命中给定选择器里任意一个就算 */
+/** 只造出 shouldShowNativeContextMenu 會用到的 closest()：命中給定選擇器裡任意一個就算 */
 function fakeTarget(matches: string[]): EventTarget {
   return {
     closest(selector: string) {
@@ -28,7 +28,7 @@ describe('macOS 右键菜单', () => {
 
   it('选中了文字时照常弹出，方便拷贝、查询', () => {
     expect(shouldShowNativeContextMenu(fakeTarget([]), '识别结果')).toBe(true)
-    // 只选中了空白不算
+    // 只選中了空白不算
     expect(shouldShowNativeContextMenu(fakeTarget([]), '  \n')).toBe(false)
   })
 

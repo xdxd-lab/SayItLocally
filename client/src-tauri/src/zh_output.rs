@@ -312,7 +312,7 @@ mod tests {
     #[test]
     fn interpunct_and_long_mark_do_not_count_as_kana() {
         // 外國人名的間隔號「・」與長音符號「ー」中文也會用到，不能讓整句被當成日文而不轉。
-        // 「约翰・史密斯说」的簡體寫法 → 約翰・史密斯說
+        // 「約翰・史密斯說」的簡體寫法 → 約翰・史密斯說
         let name = "\u{7ea6}\u{7ff0}\u{30fb}\u{53f2}\u{5bc6}\u{65af}\u{8bf4}";
         assert_eq!(to_taiwan(name, "auto"), "約翰・史密斯說");
         // 「卡ー车」的簡體寫法：含長音符號但沒有假名字母，照樣轉換
@@ -342,7 +342,7 @@ mod tests {
             }
             assert_eq!(count_simplified_only(&to_taiwan(input, "auto")), 0, "{input}");
         }
-        // 字表抓不到「后、里、干、只、内」這類字（見模組說明），只要求至少一半的樣本被抓到。
+        // 字表抓不到「後、裡、幹、只、內」這類字（見模組說明），只要求至少一半的樣本被抓到。
         assert!(inputs_with_hits * 2 >= CASES.len(), "{inputs_with_hits}");
     }
 

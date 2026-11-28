@@ -12,7 +12,7 @@ import {
   type CustomWaveColors,
 } from '../overlayWaveColors'
 
-/** sRGB hex → OKLab 明度。测试里独立实现一遍，不复用被测模块的换算。 */
+/** sRGB hex → OKLab 明度。測試裡獨立實現一遍，不復用被測模組的換算。 */
 function oklabL(hex: string): number {
   const n = parseInt(hex.slice(1), 16)
   const lin = (c: number) => (c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4))
@@ -68,7 +68,7 @@ describe('黑底可见性', () => {
       expect(fixed).toMatch(HEX)
       expect(oklabL(fixed)).toBeGreaterThanOrEqual(0.615)
     }
-    // 深蓝调亮后仍然是蓝色系：蓝通道最大
+    // 深藍調亮後仍然是藍色系：藍通道最大
     const navy = visibleOnBlack('#000080')
     const [r, g, b] = [1, 3, 5].map((i) => parseInt(navy.slice(i, i + 2), 16))
     expect(b).toBeGreaterThan(r)
@@ -85,8 +85,8 @@ describe('黑底可见性', () => {
 
 describe('buildWavePalette', () => {
   /**
-   * 内置三套的配色从 Overlay.tsx 和 AppearancePage.tsx 各一份收进了这里，
-   * 钉住输出，确保收口没有改变任何现有用户看到的颜色。
+   * 內建三套的配色從 Overlay.tsx 和 AppearancePage.tsx 各一份收進了這裡，
+   * 釘住輸出，確保收口沒有改變任何現有使用者看到的顏色。
    */
   it('内置主题与收口前逐根一致', () => {
     const legacy = (index: number, total: number, theme: string) => {

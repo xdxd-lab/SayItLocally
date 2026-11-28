@@ -2,10 +2,10 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <!-- 打包时由 Tauri 合并进生成的 Info.plist（仅 macOS）。 -->
+  <!-- 打包時由 Tauri 合併進生成的 Info.plist（僅 macOS）。 -->
   <key>NSMicrophoneUsageDescription</key>
   <string>SayItLocally 需要使用麥克風來錄下你說的話並轉成文字。SayItLocally needs the microphone to turn your speech into text.</string>
-  <!-- 常驻菜单栏的热键应用：不让系统在空闲时自动终止或 App Nap 降频，否则按下热键后要等进程被唤醒。 -->
+  <!-- 常駐選單欄的熱鍵應用：不讓系統在空閒時自動終止或 App Nap 降頻，否則按下熱鍵後要等程序被喚醒。 -->
   <key>NSSupportsAutomaticTermination</key>
   <false/>
   <key>NSSupportsSuddenTermination</key>

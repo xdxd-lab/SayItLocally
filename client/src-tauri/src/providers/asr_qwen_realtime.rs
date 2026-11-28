@@ -1,11 +1,11 @@
-// 千问实时语音识别 — qwen3-asr-flash-realtime
-// WebSocket 流式：边录边发，OpenAI Realtime 风格协议
+// 千問即時語音識別 — qwen3-asr-flash-realtime
+// WebSocket 流式：邊錄邊發，OpenAI Realtime 風格協議
 //
-// 流式会话两种模式：
-//  - 普通模式（realtime=false）：send 只发音频，finish 时才收集全部转录结果。
-//  - 实时显示模式（realtime=true）：后台 reader 持续读取识别事件，把中间结果通过
-//    `asr-partial` 事件上抛给前端做悬浮窗实时上屏；finish 返回累计的最终文本。
-// 另有一次性识别 `transcribe`（录完再发），见那个函数的注释。
+// 流式會話兩種模式：
+//  - 普通模式（realtime=false）：send 只發音訊，finish 時才收集全部轉錄結果。
+//  - 即時顯示模式（realtime=true）：後台 reader 持續讀取識別事件，把中間結果透過
+//    `asr-partial` 事件上拋給前端做懸浮窗即時上屏；finish 返回累計的最終文本。
+// 另有一次性識別 `transcribe`（錄完再發），見那個函式的註釋。
 
 use super::{
     diag,
@@ -24,8 +24,8 @@ use tungstenite::client::IntoClientRequest;
 use tungstenite::http::header::{AUTHORIZATION, USER_AGENT};
 use tungstenite::http::HeaderValue;
 
-// 用稳定版模型名（不带日期快照）：带日期的快照版免费额度可能已耗尽，
-// 稳定版按账号额度计费，实测可正常建连并返回实时中间结果。
+// 用穩定版模型名（不帶日期快照）：帶日期的快照版免費額度可能已耗盡，
+// 穩定版按賬號額度計費，實測可正常建連並返回即時中間結果。
 const MODEL: &str = "qwen3-asr-flash-realtime";
 
 type WsStream = tokio_tungstenite::WebSocketStream<
@@ -33,20 +33,20 @@ type WsStream = tokio_tungstenite::WebSocketStream<
 >;
 type WsSink = SplitSink<WsStream, tungstenite::Message>;
 
-/// 普通模式会话：整条 WebSocket。
+/// 普通模式會話：整條 WebSocket。
 static SESSION: once_cell::sync::Lazy<Arc<Mutex<Option<WsStream>>>> =
     once_cell::sync::Lazy::new(|| Arc::new(Mutex::new(None)));
 
-/// 实时模式：拆分后的发送端。
+/// 即時模式：拆分後的傳送端。
 static RT_SINK: once_cell::sync::Lazy<Arc<Mutex<Option<WsSink>>>> =
     once_cell::sync::Lazy::new(|| Arc::new(Mutex::new(None)));
 
-/// 实时模式后台 reader 任务句柄。
+/// 即時模式後台 reader 任務控制代碼。
 static RT_READER: once_cell::sync::Lazy<Arc<Mutex<Option<JoinHandle<()>>>>> =
     once_cell::sync::Lazy::new(|| Arc::new(Mutex::new(None)));
 
-/// 实时模式共享状态。
-/// committed：已确定分句拼接的最终文本；partial：当前进行中的增量缓冲。
+/// 即時模式共享狀態。
+/// committed：已確定分句拼接的最終文本；partial：當前進行中的增量緩衝。
 #[derive(Default)]
 struct RtState {
     committed: String,
@@ -56,7 +56,7 @@ struct RtState {
 }
 
 impl RtState {
-    /// 实时展示用文本 = 已确定 + 进行中
+    /// 即時展示用文本 = 已確定 + 進行中
     fn display(&self) -> String {
         if self.partial.is_empty() {
             self.committed.clone()
@@ -75,11 +75,11 @@ static RT_ACTIVE: AtomicBool = AtomicBool::new(false);
 
 const SCOPE: &str = "qwen/realtime";
 
-/// 建 WebSocket 连接。
+/// 建 WebSocket 連線。
 ///
-/// 填了业务空间 ID 走「北京 + 业务空间」专属端点，没填走通用端点。
-/// 一次性识别那条路不带业务空间 ID，靠的就是通用端点：2026-10-27 实测
-/// （dev-scripts/probe_qwen_realtime_oneshot.py）3 秒、89 秒、5 分钟的录音都能识别。
+/// 填了業務空間 ID 走「北京 + 業務空間」專屬端點，沒填走通用端點。
+/// 一次性識別那條路不帶業務空間 ID，靠的就是通用端點：2026-10-27 實測
+/// （dev-scripts/probe_qwen_realtime_oneshot.py）3 秒、89 秒、5 分鐘的錄音都能識別。
 async fn connect(api_key: &str, workspace: &str, purpose: &str) -> Result<WsStream, String> {
     let workspace = workspace.trim();
     let url = if workspace.is_empty() {
@@ -118,9 +118,9 @@ async fn connect(api_key: &str, workspace: &str, purpose: &str) -> Result<WsStre
     Ok(ws)
 }
 
-/// 发 session.update，并等到 session.updated 才算就绪（说明配置被接受、模型可用）。
-/// 若额度耗尽/无权限，服务端会在 session.created 后直接关闭连接（携带原因），
-/// 此时拿不到 session.updated → 返回 Err。
+/// 發 session.update，並等到 session.updated 才算就緒（說明配置被接受、模型可用）。
+/// 若額度耗盡/無許可權，服務端會在 session.created 後直接關閉連線（攜帶原因），
+/// 此時拿不到 session.updated → 返回 Err。
 async fn configure_session(
     ws: &mut WsStream,
     sample_rate: u32,
@@ -193,19 +193,19 @@ fn close_reason(frame: Option<tungstenite::protocol::CloseFrame>) -> String {
         .unwrap_or_else(|| "No reason".to_string())
 }
 
-/// 一次性识别每包发 1 秒音频。包大小不影响限速（Omni 那边实测过），只影响事件条数。
+/// 一次性識別每包發 1 秒音訊。包大小不影響限速（Omni 那邊實測過），隻影響事件條數。
 const ONESHOT_CHUNK_BYTES: usize = 32_000;
 
-/// 录完再发：整段音频推完 → commit → 等一条 completed。
+/// 錄完再發：整段音訊推完 → commit → 等一條 completed。
 ///
-/// 关掉实时字幕、或者流式连接没建起来时走这里。**以前这条路走的是 asr_qwen（模型写死
-/// qwen3-asr-flash）**，用户在下拉里选的是 realtime，实际识别、计费的却是另一个模型，
-/// 界面上看不出来。别再把 qwen_realtime 并回 asr_qwen 那个分支。
+/// 關掉即時字幕、或者流式連線沒建起來時走這裡。**以前這條路走的是 asr_qwen（模型寫死
+/// qwen3-asr-flash）**，使用者在下拉里選的是 realtime，實際識別、計費的卻是另一個模型，
+/// 介面上看不出來。別再把 qwen_realtime 並回 asr_qwen 那個分支。
 ///
-/// 为什么关掉 server_vad、手动 commit：录音一口气推上去，VAD 按音频时间轴切句，而录音
-/// 结尾的那句话后面没有足够长的静音，VAD 不会把它判成一句话结束 —— 实测 3 秒的录音
-/// session.finish 之后直接 session.finished、一个字都没有。手动模式下一次 commit 出
-/// 一条 completed，整段一起识别，自带标点（实测 89 秒 2.3 秒出全文）。
+/// 為什麼關掉 server_vad、手動 commit：錄音一口氣推上去，VAD 按音訊時間軸切句，而錄音
+/// 結尾的那句話後面沒有足夠長的靜音，VAD 不會把它判成一句話結束 —— 實測 3 秒的錄音
+/// session.finish 之後直接 session.finished、一個字都沒有。手動模式下一次 commit 出
+/// 一條 completed，整段一起識別，自帶標點（實測 89 秒 2.3 秒出全文）。
 pub async fn transcribe(
     audio_pcm_b64: &str,
     sample_rate: u32,
@@ -238,10 +238,10 @@ pub async fn transcribe(
     let mut ws = connect(&config.api_key, workspace, "oneshot").await?;
     configure_session(&mut ws, sample_rate, Some(hotwords), serde_json::Value::Null).await?;
 
-    // 先突发后限速，规则与 Omni 共用（同一个接口的上行限速）。
-    // **必须边发边读**：发送期间服务端一直在推 `.text` 中间结果，一路不读的话 5 分钟录音
-    // 会在发送中途被断开（2026-10-27 实测，边读就能过）；服务端在发送途中报的错误和
-    // close 原因也只有这时候读得到，读不到日志里只剩「第 N 包发不出去」。
+    // 先突發後限速，規則與 Omni 共用（同一個介面的上行限速）。
+    // **必須邊發邊讀**：傳送期間服務端一直在推 `.text` 中間結果，一路不讀的話 5 分鐘錄音
+    // 會在傳送中途被斷開（2026-10-27 實測，邊讀就能過）；服務端在傳送途中報的錯誤和
+    // close 原因也只有這時候讀得到，讀不到日誌裡只剩「第 N 包發不出去」。
     let send_start = Instant::now();
     let total_chunks = pcm.len().div_ceil(ONESHOT_CHUNK_BYTES);
     let mut wire_sent: u64 = 0;
@@ -300,7 +300,7 @@ pub async fn transcribe(
             }
         }
     }
-    // 「限速真的生效了」的证据：排查时先看这一行在不在、waits 是不是 >0。
+    // 「限速真的生效了」的證據：排查時先看這一行在不在、waits 是不是 >0。
     diag::log(
         SCOPE,
         "oneshot_pacing",
@@ -313,7 +313,7 @@ pub async fn transcribe(
     .await
     .map_err(|e| diag::fail(SCOPE, "send_commit", format!("Failed to commit audio: {}", e)))?;
 
-    // 上限按音频长度放宽：89 秒实测 commit 后约 1.5 秒出全文，长音频线性长一些。
+    // 上限按音訊長度放寬：89 秒實測 commit 後約 1.5 秒出全文，長音訊線性長一些。
     let collect_budget = Duration::from_secs(20) + Duration::from_secs_f64(audio_sec.min(600.0) / 2.0);
     let text = tokio::time::timeout(collect_budget, async {
         while let Some(msg) = ws.next().await {
@@ -336,7 +336,7 @@ pub async fn transcribe(
                         _ => {}
                     }
                 }
-                // 协议没跑完就被关：不能当成「识别到空文本」上报成功（pitfalls #15）
+                // 協議沒跑完就被關：不能當成「識別到空文本」上報成功（pitfalls #15）
                 tungstenite::Message::Close(frame) => {
                     return Err(diag::fail(
                         SCOPE,
@@ -352,7 +352,7 @@ pub async fn transcribe(
     .await
     .map_err(|_| diag::fail(SCOPE, "collect_timeout", "Timed out waiting for the recognition result".to_string()))??;
 
-    // 结果已经到手，收尾失败不影响本次识别
+    // 結果已經到手，收尾失敗不影響本次識別
     let _ = ws
         .send(tungstenite::Message::Text(
             serde_json::json!({ "event_id": "finish", "type": "session.finish" }).to_string().into(),
@@ -369,8 +369,8 @@ pub async fn transcribe(
     Ok(AsrResult { text, elapsed_ms })
 }
 
-/// 设置页「测试连接」：握手 + session.update 被接受就算通。
-/// 以前这里走的是 asr_qwen::test_connection，测的是 qwen3-asr-flash 的 HTTP 接口。
+/// 設定頁「測試連線」：握手 + session.update 被接受就算通。
+/// 以前這裡走的是 asr_qwen::test_connection，測的是 qwen3-asr-flash 的 HTTP 介面。
 pub async fn test_connection(config: &AsrProviderConfig) -> TestResult {
     let start = Instant::now();
     let workspace = config
@@ -398,10 +398,10 @@ pub async fn test_connection(config: &AsrProviderConfig) -> TestResult {
     }
 }
 
-/// 打开千问实时 ASR 会话
+/// 開啟千問即時 ASR 會話
 ///
-/// hotwords：热词列表，通过 session.input_audio_transcription.corpus.text 上下文偏置（最多 10000 tokens）
-/// realtime：是否开启实时显示（中间结果上抛）
+/// hotwords：熱詞列表，透過 session.input_audio_transcription.corpus.text 上下文偏置（最多 10000 tokens）
+/// realtime：是否開啟即時顯示（中間結果上拋）
 #[tauri::command]
 pub async fn qwen_stream_open(
     app: AppHandle,
@@ -412,7 +412,7 @@ pub async fn qwen_stream_open(
 ) -> Result<(), String> {
     let realtime = realtime.unwrap_or(false);
 
-    // 关闭遗留会话
+    // 關閉遺留會話
     cleanup_realtime().await;
     {
         let mut session = SESSION.lock().await;
@@ -423,8 +423,8 @@ pub async fn qwen_stream_open(
 
     let workspace = workspace_id.unwrap_or_default();
     let mut ws = connect(&config.api_key, &workspace, &format!("stream realtime={}", realtime)).await?;
-    // 字段对齐官方 SDK：modalities: ["text"] + 音频格式/采样率 + 语言 + VAD。
-    // 边录边发要靠 server_vad 自己切句、逐句出 completed。
+    // 欄位對齊官方 SDK：modalities: ["text"] + 音訊格式/取樣率 + 語言 + VAD。
+    // 邊錄邊發要靠 server_vad 自己切句、逐句出 completed。
     configure_session(
         &mut ws,
         16000,
@@ -455,7 +455,7 @@ pub async fn qwen_stream_open(
     Ok(())
 }
 
-/// 后台 reader：读取识别事件，累积文本并上抛中间结果。
+/// 後台 reader：讀取識別事件，累積文本並上拋中間結果。
 async fn run_realtime_reader(
     mut stream: SplitStream<WsStream>,
     app: AppHandle,
@@ -490,15 +490,15 @@ async fn run_realtime_reader(
         let event_type = data.get("type").and_then(|t| t.as_str()).unwrap_or("");
 
         match event_type {
-            // Qwen 实时中间结果：text 为当前句到目前为止的识别文本，stash 为不稳定的预测尾巴。
-            // 这是 qwen3-asr-flash-realtime 实际使用的增量事件（非 OpenAI 风格的 .delta）。
+            // Qwen 即時中間結果：text 為當前句到目前為止的識別文本，stash 為不穩定的預測尾巴。
+            // 這是 qwen3-asr-flash-realtime 實際使用的增量事件（非 OpenAI 風格的 .delta）。
             "conversation.item.input_audio_transcription.text" => {
                 let cur = data.get("text").and_then(|t| t.as_str()).unwrap_or("");
                 let stash = data.get("stash").and_then(|t| t.as_str()).unwrap_or("");
                 if !cur.is_empty() || !stash.is_empty() {
                     let display = {
                         let mut s = state.lock().await;
-                        // text 是"当前句"的全量文本（非增量），直接覆盖 partial
+                        // text 是"當前句"的全量文本（非增量），直接覆蓋 partial
                         s.partial = format!("{}{}", cur, stash);
                         s.display()
                     };
@@ -530,7 +530,7 @@ async fn run_realtime_reader(
                     }
                 }
             }
-            // 分句确定：并入 committed，清空 partial，并上抛
+            // 分句確定：併入 committed，清空 partial，並上拋
             "conversation.item.input_audio_transcription.completed" => {
                 if let Some(transcript) = data.get("transcript").and_then(|t| t.as_str()) {
                     if !transcript.is_empty() {
@@ -590,7 +590,7 @@ async fn cleanup_realtime() {
     *st = RtState::default();
 }
 
-/// 发送音频数据
+/// 傳送音訊資料
 #[tauri::command]
 pub async fn qwen_stream_send(pcm_b64: String) -> Result<(), String> {
     let event = serde_json::json!({
@@ -619,7 +619,7 @@ pub async fn qwen_stream_send(pcm_b64: String) -> Result<(), String> {
     Ok(())
 }
 
-/// 结束会话并等待最终结果
+/// 結束會話並等待最終結果
 #[tauri::command]
 pub async fn qwen_stream_finish() -> Result<String, String> {
     let finish_event = serde_json::json!({
@@ -628,7 +628,7 @@ pub async fn qwen_stream_finish() -> Result<String, String> {
     });
     let finish_payload = serde_json::to_string(&finish_event).unwrap();
 
-    // 实时模式：通过发送端发 finish，等待后台 reader 收尾
+    // 即時模式：透過傳送端發 finish，等待後台 reader 收尾
     if RT_ACTIVE.load(Ordering::SeqCst) {
         {
             let mut sink = RT_SINK.lock().await;
@@ -648,7 +648,7 @@ pub async fn qwen_stream_finish() -> Result<String, String> {
                         cleanup_realtime().await;
                         return Err(diag::fail("qwen/realtime", "recognition_error", format!("Recognition error: {}", err)));
                     }
-                    // display() = 已确定分句 + 尚未 completed 的当前句，避免丢掉最后一句
+                    // display() = 已確定分句 + 尚未 completed 的當前句，避免丟掉最後一句
                     let text = st.display();
                     drop(st);
                     cleanup_realtime().await;
@@ -666,7 +666,7 @@ pub async fn qwen_stream_finish() -> Result<String, String> {
         return Ok(text);
     }
 
-    // 普通模式：整条会话同步收结果
+    // 普通模式：整條會話同步收結果
     let mut session = SESSION.lock().await;
     let ws = session.as_mut().ok_or_else(|| diag::fail("qwen/realtime", "finish_without_session", "Session is not open".to_string()))?;
 
@@ -726,7 +726,7 @@ pub async fn qwen_stream_finish() -> Result<String, String> {
     Ok(final_text)
 }
 
-/// 关闭会话
+/// 關閉會話
 #[tauri::command]
 pub async fn qwen_stream_close() -> Result<(), String> {
     if RT_ACTIVE.load(Ordering::SeqCst) {

@@ -11,20 +11,20 @@ import { recordedPromptPresetDisplayName } from '@/i18n/displayNames'
 import { IS_MAC } from '@/lib/platform'
 
 /**
- * 主窗口标题栏。
+ * 主視窗標題欄。
  *
- * Windows：无系统边框，自绘最小化/最大化/关闭，拖拽靠 WebView2 认的 `-webkit-app-region`。
- * macOS：保留系统红绿灯（tauri.macos.conf.json 里 titleBarStyle=Overlay），左侧给它们留位，
- * 不画自己的窗口按钮；WKWebView 不认 `-webkit-app-region`，拖拽改用 Tauri 的
- * `data-tauri-drag-region`（只对带这个属性的元素本身生效，按钮照常可点）。
+ * Windows：無系統邊框，自繪最小化/最大化/關閉，拖拽靠 WebView2 認的 `-webkit-app-region`。
+ * macOS：保留系統紅綠燈（tauri.macos.conf.json 裡 titleBarStyle=Overlay），左側給它們留位，
+ * 不畫自己的視窗按鈕；WKWebView 不認 `-webkit-app-region`，拖拽改用 Tauri 的
+ * `data-tauri-drag-region`（只對帶這個屬性的元素本身生效，按鈕照常可點）。
  */
 export default function TitleBar() {
   const t = useT()
   const aiEnabled = useAiEnabled()
-  // 冷启动时 AI 初始值异步读回：就绪前开关先隐藏、不放动画，避免自己从关跳到开
+  // 冷啟動時 AI 初始值非同步讀回：就緒前開關先隱藏、不放動畫，避免自己從關跳到開
   const ready = useAiEnabledReady()
-  // 同 AppearancePage：显示与「允许过渡」必须错开一帧，否则揭开那一刻会把
-  // 开关从默认(关)到已保存(开)真的滑动一遍。
+  // 同 AppearancePage：顯示與「允許過渡」必須錯開一幀，否則揭開那一刻會把
+  // 開關從預設(關)到已儲存(開)真的滑動一遍。
   const [animate, setAnimate] = useState(false)
   useEffect(() => {
     if (!ready || animate) return
@@ -45,7 +45,7 @@ export default function TitleBar() {
       ? 'flex h-10 items-center justify-end bg-titlebar border-b select-none'
       : 'flex h-10 items-center justify-between bg-titlebar border-b select-none'}
       style={dragStyle} {...dragRegion}>
-      {/* mac：左边归系统红绿灯，图标和名字放在侧栏最上面（见 Sidebar），标题栏只留 AI 整理开关 */}
+      {/* mac：左邊歸系統紅綠燈，圖示和名字放在側欄最上面（見 Sidebar），標題欄只留 AI 整理開關 */}
       {!IS_MAC && (
         <div className="flex items-center gap-2.5 pl-3">
           <img src={appIcon} alt="SayItLocally" className="h-7 w-7" draggable={false} />
@@ -53,7 +53,7 @@ export default function TitleBar() {
         </div>
       )}
       <div className="flex items-center" {...dragRegion}>
-        {/* mac：右边留出和左侧红绿灯一样的 16px 边距，别贴着窗口圆角 */}
+        {/* mac：右邊留出和左側紅綠燈一樣的 16px 邊距，別貼著視窗圓角 */}
         <div className={IS_MAC ? 'flex items-center pr-4' : 'flex items-center pr-2'} style={noDragStyle}>
           <Tooltip content={t('titleBar.presetTooltip', { name: presetName })}>
             <button

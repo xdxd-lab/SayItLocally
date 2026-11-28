@@ -1,8 +1,8 @@
-/** 主题系统类型定义 */
+/** 主題系統型別定義 */
 
-/** 全局语义 CSS 变量 — 所有主题必须提供 */
+/** 全域性語義 CSS 變數 — 所有主題必須提供 */
 export interface ThemeVars {
-  // 基础色
+  // 基礎色
   '--background': string
   '--foreground': string
   '--card': string
@@ -22,7 +22,7 @@ export interface ThemeVars {
   '--ring': string
   '--radius': string
 
-  // 区域色
+  // 區域色
   '--sidebar-bg': string
   '--sidebar-border': string
   '--sidebar-item-active-bg': string
@@ -34,23 +34,23 @@ export interface ThemeVars {
   '--titlebar-close-hover-bg': string
   '--titlebar-close-hover-text': string
 
-  // 表单控件
+  // 表單控制元件
   '--input-bg': string
   '--input-border': string
   '--input-focus-border': string
   '--input-focus-ring': string
   '--input-placeholder': string
 
-  // 状态色
+  // 狀態色
   //
-  // 每种状态有三个变量，用途不同，别混用：
-  //   --xxx              色块本体（圆点、进度条填充、10% 淡底）
-  //   --xxx-foreground   压在色块本体上的文字
-  //   --xxx-strong       直接画在页面/卡片底色上的**文字**颜色
+  // 每種狀態有三個變數，用途不同，別混用：
+  //   --xxx              色塊本體（圓點、進度條填充、10% 淡底）
+  //   --xxx-foreground   壓在色塊本體上的文字
+  //   --xxx-strong       直接畫在頁面/卡片底色上的**文字**顏色
   //
-  // 为什么要有 -strong：--success/--warning/--info 这类中等明度的彩色在浅色主题的
-  // 白底上对比度只有 2~3.3:1，远低于正文 4.5:1 的要求（`text-warning` 那句
-  // 「模型尚未下载」曾经是全卡最不可读的一行）。-strong 是同色相压暗/提亮到达标
+  // 為什麼要有 -strong：--success/--warning/--info 這類中等明度的彩色在淺色主題的
+  // 白底上對比度只有 2~3.3:1，遠低於正文 4.5:1 的要求（`text-warning` 那句
+  // 「模型尚未下載」曾經是全卡最不可讀的一行）。-strong 是同色相壓暗/提亮到達標
   // 的版本，只用于文字与描边。
   '--success': string
   '--success-foreground': string
@@ -64,26 +64,26 @@ export interface ThemeVars {
   '--destructive-strong': string
 }
 
-/** 主题扩展变量 — 主题独有的特色变量（可选） */
+/** 主題擴充套件變數 — 主題獨有的特色變數（可選） */
 export type ThemeExtras = Record<string, string>
 
-/** 主题字体配置（可选） */
+/** 主題字型配置（可選） */
 export interface ThemeFonts {
   /** body 正文字体 */
   body?: string
-  /** 等宽字体 */
+  /** 等寬字型 */
   mono?: string
 }
 
-/** 主题定义 */
+/** 主題定義 */
 export interface ThemeDefinition {
-  /** 唯一标识 */
+  /** 唯一標識 */
   id: string
-  /** 显示名称 */
+  /** 顯示名稱 */
   name: string
-  /** 是否为暗色主题（控制 Tailwind dark: 前缀） */
+  /** 是否為暗色主題（控制 Tailwind dark: 字首） */
   isDark: boolean
-  /** 预览色（用于设置页面的主题选择器） */
+  /** 預覽色（用於設定頁面的主題選擇器） */
   previewColors: {
     bg: string
     sidebar: string
@@ -92,11 +92,11 @@ export interface ThemeDefinition {
   }
   /** 全局 CSS 变量 */
   vars: ThemeVars
-  /** 主题独有的扩展变量 */
+  /** 主題獨有的擴充套件變數 */
   extras?: ThemeExtras
-  /** 主题字体（不设置则使用全局默认字体） */
+  /** 主題字型（不設定則使用全域性預設字型） */
   fonts?: ThemeFonts
 }
 
-/** 主题 ID 类型 */
+/** 主題 ID 型別 */
 export type ThemeId = 'light' | 'dark' | 'claude'

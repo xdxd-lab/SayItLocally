@@ -1,4 +1,4 @@
-//! 系统信息：版本、物理内存、进程内存、首选语言与区域。
+//! 系統資訊：版本、實體記憶體、程序記憶體、首選語言與區域。
 
 use super::cf::{cfarray_strings, cfstring_to_string, CfOwned};
 use super::ffi::{CFLocaleCopyCurrent, CFLocaleCopyPreferredLanguages, CFLocaleGetIdentifier};
@@ -86,7 +86,7 @@ extern "C" {
     fn proc_pid_rusage(pid: i32, flavor: i32, buffer: *mut c_void) -> i32;
 }
 
-/// 进程的物理内存占用（phys_footprint，与「活动监视器」的「内存」列一致），MB。
+/// 程序的實體記憶體佔用（phys_footprint，與「活動監視器」的「記憶體」列一致），MB。
 pub fn process_memory_mb() -> u64 {
     let mut info = RusageInfoV2::default();
     let rc = unsafe { proc_pid_rusage(std::process::id() as i32, RUSAGE_INFO_V2, &mut info as *mut RusageInfoV2 as *mut c_void) };
@@ -97,9 +97,9 @@ pub fn process_memory_mb() -> u64 {
     }
 }
 
-/// 用户在「系统设置 → 通用 → 语言与地区」里排的首选语言，例如 ["zh-Hans-CN", "en-CN"]。
+/// 使用者在「系統設定 → 通用 → 語言與地區」裡排的首選語言，例如 ["zh-Hans-CN", "en-CN"]。
 ///
-/// 不能用 `LANG` 环境变量：从 Finder / Dock / 登录项启动的 App 一般没有这个变量。
+/// 不能用 `LANG` 環境變數：從 Finder / Dock / 登入項啟動的 App 一般沒有這個變數。
 pub fn preferred_languages() -> Vec<String> {
     unsafe {
         match CfOwned::from_create(CFLocaleCopyPreferredLanguages()) {
@@ -109,12 +109,12 @@ pub fn preferred_languages() -> Vec<String> {
     }
 }
 
-/// 区域格式，BCP-47 写法（`zh_CN` → `zh-CN`），对应 Windows 的 GetUserDefaultLocaleName。
+/// 區域格式，BCP-47 寫法（`zh_CN` → `zh-CN`），對應 Windows 的 GetUserDefaultLocaleName。
 pub fn locale_identifier() -> Option<String> {
     unsafe {
         let locale = CfOwned::from_create(CFLocaleCopyCurrent())?;
         let id = cfstring_to_string(CFLocaleGetIdentifier(locale.as_ptr()))?;
-        // "zh_CN@calendar=gregorian" 这类带关键字的去掉后缀
+        // "zh_CN@calendar=gregorian" 這類帶關鍵字的去掉字尾
         let base = id.split('@').next().unwrap_or(&id).replace('_', "-");
         (!base.is_empty()).then_some(base)
     }

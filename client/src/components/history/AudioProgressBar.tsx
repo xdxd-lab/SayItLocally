@@ -3,10 +3,10 @@ import { formatElapsed, type RecordingPlayback } from './useRecordingPlayback'
 const PLAYBACK_RATES = [0.75, 1, 1.5, 2, 2.5]
 
 /**
- * 录音进度条 + 倍速。历史记录列表和「纠正识别」面板共用。
+ * 錄音進度條 + 倍速。歷史記錄列表和「糾正識別」面板共用。
  *
- * 真正的 <input type=range> 是透明的、叠在自绘的细线和圆点上面 ——
- * 原生 range 的样式在 WebView2 里没法调到这个细度，但键盘可达性要靠它。
+ * 真正的 <input type=range> 是透明的、疊在自繪的細線和圓點上面 ——
+ * 原生 range 的樣式在 WebView2 裡沒法調到這個細度，但鍵盤可達性要靠它。
  */
 export function AudioProgressBar({ playback, className = '' }: { playback: RecordingPlayback; className?: string }) {
   const { currentTime, duration, playbackRate, progress, seek, changeRate } = playback

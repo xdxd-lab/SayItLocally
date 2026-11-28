@@ -13,11 +13,11 @@ import BrandBanner from '@/components/BrandBanner'
 // import NoticeBanner from '@/components/NoticeBanner'
 
 /**
- * 把带 `{key}` 占位的文案渲染成「文字 + 键帽 + 文字」。
+ * 把帶 `{key}` 佔位的文案渲染成「文字 + 鍵帽 + 文字」。
  *
- * 不能把整句塞进一个 t() 就完事：键帽是个带样式的 <span>，而中英文里键帽出现的
- * 位置不同（"按下 X 开始…" vs "Press X to start…"）。按占位符切分，位置就由
- * 译文自己决定，不用为每种语言各写一份 JSX。
+ * 不能把整句塞進一個 t() 就完事：鍵帽是個帶樣式的 <span>，而中英文裡鍵帽出現的
+ * 位置不同（"按下 X 開始…" vs "Press X to start…"）。按佔位符切分，位置就由
+ * 譯文自己決定，不用為每種語言各寫一份 JSX。
  */
 function WithKeyChip({ template, keyLabel, chipClassName }: {
   template: string
@@ -42,15 +42,15 @@ export default function Home() {
   useEffect(() => {
     const loadStats = () => getStats().then(setStats)
     void loadStats()
-    // 累计统计由 Rust 在写入/删除历史记录的同一事务里更新，事件在写完之后才发，
-    // 收到时读到的就是新值。以前只在挂载时读一次：主窗口停在首页、或从托盘重新打开
-    // （页面不会重新挂载）时，口述完数字一直不动，要切走再切回来才更新。
+    // 累計統計由 Rust 在寫入/刪除歷史記錄的同一事務裡更新，事件在寫完之後才發，
+    // 收到時讀到的就是新值。以前只在掛載時讀一次：主視窗停在首頁、或從托盤重新開啟
+    // （頁面不會重新掛載）時，口述完數字一直不動，要切走再切回來才更新。
     const unlistenHistory = listen('history-updated', () => { void loadStats() })
 
     const loadHandsFreeKey = () =>
       getSetting('shortcutHandsFree', 'AltRight').then((value) => setHandsFreeKey(value as string))
     void loadHandsFreeKey()
-    // 快捷键变化时（向导 / 设置页修改）实时刷新首页提示，无需切换路由
+    // 快捷鍵變化時（嚮導 / 設定頁修改）即時重新整理首頁提示，無需切換路由
     window.addEventListener(SHORTCUTS_CHANGED_EVENT, loadHandsFreeKey)
     return () => {
       window.removeEventListener(SHORTCUTS_CHANGED_EVENT, loadHandsFreeKey)

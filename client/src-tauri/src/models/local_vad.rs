@@ -1,9 +1,9 @@
-//! 本地 ASR 前置语音检测。
+//! 本地 ASR 前置語音檢測。
 //!
-//! Qwen3-ASR 这类生成式模型遇到纯静音或环境底噪时，可能生成并不存在的文字。
-//! 这里参考 Handy 的做法，用独立的 Silero VAD 在推理前确认音频里确实有人声。
-//! 与 Handy 不同的是，我们只用 VAD 确定首尾边界，保留句子中间的停顿；历史记录
-//! 保存的也仍然是未经裁剪的原始录音。
+//! Qwen3-ASR 這類生成式模型遇到純靜音或環境底噪時，可能生成並不存在的文字。
+//! 這裡參考 Handy 的做法，用獨立的 Silero VAD 在推理前確認音訊裡確實有人聲。
+//! 與 Handy 不同的是，我們只用 VAD 確定首尾邊界，保留句子中間的停頓；歷史記錄
+//! 儲存的也仍然是未經裁剪的原始錄音。
 
 use std::ops::Range;
 
@@ -11,21 +11,21 @@ use silero_vad_crs::{
     get_timestamps_from_probs_with_config, SileroVad, TimestampConfig,
 };
 
-/// 与 Handy 一致使用较宽松的 0.3，优先避免漏掉轻声说话。
+/// 與 Handy 一致使用較寬鬆的 0.3，優先避免漏掉輕聲說話。
 const SPEECH_THRESHOLD: f32 = 0.3;
-/// 过滤总时长不足约 60ms 的候选语音段，抑制短促点击声和提示音。
-/// 这与 Handy 的“连续两帧起声”目标相同，但 Silero 时间戳算法带滞回，行为并非逐帧等价。
+/// 過濾總時長不足約 60ms 的候選語音段，抑制短促點選聲和提示音。
+/// 這與 Handy 的“連續兩幀起聲”目標相同，但 Silero 時間戳演算法帶滯回，行為並非逐幀等價。
 const MIN_SPEECH_MS: usize = 60;
-/// 至少持续 450ms 的非语音才切分语音段，减少短暂停顿导致的误切分。
+/// 至少持續 450ms 的非語音才切分語音段，減少短暫停頓導致的誤切分。
 const MIN_SILENCE_MS: usize = 450;
-/// 起止各留约 450ms，避免切掉辅音、轻声开头和句尾。
+/// 起止各留約 450ms，避免切掉子音、輕聲開頭和句尾。
 const SPEECH_PAD_MS: usize = 450;
 
-/// 返回每一段人声（已含首尾留白），按时间排序、互不重叠。
+/// 返回每一段人聲（已含首尾留白），按時間排序、互不重疊。
 ///
-/// 空列表明确表示没有检测到人声，调用方应跳过 ASR；`Err` 表示无法可靠判断是否
-/// 有人声，为避免生成式模型对静音产生幻觉，调用方也必须停止本次 ASR。
-/// 交给模型前再经 `plan_chunks` 拼块：短录音就是首段开头到末段结尾一整块。
+/// 空列表明確表示沒有檢測到人聲，呼叫方應跳過 ASR；`Err` 表示無法可靠判斷是否
+/// 有人聲，為避免生成式模型對靜音產生幻覺，呼叫方也必須停止本次 ASR。
+/// 交給模型前再經 `plan_chunks` 拼塊：短錄音就是首段開頭到末段結尾一整塊。
 pub fn detect_speech_segments(
     samples: &[f32],
     sample_rate: usize,
@@ -71,7 +71,7 @@ pub fn detect_speech_segments(
     Ok(ranges)
 }
 
-/// 截到音频长度以内、丢掉空段、按起点排序，并把重叠或首尾相接的段合并。
+/// 截到音訊長度以內、丟掉空段、按起點排序，並把重疊或首尾相接的段合併。
 /// 加了留白之后相邻两段可能互相覆盖，后面切块要求段与段之间不重叠。
 fn normalize_segments(
     segments: impl IntoIterator<Item = Range<usize>>,
@@ -93,20 +93,20 @@ fn normalize_segments(
     merged
 }
 
-/// 把人声段拼成一块块不超过 `max_len` 个采样的识别块，切口落在停顿上。
+/// 把人聲段拼成一塊塊不超過 `max_len` 個取樣的識別塊，切口落在停頓上。
 ///
-/// 为什么要切：模型一次吃整段长录音，交给显卡的单个任务会随长度变长（Qwen3-ASR
-/// 的注意力计算随长度平方增长，实测 1.7B 在集成显卡上 30 s 的录音 0.18 倍时长，
-/// 102 s 就到了 0.29 倍）。一个任务超过 Windows 显卡看门狗的 2 秒，显卡就被重置
-/// （LiveKernelEvent 141，Vulkan 报 DeviceLost），本次和之后的本地识别全部失败。
-/// 2026-10-19 一条 220 秒的录音就是这样把显卡搞挂的。
+/// 為什麼要切：模型一次吃整段長錄音，交給顯示卡的單個任務會隨長度變長（Qwen3-ASR
+/// 的注意力計算隨長度平方增長，實測 1.7B 在整合顯示卡上 30 s 的錄音 0.18 倍時長，
+/// 102 s 就到了 0.29 倍）。一個任務超過 Windows 顯示卡看門狗的 2 秒，顯示卡就被重置
+/// （LiveKernelEvent 141，Vulkan 報 DeviceLost），本次和之後的本地識別全部失敗。
+/// 2026-10-19 一條 220 秒的錄音就是這樣把顯示卡搞掛的。
 ///
-/// 规则：
-/// - 相邻人声段贪心地并进同一块，块内的短停顿原样保留（短录音结果与切块之前
-///   只裁首尾时一致：总长不超过上限时只有一块，就是首段开头到末段结尾）；
-/// - 两块之间的长停顿直接丢掉，那里本来就是静音；
-/// - 单独一段话就超过上限（一口气说了很久、中间没有 0.45 s 以上的停顿）时，
-///   在这一块的后三分之一里找最安静的 100 ms 切开，找不到更好的位置才硬切。
+/// 規則：
+/// - 相鄰人聲段貪心地並進同一塊，塊內的短停頓原樣保留（短錄音結果與切塊之前
+///   只裁首尾時一致：總長不超過上限時只有一塊，就是首段開頭到末段結尾）；
+/// - 兩塊之間的長停頓直接丟掉，那裡本來就是靜音；
+/// - 單獨一段話就超過上限（一口氣說了很久、中間沒有 0.45 s 以上的停頓）時，
+///   在這一塊的後三分之一里找最安靜的 100 ms 切開，找不到更好的位置才硬切。
 pub fn plan_chunks(samples: &[f32], segments: &[Range<usize>], max_len: usize) -> Vec<Range<usize>> {
     let segments = normalize_segments(segments.iter().cloned(), samples.len());
     if max_len == 0 {
@@ -135,7 +135,7 @@ pub fn plan_chunks(samples: &[f32], segments: &[Range<usize>], max_len: usize) -
     out
 }
 
-/// 一段连续人声超过上限时，在 [上限的 2/3, 上限] 里找最安静的 100 ms 切开。
+/// 一段連續人聲超過上限時，在 [上限的 2/3, 上限] 裡找最安靜的 100 ms 切開。
 fn split_overlong(samples: &[f32], chunk: Range<usize>, max_len: usize, out: &mut Vec<Range<usize>>) {
     const FRAME: usize = 1600; // 16 kHz 下 100 ms
     let mut start = chunk.start;
@@ -195,7 +195,7 @@ mod tests {
     #[test]
     fn short_transient_noise_is_rejected() {
         let mut audio = vec![0.0; SR];
-        // 模拟一次约 32ms 的敲击/提示音；不应满足持续人声条件。
+        // 模擬一次約 32ms 的敲擊/提示音；不應滿足持續人聲條件。
         for (i, sample) in audio[SR / 2..SR / 2 + 512].iter_mut().enumerate() {
             let t = i as f32 / SR as f32;
             *sample = 0.4 * (2.0 * std::f32::consts::PI * 1_500.0 * t).sin();
@@ -221,11 +221,11 @@ mod tests {
         );
     }
 
-    const S: usize = SR; // 一秒的采样数，读起来更直观
+    const S: usize = SR; // 一秒的取樣數，讀起來更直觀
 
     #[test]
     fn short_audio_stays_one_chunk_with_its_pauses() {
-        // 总跨度 20 s < 30 s：一块，从首段开头到末段结尾，中间的停顿保留
+        // 總跨度 20 s < 30 s：一塊，從首段開頭到末段結尾，中間的停頓保留
         let audio = vec![0.1; 25 * S];
         let segments = vec![S..5 * S, 8 * S..12 * S, 15 * S..21 * S];
         assert_eq!(plan_chunks(&audio, &segments, 30 * S), vec![S..21 * S]);
@@ -233,14 +233,14 @@ mod tests {
 
     #[test]
     fn long_audio_is_cut_at_pauses_and_every_chunk_fits() {
-        // 220 s：每 10 s 一段话、段间 2 s 停顿
+        // 220 s：每 10 s 一段話、段間 2 s 停頓
         let audio = vec![0.1; 220 * S];
         let segments: Vec<_> = (0..18).map(|i| (i * 12) * S..(i * 12 + 10) * S).collect();
         let chunks = plan_chunks(&audio, &segments, 30 * S);
         assert!(chunks.len() >= 8, "220 s 应该切成多块，实际 {}", chunks.len());
         for c in &chunks {
             assert!(c.end - c.start <= 30 * S, "块超长：{:?}", c);
-            // 切口都落在某段话的边界上，不会把话切成两半
+            // 切口都落在某段話的邊界上，不會把話切成兩半
             assert!(segments.iter().any(|s| s.start == c.start));
             assert!(segments.iter().any(|s| s.end == c.end));
         }
@@ -252,7 +252,7 @@ mod tests {
 
     #[test]
     fn one_long_breathless_segment_is_split_at_its_quietest_point() {
-        // 一口气说 70 s，中间 45~45.1 s 有一处很轻的地方，没到 VAD 认定的停顿
+        // 一口氣說 70 s，中間 45~45.1 s 有一處很輕的地方，沒到 VAD 認定的停頓
         let mut audio = vec![0.3; 70 * S];
         for s in &mut audio[45 * S..45 * S + 1600] {
             *s = 0.01;
@@ -261,11 +261,11 @@ mod tests {
         assert!(chunks.iter().all(|c| c.end - c.start <= 30 * S), "{chunks:?}");
         assert_eq!(chunks.first().unwrap().start, 0);
         assert_eq!(chunks.last().unwrap().end, 70 * S);
-        // 首尾相接，没有丢音频
+        // 首尾相接，沒有丟音訊
         for pair in chunks.windows(2) {
             assert_eq!(pair[0].end, pair[1].start);
         }
-        // 搜索窗是每块的 [20 s, 30 s]。安静点落在搜索窗里时，必须正好切在那 100 ms 的中间
+        // 搜尋窗是每塊的 [20 s, 30 s]。安靜點落在搜尋窗裡時，必須正好切在那 100 ms 的中間
         let mut audio2 = vec![0.3; 50 * S];
         for s in &mut audio2[25 * S..25 * S + 1600] {
             *s = 0.01;
@@ -278,7 +278,7 @@ mod tests {
     fn overlapping_padded_segments_are_merged() {
         let audio = vec![0.1; 10 * S];
         let chunks = plan_chunks(&audio, &[3 * S..6 * S, S..4 * S, 9 * S..12 * S], 30 * S);
-        // 截到音频长度、合并重叠，再并成一块
+        // 截到音訊長度、合併重疊，再併成一塊
         assert_eq!(chunks, vec![S..10 * S]);
     }
 
@@ -294,7 +294,7 @@ mod tests {
         audio.extend_from_slice(&speech[half..]);
         audio.extend(std::iter::repeat(0.0).take(SR));
 
-        // 走生产路径：分段 → 拼块。几秒的录音只有一块，句中 2 s 的停顿留在块里
+        // 走生產路徑：分段 → 拼塊。幾秒的錄音只有一塊，句中 2 s 的停頓留在塊裡
         let segments = detect_speech_segments(&audio, SR).unwrap();
         assert!(!segments.is_empty(), "前后两段真实语音应被检测到");
         let chunks = plan_chunks(&audio, &segments, 30 * SR);

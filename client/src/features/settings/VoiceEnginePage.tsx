@@ -1,4 +1,4 @@
-// 语音引擎设置页面 — 工作模式 + ASR 识别服务配置 + 识别测试
+// 語音引擎設定頁面 — 工作模式 + ASR 識別服務配置 + 識別測試
 
 import { useEffect, useState } from 'react'
 import { ChevronDown } from 'lucide-react'
@@ -16,8 +16,8 @@ import { PageTitle } from '@/components/ui/info-tip'
 export default function VoiceEnginePage() {
   const t = useT()
   const [workMode, setWorkMode] = useState<WorkMode>(getWorkMode)
-  // 本地模式的次级设置默认收起。原来这 4 张卡与"选模型"完全等权地平铺在一起，
-  // 本地模式一屏 7 个同级标题、27 个控件，用户没法判断哪几个是必须做的。
+  // 本地模式的次級設定預設收起。原來這 4 張卡與"選模型"完全等權地平鋪在一起，
+  // 本地模式一屏 7 個同級標題、27 個控制元件，使用者沒法判斷哪幾個是必須做的。
   const [advancedOpen, setAdvancedOpen] = useState(false)
 
   useEffect(() => {
@@ -25,8 +25,8 @@ export default function VoiceEnginePage() {
   }, [])
 
   const handleWorkModeChange = async (mode: WorkMode) => {
-    // 换模式会整体替换下方的配置卡，上一套里没保存的输入随之消失——脏标记要跟着清，
-    // 否则「识别测试」会一直以为有未保存的改动
+    // 換模式會整體替換下方的配置卡，上一套裡沒儲存的輸入隨之消失——髒標記要跟著清，
+    // 否則「識別測試」會一直以為有未儲存的改動
     setEngineDraftDirty(false)
     mode = 'local' // [自訂 local-only]
     setWorkMode(mode)
@@ -34,7 +34,7 @@ export default function VoiceEnginePage() {
     await switchProvider(mode)
     await refreshRecorderSettings()
     reconnectProvider()
-    void refreshModeStatus() // 同步左下角的引擎指示与右上角的就绪徽标
+    void refreshModeStatus() // 同步左下角的引擎指示與右上角的就緒徽標
   }
 
   return (
@@ -44,7 +44,7 @@ export default function VoiceEnginePage() {
       <div className="space-y-6">
         <WorkModeSection value={workMode} onChange={(m) => void handleWorkModeChange(m)} />
 
-        {/* id 供「工作模式」右上角的「待配置」徽标点击后滚动定位 */}
+        {/* id 供「工作模式」右上角的「待配置」徽標點選後滾動定位 */}
         <div id="engine-config" className="space-y-6">
           {workMode === 'local' && <LocalModeSection />}
         </div>

@@ -12,58 +12,58 @@ import {
 const MIC_MUTED_AUTO_CANCEL_MS = 3000
 const SILENCE_RMS_THRESHOLD = 0.01
 
-/** MicLevelMonitor 要从编排器拿的东西：只读的录音状态，加一个「静音超时就取消」的动作。 */
+/** MicLevelMonitor 要從編排器拿的東西：只讀的錄音狀態，加一個「靜音超時就取消」的動作。 */
 export interface MicLevelHost {
   overlay: OverlayService
   isRunCurrent(runId: number): boolean
   getState(): RecorderState
-  /** startRecording 还在初始化（state 仍是 idle）。 */
+  /** startRecording 還在初始化（state 仍是 idle）。 */
   isStarting(): boolean
   getActiveRunId(): number
   getSelectedMicId(): string
   cancelForMutedMic(runId: number): void
-  /** 本次录音打开的是虚拟设备时返回 true（用于把「未检测到声音」说得更具体）。拿不准返回 false。 */
+  /** 本次錄音開啟的是虛擬裝置時返回 true（用於把「未檢測到聲音」說得更具體）。拿不準返回 false。 */
   isActiveMicVirtual?(): boolean
-  /** 本次录音第一次确认听到正常人声时调用一次。 */
+  /** 本次錄音第一次確認聽到正常人聲時呼叫一次。 */
   onVoiceDetected?(): void
 }
 
 /**
- * 录音时的麦克风电平：音量两档提醒、系统静音标志的裁决、本次录音的音频统计。
- * 从 RecorderOrchestrator 拆出（模块 6），行为不变。
+ * 錄音時的麥克風電平：音量兩檔提醒、系統靜音標誌的裁決、本次錄音的音訊統計。
+ * 從 RecorderOrchestrator 拆出（模組 6），行為不變。
  */
 export class MicLevelMonitor {
-  /** 系统确认麦克风静音后的自动取消计时器，避免悬浮窗无限停留。 */
+  /** 系統確認麥克風靜音後的自動取消計時器，避免懸浮窗無限停留。 */
   private micMutedAutoCancelId: ReturnType<typeof setTimeout> | null = null
-  /** 静音探测代次：实际打开设备的复核必须覆盖较早发起的预检查结果。 */
+  /** 靜音探測代次：實際開啟裝置的複核必須覆蓋較早發起的預檢查結果。 */
   private micMuteProbeSequence = 0
-  /** 连续「非正常音量」（静音或偏低）的采样数 */
+  /** 連續「非正常音量」（靜音或偏低）的取樣數 */
   private consecutiveSilentSamples = 0
-  /** 当前连续非正常音量的采样数，仅用于判断正常说话候选之间的间隔。 */
+  /** 當前連續非正常音量的取樣數，僅用於判斷正常說話候選之間的間隔。 */
   private consecutiveNonVoicedSamples = 0
-  /** 当前这段安静里是否出现过任何非零采样。
-   * 只要为真，就只能提示「请靠近麦克风」，不能提示「未检测到声音」。 */
+  /** 當前這段安靜裡是否出現過任何非零取樣。
+   * 只要為真，就只能提示「請靠近麥克風」，不能提示「未檢測到聲音」。 */
   private quietRunSawSignal = false
-  /** 连续正常音量的采样数——用于「持续说话一段时间才清除警告」的迟滞判断，避免瞬时小声音把警告瞬间清掉造成闪烁 */
+  /** 連續正常音量的取樣數——用於「持續說話一段時間才清除警告」的遲滯判斷，避免瞬時小聲音把警告瞬間清掉造成閃爍 */
   private consecutiveVoicedSamples = 0
-  /** 悬浮窗当前正在显示的音量类警告 */
+  /** 懸浮窗當前正在顯示的音量類警告 */
   private currentVolumeWarning: 'none' | 'muted' | 'low' = 'none'
-  /** 本次录音是否已经听到过一次正常音量的说话。一旦听到过，说明麦克风正常，
-   *  后续安静只是正常停顿思考——只给温和「请靠近麦克风」，绝不再报「未检测到声音」造成惊吓。 */
+  /** 本次錄音是否已經聽到過一次正常音量的說話。一旦聽到過，說明麥克風正常，
+   *  後續安靜只是正常停頓思考——只給溫和「請靠近麥克風」，絕不再報「未檢測到聲音」造成驚嚇。 */
   private hasDetectedVoiceThisSession = false
   private lastLowVolumeWarnAt = 0
-  /** 麦克风被静音已被「系统标志 + 音频信号」双重证实。为真时悬浮窗显示红色高警，
-   *  并抑制基于信号的琥珀提醒，直到检测到真实说话（用户中途取消了静音）。 */
+  /** 麥克風被靜音已被「系統標誌 + 音訊訊號」雙重證實。為真時懸浮窗顯示紅色高警，
+   *  並抑制基於訊號的琥珀提醒，直到檢測到真實說話（使用者中途取消了靜音）。 */
   private osMicMuted = false
-  /** 系统报了「端点被静音」，但还没被音频信号证实。
+  /** 系統報了「端點被靜音」，但還沒被音訊訊號證實。
    *
-   *  为什么不能直接相信系统：IAudioEndpointVolume::GetMute 反映的是端点上的静音**设置**，
-   *  不等于采集流真被切断。实测 Plantronics Blackwire 5220 USB 耳麦（软/硬静音会与 Windows
-   *  端点标志同步）会停在 GetMute=true，而 getUserMedia 照常收到正常音量的音频 —— 于是每次
-   *  按热键都先弹一次红色高警「麦克风已被静音」，说话 0.5s 后又自己消失。
-   *  所以这个标志只当线索：必须等 PCM 证实真的全 0 才升级成 osMicMuted。 */
+   *  為什麼不能直接相信系統：IAudioEndpointVolume::GetMute 反映的是端點上的靜音**設定**，
+   *  不等於採集流真被切斷。實測 Plantronics Blackwire 5220 USB 耳麥（軟/硬靜音會與 Windows
+   *  端點標誌同步）會停在 GetMute=true，而 getUserMedia 照常收到正常音量的音訊 —— 於是每次
+   *  按熱鍵都先彈一次紅色高警「麥克風已被靜音」，說話 0.5s 後又自己消失。
+   *  所以這個標誌只當線索：必須等 PCM 證實真的全 0 才升級成 osMicMuted。 */
   private pendingOsMicMuted = false
-  /** pending 期间累计的全 0 采样数，达到 OS_MIC_MUTE_CONFIRM_SAMPLES 才确认。 */
+  /** pending 期間累計的全 0 取樣數，達到 OS_MIC_MUTE_CONFIRM_SAMPLES 才確認。 */
   private pendingOsMicMutedSamples = 0
 
   /** Audio stats tracking */
@@ -75,7 +75,7 @@ export class MicLevelMonitor {
 
   constructor(private readonly host: MicLevelHost) { }
 
-  /** 录音一开始（显示悬浮窗之前）就清掉上一次的静音线索。与 resetLevels 分开：两次中间夹着异步的静音预检查。 */
+  /** 錄音一開始（顯示懸浮窗之前）就清掉上一次的靜音線索。與 resetLevels 分開：兩次中間夾著非同步的靜音預檢查。 */
   resetMuteState() {
     this.clearAutoCancelTimer()
     this.osMicMuted = false
@@ -83,7 +83,7 @@ export class MicLevelMonitor {
     this.pendingOsMicMutedSamples = 0
   }
 
-  /** 取完录音上下文、开始采集之前清掉统计和音量提醒。 */
+  /** 取完錄音上下文、開始採集之前清掉統計和音量提醒。 */
   resetLevels() {
     this.statsRmsSum = 0
     this.statsPeakRms = 0
@@ -100,8 +100,8 @@ export class MicLevelMonitor {
   }
 
   /**
-   * 回到空闲时清提醒和静音线索，**不清音频统计**：超时宽限期里判断「有没有静音实证」
-   * 还要用到这一段的统计，下一次 resetLevels 才清。
+   * 回到空閒時清提醒和靜音線索，**不清音訊統計**：超時寬限期裡判斷「有沒有靜音實證」
+   * 還要用到這一段的統計，下一次 resetLevels 才清。
    */
   resetOnIdle() {
     this.consecutiveSilentSamples = 0
@@ -116,7 +116,7 @@ export class MicLevelMonitor {
     this.pendingOsMicMutedSamples = 0
   }
 
-  /** 让已发出的静音查询作废（录音结束、清理时）。 */
+  /** 讓已發出的靜音查詢作廢（錄音結束、清理時）。 */
   invalidateProbes() {
     this.micMuteProbeSequence++
   }
@@ -125,10 +125,10 @@ export class MicLevelMonitor {
     return ++this.micMuteProbeSequence
   }
 
-  /** 每一帧 PCM 调一次：累计统计并推进音量提醒。 */
+  /** 每一幀 PCM 調一次：累計統計並推進音量提醒。 */
   onFrame(pcmFrame: Int16Array) {
-    // 计算本帧 RMS 与峰值幅度（均归一化到 0..1）。峰值严格为 0 才表示整帧没有输入；
-    // 只要存在任何非零采样，就必须和「未检测到声音」区分开。
+    // 計算本幀 RMS 與峰值幅度（均歸一化到 0..1）。峰值嚴格為 0 才表示整幀沒有輸入；
+    // 只要存在任何非零取樣，就必須和「未檢測到聲音」區分開。
     let sum = 0
     let framePeakRaw = 0
     for (let i = 0; i < pcmFrame.length; i++) {
@@ -147,11 +147,11 @@ export class MicLevelMonitor {
     if (framePeak > this.statsPeakAmplitude) this.statsPeakAmplitude = framePeak
     if (rms < SILENCE_RMS_THRESHOLD) this.statsSilentFrames++
 
-    // 两档提醒：静音（未检测到声音）/ 偏低（请靠近麦克风）
+    // 兩檔提醒：靜音（未檢測到聲音）/ 偏低（請靠近麥克風）
     this.updateVolumeWarning(classifyMicLevel(rms, framePeak), pcmFrame.length)
   }
 
-  /** 随 stop 发给服务端、并写进日志的统计。没收到过帧时为 undefined。 */
+  /** 隨 stop 發給服務端、並寫進日誌的統計。沒收到過幀時為 undefined。 */
   summary() {
     return this.statsTotalFrames > 0 ? {
       avgRms: Math.round((this.statsRmsSum / this.statsTotalFrames) * 10000) / 10000,
@@ -167,14 +167,14 @@ export class MicLevelMonitor {
   }
 
   /**
-   * 这段录音是否有「确实没有可用语音」的实测证据。
+   * 這段錄音是否有「確實沒有可用語音」的實測證據。
    *
-   * 为什么要证据：「未检测到有效声音」是全软件最容易被误读的一句话，它会把用户直接
-   * 引去查麦克风。而同一句话背后的真实成因可能是额度耗尽、服务端提前断开、热词回显
-   * 被判定清空（见 pitfalls 15）。没有证据时就该说「没有取得识别结果」，别替用户
-   * 下结论。
+   * 為什麼要證據：「未檢測到有效聲音」是全軟體最容易被誤讀的一句話，它會把使用者直接
+   * 引去查麥克風。而同一句話背後的真實成因可能是額度耗盡、服務端提前斷開、熱詞回顯
+   * 被判定清空（見 pitfalls 15）。沒有證據時就該說「沒有取得識別結果」，別替使用者
+   * 下結論。
    *
-   * 判据本身抽到了 helpers.ts（纯函数，带单测钉住"两个条件必须同时成立"那一刀）。
+   * 判據本身抽到了 helpers.ts（純函式，帶單測釘住"兩個條件必須同時成立"那一刀）。
    */
   hasSilenceEvidence(): boolean {
     return hasSilenceEvidence({
@@ -204,8 +204,8 @@ export class MicLevelMonitor {
       this.micMutedAutoCancelId = null
       if (!this.host.isRunCurrent(runId) || !this.osMicMuted) return
       if (this.host.getState() === 'idle' && this.host.isStarting()) {
-        // 防御：这个计时器现在只在收到音频帧后才排，理论上必定已在 recording。
-        // 万一将来又从「采集就绪前」的路径调用，也不要在这里直接放弃。
+        // 防禦：這個計時器現在只在收到音訊幀後才排，理論上必定已在 recording。
+        // 萬一將來又從「採集就緒前」的路徑呼叫，也不要在這裡直接放棄。
         this.micMutedAutoCancelId = setTimeout(closeWhenReady, 100)
         return
       }
@@ -219,12 +219,12 @@ export class MicLevelMonitor {
     this.micMutedAutoCancelId = setTimeout(closeWhenReady, MIC_MUTED_AUTO_CANCEL_MS)
   }
 
-  /** 在采集链路初始化前查询系统静音状态；默认设备不经过可能很慢的设备枚举。 */
+  /** 在採集鏈路初始化前查詢系統靜音狀態；預設裝置不經過可能很慢的裝置列舉。 */
   async checkConfiguredMicMuted(runId: number) {
-    // 在任何异步操作之前占用代次；之后发起的实际设备复核可以可靠淘汰本次预检查。
+    // 在任何非同步操作之前佔用代次；之後發起的實際裝置複核可以可靠淘汰本次預檢查。
     const probeSequence = ++this.micMuteProbeSequence
-    // 空值与 Web Media 的 "default" 都表示跟随 Windows 当前默认录音端点。
-    // 直接把 null 交给原生层查询该端点的 GetMute；deviceId 只用于定位，不参与静音判定。
+    // 空值與 Web Media 的 "default" 都表示跟隨 Windows 當前預設錄音端點。
+    // 直接把 null 交給原生層查詢該端點的 GetMute；deviceId 只用於定位，不參與靜音判定。
     if (!this.host.getSelectedMicId() || this.host.getSelectedMicId() === 'default') {
       await this.checkMicMuted(null, runId, probeSequence)
       return
@@ -237,35 +237,35 @@ export class MicLevelMonitor {
       const selected = inputs.find((device) => device.deviceId === this.host.getSelectedMicId())
 
       const label = selected?.label?.trim() || ''
-      // 指定设备却无法取得名称时不能回退查系统默认端点，否则可能把另一支麦克风的状态报过来。
+      // 指定裝置卻無法取得名稱時不能回退查系統預設端點，否則可能把另一支麥克風的狀態報過來。
       if (!label) return
       await this.checkMicMuted(label, runId, probeSequence)
     } catch {
-      // 预检查失败不影响录音；采集真正打开后还会用 MediaStreamTrack.label 再复核一次。
+      // 預檢查失敗不影響錄音；採集真正開啟後還會用 MediaStreamTrack.label 再複核一次。
     }
   }
 
   /**
-   * 录音时的音量提醒状态机（两档）：
-   *  - muted（PCM 全 0）：麦克风没有任何输入 → 「未检测到声音」
-   *  - low （有声音但 RMS 偏低）：距离远 / 说太小声 → 「请靠近麦克风」
-   *  - voiced（正常）：连续约 0.5s 即认定恢复，清除提醒
+   * 錄音時的音量提醒狀態機（兩檔）：
+   *  - muted（PCM 全 0）：麥克風沒有任何輸入 → 「未檢測到聲音」
+   *  - low （有聲音但 RMS 偏低）：距離遠 / 說太小聲 → 「請靠近麥克風」
+   *  - voiced（正常）：連續約 0.5s 即認定恢復，清除提醒
    *
-   * 关键准确性约束：「未检测到声音」只在「从录音开始就没听到过正常说话，且这整段安静里
-   * 每个采样都为 0」时才报；任何非零输入都只能算声音小。这样也避免把说话后的正常停顿
-   * 思考误判成设备故障（那种情况只温和提示「请靠近麦克风」）。
-   * 计时/迟滞沿用原逻辑：没听到过说话时更早提醒（2s），
-   * 听到过后放宽（5s）；同档每 5s 重弹；连续正常音量 0.5s 才清警告，避免瞬时小声闪烁。
+   * 關鍵準確性約束：「未檢測到聲音」只在「從錄音開始就沒聽到過正常說話，且這整段安靜裡
+   * 每個取樣都為 0」時才報；任何非零輸入都只能算聲音小。這樣也避免把說話後的正常停頓
+   * 思考誤判成裝置故障（那種情況只溫和提示「請靠近麥克風」）。
+   * 計時/遲滯沿用原邏輯：沒聽到過說話時更早提醒（2s），
+   * 聽到過後放寬（5s）；同檔每 5s 重彈；連續正常音量 0.5s 才清警告，避免瞬時小聲閃爍。
    */
   private updateVolumeWarning(level: MicLevel, sampleCount: number) {
     const REWARN_MS = 5000
-    const CLEAR_VOICED = 8000 // ~0.5s @16kHz 累计正常音量才清除
-    const VOICED_GAP_TOLERANCE = 4800 // ~300ms：容忍说话中字与字之间的短暂停顿，不清零已累计的清除进度
+    const CLEAR_VOICED = 8000 // ~0.5s @16kHz 累計正常音量才清除
+    const VOICED_GAP_TOLERANCE = 4800 // ~300ms：容忍說話中字與字之間的短暫停頓，不清零已累計的清除進度
     const firstWarn = this.hasDetectedVoiceThisSession ? 80000 : 32000 // 5s / 2s @16kHz
 
-    // 系统报了端点静音，但那只是设置标志，不代表采集流真被切断（见 pendingOsMicMuted）。
-    // 用真实 PCM 裁决：全 0 累计到阈值才升级成红色高警；一旦出现任何非零采样，
-    // 就说明这块设备的 mute 标志不作数，本次录音永久丢弃这条线索。
+    // 系統報了端點靜音，但那只是設定標誌，不代表採集流真被切斷（見 pendingOsMicMuted）。
+    // 用真實 PCM 裁決：全 0 累計到閾值才升級成紅色高警；一旦出現任何非零取樣，
+    // 就說明這塊裝置的 mute 標誌不作數，本次錄音永久丟棄這條線索。
     if (this.pendingOsMicMuted) {
       const decision = judgeOsMicMute(this.pendingOsMicMutedSamples, level, sampleCount)
       if (decision.verdict === 'confirmed') {
@@ -284,8 +284,8 @@ export class MicLevelMonitor {
       }
     }
 
-    // 系统已确认被静音：保持红色高警，不让琥珀提醒覆盖它；
-    // 一旦收到真实说话（用户中途取消了静音）立即恢复正常。
+    // 系統已確認被靜音：保持紅色高警，不讓琥珀提醒覆蓋它；
+    // 一旦收到真實說話（使用者中途取消了靜音）立即恢復正常。
     if (this.osMicMuted) {
       if (level === 'voiced') {
         this.consecutiveVoicedSamples += sampleCount
@@ -309,7 +309,7 @@ export class MicLevelMonitor {
     }
 
     if (level === 'voiced') {
-      // 即使还不足 0.5s、尚未确认恢复正常，也已经证明输入不为零。
+      // 即使還不足 0.5s、尚未確認恢復正常，也已經證明輸入不為零。
       this.quietRunSawSignal = true
       this.consecutiveVoicedSamples += sampleCount
       this.consecutiveNonVoicedSamples = 0
@@ -325,23 +325,23 @@ export class MicLevelMonitor {
       return
     }
 
-    // 非正常音量（muted / low）：累计安静时长；任何非零输入都永久标记本段并非「无声音」。
+    // 非正常音量（muted / low）：累計安靜時長；任何非零輸入都永久標記本段並非「無聲音」。
     this.consecutiveSilentSamples += sampleCount
     this.consecutiveNonVoicedSamples += sampleCount
     if (level === 'low') this.quietRunSawSignal = true
-    // 说话时字与字之间的短暂停顿（<~300ms）不清零已累计的正常音量，否则一句话里的自然
-    // 停顿会反复把"清除进度"打回 0，导致明明在正常说话也凑不满连续 0.5s、警告始终清不掉。
-    // 只有持续安静超过这个小间隙，才认为不是说话停顿、归零重新计。
+    // 說話時字與字之間的短暫停頓（<~300ms）不清零已累計的正常音量，否則一句話裡的自然
+    // 停頓會反覆把"清除進度"打回 0，導致明明在正常說話也湊不滿連續 0.5s、警告始終清不掉。
+    // 只有持續安靜超過這個小間隙，才認為不是說話停頓、歸零重新計。
     if (this.consecutiveNonVoicedSamples >= VOICED_GAP_TOLERANCE) this.consecutiveVoicedSamples = 0
 
     if (this.consecutiveSilentSamples < firstWarn) return
 
-    // 只有从未正常说过话且整段所有采样均为 0，才允许提示「未检测到声音」。
+    // 只有從未正常說過話且整段所有采樣均為 0，才允許提示「未檢測到聲音」。
     const kind: 'muted' | 'low' =
       !this.hasDetectedVoiceThisSession && !this.quietRunSawSignal ? 'muted' : 'low'
 
     const now = Date.now()
-    // 切换到不同档位立即刷新文案；同档位按节流重弹，避免频繁催促
+    // 切換到不同檔位立即重新整理文案；同檔位按節流重彈，避免頻繁催促
     if (kind === this.currentVolumeWarning && now - this.lastLowVolumeWarnAt < REWARN_MS) return
     this.lastLowVolumeWarnAt = now
     this.currentVolumeWarning = kind
@@ -356,10 +356,10 @@ export class MicLevelMonitor {
   }
 
   /**
-   * 录音开始时查询系统麦克风的静音标志，作为「麦克风已被静音」红色高警的**线索**记录下来；
-   * 真正弹警告要等音频帧证实 PCM 全 0（见 pendingOsMicMuted）——系统标志会骗人。
-   * 仅在能可靠定位设备时才采信（系统默认设备，或按名字唯一匹配到选中设备），
-   * 否则（如选了特定设备但拿不到名字/同名多个）返回不判定，交给基于信号的琥珀提醒兜底。
+   * 錄音開始時查詢系統麥克風的靜音標誌，作為「麥克風已被靜音」紅色高警的**線索**記錄下來；
+   * 真正彈警告要等音訊幀證實 PCM 全 0（見 pendingOsMicMuted）——系統標誌會騙人。
+   * 僅在能可靠定位裝置時才採信（系統預設裝置，或按名字唯一匹配到選中裝置），
+   * 否則（如選了特定裝置但拿不到名字/同名多個）返回不判定，交給基於訊號的琥珀提醒兜底。
    */
   async checkMicMuted(
     activeDeviceLabel: string | null,
@@ -367,25 +367,25 @@ export class MicLevelMonitor {
     probeSequence: number,
   ) {
     try {
-      // 查询本次 getUserMedia 实际打开的端点，而不是根据设置值或 deviceId 猜测。
-      // 设备名无法唯一匹配时 Rust 返回 matched=false，继续交给信号检测兜底。
+      // 查詢本次 getUserMedia 實際開啟的端點，而不是根據設定值或 deviceId 猜測。
+      // 裝置名無法唯一匹配時 Rust 返回 matched=false，繼續交給訊號檢測兜底。
       const res = await invoke<{ matched: boolean; muted: boolean }>('get_mic_mute_state', {
         deviceLabel: activeDeviceLabel,
       })
-      // 后发的实际设备复核优先；旧探测、旧录音或已恢复正常说话时都不能再弹。
+      // 後發的實際裝置複核優先；舊探測、舊錄音或已恢復正常說話時都不能再彈。
       if (probeSequence !== this.micMuteProbeSequence || !this.host.isRunCurrent(runId)) return
       if (this.host.getState() !== 'recording' && !(this.host.getState() === 'idle' && this.host.isStarting())) return
       if (this.hasDetectedVoiceThisSession || !res.matched) return
 
       if (res.muted) {
-        // 只记线索、不弹 UI：等音频帧证实真的全 0（原因见 pendingOsMicMuted 注释）。
-        // 已确认、或已在等待证实时都不要重置累计进度（预检查与实际设备复核都会走到这里）。
+        // 只記線索、不彈 UI：等音訊幀證實真的全 0（原因見 pendingOsMicMuted 註釋）。
+        // 已確認、或已在等待證即時都不要重置累計進度（預檢查與實際裝置複核都會走到這裡）。
         if (this.osMicMuted || this.pendingOsMicMuted) return
         this.pendingOsMicMuted = true
         this.pendingOsMicMutedSamples = 0
         addRuntimeEvent('info', 'recorder', 'System reports the microphone endpoint is muted; waiting for audio to confirm')
       } else {
-        // 实际打开的端点与预检查不一致，或用户在初始化期间取消了静音。
+        // 實際開啟的端點與預檢查不一致，或使用者在初始化期間取消了靜音。
         this.pendingOsMicMuted = false
         this.pendingOsMicMutedSamples = 0
         if (this.osMicMuted) {
@@ -394,6 +394,6 @@ export class MicLevelMonitor {
           this.host.overlay.clearWarning()
         }
       }
-    } catch { /* 查询失败不影响录音，交给信号检测兜底 */ }
+    } catch { /* 查詢失敗不影響錄音，交給訊號檢測兜底 */ }
   }
 }

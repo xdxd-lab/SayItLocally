@@ -24,12 +24,12 @@ import {
 import { setLocale } from '@/i18n'
 
 /**
- * 这组断言守住「AI 服务」页最容易回归的几件事：
- * 1. 供应商清单是唯一真相 —— 每家都必须有默认地址和至少一个候选模型，
- *    否则选中它就会落到"两个空框 + 两个灰按钮 + 零说明"的死角。
- * 2. 格式校验只做几乎不会误报的判断 —— 对合法密钥报警的代价高于漏报。
- * 3. 服务列表的读取与启用项解析永不抛异常 —— 这个值会经过导入导出和手改数据库，
- *    一条脏数据不该让整页白屏，启用项失效也不该变成"什么都没启用"。
+ * 這組斷言守住「AI 服務」頁最容易迴歸的幾件事：
+ * 1. 供應商清單是唯一真相 —— 每家都必須有預設地址和至少一個候選模型，
+ *    否則選中它就會落到"兩個空框 + 兩個灰按鈕 + 零說明"的死角。
+ * 2. 格式校驗只做幾乎不會誤報的判斷 —— 對合法金鑰報警的代價高於漏報。
+ * 3. 服務列表的讀取與啟用項解析永不拋異常 —— 這個值會經過匯入匯出和手改資料庫，
+ *    一條髒資料不該讓整頁白屏，啟用項失效也不該變成"什麼都沒啟用"。
  */
 describe('AI_PROVIDERS 清单', () => {
   it('每家都有默认地址和至少一个候选模型', () => {
@@ -83,7 +83,7 @@ describe('checkAiKeyFormat', () => {
   it('不再对长度做断言——供应商改长度不该让合法密钥报警', () => {
     expect(checkAiKeyFormat('deepseek', 'sk-' + 'a'.repeat(64))).toBe('')
     expect(checkAiKeyFormat('deepseek', 'sk-abc')).toBe('')
-    // 豆包的 key 不是 UUID 也不报警
+    // 豆包的 key 不是 UUID 也不報警
     expect(checkAiKeyFormat('doubao', 'not-a-uuid-at-all')).toBe('')
   })
 
@@ -209,7 +209,7 @@ describe('parseProfiles', () => {
   it('更早版本平铺的 latencyMs 升级成"测通过"的结论（老版本只有测通才写这个数）', () => {
     const upgraded = parseProfiles([{ ...profile(), check: undefined, latencyMs: 1200 }])[0].check
     expect(upgraded).toEqual({ ok: true, latencyMs: 1200 })
-    // 没有 at：那次是什么时候测的没人知道，界面上就不该声称"刚测过"
+    // 沒有 at：那次是什麼時候測的沒人知道，介面上就不該聲稱"剛測過"
     expect(upgraded?.at).toBeUndefined()
   })
 
@@ -266,8 +266,8 @@ describe('isCheckFresh', () => {
 describe('formatCheckedAt', () => {
   const now = new Date('2026-08-03T12:00:00Z').getTime()
 
-  // 断言"选了哪个粒度"，不写死具体文案：相对时间现在交给 Intl.RelativeTimeFormat
-  // 渲染（英文的单复数没法用一条模板覆盖），所以文案随语言与 CLDR 走，不该锁死。
+  // 斷言"選了哪個粒度"，不寫死具體文案：相對時間現在交給 Intl.RelativeTimeFormat
+  // 渲染（英文的單複數沒法用一條模板覆蓋），所以文案隨語言與 CLDR 走，不該鎖死。
   const rtf = new Intl.RelativeTimeFormat('zh-TW', { numeric: 'auto' })
 
   it('按最粗的合适粒度说"多久之前"', () => {
@@ -301,7 +301,7 @@ describe('一行的标题与副标题', () => {
   })
 
   it('默认地址不重复念，自定义端点才显示主机名', () => {
-    // [自訂] S34：DeepSeek 已移出清單，改用千问驗證「預設位址不顯示主機名」
+    // [自訂] S34：DeepSeek 已移出清單，改用千問驗證「預設位址不顯示主機名」
     expect(profileSubtitle(profile({ provider: 'qwen', apiUrl: 'https://dashscope.aliyuncs.com/compatible-mode' }))).toBe('通義千問')
     expect(profileSubtitle(profile({ provider: 'openai_compat', apiUrl: 'http://127.0.0.1:8000/v1' })))
       .toBe('OpenAI 相容 · 127.0.0.1:8000')
@@ -337,7 +337,7 @@ describe('migrateLegacyProfiles', () => {
       models: ['deepseek-v4-flash', 'deepseek-chat'],
       latencies: { 'deepseek-v4-flash': 1200 },
     },
-    // 没填密钥的一家不该被迁成"看着能用其实打不通"的服务
+    // 沒填金鑰的一家不該被遷成"看著能用其實打不通"的服務
     { provider: 'qwen', apiUrl: '', apiKey: '', model: '', models: [], latencies: {} },
   ]
 

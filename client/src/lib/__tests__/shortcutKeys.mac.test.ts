@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-// 这个文件按 macOS 跑。IS_MAC 在模块加载时就决定了键表和校验口径，所以要在导入前替换掉。
+// 這個檔案按 macOS 跑。IS_MAC 在模組載入時就決定了鍵表和校驗口徑，所以要在匯入前替換掉。
 vi.mock('@/lib/platform', () => ({ IS_MAC: true }))
 
 import {
@@ -10,7 +10,7 @@ import {
   keyEventToShortcutCandidate,
 } from '../shortcutKeys'
 
-/** 只造出 keyEventToShortcutCandidate 会读的那几个字段 */
+/** 只造出 keyEventToShortcutCandidate 會讀的那幾個欄位 */
 function keyEvent(init: { code: string, key: string, alt?: boolean, ctrl?: boolean, shift?: boolean, meta?: boolean }) {
   return {
     code: init.code,
@@ -23,14 +23,14 @@ function keyEvent(init: { code: string, key: string, alt?: boolean, ctrl?: boole
 }
 
 describe('macOS 快捷键校验', () => {
-  // 回归：单键也被套上了组合键的规则，设右 ⌥、F5、鼠标侧键时都报「需要带上 ⌘ 或 ⌃」
+  // 迴歸：單鍵也被套上了組合鍵的規則，設右 ⌥、F5、滑鼠側鍵時都報「需要帶上 ⌘ 或 ⌃」
   it('单键和鼠标键不受组合键规则的限制', () => {
     for (const key of ['AltRight', 'AltLeft', 'MetaRight', 'ControlRight', 'ShiftRight', 'Fn', 'F5', 'Space', 'XButton1', 'MButton']) {
       expect(getAcceleratorShortcutValidationError(key), key).toBeNull()
     }
   })
 
-  // 修饰键只有 ⌥ / ⇧ 的组合系统快捷键在 macOS 15 起不触发，现在由 Rust 的 event tap 接管，可以用了
+  // 修飾鍵只有 ⌥ / ⇧ 的組合系統快捷鍵在 macOS 15 起不觸發，現在由 Rust 的 event tap 接管，可以用了
   it('只带 ⌥、⇧ 或 ⌥⇧ 的组合键可以用，一个修饰键加会打字的键照样拦下', () => {
     for (const combo of ['Alt+Shift+K', 'Alt+Shift+1', 'Alt+F5', 'Shift+F5', 'Alt+Shift+Comma']) {
       expect(getAcceleratorShortcutValidationError(combo), combo).toBeNull()
@@ -40,7 +40,7 @@ describe('macOS 快捷键校验', () => {
     }
   })
 
-  // 用户实测时把免提设成了 ⌘W：注册成功了，但从此所有程序里的 ⌘W（关窗口）都被 SayIt 抢走
+  // 使用者實測時把擴音設成了 ⌘W：註冊成功了，但從此所有程式裡的 ⌘W（關視窗）都被 SayIt 搶走
   it('一个修饰键 + 字母 / 数字 / 方向键被拦下，加第二个修饰键或换 F 键就放行', () => {
     for (const combo of ['CommandOrControl+W', 'CommandOrControl+C', 'CommandOrControl+1', 'CommandOrControl+,', 'CommandOrControl+Left', 'Control+A', 'Control+Right', 'CommandOrControl+Return']) {
       expect(getAcceleratorShortcutValidationError(combo), combo).not.toBeNull()
@@ -67,7 +67,7 @@ describe('macOS 快捷键校验', () => {
     expect(keyEventToShortcutCandidate(keyEvent({ code: 'KeyK', key: 'k', ctrl: true }))).toBe('Control+K')
   })
 
-  // ⌥ 和 ⇧ 会改掉 event.key：按字符录的话会存成 Rust 端解析不了的「Alt+Shift+Î」「Control+Shift+!」
+  // ⌥ 和 ⇧ 會改掉 event.key：按字元錄的話會存成 Rust 端解析不了的「Alt+Shift+Î」「Control+Shift+!」
   it('录制：组合键的主键按键位记，不受 ⌥ / ⇧ 打出的字符影响', () => {
     expect(keyEventToShortcutCandidate(keyEvent({ code: 'KeyD', key: 'Î', alt: true, shift: true }))).toBe('Alt+Shift+D')
     expect(keyEventToShortcutCandidate(keyEvent({ code: 'Digit1', key: '!', ctrl: true, shift: true }))).toBe('Control+Shift+1')
@@ -75,7 +75,7 @@ describe('macOS 快捷键校验', () => {
     expect(keyEventToShortcutCandidate(keyEvent({ code: 'Enter', key: 'Enter', meta: true, shift: true }))).toBe('CommandOrControl+Shift+Enter')
     expect(keyEventToShortcutCandidate(keyEvent({ code: 'ArrowUp', key: 'ArrowUp', ctrl: true, alt: true }))).toBe('Control+Alt+Up')
     expect(keyEventToShortcutCandidate(keyEvent({ code: 'F5', key: 'F5', shift: true }))).toBe('Shift+F5')
-    // 主键当不了快捷键的（ISO 键盘 Z 左边那个键）：还没成型，保留上一个候选
+    // 主鍵當不了快捷鍵的（ISO 鍵盤 Z 左邊那個鍵）：還沒成型，保留上一個候選
     expect(keyEventToShortcutCandidate(keyEvent({ code: 'IntlBackslash', key: '§', alt: true, shift: true }), { comboOnly: true })).toBeNull()
   })
 

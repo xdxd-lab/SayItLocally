@@ -1,21 +1,21 @@
 #!/bin/zsh
-# 在「登录」钥匙串里创建一张自签名的代码签名证书（默认名「SayItLocally Self-Signed」，有效期 10 年）。
+# 在「登入」鑰匙串裡建立一張自簽名的程式碼簽名證書（預設名「SayItLocally Self-Signed」，有效期 10 年）。
 #
-# 为什么要它：macOS 的「辅助功能」授权绑定在代码签名上。ad-hoc 签名每次构建都是新身份，
-# 用户每次更新后都得重新勾选；用同一张证书签每个版本，授权会一直保留。
-# 自签名证书不能公证，用户第一次打开仍要在「隐私与安全性」里点「仍要打开」（见 dev-docs/macos-port/README.md）。
+# 為什麼要它：macOS 的「輔助功能」授權繫結在程式碼簽名上。ad-hoc 簽名每次構建都是新身份，
+# 使用者每次更新後都得重新勾選；用同一張證書籤每個版本，授權會一直保留。
+# 自簽名證書不能公證，使用者第一次開啟仍要在「隱私與安全性」裡點「仍要開啟」（見 dev-docs/macos-port/README.md）。
 #
-# 用法：scripts/macos/create-signing-cert.sh ["证书名"]
-# 过程中系统可能弹窗要登录密码（把证书设为「代码签名时始终信任」）。
-# ⚠️ 证书和私钥只在这台 Mac 的钥匙串里；换机器发版前用「钥匙串访问」导出 .p12 备份，
-#    丢了就只能换新证书，所有用户要重新授权一次。
+# 用法：scripts/macos/create-signing-cert.sh ["證書名"]
+# 過程中系統可能彈窗要登入密碼（把證書設為「程式碼簽名時始終信任」）。
+# ⚠️ 證書和私鑰只在這台 Mac 的鑰匙串裡；換機器發版前用「鑰匙串訪問」匯出 .p12 備份，
+#    丟了就只能換新證書，所有使用者要重新授權一次。
 set -euo pipefail
 
 NAME="${1:-SayItLocally Self-Signed}"
 KEYCHAIN="$HOME/Library/Keychains/login.keychain-db"
 
 if security find-certificate -c "$NAME" "$KEYCHAIN" >/dev/null 2>&1; then
-  echo "钥匙串里已经有「$NAME」，不重复创建。"
+  echo "鑰匙串裡已經有「$NAME」，不重複建立。"
   security find-identity -p codesigning "$KEYCHAIN" | grep "$NAME" || true
   exit 0
 fi
@@ -46,12 +46,12 @@ PASS=$(/usr/bin/openssl rand -hex 16)
 
 security import "$WORK/cert.p12" -k "$KEYCHAIN" -P "$PASS" -T /usr/bin/codesign
 
-echo "把证书设为「代码签名时始终信任」，系统可能要求输入登录密码……"
+echo "把證書設為「程式碼簽名時始終信任」，系統可能要求輸入登入密碼……"
 security add-trusted-cert -r trustRoot -p codeSign -k "$KEYCHAIN" "$WORK/cert.pem"
 
 echo
-echo "完成。可用的签名身份："
+echo "完成。可用的簽名身份："
 security find-identity -v -p codesigning "$KEYCHAIN" | grep "$NAME" || {
-  echo "⚠️ 没在有效身份里看到「$NAME」，请打开「钥匙串访问」确认这张证书的信任设置。"
+  echo "⚠️ 沒在有效身份裡看到「$NAME」，請開啟「鑰匙串訪問」確認這張證書的信任設定。"
   exit 1
 }

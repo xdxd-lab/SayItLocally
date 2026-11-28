@@ -8,9 +8,9 @@ import {
 } from '../audio'
 
 /**
- * `enumerateDevices()` 在 Windows 上返回的形状：一个真实端点，外加 Chromium
- * 自己摆的两个伪设备（default / communications），label 带本地化前缀。
- * 采样自本机日志，不是编的。
+ * `enumerateDevices()` 在 Windows 上返回的形狀：一個真實端點，外加 Chromium
+ * 自己擺的兩個偽裝置（default / communications），label 帶本地化字首。
+ * 取樣自本機日誌，不是編的。
  */
 const HEADSET = '耳机式麦克风 (Plantronics Blackwire 5220 Series) (047f:c053)'
 
@@ -43,20 +43,20 @@ describe('microphone device list', () => {
   })
 
   it('folds a stored pseudo-device id back to "follow system default"', () => {
-    // 实测存量数据：`selectedMic = "default"`。老版本的下拉把伪设备也列出来，用户点了它。
-    // 不折的话，设置页的下拉找不到选中项，显示成"没有选择麦克风"。
+    // 實測存量資料：`selectedMic = "default"`。老版本的下拉把偽裝置也列出來，使用者點了它。
+    // 不折的話，設定頁的下拉找不到選中項，顯示成"沒有選擇麥克風"。
     expect(normalizeSelectedMicId('default')).toBe('')
     expect(normalizeSelectedMicId('communications')).toBe('')
     expect(normalizeSelectedMicId('  ')).toBe('')
     expect(normalizeSelectedMicId(undefined)).toBe('')
     expect(normalizeSelectedMicId(123)).toBe('')
-    // 真实 deviceId 一个字都不能动 —— 改了就等于把用户选的设备换掉了。
+    // 真實 deviceId 一個字都不能動 —— 改了就等於把使用者選的裝置換掉了。
     expect(normalizeSelectedMicId('real-headset')).toBe('real-headset')
   })
 
   it('keeps the pseudo devices but drops non-inputs', async () => {
-    // 伪设备携带唯一一条「系统默认现在指向谁」的信息，这一层不能替调用方丢掉；
-    // 「哪些该进下拉」是产品判断，归 buildMicOptions。
+    // 偽裝置攜帶唯一一條「系統預設現在指向誰」的資訊，這一層不能替呼叫方丟掉；
+    // 「哪些該進下拉」是產品判斷，歸 buildMicOptions。
     stubEnumerate([
       device('default', `默认值 - ${HEADSET}`),
       device('communications', `通信设备 - ${HEADSET}`),
@@ -76,9 +76,9 @@ describe('microphone device list', () => {
     ]
 
     expect(matchRealEndpoint(devices[0], devices)?.deviceId).toBe('real-headset')
-    // 真实 deviceId 直接按 id 命中，不走那两层回落。
+    // 真實 deviceId 直接按 id 命中，不走那兩層回落。
     expect(matchRealEndpoint(devices[1], devices)?.deviceId).toBe('real-headset')
-    // 指向一个已经消失的设备时返回 null，调用方据此退回朴素文案，而不是显示空括号。
+    // 指向一個已經消失的裝置時返回 null，呼叫方據此退回樸素文案，而不是顯示空括號。
     expect(matchRealEndpoint({ deviceId: 'default', groupId: 'gone', label: '默认值 - 没了' }, devices))
       .toBeNull()
   })

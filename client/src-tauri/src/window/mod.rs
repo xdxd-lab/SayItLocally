@@ -10,65 +10,65 @@ use crate::commands::system::write_log_line;
 use crate::context::{capture_foreground_monitor, MonitorBounds};
 
 const OVERLAY_DEFAULT_BASE_WIDTH: f64 = 360.0;
-// 64 而不是刚好够用的 56：内容是底边锚定的（根节点 items-end + pb-4），加高只是在胶囊
-// 上方多留一块透明区，底边位置和观感都不变（y = bottom - gap - height，高度抵消掉了），
-// 纯粹换取容错。56 时余量只有 2px（16 的 pb-4 + 38 的胶囊 = 54），任何一点缩放误差或
-// 日后给胶囊加一根边框都会把顶部裁平——这就是 Windows「文本大小」123% 时的故障现场。
+// 64 而不是剛好夠用的 56：內容是底邊錨定的（根節點 items-end + pb-4），加高只是在膠囊
+// 上方多留一塊透明區，底邊位置和觀感都不變（y = bottom - gap - height，高度抵消掉了），
+// 純粹換取容錯。56 時餘量只有 2px（16 的 pb-4 + 38 的膠囊 = 54），任何一點縮放誤差或
+// 日後給膠囊加一根邊框都會把頂部裁平——這就是 Windows「文本大小」123% 時的故障現場。
 const OVERLAY_BASE_HEIGHT: f64 = 64.0;
 const OVERLAY_FALLBACK_WIDTH: f64 = 520.0;
 const OVERLAY_FALLBACK_HEIGHT: f64 = 224.0;
-/// 识别失败卡片：比结果卡矮，因为它没有文本预览区，只有标题 + 原因 + 可能一行恢复提示。
-/// **必须是可交互布局**（见 is_interactive）——它上面有关闭按钮，而非交互布局是点击
-/// 穿透的，按钮会点不到。
+/// 識別失敗卡片：比結果卡矮，因為它沒有文本預覽區，只有標題 + 原因 + 可能一行恢復提示。
+/// **必須是可互動佈局**（見 is_interactive）——它上面有關閉按鈕，而非互動佈局是點選
+/// 穿透的，按鈕會點不到。
 ///
-/// 150 → 176：原来那个值是按「原因只占一行」算的，而供应商的错误文案根本不止一行 ——
-/// 「账户余额不足，本次请求未能发出。请在供应商后台充值后重试…」在 520px 宽的 text-xs
-/// 下就是两行，实测内容高 97（日志 `render ack OK ... content=520x97.33`）。再补上恢复
-/// 提示就是 126，而 150 的窗口只能装 134，余量 4px；文案再长一点标题就被 overflow:hidden
-/// 从顶部裁掉。176 覆盖「原因三行 + 恢复提示」（146）并留 14px 余量。
-/// 520 → 480：三行小字的卡片占 520 显得空，但 440 又太紧 —— 余额不足那条文案（28 字）
-/// 会折出「试。」这样只剩一个字加句号的末行。480 让它一行放完。
+/// 150 → 176：原來那個值是按「原因只佔一行」算的，而供應商的錯誤文案根本不止一行 ——
+/// 「賬戶餘額不足，本次請求未能發出。請在供應商後台充值後重試…」在 520px 寬的 text-xs
+/// 下就是兩行，實測內容高 97（日誌 `render ack OK ... content=520x97.33`）。再補上恢復
+/// 提示就是 126，而 150 的視窗只能裝 134，餘量 4px；文案再長一點標題就被 overflow:hidden
+/// 從頂部裁掉。176 覆蓋「原因三行 + 恢復提示」（146）並留 14px 餘量。
+/// 520 → 480：三行小字的卡片佔 520 顯得空，但 440 又太緊 —— 餘額不足那條文案（28 字）
+/// 會折出「試。」這樣只剩一個字加句號的末行。480 讓它一行放完。
 ///
-/// **必须与 Overlay.tsx 失败卡的 max-w 一致** —— 卡片比窗口窄时，多出来的透明边照样吞掉
-/// 下面程序的点击（这是 is_interactive 布局）；比窗口宽则被 overflow:hidden 裁掉。
+/// **必須與 Overlay.tsx 失敗卡的 max-w 一致** —— 卡片比視窗窄時，多出來的透明邊照樣吞掉
+/// 下面程式的點選（這是 is_interactive 佈局）；比視窗寬則被 overflow:hidden 裁掉。
 ///
-/// 最长的那条错误文案（err.provider.forbidden，64 字）在 480 下折两行，高度 126，容量内。
+/// 最長的那條錯誤文案（err.provider.forbidden，64 字）在 480 下折兩行，高度 126，容量內。
 const OVERLAY_FAILURE_WIDTH: f64 = 480.0;
 const OVERLAY_FAILURE_HEIGHT: f64 = 176.0;
-// 流式实时显示：录音气泡 + 波形条堆叠，需要更宽更高的窗口
+// 流式即時顯示：錄音氣泡 + 波形條堆疊，需要更寬更高的視窗
 const OVERLAY_STREAMING_WIDTH: f64 = 480.0;
 const OVERLAY_STREAMING_HEIGHT: f64 = 200.0;
-// 输入源状态条显示在胶囊上方；窗口仍锚定底部，因此只向上扩展。
+// 輸入源狀態條顯示在膠囊上方；視窗仍錨定底部，因此只向上擴充套件。
 const OVERLAY_MIC_HINT_WIDTH: f64 = 480.0;
 const OVERLAY_MIC_HINT_HEIGHT: f64 = 104.0;
 const OVERLAY_STREAMING_MIC_HINT_HEIGHT: f64 = 244.0;
 const OVERLAY_SCREEN_MARGIN: f64 = 8.0;
 
-/// Overlay.tsx 根节点的 `pb-4`，单位是 CSS px。布局仍由 CSS 决定，这里只是镜像值，
-/// 用于「内容装不装得下」的自检与单测；改了那边记得同步这里，否则判据会失真。
+/// Overlay.tsx 根節點的 `pb-4`，單位是 CSS px。佈局仍由 CSS 決定，這裡只是映象值，
+/// 用於「內容裝不裝得下」的自檢與單測；改了那邊記得同步這裡，否則判據會失真。
 const OVERLAY_ROOT_PADDING_BOTTOM: f64 = 16.0;
 
-/// webview 的 CSS 缩放相对显示器缩放的额外倍数，可接受范围。
+/// webview 的 CSS 縮放相對顯示器縮放的額外倍數，可接受範圍。
 ///
-/// 为什么需要：Tauri 按「逻辑像素 × 显示器 scale」定窗口大小，而 WebView2 的一个 CSS px
-/// 实际是 `显示器 scale × 额外缩放` 个设备像素——Windows 设置 → 辅助功能 → 文本大小
-/// （滑块 100%~225% 连续可调）会被 Edge/WebView2 当成页面缩放叠上去。于是窗口按 56 逻辑
-/// px 建出来，webview 里只有 56/1.23 ≈ 45.6 CSS px 可用，内容从顶部溢出、被
-/// overlay.html 的 `overflow: hidden` 裁平。上限给到 4.0 是留足余量（225% 文本 × 用户
-/// 可能另外用 Ctrl+滚轮缩放过共享的 EBWebView profile）。
+/// 為什麼需要：Tauri 按「邏輯畫素 × 顯示器 scale」定視窗大小，而 WebView2 的一個 CSS px
+/// 實際是 `顯示器 scale × 額外縮放` 個裝置畫素——Windows 設定 → 輔助功能 → 文本大小
+/// （滑塊 100%~225% 連續可調）會被 Edge/WebView2 當成頁面縮放疊上去。於是視窗按 56 邏輯
+/// px 建出來，webview 裡只有 56/1.23 ≈ 45.6 CSS px 可用，內容從頂部溢位、被
+/// overlay.html 的 `overflow: hidden` 裁平。上限給到 4.0 是留足餘量（225% 文本 × 使用者
+/// 可能另外用 Ctrl+滾輪縮放過共享的 EBWebView profile）。
 const OVERLAY_CSS_ZOOM_MIN: f64 = 0.5;
 const OVERLAY_CSS_ZOOM_MAX: f64 = 4.0;
-/// 发出 blank 之后等多久才真正 hide 窗口（见 `hide_overlay` 里的长注释）。
+/// 發出 blank 之後等多久才真正 hide 視窗（見 `hide_overlay` 裡的長註釋）。
 ///
-/// 只需要够 webview 出一帧：60Hz 下一帧 16.7ms，80ms 给足了 setState + 重绘 + 合成。
-/// 用户看不出差别 —— blank 连胶囊底色都不画，"提示消失"这件事在发 blank 那一刻就完成了，
-/// 窗口晚 80ms 消失没有任何视觉痕迹。
+/// 只需要夠 webview 出一幀：60Hz 下一幀 16.7ms，80ms 給足了 setState + 重繪 + 合成。
+/// 使用者看不出差別 —— blank 連膠囊底色都不畫，"提示消失"這件事在發 blank 那一刻就完成了，
+/// 視窗晚 80ms 消失沒有任何視覺痕跡。
 const HIDE_AFTER_BLANK_MS: u64 = 80;
 const ACK_FIRST_TIMEOUT_MS: u64 = 1_200;
 const ACK_SECOND_TIMEOUT_MS: u64 = 700;
 const RECOVERY_ACK_TIMEOUT_MS: u64 = 2_000;
 
-/// 旧版轻量 ping/pong 仍保留，便于和历史日志对照。
+/// 舊版輕量 ping/pong 仍保留，便於和歷史日誌對照。
 static LAST_PONG_MS: AtomicI64 = AtomicI64::new(0);
 static SHOW_SEQ: AtomicU64 = AtomicU64::new(0);
 
@@ -85,26 +85,26 @@ enum OverlayLayout {
     Base,
     BaseWithMicHint,
     Fallback,
-    /// 识别失败卡片：带关闭按钮，因此同样需要交互。
+    /// 識別失敗卡片：帶關閉按鈕，因此同樣需要互動。
     Failure,
-    /// 流式实时显示：气泡 + 波形，窗口更大且非交互
+    /// 流式即時顯示：氣泡 + 波形，視窗更大且非互動
     Streaming,
     StreamingWithMicHint,
 }
 
 impl OverlayLayout {
-    /// 该布局是否为可交互（可点击）状态——只有带按钮的卡片需要。
+    /// 該佈局是否為可互動（可點選）狀態——只有帶按鈕的卡片需要。
     ///
-    /// ⚠️ 非交互布局会 `set_ignore_cursor_events(true)`，窗口整体点击穿透。
-    /// 新增任何"有按钮的"状态都必须在这里返回 true，否则按钮在界面上看得见、点不到。
+    /// ⚠️ 非互動佈局會 `set_ignore_cursor_events(true)`，視窗整體點選穿透。
+    /// 新增任何"有按鈕的"狀態都必須在這裡返回 true，否則按鈕在介面上看得見、點不到。
     fn is_interactive(&self) -> bool {
         matches!(self, OverlayLayout::Fallback | OverlayLayout::Failure)
     }
 
-    /// 该布局期望的设计尺寸（宽, 高），单位是 CSS px。
+    /// 該佈局期望的設計尺寸（寬, 高），單位是 CSS px。
     ///
-    /// 注意这**不是**可以直接交给 Tauri 的逻辑尺寸：webview 的 CSS px 可能被额外缩放
-    /// （见 OVERLAY_CSS_ZOOM_MIN 的说明），要先乘 css_zoom 才是窗口该有的逻辑尺寸。
+    /// 注意這**不是**可以直接交給 Tauri 的邏輯尺寸：webview 的 CSS px 可能被額外縮放
+    /// （見 OVERLAY_CSS_ZOOM_MIN 的說明），要先乘 css_zoom 才是視窗該有的邏輯尺寸。
     fn dimensions(&self, base_width: f64) -> (f64, f64) {
         match self {
             OverlayLayout::Base => (base_width, OVERLAY_BASE_HEIGHT),
@@ -125,12 +125,12 @@ impl OverlayLayout {
 
 pub struct WindowState {
     overlay_layout: Mutex<OverlayLayout>,
-    /// 最近一次真正应用到原生窗口的布局。用于跳过重复的 set_position/set_size，
-    /// 避免监听期间每 33ms 重设一次窗口几何导致的抖动。
+    /// 最近一次真正應用到原生視窗的佈局。用於跳過重複的 set_position/set_size，
+    /// 避免監聽期間每 33ms 重設一次視窗幾何導致的抖動。
     last_applied_layout: Mutex<Option<OverlayLayout>>,
     overlay_base_width: Mutex<f64>,
-    /// webview 里一个 CSS px 相当于几个「显示器逻辑 px」。1.0 表示两者一致。
-    /// 由渲染端上报的 devicePixelRatio 除以窗口所在显示器的 scale 得出，见 note_css_zoom。
+    /// webview 裡一個 CSS px 相當於幾個「顯示器邏輯 px」。1.0 表示兩者一致。
+    /// 由渲染端上報的 devicePixelRatio 除以視窗所在顯示器的 scale 得出，見 note_css_zoom。
     overlay_css_zoom: Mutex<f64>,
     overlay_monitor: Mutex<Option<MonitorBounds>>,
     overlay_lifecycle: Mutex<()>,
@@ -145,7 +145,7 @@ pub struct WindowState {
     page_load_started_at_ms: AtomicI64,
     page_load_finished_at_ms: AtomicI64,
     renderer_ready_at_ms: AtomicI64,
-    /// 进程/状态创建时间，用于日志记录运行时长（配合资源计数排查“长时间运行后悬浮窗失效”）
+    /// 程序/狀態建立時間，用於日誌記錄執行時長（配合資源計數排查“長時間執行後懸浮窗失效”）
     created_at: Instant,
 }
 impl WindowState {
@@ -172,18 +172,18 @@ impl WindowState {
         }
     }
 
-    /// webview 里 1 个 CSS px 相当于几个显示器逻辑 px。
+    /// webview 裡 1 個 CSS px 相當於幾個顯示器邏輯 px。
     pub fn css_zoom(&self) -> f64 {
         *self.overlay_css_zoom.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
-    /// 记录渲染端上报的 devicePixelRatio，换算成 css_zoom 缓存起来。
+    /// 記錄渲染端上報的 devicePixelRatio，換算成 css_zoom 快取起來。
     ///
-    /// 为什么不直接缓存 dpr：dpr 里同时含了显示器缩放和 webview 的额外缩放，只有除掉
-    /// 窗口所在显示器的 scale 才是需要补偿的那一份。缓存 dpr 会在两块不同缩放的显示器
-    /// 之间串味（悬浮窗跟着前台窗口跑，换显示器是常态）。
+    /// 為什麼不直接快取 dpr：dpr 裡同時含了顯示器縮放和 webview 的額外縮放，只有除掉
+    /// 視窗所在顯示器的 scale 才是需要補償的那一份。快取 dpr 會在兩塊不同縮放的顯示器
+    /// 之間串味（懸浮窗跟著前台視窗跑，換顯示器是常態）。
     ///
-    /// 返回值表示缓存是否有实质变化，调用方据此决定要不要立刻重设窗口几何。
+    /// 返回值表示快取是否有實質變化，呼叫方據此決定要不要立刻重設視窗幾何。
     fn note_css_zoom(&self, app: &AppHandle, device_pixel_ratio: Option<f64>) -> bool {
         let Some(dpr) = device_pixel_ratio.filter(|value| value.is_finite() && *value > 0.0) else {
             return false;
@@ -198,8 +198,8 @@ impl WindowState {
 
         let previous = {
             let mut cached = self.overlay_css_zoom.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-            // 0.01 的死区：dpr 与 scale 都是浮点，每次 present 都上报，末位抖动不该触发
-            // 重设几何（重设会带来一帧的位置/尺寸跳动，见 apply_payload_layout 的注释）。
+            // 0.01 的死區：dpr 與 scale 都是浮點，每次 present 都上報，末位抖動不該觸發
+            // 重設幾何（重設會帶來一幀的位置/尺寸跳動，見 apply_payload_layout 的註釋）。
             if (zoom - *cached).abs() < 0.01 {
                 return false;
             }
@@ -215,11 +215,11 @@ impl WindowState {
         true
     }
 
-    /// 在应用启动后的空闲时段提前创建隐藏的 overlay WebView。
+    /// 在應用啟動後的空閒時段提前建立隱藏的 overlay WebView。
     ///
-    /// 第一次口述若等到热键按下后才创建 WebView，页面加载和 React 初始化会额外占用
-    /// 数百毫秒。预热只把 renderer 准备好，不显示窗口；真正 present 时仍会重新捕获
-    /// 当前前台显示器、应用最终布局并置顶。
+    /// 第一次口述若等到熱鍵按下後才建立 WebView，頁面載入和 React 初始化會額外佔用
+    /// 數百毫秒。預熱只把 renderer 準備好，不顯示視窗；真正 present 時仍會重新捕獲
+    /// 當前前台顯示器、應用最終佈局並置頂。
     pub fn prewarm_overlay(&self, app: &AppHandle) {
         let _lifecycle_guard = self.overlay_lifecycle.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         if self.active_show_id.load(Ordering::SeqCst) != 0
@@ -234,7 +234,7 @@ impl WindowState {
         self.create_overlay(app, layout, base_width, false);
     }
 
-    /// 原子地保存状态、显示原生窗口并请求 Overlay 确认本次渲染。
+    /// 原子地儲存狀態、顯示原生視窗並請求 Overlay 確認本次渲染。
     pub fn present_overlay(&self, app: &AppHandle, data: Value) -> u64 {
         self.apply_payload_layout(&data);
         self.capture_overlay_monitor();
@@ -265,11 +265,11 @@ impl WindowState {
         show_id
     }
 
-    /// 兼容旧调用点；新代码应使用 present_overlay，将显示和状态更新合成一次操作。
+    /// 相容舊呼叫點；新程式碼應使用 present_overlay，將顯示和狀態更新合成一次操作。
     pub fn show_overlay(&self, app: &AppHandle) -> u64 {
         let data = self.latest_overlay_payload.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).clone()
-            // 最近一次状态可能是 hide 时写进去的 blank（它专门用来清掉残留帧，
-            // 见 hide_overlay）。照它重放会显示一个空窗口，所以当没有状态处理。
+            // 最近一次狀態可能是 hide 時寫進去的 blank（它專門用來清掉殘留幀，
+            // 見 hide_overlay）。照它重放會顯示一個空視窗，所以當沒有狀態處理。
             .filter(|payload| payload.get("state").and_then(Value::as_str) != Some("blank"))
             .unwrap_or_else(|| json!({ "state": "waiting", "elapsedSec": 0 }));
         self.present_overlay(app, data)
@@ -278,7 +278,7 @@ impl WindowState {
     pub fn hide_overlay(&self, app: &AppHandle) {
         self.active_show_id.store(0, Ordering::SeqCst);
         *self.overlay_monitor.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = None;
-        // 下次显示需要重新应用几何。
+        // 下次顯示需要重新應用幾何。
         *self.last_applied_layout.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = None;
 
         let prev_layout = {
@@ -289,23 +289,23 @@ impl WindowState {
         };
 
         if let Some(overlay) = app.get_webview_window("overlay") {
-            // 点击穿透立刻恢复，不等下面那段延迟 —— 否则 fallback 卡片这 80ms 里还会挡鼠标。
+            // 點選穿透立刻恢復，不等下面那段延遲 —— 否則 fallback 卡片這 80ms 裡還會擋滑鼠。
             set_overlay_interactivity(&overlay, false);
 
-            // ── 先把内容清空，再隐藏窗口 ──
+            // ── 先把內容清空，再隱藏視窗 ──
             //
-            // 隐藏只是 hide()，WebView 不销毁、Overlay 组件也不卸载，合成器里留着的最后
-            // 一帧就是上一条提示。下次 present 时窗口先显示、新内容要等 IPC + setState +
-            // 重绘才到，于是先闪一下**上一次**的文案（用户报的原话：切换润色模式后再按
-            // 开关 AI 整理，悬浮窗会先显示上一次的提示内容）。
+            // 隱藏只是 hide()，WebView 不銷燬、Overlay 元件也不解除安裝，合成器裡留著的最後
+            // 一幀就是上一條提示。下次 present 時視窗先顯示、新內容要等 IPC + setState +
+            // 重繪才到，於是先閃一下**上一次**的文案（使用者報的原話：切換潤色模式後再按
+            // 開關 AI 整理，懸浮窗會先顯示上一次的提示內容）。
             //
-            // 关键是**趁窗口还看得见的时候**重绘成空：窗口一旦 hide，document 变
-            // hidden，rAF 被节流，还能不能出一帧就不好说了。所以顺序必须是
-            // 「emit blank → 等一小会儿让它画出来 → hide」。
+            // 關鍵是**趁視窗還看得見的時候**重繪成空：視窗一旦 hide，document 變
+            // hidden，rAF 被節流，還能不能出一幀就不好說了。所以順序必須是
+            // 「emit blank → 等一小會兒讓它畫出來 → hide」。
             //
-            // 刻意不用 render-ack 把 hide 卡住（虽然那样更精确）：ack 走双层 rAF，
-            // 一旦某次没回来，窗口就永远留在屏幕上 —— 那比闪一下旧内容糟得多。
-            // 固定延迟的失败模式只是"这次没来得及画完，退回原来的表现"，不会更坏。
+            // 刻意不用 render-ack 把 hide 卡住（雖然那樣更精確）：ack 走雙層 rAF，
+            // 一旦某次沒回來，視窗就永遠留在螢幕上 —— 那比閃一下舊內容糟得多。
+            // 固定延遲的失敗模式只是"這次沒來得及畫完，退回原來的表現"，不會更壞。
             *self.latest_overlay_payload.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(json!({ "state": "blank" }));
             self.emit_latest(app, false);
             write_log_line(&format!(
@@ -322,13 +322,13 @@ impl WindowState {
 
         if let Some(overlay) = app.get_webview_window("overlay") {
             let layout = self.overlay_layout.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).clone();
-            // 仅在布局真正变化时才重设原生窗口几何，避免每帧 set_position/set_size 抖动。
+            // 僅在佈局真正變化時才重設原生視窗幾何，避免每幀 set_position/set_size 抖動。
             let previous = self.last_applied_layout.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).clone();
             let changed = previous.as_ref() != Some(&layout);
             if changed {
-                // 录音期间唯一会改窗口几何的地方，必须留痕：这条路径以前一行日志都不写，
-                // 于是「悬浮窗闪」这类几何抖动在 sayit.log 里完全无迹可寻，只能靠音量警告
-                // 的时间戳反推。一次录音正常只有 1~2 行；同一对 from→to 反复出现就是抖动。
+                // 錄音期間唯一會改視窗幾何的地方，必須留痕：這條路徑以前一行日誌都不寫，
+                // 於是「懸浮窗閃」這類幾何抖動在 sayit.log 裡完全無跡可尋，只能靠音量警告
+                // 的時間戳反推。一次錄音正常只有 1~2 行；同一對 from→to 反覆出現就是抖動。
                 write_log_line(&format!(
                     "[overlay-layout] {:?} -> {:?} state={} streaming={} mic_hint={}",
                     previous,
@@ -340,8 +340,8 @@ impl WindowState {
                         .map(|s| !s.trim().is_empty())
                         .unwrap_or(false),
                 ));
-                // 卡片类布局可能是从"已隐藏"直接切过来的（比如处理中报错 → 失败卡），
-                // 这时窗口还没显示，光改几何是看不见的。
+                // 卡片類佈局可能是從"已隱藏"直接切過來的（比如處理中報錯 → 失敗卡），
+                // 這時視窗還沒顯示，光改幾何是看不見的。
                 let is_card = layout.is_interactive();
                 self.apply_native_layout(app, &overlay, &layout);
                 set_overlay_interactivity(&overlay, layout.is_interactive());
@@ -353,13 +353,13 @@ impl WindowState {
         }
     }
 
-    /// Overlay 页面注册完事件监听后调用。新建 WebView 时，第一次状态事件可能早于
-    /// React listener，因此在 ready 时重放最近状态并重新请求确认。
+    /// Overlay 頁面註冊完事件監聽後呼叫。新建 WebView 時，第一次狀態事件可能早於
+    /// React listener，因此在 ready 時重放最近狀態並重新請求確認。
     pub fn overlay_ready(&self, app: &AppHandle, device_pixel_ratio: Option<f64>) {
         let show_id = self.active_show_id.load(Ordering::SeqCst);
         self.renderer_ready_at_ms.store(now_ms(), Ordering::SeqCst);
-        // 必须在下面 show_id == 0 的早退之前记：预热（show_id == 0）就是我们唯一能在
-        // 第一次真正显示之前拿到 dpr 的时机。错过它，用户第一次口述就会看到被裁的胶囊。
+        // 必須在下面 show_id == 0 的早退之前記：預熱（show_id == 0）就是我們唯一能在
+        // 第一次真正顯示之前拿到 dpr 的時機。錯過它，使用者第一次口述就會看到被裁的膠囊。
         self.note_css_zoom(app, device_pixel_ratio);
         if show_id == 0 {
             if let Some(overlay) = app.get_webview_window("overlay") {
@@ -394,8 +394,8 @@ impl WindowState {
             return;
         }
 
-        // 先学缩放：这一轮的窗口已经按旧 css_zoom 建好了，学到新值就地重设几何，让**当前**
-        // 这次显示也能被纠正，而不是只让下一次受益（用户按一次热键只看到这一次）。
+        // 先學縮放：這一輪的視窗已經按舊 css_zoom 建好了，學到新值就地重設幾何，讓**當前**
+        // 這次顯示也能被糾正，而不是隻讓下一次受益（使用者按一次熱鍵只看到這一次）。
         if self.note_css_zoom(app, data.get("devicePixelRatio").and_then(Value::as_f64)) {
             let layout = self.overlay_layout.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).clone();
             if let Some(overlay) = app.get_webview_window("overlay") {
@@ -427,15 +427,15 @@ impl WindowState {
         ));
     }
 
-    /// 内容装不进窗口时留一行日志。
+    /// 內容裝不進視窗時留一行日誌。
     ///
-    /// 为什么单独一条：render ack 的 `healthy` 只查「宽高 > 0、没被 display:none/visibility
-    /// 隐藏」，被裁成一半照样是 healthy。2026-09 那次「胶囊顶部被裁」全程 17 次显示都报
-    /// `render ack OK`，只能靠用户截图发现——这类问题必须在日志里能自证。
+    /// 為什麼單獨一條：render ack 的 `healthy` 只查「寬高 > 0、沒被 display:none/visibility
+    /// 隱藏」，被裁成一半照樣是 healthy。2026-09 那次「膠囊頂部被裁」全程 17 次顯示都報
+    /// `render ack OK`，只能靠使用者截圖發現——這類問題必須在日誌裡能自證。
     fn warn_if_content_clipped(&self, data: &Value, show_id: u64) {
         let number = |key: &str| data.get(key).and_then(Value::as_f64).unwrap_or(0.0);
-        // 两个判据都要：clippedTop 是渲染端实测的越界量（最直接），shortfall 是拿视口高度
-        // 反算的缺口（老版本前端不上报 clippedTop 时的兜底，也能反过来印证前者）。
+        // 兩個判據都要：clippedTop 是渲染端實測的越界量（最直接），shortfall 是拿視口高度
+        // 反算的缺口（老版本前端不上報 clippedTop 時的兜底，也能反過來印證前者）。
         let clipped_top = number("clippedTop");
         let viewport_height = number("viewportHeight");
         let shortfall = if viewport_height > 0.0 {
@@ -548,13 +548,13 @@ impl WindowState {
             && self.last_ack_generation.load(Ordering::SeqCst) == generation
     }
 
-    /// 本次 show_id 是否仍是当前正在显示的（不区分 generation，供置顶守护线程判断是否继续）。
+    /// 本次 show_id 是否仍是當前正在顯示的（不區分 generation，供置頂守護執行緒判斷是否繼續）。
     fn is_showing(&self, show_id: u64) -> bool {
         show_id != 0 && self.active_show_id.load(Ordering::SeqCst) == show_id
     }
 
-    /// 悬浮窗正显示时，把它重新顶到 topmost 带最上层。供前台窗口切换钩子调用，
-    /// 让用户切到/打开别的置顶程序时，悬浮窗立即回到最上面。
+    /// 懸浮窗正顯示時，把它重新頂到 topmost 帶最上層。供前台視窗切換鉤子呼叫，
+    /// 讓使用者切到/開啟別的置頂程式時，懸浮窗立即回到最上面。
     #[cfg_attr(not(windows), allow(dead_code))]
     pub fn overlay_visible(&self) -> bool {
         self.active_show_id.load(Ordering::SeqCst) != 0
@@ -592,8 +592,8 @@ impl WindowState {
         }
 
         let state = data.get("state").and_then(Value::as_str);
-        // streaming 标志在录音开始时即为真（气泡从一开始就在，避免中途弹出+缩放）；
-        // 兼容旧逻辑：有 streamingText 也算。
+        // streaming 標誌在錄音開始時即為真（氣泡從一開始就在，避免中途彈出+縮放）；
+        // 相容舊邏輯：有 streamingText 也算。
         let streaming_on = data.get("streaming").and_then(Value::as_bool).unwrap_or(false)
             || data
                 .get("streamingText")
@@ -612,7 +612,7 @@ impl WindowState {
         } else if state == Some("listening") && streaming_on && mic_hint_on {
             OverlayLayout::StreamingWithMicHint
         } else if state == Some("listening") && streaming_on {
-            // 录音中开启了实时显示 → 放大窗口容纳气泡（整段录音保持该尺寸，中途不再缩放）
+            // 錄音中開啟了即時顯示 → 放大視窗容納氣泡（整段錄音保持該尺寸，中途不再縮放）
             OverlayLayout::Streaming
         } else if matches!(state, Some("listening") | Some("thinking")) && mic_hint_on {
             OverlayLayout::BaseWithMicHint
@@ -632,19 +632,19 @@ impl WindowState {
                     | (OverlayLayout::StreamingWithMicHint, OverlayLayout::Streaming)
                     | (OverlayLayout::StreamingWithMicHint, OverlayLayout::BaseWithMicHint)
                     | (OverlayLayout::StreamingWithMicHint, OverlayLayout::Base)
-                    // Streaming 这两支是 2026-09 补的。前端曾有五个警告方法各自手写
+                    // Streaming 這兩支是 2026-09 補的。前端曾有五個警告方法各自手寫
                     // payload、都漏了 `streaming` 字段，于是低音量警告每 5 秒把布局判成
-                    // Base，窗口收缩一帧再被下一次心跳撑回去——开着实时字幕不说话时
-                    // 悬浮窗"一闪一闪"。前端已收口到 listeningPayload()，这里是兜底：
-                    // 哪怕将来又有新出口漏带字段，窗口也不该在可见期间缩回去。
+                    // Base，視窗收縮一幀再被下一次心跳撐回去——開著即時字幕不說話時
+                    // 懸浮窗"一閃一閃"。前端已收口到 listeningPayload()，這裡是兜底：
+                    // 哪怕將來又有新出口漏帶欄位，視窗也不該在可見期間縮回去。
                     | (OverlayLayout::Streaming, OverlayLayout::Base)
                     | (OverlayLayout::Streaming, OverlayLayout::BaseWithMicHint)
             );
 
-        // 提示文字 3 秒后会隐藏，无语音/错误也会把内容换成短 toast，但只要悬浮窗
-        // 仍可见就不能顺带收缩原生窗口：窗口按底边锚定，收缩需要重新定位，WebView2
-        // 会把两次几何更新之间的中间帧显示成下跳。保留透明上方空间，直到 hide 或
-        // 下一次 waiting 明确开始新一轮显示时再恢复基础尺寸。
+        // 提示文字 3 秒後會隱藏，無語音/錯誤也會把內容換成短 toast，但只要懸浮窗
+        // 仍可見就不能順帶收縮原生視窗：視窗按底邊錨定，收縮需要重新定位，WebView2
+        // 會把兩次幾何更新之間的中間幀顯示成下跳。保留透明上方空間，直到 hide 或
+        // 下一次 waiting 明確開始新一輪顯示時再恢復基礎尺寸。
         if !keep_expanded_bounds {
             *current_layout = candidate_layout;
         }
@@ -683,8 +683,8 @@ impl WindowState {
     }
 
     fn ensure_visible(&self, app: &AppHandle, show_id: u64) -> bool {
-        // WebviewWindowBuilder 的 label 注册与 Manager 句柄可见性不是原子操作。
-        // 多个 present 并发时若都看到 handle=MISSING，会争抢同一 "overlay" label。
+        // WebviewWindowBuilder 的 label 註冊與 Manager 控制代碼可見性不是原子操作。
+        // 多個 present 併發時若都看到 handle=MISSING，會爭搶同一 "overlay" label。
         let _lifecycle_guard = self.overlay_lifecycle.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         let layout = self.overlay_layout.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).clone();
         let base_width = *self.overlay_base_width.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
@@ -702,12 +702,12 @@ impl WindowState {
         let show_error = show_overlay_window(&overlay).err();
         #[cfg(not(target_os = "macos"))]
         let top_error = overlay.set_always_on_top(true).err().map(|error| format!("{:?}", error));
-        // macOS 不调 set_always_on_top：tao 会把层级异步改回 NSFloatingWindowLevel（实测层级 5），
-        // 和下面 reassert 的主线程回调谁先执行没有保证；层级统一由 reassert 设成 NSStatusWindowLevel。
+        // macOS 不調 set_always_on_top：tao 會把層級非同步改回 NSFloatingWindowLevel（實測層級 5），
+        // 和下面 reassert 的主執行緒回撥誰先執行沒有保證；層級統一由 reassert 設成 NSStatusWindowLevel。
         #[cfg(target_os = "macos")]
         let top_error: Option<String> = None;
-        // set_always_on_top(true) 在状态未变时可能是 no-op，这里再用原生 SetWindowPos 强制
-        // 把窗口顶到 topmost 带最上层，确保即使下方已有别的置顶窗口也能压过它。
+        // set_always_on_top(true) 在狀態未變時可能是 no-op，這裡再用原生 SetWindowPos 強制
+        // 把視窗頂到 topmost 帶最上層，確保即使下方已有別的置頂視窗也能壓過它。
         reassert_overlay_topmost(app);
         set_overlay_interactivity(&overlay, layout.is_interactive());
 
@@ -732,13 +732,13 @@ impl WindowState {
         overlay: &tauri::WebviewWindow,
         layout: &OverlayLayout,
     ) -> Option<String> {
-        // 记录本次应用的布局，供 update_overlay_state 判重、跳过无谓的窗口重设。
+        // 記錄本次應用的佈局，供 update_overlay_state 判重、跳過無謂的視窗重設。
         *self.last_applied_layout.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(layout.clone());
         let base_width = *self.overlay_base_width.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         let css_zoom = self.css_zoom();
         let target_monitor = self.overlay_monitor.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).clone();
 
-        // macOS：各显示器缩放可以不同，物理像素不能跨屏比较，全程按逻辑坐标算。
+        // macOS：各顯示器縮放可以不同，物理畫素不能跨屏比較，全程按邏輯座標算。
         #[cfg(target_os = "macos")]
         {
             let bounds = macos_overlay_bounds(app, target_monitor.as_ref(), layout, base_width, css_zoom);
@@ -748,7 +748,7 @@ impl WindowState {
             let size_error = overlay.set_size(tauri::Size::Logical(
                 tauri::LogicalSize::new(bounds.2, bounds.3),
             )).err();
-            // 不调 set_always_on_top：它会把层级改回 NSFloatingWindowLevel，层级交给 reassert_overlay_topmost
+            // 不調 set_always_on_top：它會把層級改回 NSFloatingWindowLevel，層級交給 reassert_overlay_topmost
             return match (position_error, size_error) {
                 (None, None) => None,
                 (position, size) => Some(format!("position={:?} size={:?}", position, size)),
@@ -794,7 +794,7 @@ impl WindowState {
 
     fn recover_overlay(&self, app: &AppHandle, show_id: u64) {
         let _lifecycle_guard = self.overlay_lifecycle.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-        // 等锁期间可能已经 hide 或开始了下一次显示，必须重新校验。
+        // 等鎖期間可能已經 hide 或開始了下一次顯示，必須重新校驗。
         if !self.is_active(show_id, 0) {
             return;
         }
@@ -878,7 +878,7 @@ impl WindowState {
             Ok(overlay) => {
                 let position_error = self.apply_native_layout(app, &overlay, &layout);
                 set_overlay_interactivity(&overlay, layout.is_interactive());
-                // macOS：一建出来就设好悬浮层属性（层级、跨桌面空间、失活不隐藏）
+                // macOS：一建出來就設好懸浮層屬性（層級、跨桌面空間、失活不隱藏）
                 #[cfg(target_os = "macos")]
                 reassert_overlay_topmost(app);
                 let show_error = if show_immediately {
@@ -910,17 +910,17 @@ impl WindowState {
         }
     }
 }
-/// 把悬浮窗重新顶到 topmost 带的最上层。
+/// 把懸浮窗重新頂到 topmost 帶的最上層。
 ///
-/// 为什么需要：`WS_EX_TOPMOST` 只保证在普通窗口之上；多个 topmost 窗口之间，谁最后
-/// 被显示/激活/SetWindowPos 谁就在上面。悬浮窗只在显示那一刻抢了一次置顶，之后若有
-/// 别的 topmost 窗口（PotPlayer「总在最前」、会议共享工具条、PowerToys 置顶窗等）出现
-/// 或被重新激活，就会盖住它。这里用原生 `SetWindowPos(HWND_TOPMOST)` 主动把自己重新顶上去。
+/// 為什麼需要：`WS_EX_TOPMOST` 只保證在普通視窗之上；多個 topmost 視窗之間，誰最後
+/// 被顯示/啟用/SetWindowPos 誰就在上面。懸浮窗只在顯示那一刻搶了一次置頂，之後若有
+/// 別的 topmost 視窗（PotPlayer「總在最前」、會議共享工具條、PowerToys 置頂窗等）出現
+/// 或被重新啟用，就會蓋住它。這裡用原生 `SetWindowPos(HWND_TOPMOST)` 主動把自己重新頂上去。
 ///
-/// 关键：
-/// - 带 `SWP_NOACTIVATE`，绝不抢焦点（悬浮窗设计上永不激活）。
-/// - 直接用原生 SetWindowPos，而不是 Tauri 的 `set_always_on_top(true)`——后者在状态未变
-///   (true→true) 时可能是 no-op，不会真正下发 SetWindowPos，起不到重新抬升的作用。
+/// 關鍵：
+/// - 帶 `SWP_NOACTIVATE`，絕不搶焦點（懸浮窗設計上永不啟用）。
+/// - 直接用原生 SetWindowPos，而不是 Tauri 的 `set_always_on_top(true)`——後者在狀態未變
+///   (true→true) 時可能是 no-op，不會真正下發 SetWindowPos，起不到重新抬升的作用。
 #[cfg(windows)]
 fn reassert_overlay_topmost(app: &AppHandle) {
     use windows::Win32::Foundation::HWND;
@@ -929,7 +929,7 @@ fn reassert_overlay_topmost(app: &AppHandle) {
     };
 
     let Some(overlay) = app.get_webview_window("overlay") else { return; };
-    // 通过 isize 中转重建 HWND，规避 tauri 与本 crate 各自 windows 版本的 HWND 类型不一致。
+    // 透過 isize 中轉重建 HWND，規避 tauri 與本 crate 各自 windows 版本的 HWND 型別不一致。
     let hwnd_raw = match overlay.hwnd() {
         Ok(h) => h.0 as isize,
         Err(_) => return,
@@ -951,8 +951,8 @@ fn reassert_overlay_topmost(app: &AppHandle) {
     }
 }
 
-/// macOS：重设悬浮层属性（`set_always_on_top` 会把层级改回普通置顶），并在可见时
-/// 不激活地放到最前。NSWindow 的方法只能在主线程调用。
+/// macOS：重設懸浮層屬性（`set_always_on_top` 會把層級改回普通置頂），並在可見時
+/// 不啟用地放到最前。NSWindow 的方法只能在主執行緒呼叫。
 #[cfg(target_os = "macos")]
 fn reassert_overlay_topmost(app: &AppHandle) {
     let Some(overlay) = app.get_webview_window("overlay") else { return; };
@@ -972,11 +972,11 @@ fn reassert_overlay_topmost(app: &AppHandle) {
 #[cfg(not(any(windows, target_os = "macos")))]
 fn reassert_overlay_topmost(_app: &AppHandle) {}
 
-/// 显示悬浮窗且不抢焦点。
+/// 顯示懸浮窗且不搶焦點。
 ///
 /// Windows：`show()` + 后面的 SetWindowPos(SWP_NOACTIVATE)（见 reassert_overlay_topmost）。
-/// macOS：`show()` 会走 makeKeyAndOrderFront 把它设成 key window，这里改用
-/// `orderFrontRegardless`，不改变键盘焦点。
+/// macOS：`show()` 會走 makeKeyAndOrderFront 把它設成 key window，這裡改用
+/// `orderFrontRegardless`，不改變鍵盤焦點。
 fn show_overlay_window(overlay: &tauri::WebviewWindow) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
@@ -998,7 +998,7 @@ fn show_overlay_window(overlay: &tauri::WebviewWindow) -> Result<(), String> {
     }
 }
 
-/// 主窗网页进程崩溃后的自动重载次数记录（时间戳，毫秒）。
+/// 主窗網頁程序崩潰後的自動過載次數記錄（時間戳，毫秒）。
 #[cfg_attr(not(windows), allow(dead_code))]
 static MAIN_RENDERER_RELOADS: Mutex<Vec<i64>> = Mutex::new(Vec::new());
 #[cfg_attr(not(windows), allow(dead_code))]
@@ -1006,7 +1006,7 @@ const MAIN_RENDERER_RELOAD_WINDOW_MS: i64 = 5 * 60 * 1000;
 #[cfg_attr(not(windows), allow(dead_code))]
 const MAIN_RENDERER_RELOAD_MAX: usize = 3;
 
-/// 这次崩溃还能不能自动重载：5 分钟内最多 3 次，超过就停手，避免反复崩溃时无限重载。
+/// 這次崩潰還能不能自動過載：5 分鐘內最多 3 次，超過就停手，避免反覆崩潰時無限過載。
 #[cfg_attr(not(windows), allow(dead_code))]
 pub fn main_renderer_reload_allowed(now_ms: i64) -> bool {
     let mut history = MAIN_RENDERER_RELOADS.lock().unwrap_or_else(|p| p.into_inner());
@@ -1023,11 +1023,11 @@ fn reload_allowed_in_window(history: &mut Vec<i64>, now_ms: i64, window_ms: i64,
     true
 }
 
-/// 主窗藏到托盘时告诉 WebView2「内存可以少用」，再显示时恢复。
+/// 主窗藏到托盤時告訴 WebView2「記憶體可以少用」，再顯示時恢復。
 ///
-/// 主窗藏着的时间远多于开着的时间（常驻托盘 + 开机自启），而它的渲染进程是 SayItLocally 内存的大头。
-/// 只是内存目标，不停 JS：录音、WebSocket 都跑在这个进程里，必须照常工作（所以不用 TrySuspend）。
-/// 运行时太旧（没有 ICoreWebView2_19）就什么也不做。
+/// 主窗藏著的時間遠多於開著的時間（常駐托盤 + 開機自啟），而它的渲染程序是 SayItLocally 記憶體的大頭。
+/// 只是記憶體目標，不停 JS：錄音、WebSocket 都跑在這個程序裡，必須照常工作（所以不用 TrySuspend）。
+/// 執行時太舊（沒有 ICoreWebView2_19）就什麼也不做。
 pub fn set_main_window_memory_low(window: &tauri::WebviewWindow, low: bool) {
     #[cfg(windows)]
     {
@@ -1057,8 +1057,8 @@ pub fn set_main_window_memory_low(window: &tauri::WebviewWindow, low: bool) {
     let _ = (window, low);
 }
 
-/// macOS：主窗口藏起来时把 Dock 图标也收起（只留菜单栏图标，像常驻工具一样），
-/// 主窗口显示时再放回来。Windows 上什么都不做（任务栏按钮跟着窗口走）。
+/// macOS：主視窗藏起來時把 Dock 圖示也收起（只留選單欄圖示，像常駐工具一樣），
+/// 主視窗顯示時再放回來。Windows 上什麼都不做（工作列按鈕跟著視窗走）。
 pub fn set_dock_icon_visible(app: &AppHandle, visible: bool) {
     #[cfg(target_os = "macos")]
     {
@@ -1073,8 +1073,8 @@ pub fn set_dock_icon_visible(app: &AppHandle, visible: bool) {
     let _ = (app, visible);
 }
 
-/// 显示主窗的统一入口：恢复内存目标、show、解除最小化、抢焦点。
-/// 只 show 不 unminimize 会让以最小化状态诞生的窗口停在屏幕外（pitfalls #11）。
+/// 顯示主窗的統一入口：恢復記憶體目標、show、解除最小化、搶焦點。
+/// 只 show 不 unminimize 會讓以最小化狀態誕生的視窗停在螢幕外（pitfalls #11）。
 pub fn show_main_window(window: &tauri::WebviewWindow) {
     set_dock_icon_visible(window.app_handle(), true);
     set_main_window_memory_low(window, false);
@@ -1083,7 +1083,7 @@ pub fn show_main_window(window: &tauri::WebviewWindow) {
     let _ = window.set_focus();
 }
 
-/// 主窗藏到托盘的统一入口。
+/// 主窗藏到托盤的統一入口。
 pub fn hide_main_window(window: &tauri::Window) {
     let _ = window.hide();
     set_dock_icon_visible(window.app_handle(), false);
@@ -1092,14 +1092,14 @@ pub fn hide_main_window(window: &tauri::Window) {
     }
 }
 
-/// 悬浮窗显示期间，周期性地把它重新顶到最上层，兜住「显示后才出现/重申置顶的窗口」。
-/// 只在本次 show_id 仍是当前显示时运行；一旦切到下一次显示或隐藏（active_show_id 变化）即退出。
+/// 懸浮窗顯示期間，週期性地把它重新頂到最上層，兜住「顯示後才出現/重申置頂的視窗」。
+/// 只在本次 show_id 仍是當前顯示時執行；一旦切到下一次顯示或隱藏（active_show_id 變化）即退出。
 fn spawn_topmost_keeper(app: AppHandle, show_id: u64) {
     let _ = thread::Builder::new()
         .name(format!("overlay-topmost-{}", show_id))
         .spawn(move || {
             let state = app.state::<WindowState>();
-            // 首次快速重申一次（覆盖「悬浮窗弹出时下方已有 PotPlayer 等置顶窗」的场景）。
+            // 首次快速重申一次（覆蓋「懸浮窗彈出時下方已有 PotPlayer 等置頂窗」的場景）。
             reassert_overlay_topmost(&app);
             loop {
                 thread::sleep(Duration::from_millis(400));
@@ -1111,10 +1111,10 @@ fn spawn_topmost_keeper(app: AppHandle, show_id: u64) {
         });
 }
 
-/// 真正执行 `overlay.hide()`，延后 `HIDE_AFTER_BLANK_MS` 给 webview 一帧时间画成空白。
+/// 真正執行 `overlay.hide()`，延後 `HIDE_AFTER_BLANK_MS` 給 webview 一幀時間畫成空白。
 ///
-/// 中途若有新的 present 开始（`active_show_id` 不再是 0），就**放弃这次隐藏** ——
-/// 那时窗口已经带着新内容显示出来了，再 hide 会把它吞掉。
+/// 中途若有新的 present 開始（`active_show_id` 不再是 0），就**放棄這次隱藏** ——
+/// 那時視窗已經帶著新內容顯示出來了，再 hide 會把它吞掉。
 fn spawn_deferred_hide(app: AppHandle, prev_layout: OverlayLayout) {
     let _ = thread::Builder::new()
         .name("overlay-deferred-hide".to_string())
@@ -1194,12 +1194,12 @@ fn spawn_render_watchdog(app: AppHandle, show_id: u64) {
         });
 }
 
-/// 当前进程的 GDI / USER 句柄数。长时间运行后若这两个数持续增长，
-/// 说明有句柄泄漏——是“悬浮窗用久后不再出现、重启即好”的典型根因。
+/// 當前程序的 GDI / USER 控制代碼數。長時間執行後若這兩個數持續增長，
+/// 說明有控制代碼洩漏——是“懸浮窗用久後不再出現、重啟即好”的典型根因。
 #[cfg(windows)]
 fn gui_resource_counts() -> (u32, u32) {
-    // GetGuiResources 在不同 windows crate 版本里的模块路径不稳定，直接用 FFI 声明最稳。
-    // GR_GDIOBJECTS=0，GR_USEROBJECTS=1；当前进程用伪句柄 (HANDLE)-1。
+    // GetGuiResources 在不同 windows crate 版本里的模組路徑不穩定，直接用 FFI 宣告最穩。
+    // GR_GDIOBJECTS=0，GR_USEROBJECTS=1；當前程序用偽控制代碼 (HANDLE)-1。
     #[link(name = "user32")]
     extern "system" {
         fn GetGuiResources(hprocess: *mut core::ffi::c_void, uiflags: u32) -> u32;
@@ -1336,7 +1336,7 @@ mod reload_limit_tests {
         assert!(reload_allowed_in_window(&mut h, 1_000, w, 3));
         assert!(reload_allowed_in_window(&mut h, 2_000, w, 3));
         assert!(!reload_allowed_in_window(&mut h, 3_000, w, 3));
-        // 最早那次滑出窗口之后又能重载
+        // 最早那次滑出視窗之後又能過載
         assert!(reload_allowed_in_window(&mut h, w + 1, w, 3));
     }
 }
@@ -1349,15 +1349,15 @@ mod tests {
     };
     use serde_json::json;
 
-    /// 2560x1440 @150%，任务栏占掉底部 122px —— 报「胶囊顶部被裁」那台机器的实际布局。
+    /// 2560x1440 @150%，工作列佔掉底部 122px —— 報「膠囊頂部被裁」那台機器的實際佈局。
     const WORK: (i64, i64, i64, i64) = (0, 0, 2560, 1318);
     const SCALE: f64 = 1.5;
-    /// Windows 设置 → 辅助功能 → 文本大小 123% 时实测的额外缩放（dpr 1.8427 / scale 1.5）。
+    /// Windows 設定 → 輔助功能 → 文本大小 123% 時實測的額外縮放（dpr 1.8427 / scale 1.5）。
     const TEXT_SCALE_123: f64 = 1.2285;
-    /// 胶囊的 `min-height: 38px`（Overlay.tsx）。CSS 改了这里会先红，正是想要的效果。
+    /// 膠囊的 `min-height: 38px`（Overlay.tsx）。CSS 改了這裡會先紅，正是想要的效果。
     const OVERLAY_PILL_MIN_HEIGHT: f64 = 38.0;
 
-    /// 胶囊在 webview 里需要的 CSS 高度：根节点 pb-4 + 胶囊 min-height。
+    /// 膠囊在 webview 裡需要的 CSS 高度：根節點 pb-4 + 膠囊 min-height。
     fn required_css_height() -> f64 {
         OVERLAY_ROOT_PADDING_BOTTOM + OVERLAY_PILL_MIN_HEIGHT
     }
@@ -1370,7 +1370,7 @@ mod tests {
             OverlayLayout::Base.dimensions(OVERLAY_DEFAULT_BASE_WIDTH),
             1.0,
         );
-        // 窗口物理高换回 CSS px（css_zoom = 1 时 dpr 就是 scale）后要装得下内容。
+        // 視窗物理高換回 CSS px（css_zoom = 1 時 dpr 就是 scale）後要裝得下內容。
         let css_height = height as f64 / SCALE;
         assert!(
             css_height >= required_css_height(),
@@ -1381,8 +1381,8 @@ mod tests {
         );
     }
 
-    /// 这条是本次故障的回归钉子：文本大小放大时窗口必须跟着长高，否则内容从顶部溢出、
-    /// 被 overlay.html 的 overflow:hidden 裁平。修复前 height 恒为 84（56×1.5），
+    /// 這條是本次故障的迴歸釘子：文本大小放大時視窗必須跟著長高，否則內容從頂部溢位、
+    /// 被 overlay.html 的 overflow:hidden 裁平。修復前 height 恆為 84（56×1.5），
     /// webview 里只有 56 CSS px，装不下 54 + 需要的余量。
     #[test]
     fn base_window_still_fits_pill_when_os_text_scale_enlarges_css_px() {
@@ -1392,7 +1392,7 @@ mod tests {
             OverlayLayout::Base.dimensions(OVERLAY_DEFAULT_BASE_WIDTH),
             TEXT_SCALE_123,
         );
-        // 此时 1 CSS px = scale × css_zoom 个设备像素。
+        // 此時 1 CSS px = scale × css_zoom 個裝置畫素。
         let css_height = height as f64 / (SCALE * TEXT_SCALE_123);
         assert!(
             css_height >= required_css_height(),
@@ -1410,19 +1410,19 @@ mod tests {
 
     #[test]
     fn every_layout_fits_its_content_under_os_text_scale() {
-        // 各布局在 webview 里需要的 CSS 高度（pb-4 + 内容），内容高取实测值。
-        // 兜底卡片 149、输入源条 30 + gap 8、流式气泡 110 + gap 8 都来自现场日志/CSS。
+        // 各佈局在 webview 裡需要的 CSS 高度（pb-4 + 內容），內容高取實測值。
+        // 兜底卡片 149、輸入源條 30 + gap 8、流式氣泡 110 + gap 8 都來自現場日誌/CSS。
         let cases = [
             ("base", OverlayLayout::Base, required_css_height()),
             ("mic_hint", OverlayLayout::BaseWithMicHint, required_css_height() + 8.0 + 30.0),
             ("fallback", OverlayLayout::Fallback, OVERLAY_ROOT_PADDING_BOTTOM + 149.0),
-            // 失败卡：py-4(32) + 标题 20 + 原因**最多三行** 60 + 恢复提示 20
+            // 失敗卡：py-4(32) + 標題 20 + 原因**最多三行** 60 + 恢復提示 20
             //        + 两处间距 12 + 边框 2 ≈ 146
             //
-            // ⚠️ 这里原来按「原因只有一行」算成 110，是错的：供应商的错误文案
-            // （「账户余额不足，本次请求未能发出…」）在 520px 宽下就占两行，实测内容高 97，
-            // 加上恢复提示 126 —— 旧窗口 150 只能装 134，余量 4px。断言写松了，
-            // 于是这条自检在真实最坏情况下照样全绿。
+            // ⚠️ 這裡原來按「原因只有一行」算成 110，是錯的：供應商的錯誤文案
+            // （「賬戶餘額不足，本次請求未能發出…」）在 520px 寬下就佔兩行，實測內容高 97，
+            // 加上恢復提示 126 —— 舊視窗 150 只能裝 134，餘量 4px。斷言寫鬆了，
+            // 於是這條自檢在真實最壞情況下照樣全綠。
             ("failure", OverlayLayout::Failure, OVERLAY_ROOT_PADDING_BOTTOM + 146.0),
             ("streaming", OverlayLayout::Streaming, required_css_height() + 8.0 + 110.0),
             (
@@ -1449,8 +1449,8 @@ mod tests {
         }
     }
 
-    /// 底边贴屏距离是屏幕几何，不该跟着 webview 的缩放变——否则调一下系统文本大小，
-    /// 悬浮窗就整体往屏幕中间跑。
+    /// 底邊貼屏距離是螢幕幾何，不該跟著 webview 的縮放變——否則調一下系統文本大小，
+    /// 懸浮窗就整體往螢幕中間跑。
     #[test]
     fn bottom_edge_stays_put_regardless_of_css_zoom() {
         let bottom_of = |css_zoom: f64| {
@@ -1466,7 +1466,7 @@ mod tests {
         assert_eq!(bottom_of(1.0), bottom_of(2.25));
     }
 
-    /// 窗口再大也不能被推出工作区：夹取之后 y 仍须落在工作区内。
+    /// 視窗再大也不能被推出工作區：夾取之後 y 仍須落在工作區內。
     #[test]
     fn extreme_css_zoom_stays_inside_work_area() {
         let (x, y, width, height) = overlay_bounds_in_work_area(
@@ -1481,15 +1481,15 @@ mod tests {
         assert!(y as i64 + height as i64 <= 1318, "bottom={}", y as i64 + height as i64);
     }
 
-    /// macOS：按整屏矩形找可用区域；Tauri 物理像素取整带来的半个点误差也要能对上。
+    /// macOS：按整屏矩形找可用區域；Tauri 物理畫素取整帶來的半個點誤差也要能對上。
     #[cfg(target_os = "macos")]
     #[test]
     fn macos_visible_area_is_matched_by_screen_frame() {
         use crate::platform::macos::appkit::ScreenArea;
         let areas = [
-            // 主屏：顶上 25 点菜单栏，底下 70 点程序坞
+            // 主屏：頂上 25 點選單欄，底下 70 點程式塢
             ScreenArea { frame: (0.0, 0.0, 1440.0, 900.0), visible: (0.0, 25.0, 1440.0, 805.0) },
-            // 右侧外接屏，比主屏高出 180 点
+            // 右側外接屏，比主屏高出 180 點
             ScreenArea { frame: (1440.0, -180.0, 1920.0, 1080.0), visible: (1440.0, -155.0, 1920.0, 1055.0) },
         ];
         assert_eq!(
@@ -1503,7 +1503,7 @@ mod tests {
         assert_eq!(super::visible_area_for_frame((0.0, 0.0, 1280.0, 800.0), &areas), None);
     }
 
-    /// 依次喂入 payload，返回每一步之后的布局。只驱动 apply_payload_layout，
+    /// 依次喂入 payload，返回每一步之後的佈局。只驅動 apply_payload_layout，
     /// 不碰窗口，所以不需要 AppHandle。
     fn layouts_after(payloads: &[serde_json::Value]) -> Vec<OverlayLayout> {
         let state = WindowState::new();
@@ -1516,11 +1516,11 @@ mod tests {
             .collect()
     }
 
-    /// 只有带按钮的卡片布局才接收鼠标点击，其余一律穿透。
+    /// 只有帶按鈕的卡片佈局才接收滑鼠點選，其餘一律穿透。
     ///
-    /// 用 match 而不是数组：新增布局变体时这里会**编译失败**，强制作者表态"这个布局
-    /// 有没有按钮"。漏设的症状极难查 —— 按钮在界面上画得好好的，就是点不到，
-    /// 因为整个窗口被 set_ignore_cursor_events(true) 穿透了。
+    /// 用 match 而不是陣列：新增佈局變體時這裡會**編譯失敗**，強制作者表態"這個佈局
+    /// 有沒有按鈕"。漏設的症狀極難查 —— 按鈕在介面上畫得好好的，就是點不到，
+    /// 因為整個視窗被 set_ignore_cursor_events(true) 穿透了。
     #[test]
     fn only_card_layouts_receive_mouse_clicks() {
         let expected = |layout: &OverlayLayout| match layout {
@@ -1547,10 +1547,10 @@ mod tests {
         }
     }
 
-    /// 失败卡必须拿到自己的布局，且不能被"可见期间别收缩"那条兜底挡住。
+    /// 失敗卡必須拿到自己的佈局，且不能被"可見期間別收縮"那條兜底擋住。
     ///
-    /// 场景是真实的：录音中掉线会先显示输入源提示条（BaseWithMicHint），随后才失败。
-    /// 如果 failure 落进 keep_expanded_bounds 的配对里，窗口会停在提示条的尺寸上，
+    /// 場景是真實的：錄音中掉線會先顯示輸入源提示條（BaseWithMicHint），隨後才失敗。
+    /// 如果 failure 落進 keep_expanded_bounds 的配對裡，視窗會停在提示條的尺寸上，
     /// 卡片被 overflow:hidden 裁掉一大半。
     #[test]
     fn failure_state_gets_its_own_layout_even_after_a_mic_hint() {
@@ -1572,19 +1572,19 @@ mod tests {
         );
     }
 
-    /// 回归钉（2026-09「开着实时字幕不说话时悬浮窗一闪一闪」）：
+    /// 迴歸釘（2026-09「開著即時字幕不說話時懸浮窗一閃一閃」）：
     ///
-    /// 低音量警告每 5 秒发一次 listening 更新，那几个 payload 曾漏带 `streaming`。
-    /// 布局一旦被判回 Base，窗口就从 480×200 收缩、下一帧心跳再撑回去 —— 而 webview 里
-    /// 的 DOM 完全没动，气泡被 overflow:hidden 裁掉一帧，看起来就是闪。
+    /// 低音量警告每 5 秒發一次 listening 更新，那幾個 payload 曾漏帶 `streaming`。
+    /// 佈局一旦被判回 Base，視窗就從 480×200 收縮、下一幀心跳再撐回去 —— 而 webview 裡
+    /// 的 DOM 完全沒動，氣泡被 overflow:hidden 裁掉一幀，看起來就是閃。
     ///
-    /// 前端已收口到 listeningPayload()，这条钉的是原生侧的兜底：可见期间**任何**缺字段的
-    /// listening 更新都不许让窗口缩回去。
+    /// 前端已收口到 listeningPayload()，這條釘的是原生側的兜底：可見期間**任何**缺欄位的
+    /// listening 更新都不許讓視窗縮回去。
     #[test]
     fn listening_update_without_streaming_flag_must_not_shrink_the_window() {
         let layouts = layouts_after(&[
             json!({ "state": "listening", "streaming": true }),
-            // 这就是当年那份 payload：只有警告文案，没有 streaming
+            // 這就是當年那份 payload：只有警告文案，沒有 streaming
             json!({ "state": "listening", "warning": "volume is low", "warningTone": "warn" }),
             json!({ "state": "listening", "streaming": true }),
         ]);
@@ -1598,7 +1598,7 @@ mod tests {
         );
     }
 
-    /// 同一条兜底也要覆盖「输入源提示还在显示」的那一支，否则提示条一出现就又漏一个组合。
+    /// 同一條兜底也要覆蓋「輸入源提示還在顯示」的那一支，否則提示條一齣現就又漏一個組合。
     #[test]
     fn streaming_window_survives_a_mic_hint_only_update() {
         let layouts = layouts_after(&[
@@ -1611,8 +1611,8 @@ mod tests {
         );
     }
 
-    /// 兜底不能兜过头：新一轮显示从 waiting 开始，那时必须真的回到基础尺寸，
-    /// 否则上一轮的大窗口会一直留着。
+    /// 兜底不能兜過頭：新一輪顯示從 waiting 開始，那時必須真的回到基礎尺寸，
+    /// 否則上一輪的大視窗會一直留著。
     #[test]
     fn a_new_waiting_phase_resets_to_the_base_layout() {
         let layouts = layouts_after(&[
@@ -1696,7 +1696,7 @@ fn calc_overlay_bounds(
     css_zoom: f64,
 ) -> (f64, f64, f64, f64) {
     let (design_width, design_height) = layout.dimensions(base_width);
-    // 设计尺寸是 CSS px；乘 css_zoom 之后才是能交给 Tauri 的逻辑尺寸。
+    // 設計尺寸是 CSS px；乘 css_zoom 之後才是能交給 Tauri 的邏輯尺寸。
     let desired_width = design_width * css_zoom;
     let desired_height = design_height * css_zoom;
     let (screen_width, screen_height, _) = monitor_info(app);
@@ -1709,12 +1709,12 @@ fn calc_overlay_bounds(
     (x, y, width, height)
 }
 
-/// 显示器内定位的纯数学部分，全程物理像素，便于单测钉住缩放行为。
+/// 顯示器內定位的純數學部分，全程物理畫素，便於單測釘住縮放行為。
 ///
-/// - `work`：目标显示器工作区 `(left, top, right, bottom)`，物理像素
-/// - `scale`：该显示器的缩放
-/// - `design`：布局的设计尺寸，CSS px
-/// - `css_zoom`：webview 里 1 CSS px 相当于几个逻辑 px
+/// - `work`：目標顯示器工作區 `(left, top, right, bottom)`，物理畫素
+/// - `scale`：該顯示器的縮放
+/// - `design`：佈局的設計尺寸，CSS px
+/// - `css_zoom`：webview 裡 1 CSS px 相當於幾個邏輯 px
 fn overlay_bounds_in_work_area(
     work: (i64, i64, i64, i64),
     scale: f64,
@@ -1724,28 +1724,28 @@ fn overlay_bounds_in_work_area(
     let (left, top, right, bottom) = work;
     let work_width = (right - left).max(1);
     let work_height = (bottom - top).max(1);
-    // margin 与 bottom_gap 描述「窗口离屏幕边多远」，是屏幕几何，**不跟 css_zoom 走**：
-    // webview 内部怎么排版不该改变悬浮窗贴屏底的距离。
+    // margin 與 bottom_gap 描述「視窗離螢幕邊多遠」，是螢幕幾何，**不跟 css_zoom 走**：
+    // webview 內部怎麼排版不該改變懸浮窗貼屏底的距離。
     let margin = (OVERLAY_SCREEN_MARGIN * scale).round().max(1.0) as i64;
     let bottom_gap = (72.0 * scale).round().max(margin as f64) as i64;
     let available_width = (work_width - margin * 2).max(1);
     let available_height = (work_height - margin * 2).max(1);
     // 用 ceil 而不是 round：宁可多出一个物理像素的透明边，也不要向下取整把本就不多的
-    // 垂直余量吃掉——少一个像素就是胶囊顶部被裁一条。
+    // 垂直餘量吃掉——少一個畫素就是膠囊頂部被裁一條。
     let width = ((design.0 * css_zoom * scale).ceil().max(1.0) as i64).min(available_width);
     let height = ((design.1 * css_zoom * scale).ceil().max(1.0) as i64).min(available_height);
     let x = left + ((work_width - width) / 2);
     let min_y = top + margin;
-    // height 已被 available_height 夹住，所以 max_y >= min_y 恒成立，clamp 不会 panic。
+    // height 已被 available_height 夾住，所以 max_y >= min_y 恆成立，clamp 不會 panic。
     let max_y = bottom - margin - height;
     let y = (bottom - bottom_gap - height).clamp(min_y, max_y);
     (x as i32, y as i32, width as u32, height as u32)
 }
 
-/// macOS：在前台窗口所在显示器（取不到就用主显示器）的工作区底部居中放置，全程逻辑坐标。
+/// macOS：在前台視窗所在顯示器（取不到就用主顯示器）的工作區底部居中放置，全程邏輯座標。
 ///
-/// `target` 是 context::capture_foreground_monitor 给的前台窗口矩形（逻辑点）。
-/// Tauri 的显示器位置/尺寸是「逻辑点 × 该屏缩放」，各自除以自己的缩放就回到统一的逻辑坐标系。
+/// `target` 是 context::capture_foreground_monitor 給的前台視窗矩形（邏輯點）。
+/// Tauri 的顯示器位置/尺寸是「邏輯點 × 該屏縮放」，各自除以自己的縮放就回到統一的邏輯座標系。
 #[cfg(target_os = "macos")]
 fn macos_overlay_bounds(
     app: &AppHandle,
@@ -1793,11 +1793,11 @@ fn macos_overlay_bounds(
     (x as f64, y as f64, width as f64, height as f64)
 }
 
-/// macOS：显示器工作区（去掉菜单栏和程序坞），单位与 Tauri 相同（逻辑点 × 该屏缩放）。
+/// macOS：顯示器工作區（去掉選單欄和程式塢），單位與 Tauri 相同（邏輯點 × 該屏縮放）。
 ///
-/// 不直接用 `Monitor::work_area()`：Tauri 在 macOS 上只按程序坞修正了 x，y 仍取整屏顶边，
-/// 高度却已扣掉菜单栏和程序坞，整块工作区因此上移了一个菜单栏的高度。这里按
-/// NSScreen.visibleFrame 重算；对不上 NSScreen 时退回 Tauri 的值。
+/// 不直接用 `Monitor::work_area()`：Tauri 在 macOS 上只按程式塢修正了 x，y 仍取整屏頂邊，
+/// 高度卻已扣掉選單欄和程式塢，整塊工作區因此上移了一個選單欄的高度。這裡按
+/// NSScreen.visibleFrame 重算；對不上 NSScreen 時退回 Tauri 的值。
 #[cfg(target_os = "macos")]
 pub(crate) fn macos_work_area(monitor: &tauri::Monitor) -> tauri::PhysicalRect<i32, u32> {
     let scale = monitor.scale_factor().max(0.1);
@@ -1822,7 +1822,7 @@ pub(crate) fn macos_work_area(monitor: &tauri::Monitor) -> tauri::PhysicalRect<i
     }
 }
 
-/// 按整屏矩形找到对应显示器的可用区域。容差 2 个逻辑点，吸收 Tauri 物理像素取整带来的误差。
+/// 按整屏矩形找到對應顯示器的可用區域。容差 2 個邏輯點，吸收 Tauri 物理畫素取整帶來的誤差。
 #[cfg(target_os = "macos")]
 fn visible_area_for_frame(
     frame: (f64, f64, f64, f64),
@@ -1838,7 +1838,7 @@ fn visible_area_for_frame(
     areas.iter().find(|area| close(area.frame, frame)).map(|area| area.visible)
 }
 
-/// 在录音开始时的前台窗口所在显示器底部居中放置。
+/// 在錄音開始時的前台視窗所在顯示器底部居中放置。
 #[cfg_attr(target_os = "macos", allow(dead_code))]
 fn calc_monitor_overlay_bounds(
     app: &AppHandle,

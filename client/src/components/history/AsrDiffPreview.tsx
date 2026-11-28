@@ -3,12 +3,12 @@ import { computeAsrDiff, countAsrDiffChanges, hasAsrDiffChange } from '@/lib/asr
 import { t } from '@/i18n'
 
 /**
- * 原始识别文本 → 修正后文本的改动预览。
+ * 原始識別文本 → 修正後文本的改動預覽。
  *
- * 用 <del>/<ins> 而不是两个 <span>：读屏会念出"删除/插入"，色盲用户也能靠删除线区分。
- * 只靠浅红/浅绿两种底色的话，这两类用户看到的是一段没有任何标记的普通文本。
+ * 用 <del>/<ins> 而不是兩個 <span>：讀屏會念出"刪除/插入"，色盲使用者也能靠刪除線區分。
+ * 只靠淺紅/淺綠兩種底色的話，這兩類使用者看到的是一段沒有任何標記的普通文本。
  *
- * 不在 textarea 里做高亮 —— textarea 内部无法放富文本，只能"可编辑框 + 只读预览"两块。
+ * 不在 textarea 裡做高亮 —— textarea 內部無法放富文本，只能"可編輯框 + 只讀預覽"兩塊。
  */
 export function AsrDiffPreview({
   original,
@@ -29,7 +29,7 @@ export function AsrDiffPreview({
         <span className="font-medium">{t('asrCorrection.diffLabel')}</span>
         <span>{changed ? t('asrCorrection.diffCount', { count: changeCount }) : t('asrCorrection.diffNone')}</span>
       </div>
-      {/* mac-selectable：mac 上界面文字默认不可选，对比预览要能选中拷贝（index.css） */}
+      {/* mac-selectable：mac 上介面文字預設不可選，對比預覽要能選中複製（index.css） */}
       <div
         className="mac-selectable max-h-40 overflow-y-auto whitespace-pre-wrap break-words rounded-md border border-border bg-muted/30 px-2.5 py-2 text-sm leading-relaxed"
         aria-live="polite"

@@ -54,13 +54,13 @@ export function usableTextContext(context: TextContext | null | undefined): Text
   return normalized.textBefore || normalized.selectedText || normalized.textAfter ? normalized : null
 }
 
-/** 写进「Recording started」日志的那一段：读到没有、为什么没读到。 */
+/** 寫進「Recording started」日誌的那一段：讀到沒有、為什麼沒讀到。 */
 export interface TextContextLog {
   /**
-   * captured，或没用上的原因。前端自己判的几种：
-   * ai_off（AI 整理关着，按设计不读）、capture_error（调原生层失败）、
-   * no_diag（原生层没回诊断，旧二进制）、selection_too_long（选区超过 6000 字，按设计不发）、
-   * unusable（读到的内容清洗后为空）。其余原样来自原生层（见 context/mod.rs 的 TextContextDiag）。
+   * captured，或沒用上的原因。前端自己判的幾種：
+   * ai_off（AI 整理關著，按設計不讀）、capture_error（調原生層失敗）、
+   * no_diag（原生層沒回診斷，舊二進位制）、selection_too_long（選區超過 6000 字，按設計不發）、
+   * unusable（讀到的內容清洗後為空）。其餘原樣來自原生層（見 context/mod.rs 的 TextContextDiag）。
    */
   result: string
   kind?: 'selection' | 'caret'
@@ -73,11 +73,11 @@ export interface TextContextLog {
 }
 
 /**
- * 每次录音都给出一个结论，没读到也要说原因。以前没读到时日志里一个字都没有，
- * 分不清是没开、是空文档，还是那个软件读不了。
+ * 每次錄音都給出一個結論，沒讀到也要說原因。以前沒讀到時日誌裡一個字都沒有，
+ * 分不清是沒開、是空文件，還是那個軟體讀不了。
  *
- * **只记原因码和字数，绝不记正文**——这段会原样进 sayit.log。
- * 返回 null = 用户没开上下文感知，不写这一段（没开的人每次录音多一行噪音没有意义）。
+ * **只記原因碼和字數，絕不記正文**——這段會原樣進 sayit.log。
+ * 返回 null = 使用者沒開上下文感知，不寫這一段（沒開的人每次錄音多一行噪音沒有意義）。
  */
 export function describeTextContextForLog(input: {
   featureOn: boolean

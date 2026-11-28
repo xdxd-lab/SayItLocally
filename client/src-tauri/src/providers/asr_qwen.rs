@@ -1,5 +1,5 @@
-// 阿里云千问 ASR — qwen3-asr-flash
-// DashScope 多模态接口，支持 Base64 data URL 音频
+// 阿里雲千問 ASR — qwen3-asr-flash
+// DashScope 多模態介面，支援 Base64 data URL 音訊
 
 use super::diag;
 use super::types::{AsrProviderConfig, AsrResult, TestResult};
@@ -8,14 +8,14 @@ use std::time::Instant;
 const API_URL: &str = "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation";
 const SCOPE: &str = "qwen/asr-flash";
 
-/// 将热词列表拼接为千问 ASR 的上下文偏置文本。
+/// 將熱詞列表拼接為千問 ASR 的上下文偏置文本。
 ///
-/// Qwen3-ASR 支持通过上下文文本（context/corpus）提升专业术语、人名等识别准确率，
-/// 最多 10000 tokens。非流式接口放在 system 消息文本里，实时接口放在
+/// Qwen3-ASR 支援透過上下文文本（context/corpus）提升專業術語、人名等識別準確率，
+/// 最多 10000 tokens。非流式介面放在 system 訊息文本里，即時介面放在
 /// session.input_audio_transcription.corpus.text 里。
 ///
-/// 词表用「空格」拼接（与本项目自建后端本地 qwen3 的 context 用法一致：
-/// `" ".join(hotwords)` 传给 model.transcribe(context=...)，实测偏置效果更好）。
+/// 詞表用「空格」拼接（與本專案自建後端本地 qwen3 的 context 用法一致：
+/// `" ".join(hotwords)` 傳給 model.transcribe(context=...)，實測偏置效果更好）。
 pub fn build_hotword_context_text(hotwords: &[String]) -> Option<String> {
     let mut seen = std::collections::HashSet::new();
     let words: Vec<&str> = hotwords
@@ -30,7 +30,7 @@ pub fn build_hotword_context_text(hotwords: &[String]) -> Option<String> {
     Some(words.join(" "))
 }
 
-/// 去掉分隔符/标点/空白并转小写，用于回显比较。
+/// 去掉分隔符/標點/空白並轉小寫，用於回顯比較。
 fn normalize_for_echo(s: &str) -> String {
     s.chars()
         .filter(|c| !c.is_whitespace() && !"、,，;；。.·/|\\".contains(*c))
@@ -38,10 +38,10 @@ fn normalize_for_echo(s: &str) -> String {
         .to_lowercase()
 }
 
-/// 热词回显检测：音频短/不清晰时，模型可能把传入的热词表整串吐出来。
-/// 做法：结果去标点/空白/常见连接词后，逐个扣掉命中的热词；若最终无残余
-/// 且命中的「不同热词」≥3，判为回显幻觉，返回空串。
-/// 门槛 ≥3 是为了不误伤真实的单/双热词短句（如只说了 "Typeless 和 SayIt"）。
+/// 熱詞回顯檢測：音訊短/不清晰時，模型可能把傳入的熱詞表整串吐出來。
+/// 做法：結果去標點/空白/常見連線詞後，逐個扣掉命中的熱詞；若最終無殘餘
+/// 且命中的「不同熱詞」≥3，判為回顯幻覺，返回空串。
+/// 門檻 ≥3 是為了不誤傷真實的單/雙熱詞短句（如只說了 "Typeless 和 SayIt"）。
 fn strip_hotword_echo(text: String, hotwords: &[&str]) -> String {
     if hotwords.is_empty() {
         return text;
@@ -50,11 +50,11 @@ fn strip_hotword_echo(text: String, hotwords: &[&str]) -> String {
     if rest.is_empty() {
         return text;
     }
-    // 去掉常见连接词，避免它们残留导致误判为"有额外内容"
+    // 去掉常見連線詞，避免它們殘留導致誤判為"有額外內容"
     for conn in ["和", "与", "跟", "及", "以及", "还有", "and"] {
         rest = rest.replace(conn, "");
     }
-    // 长词优先，避免子串误配（如 LiteLLM 含 LLM）
+    // 長詞優先，避免子串誤配（如 LiteLLM 含 LLM）
     let mut hw: Vec<String> = hotwords
         .iter()
         .map(|w| normalize_for_echo(w))
@@ -114,8 +114,8 @@ pub async fn transcribe(
     let wav_b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &wav);
     let data_url = format!("data:audio/wav;base64,{}", wav_b64);
 
-    // 热词上下文偏置：用「逗号词表」作为 system 上下文。实测逗号分隔最稳
-    // （空格会给结果加引号；带"请识别以下术语"引导语则容易让模型把整串热词吐出来=回显）。
+    // 熱詞上下文偏置：用「逗號詞表」作為 system 上下文。實測逗號分隔最穩
+    // （空格會給結果加引號；帶"請識別以下術語"引導語則容易讓模型把整串熱詞吐出來=回顯）。
     let mut seen = std::collections::HashSet::new();
     let words: Vec<&str> = hotwords
         .iter()
@@ -173,8 +173,8 @@ pub async fn transcribe(
         return Err(diag::fail(
             SCOPE,
             "http_status",
-            // 曾经这里是 `&body[..body.len().min(300)]`：DashScope 的报错体是中文，
-            // 按字节切会切在汉字中间直接 panic —— 一出错就崩，反而什么都查不到
+            // 曾經這裡是 `&body[..body.len().min(300)]`：DashScope 的報錯體是中文，
+            // 按位元組切會切在漢字中間直接 panic —— 一齣錯就崩，反而什麼都查不到
             format!(
                 "Qwen ASR error {} [{}]: {}",
                 status,
@@ -201,7 +201,7 @@ pub async fn transcribe(
         )
     })?;
 
-    // 响应格式：output.choices[0].message.content[0].text
+    // 響應格式：output.choices[0].message.content[0].text
     let text = data.get("output")
         .and_then(|o| o.get("choices"))
         .and_then(|c| c.get(0))
@@ -213,12 +213,12 @@ pub async fn transcribe(
         .unwrap_or("")
         .to_string();
 
-    // 防热词回显：短/不清晰音频下，模型可能把整串热词吐出来。命中≥3个且无其它内容则清空。
+    // 防熱詞回顯：短/不清晰音訊下，模型可能把整串熱詞吐出來。命中≥3個且無其它內容則清空。
     let raw_chars = text.chars().count();
     let text = strip_hotword_echo(text, &words);
 
-    // 这个启发式会把「有内容」变成「空」，而空结果对外就是「未检测到有效声音」。
-    // 一旦它误判，用户看到的和真正发生的事情完全对不上，所以必须留一条。
+    // 這個啟發式會把「有內容」變成「空」，而空結果對外就是「未檢測到有效聲音」。
+    // 一旦它誤判，使用者看到的和真正發生的事情完全對不上，所以必須留一條。
     if text.is_empty() && raw_chars > 0 {
         diag::log(
             SCOPE,

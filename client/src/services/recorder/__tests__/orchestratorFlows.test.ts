@@ -1,12 +1,12 @@
 /**
- * RecorderOrchestrator 主路径的行为测试（模块 6.1：拆分之前先把现有行为钉住）。
+ * RecorderOrchestrator 主路徑的行為測試（模組 6.1：拆分之前先把現有行為釘住）。
  *
- * 不是读源码断言写法，而是真的把一次录音跑完：bridge 换成事件总线（可以发「按下 / 松开 / Esc」），
- * provider 换成可控的假对象，麦克风换成手动喂 PCM 帧的假采集。OverlayService、helpers、
- * 提示词路由这些用真的，这样拆分时它们被搬走也照样受这些测试约束。
+ * 不是讀原始碼斷言寫法，而是真的把一次錄音跑完：bridge 換成事件匯流排（可以發「按下 / 鬆開 / Esc」），
+ * provider 換成可控的假物件，麥克風換成手動喂 PCM 幀的假採集。OverlayService、helpers、
+ * 提示詞路由這些用真的，這樣拆分時它們被搬走也照樣受這些測試約束。
  *
- * 断言的是用户能感知到的结果：状态回到哪、历史里记了什么、插没插字、弹的是卡片还是提示、
- * provider 收到了什么调用。拆分前后这些必须原样一致。
+ * 斷言的是使用者能感知到的結果：狀態回到哪、歷史裡記了什麼、插沒插字、彈的是卡片還是提示、
+ * provider 收到了什麼呼叫。拆分前後這些必須原樣一致。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -153,20 +153,20 @@ import * as bridge from '../../bridge'
 import { addRuntimeEvent } from '../../debugLog'
 import { RecorderOrchestrator } from '../RecorderOrchestrator'
 
-// ── 驱动工具 ──
+// ── 驅動工具 ──
 
 function emit(name: string, payload?: unknown) {
   for (const cb of h.state.handlers[name] ?? []) cb(payload)
 }
 
-/** 让排队的 Promise 和 0ms 定时器都跑完。用真实定时器时会让出一次事件循环。 */
+/** 讓排隊的 Promise 和 0ms 定時器都跑完。用真實定時器時會讓出一次事件迴圈。 */
 async function flush(times = 20) {
   for (let i = 0; i < times; i++) await Promise.resolve()
   if (!vi.isFakeTimers()) await new Promise((resolve) => setTimeout(resolve, 0))
   for (let i = 0; i < times; i++) await Promise.resolve()
 }
 
-/** 喂 n 秒 16 kHz 的音频帧（每帧 128 采样，与 AudioWorklet 一致）。 */
+/** 喂 n 秒 16 kHz 的音訊幀（每幀 128 取樣，與 AudioWorklet 一致）。 */
 function feedAudio(seconds: number, amplitude = 3000) {
   const frames = Math.round((seconds * 16000) / 128)
   for (let i = 0; i < frames; i++) {
@@ -206,7 +206,7 @@ async function startedOrchestrator() {
   return orch
 }
 
-/** 按下 → 喂音频 → 松开，停在 processing。 */
+/** 按下 → 喂音訊 → 鬆開，停在 processing。 */
 async function recordAndRelease(seconds = 2) {
   emit('ptt-down')
   await flush()
@@ -347,7 +347,7 @@ describe('RecorderOrchestrator 失败与边界路径', () => {
     expect(overlayStates()).toContain('toast')
     expect(orch.getState()).toBe('idle')
 
-    // 取消之后的 PTT up 不应该再触发 stop
+    // 取消之後的 PTT up 不應該再觸發 stop
     emit('ptt-up')
     await flush()
     expect(provider.stop).not.toHaveBeenCalled()
@@ -410,8 +410,8 @@ describe('RecorderOrchestrator 失败与边界路径', () => {
 })
 
 describe('RecorderOrchestrator 超时与迟到结果', () => {
-  // 只假造定时器和 Date；performance.now 保持真实，录音时长按喂进去的采样数算。
-  // 超时兜底里用的是 window.setTimeout；测试环境没有 window，指向全局对象即可拿到假定时器。
+  // 只假造定時器和 Date；performance.now 保持真實，錄音時長按喂進去的取樣數算。
+  // 超時兜底裡用的是 window.setTimeout；測試環境沒有 window，指向全域性物件即可拿到假定時器。
   const fake = () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'] })
     vi.stubGlobal('window', globalThis)
@@ -423,10 +423,10 @@ describe('RecorderOrchestrator 超时与迟到结果', () => {
     fake()
     await recordAndRelease(2)
 
-    // 2 秒音频的处理超时 = 15s + 1s
+    // 2 秒音訊的處理超時 = 15s + 1s
     await vi.advanceTimersByTimeAsync(16_100)
     expect(orch.getState()).toBe('idle')
-    expect(overlayStates()).toContain('thinking') // 宽限期提示「仍在获取结果」
+    expect(overlayStates()).toContain('thinking') // 寬限期提示「仍在獲取結果」
 
     provider.callbacks!.onFinal(finalResult('迟到了'))
     await vi.advanceTimersByTimeAsync(100)
@@ -436,7 +436,7 @@ describe('RecorderOrchestrator 超时与迟到结果', () => {
     expect(store.history).toHaveLength(1)
     expect(store.history[0]).toMatchObject({ asrText: '迟到了' })
 
-    // 宽限期结束后不应再补一条超时记录
+    // 寬限期結束後不應再補一條超時記錄
     await vi.advanceTimersByTimeAsync(16_000)
     expect(store.history).toHaveLength(1)
   })
@@ -481,12 +481,12 @@ describe('RecorderOrchestrator 免提与中途断线', () => {
     expect(orch.getState()).toBe('recording')
 
     feedAudio(2)
-    // 免提期间的 PTT 松开不能把录音停掉
+    // 擴音期間的 PTT 鬆開不能把錄音停掉
     emit('ptt-up')
     await flush()
     expect(orch.getState()).toBe('recording')
 
-    await vi.advanceTimersByTimeAsync(600) // 过 500ms 冷却
+    await vi.advanceTimersByTimeAsync(600) // 過 500ms 冷卻
     emit('hands-free')
     await flush()
     expect(orch.getState()).toBe('processing')
@@ -512,7 +512,7 @@ describe('RecorderOrchestrator 免提与中途断线', () => {
     expect(store.history[0].audioFilePath).toMatch(/\.wav$/)
     expect(orch.getState()).toBe('idle')
 
-    // 失败收尾之后再松开，不能再发 stop
+    // 失敗收尾之後再鬆開，不能再發 stop
     emit('ptt-up')
     await flush()
     expect(provider.stop).not.toHaveBeenCalled()
@@ -650,7 +650,7 @@ describe('RecorderOrchestrator 开始录音时出错', () => {
   it('取上下文和路由那一段抛错：报「开始录音失败」，锁释放，下一次能正常开始', async () => {
     const personalization = await import('../../personalization/store')
     const defaults = await import('../../personalization/defaults')
-    // 统计数据格式坏掉时，提示词路由会抛错（2026-10 补测试时撞到的真实路径）
+    // 統計資料格式壞掉時，提示詞路由會拋錯（2026-10 補測試時撞到的真實路徑）
     vi.mocked(personalization.getUserStats).mockResolvedValueOnce({} as never)
     await startedOrchestrator()
 

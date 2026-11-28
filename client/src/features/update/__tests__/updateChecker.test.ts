@@ -16,7 +16,7 @@ describe('resolveDownloadUrl', () => {
   })
 
   it('rejects paths that would move the download to another host', () => {
-    // 原来字符串拼接时，这一条会变成 https://sayitapp.site.attacker.example/x.exe
+    // 原來字串拼接時，這一條會變成 https://sayitapp.site.attacker.example/x.exe
     expect(resolveDownloadUrl('https://sayitapp.site', '.attacker.example/x.exe')).toBeNull()
     expect(resolveDownloadUrl('https://sayitapp.site', '//attacker.example/x.exe')).toBeNull()
     expect(resolveDownloadUrl('https://sayitapp.site', 'https://attacker.example/x.exe')).toBeNull()

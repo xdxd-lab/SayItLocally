@@ -35,7 +35,7 @@ describe('resolveDoubaoConsole', () => {
 })
 
 describe('effectiveDoubaoCredentials', () => {
-  // 这条是整个改动的核心不变量：Rust 侧靠 app_id 空不空来选鉴权头。
+  // 這條是整個改動的核心不變數：Rust 側靠 app_id 空不空來選鑑權頭。
   it('新版模式必须把 appId 清空，否则会用旧版格式发新版密钥', () => {
     const r = effectiveDoubaoCredentials(
       creds({ console: 'new', consoleKey: 'APPKEY', appId: '1234567890', accessToken: 'TOKEN' }),

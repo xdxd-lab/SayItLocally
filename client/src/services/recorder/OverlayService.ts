@@ -28,39 +28,39 @@ type OverlayVisualState =
   | 'toast'
 
 /**
- * 卡片快捷键/Esc 的续期间隔。
+ * 卡片快捷鍵/Esc 的續期間隔。
  *
- * 必须明显小于 Rust 侧的硬 TTL（卡片快捷键 20s、dismiss_fallback 30s）—— 那两个 TTL
- * 是异常兜底（渲染端卡死时不能永久吞用户的按键），不是正常生命周期。卡片现在不再
- * 自动消失，所以正常生命周期只能靠这里续。
+ * 必須明顯小於 Rust 側的硬 TTL（卡片快捷鍵 20s、dismiss_fallback 30s）—— 那兩個 TTL
+ * 是異常兜底（渲染端卡死時不能永久吞使用者的按鍵），不是正常生命週期。卡片現在不再
+ * 自動消失，所以正常生命週期只能靠這裡續。
  */
 const CARD_KEEPALIVE_INTERVAL_MS = 8000
 
-/** listening 补位定时器的间隔与阈值。取值原因见 startListeningTicker。 */
+/** listening 補位定時器的間隔與閾值。取值原因見 startListeningTicker。 */
 const LISTENING_TICKER_IDLE_MS = 250
 
 /**
- * 失败卡的可见时长。
+ * 失敗卡的可見時長。
  *
- * 只有**失败卡**能自动收起：它里面没有需要交付给用户的东西，只有一条原因和一个
- * 操作机会，看过就没用了。
+ * 只有**失敗卡**能自動收起：它裡面沒有需要交付給使用者的東西，只有一條原因和一個
+ * 操作機會，看過就沒用了。
  *
- * 结果卡刻意没有这个上限 —— 里面那段文字此刻既不在输入框、也不在剪贴板（不可编辑
- * 那条路不提前改写剪贴板），关了历史的用户更是连别处都没有。任何"到时自动隐藏"都
- * 等于把"文本还没交付"当成"通知已读"：用户离开几分钟回来，文字就没了。它的收场只
- * 有三条：Esc / 点关闭 / 开始下一次口述。
+ * 結果卡刻意沒有這個上限 —— 裡面那段文字此刻既不在輸入框、也不在剪貼簿（不可編輯
+ * 那條路不提前改寫剪貼簿），關了歷史的使用者更是連別處都沒有。任何"到時自動隱藏"都
+ * 等於把"文本還沒交付"當成"通知已讀"：使用者離開幾分鐘回來，文字就沒了。它的收場只
+ * 有三條：Esc / 點關閉 / 開始下一次口述。
  */
 /**
- * 失败卡自动收起的时间。
+ * 失敗卡自動收起的時間。
  *
- * 5 秒，不按内容长短分档。这张卡不需要承担"必须被读到"的责任 —— 录音已经在历史记录里，
- * 原因也在日志里，错过了不丢任何东西（结果卡不一样，那上面的文字只此一份，所以它
- * 不自动消失，见 showFallback）。原先是 60 秒，实测用户是手动关掉的，等于把一条
- * 通知做成了待办事项。
+ * 5 秒，不按內容長短分檔。這張卡不需要承擔"必須被讀到"的責任 —— 錄音已經在歷史記錄裡，
+ * 原因也在日誌裡，錯過了不丟任何東西（結果卡不一樣，那上面的文字只此一份，所以它
+ * 不自動消失，見 showFallback）。原先是 60 秒，實測使用者是手動關掉的，等於把一條
+ * 通知做成了待辦事項。
  */
 const FAILURE_CARD_VISIBLE_MS = 5 * 1000
 
-/** 失败卡的恢复提示：音频到底有没有存下来，只能由实际存档结果决定。 */
+/** 失敗卡的恢復提示：音訊到底有沒有存下來，只能由實際存檔結果決定。 */
 export type FailureRecovery = 'unknown' | 'history' | 'none'
 
 interface MicSourceHint {
@@ -87,35 +87,35 @@ export class OverlayService {
   /** Persistent warning text — included in every overlay update until cleared */
   private activeWarning = ''
   private timeoutWarningHideId: ReturnType<typeof setTimeout> | null = null
-  /** 流式实时识别文本 — 录音期间随中间结果更新，会被并入每次 listening 更新一起下发 */
+  /** 流式即時識別文本 — 錄音期間隨中間結果更新，會被併入每次 listening 更新一起下發 */
   private streamingText = ''
-  /** 本次录音是否开启流式实时显示：为真则从录音一开始就显示气泡（占位），中途不再缩放窗口 */
+  /** 本次錄音是否開啟流式即時顯示：為真則從錄音一開始就顯示氣泡（佔位），中途不再縮放視窗 */
   private streamingActive = false
   private currentState: OverlayVisualState = 'waiting'
   /**
-   * 当前失败卡的标题与原因。
+   * 當前失敗卡的標題與原因。
    *
-   * 存着它只为一件事：`updateFailureRecovery` 发送时把这两个字段**重新带上**。
-   * 原生侧的 `update_overlay_state` 是**整份替换** `latest_overlay_payload`，不是合并
-   * （见 window/mod.rs）。所以只发 `{ state, failureRecovery }` 的话，那份"最近状态"
-   * 底稿会被换成一份没有标题、没有原因的残缺 payload —— 而界面此刻看起来完全正常，
-   * 因为渲染端是合并语义（没传的字段保留上一次的值）。
+   * 存著它只為一件事：`updateFailureRecovery` 傳送時把這兩個欄位**重新帶上**。
+   * 原生側的 `update_overlay_state` 是**整份替換** `latest_overlay_payload`，不是合併
+   * （見 window/mod.rs）。所以只發 `{ state, failureRecovery }` 的話，那份"最近狀態"
+   * 底稿會被換成一份沒有標題、沒有原因的殘缺 payload —— 而介面此刻看起來完全正常，
+   * 因為渲染端是合併語義（沒傳的欄位保留上一次的值）。
    *
-   * 残缺只在**有人重放底稿**时暴露：overlay 重挂后 `overlay_ready` 会重放最近状态，
-   * 健康恢复与 ack 超时重发也会。实测 2026-09-23：overlay 因整页重载重挂，重放到
-   * 这份残缺 payload，卡片显示成「出错了」+「录音已保存」，标题落到兜底文案、
-   * 原因整行消失（内容高度从 125.33 掉到 81.33）。
+   * 殘缺只在**有人重放底稿**時暴露：overlay 重掛後 `overlay_ready` 會重放最近狀態，
+   * 健康恢復與 ack 超時重發也會。實測 2026-09-23：overlay 因整頁過載重掛，重放到
+   * 這份殘缺 payload，卡片顯示成「出錯了」+「錄音已儲存」，標題落到兜底文案、
+   * 原因整行消失（內容高度從 125.33 掉到 81.33）。
    *
-   * 为什么不去改原生那侧的替换语义：录音中的 listening 更新在不流式时**不带**
-   * `streaming` 字段，改成合并的话它会残留在底稿里，重放时悬浮窗会画出实时字幕气泡、
-   * 窗口也跟着变大 —— 那是 pitfalls 30 那一族，代价比这里大得多。
+   * 為什麼不去改原生那側的替換語義：錄音中的 listening 更新在不流式時**不帶**
+   * `streaming` 欄位，改成合並的話它會殘留在底稿裡，重放時懸浮窗會畫出即時字幕氣泡、
+   * 視窗也跟著變大 —— 那是 pitfalls 30 那一族，代價比這裡大得多。
    */
   private activeFailureCard: { title: string; detail: string } | null = null
 
   private activeMicSourceHint: MicSourceHint | null = null
   private micSourceHintHideId: ReturnType<typeof setTimeout> | null = null
   private micSourceHintGeneration = 0
-  /** 常驻卡片的按键续期定时器；卡片一消失必须停掉，否则会替别人续期。 */
+  /** 常駐卡片的按鍵續期定時器；卡片一消失必須停掉，否則會替別人續期。 */
   private cardKeepAliveId: ReturnType<typeof setInterval> | null = null
   private activeCardToken = 0
   private activeCardHotkeys: bridge.CardHotkeyAction[] = []
@@ -141,9 +141,9 @@ export class OverlayService {
         this.readySoundCtx = new AudioContext()
       }
       const ctx = this.readySoundCtx
-      // AudioContext 新建或长时间无操作后常处于 suspended 状态（浏览器自动播放/省电策略）。
-      // resume() 是异步的，若不等它完成就 start()，振荡器可能被静默丢弃或延迟——
-      // 这正是「第一次按免提键听不到提示音，过一会又听不到」的根因。
+      // AudioContext 新建或長時間無操作後常處於 suspended 狀態（瀏覽器自動播放/省電策略）。
+      // resume() 是非同步的，若不等它完成就 start()，振盪器可能被靜默丟棄或延遲——
+      // 這正是「第一次按擴音鍵聽不到提示音，過一會又聽不到」的根因。
       if (ctx.state === 'suspended') {
         ctx.resume().then(() => this.emitReadyTone(ctx)).catch(() => { /* ignore */ })
       } else {
@@ -165,9 +165,9 @@ export class OverlayService {
       osc.start(ctx.currentTime)
       osc.stop(ctx.currentTime + 0.15)
       // 播完就把 AudioContext 挂起。一个处于 running 的 AudioContext 哪怕什么都不播，
-      // 渲染进程和音频服务进程也会每 10ms 跑一次音频图：2026-10 实测空闲 20 秒多耗约 360ms CPU
-      // （约 1.8% 个核），而且从第一次录音起一直耗到退出 —— 正式版「用久了空闲 CPU 变高」就是它。
-      // 下次播放前 playReadySound 会先 resume。计数是为了上一声没播完时别把下一声掐掉。
+      // 渲染程序和音訊服務程序也會每 10ms 跑一次音訊圖：2026-10 實測空閒 20 秒多耗約 360ms CPU
+      // （約 1.8% 個核），而且從第一次錄音起一直耗到退出 —— 正式版「用久了空閒 CPU 變高」就是它。
+      // 下次播放前 playReadySound 會先 resume。計數是為了上一聲沒播完時別把下一聲掐掉。
       this.readyTonesPlaying++
       osc.onended = () => {
         this.readyTonesPlaying = Math.max(0, this.readyTonesPlaying - 1)
@@ -186,7 +186,7 @@ export class OverlayService {
       showDuration: this.showDuration,
       baseWidth: cfg.windowWidth,
       barCount: cfg.barCount,
-      // 每次都带上：悬浮窗可能在语言切换之后才第一次创建，没有"只发一次"的时机。
+      // 每次都帶上：懸浮窗可能在語言切換之後才第一次建立，沒有"只發一次"的時機。
       locale: getLocale(),
     }
   }
@@ -196,15 +196,15 @@ export class OverlayService {
   }
 
   private setEscapeMode(mode: bridge.EscapeActionMode, token = 0) {
-    void bridge.setEscapeActionMode(mode, token).catch(() => { /* 原生钩子不可用时不影响悬浮窗 */ })
+    void bridge.setEscapeActionMode(mode, token).catch(() => { /* 原生鉤子不可用時不影響懸浮窗 */ })
   }
 
   /**
-   * 切换到一个**非卡片**状态：顺手结束上一张卡片的按键接管。
+   * 切換到一個**非卡片**狀態：順手結束上一張卡片的按鍵接管。
    *
-   * 所有短暂状态都必须走这里，不要直接调 setEscapeMode —— 否则卡片还在续期（它的
-   * 定时器每 8 秒把 Esc/Ctrl+C 重新注册一次），会把新状态刚设好的模式覆盖掉，
-   * 表现为"新录音开始了，Esc 却还在关那张已经不存在的卡片"。
+   * 所有短暫狀態都必須走這裡，不要直接調 setEscapeMode —— 否則卡片還在續期（它的
+   * 定時器每 8 秒把 Esc/Ctrl+C 重新註冊一次），會把新狀態剛設好的模式覆蓋掉，
+   * 表現為"新錄音開始了，Esc 卻還在關那張已經不存在的卡片"。
    */
   private enterTransientState(mode: bridge.EscapeActionMode, token = 0) {
     this.stopCardKeepAlive()
@@ -212,8 +212,8 @@ export class OverlayService {
   }
 
   /**
-   * 失败卡的标题与原因。**每一次 failure 状态的下发都必须带上它**（present 和 update
-   * 都算），理由见 activeFailureCard 上的注释。不要在调用点手写这两个字段。
+   * 失敗卡的標題與原因。**每一次 failure 狀態的下發都必須帶上它**（present 和 update
+   * 都算），理由見 activeFailureCard 上的註釋。不要在呼叫點手寫這兩個欄位。
    */
   private failureCardPayload() {
     return {
@@ -235,17 +235,17 @@ export class OverlayService {
   }
 
   /**
-   * 构造一次 listening 状态更新。**所有 listening 出口都必须走这里**，不要再手写字面量。
+   * 構造一次 listening 狀態更新。**所有 listening 出口都必須走這裡**，不要再手寫字面量。
    *
-   * 原因：`streaming` 是原生侧判断悬浮窗布局的唯一依据（window/mod.rs 的
-   * apply_payload_layout）。任何一次 listening 更新漏带它，窗口就会当场从流式尺寸
-   * （480×200 CSS px）收缩回基础尺寸，再被 33ms 后的下一帧心跳撑回去 —— 而 webview 里的
-   * DOM 完全没变，于是气泡被 overlay.html 的 overflow:hidden 裁掉一帧。用户看到的就是
-   * 「开着实时字幕、不说话时悬浮窗每 5 秒闪一下」（5s 是低音量警告的重弹节拍，见
+   * 原因：`streaming` 是原生側判斷懸浮窗佈局的唯一依據（window/mod.rs 的
+   * apply_payload_layout）。任何一次 listening 更新漏帶它，視窗就會當場從流式尺寸
+   * （480×200 CSS px）收縮回基礎尺寸，再被 33ms 後的下一幀心跳撐回去 —— 而 webview 裡的
+   * DOM 完全沒變，於是氣泡被 overlay.html 的 overflow:hidden 裁掉一幀。使用者看到的就是
+   * 「開著即時字幕、不說話時懸浮窗每 5 秒閃一下」（5s 是低音量警告的重彈節拍，見
    * RecorderOrchestrator.updateVolumeWarning 的 REWARN_MS）。
    *
-   * 这个坑之所以值得抽一个方法：五个警告方法各自手写了一份 payload，五份全漏了这个字段，
-   * 而漏掉它既不报错也不进日志（原生侧的 resize 路径一行日志都不写）。
+   * 這個坑之所以值得抽一個方法：五個警告方法各自手寫了一份 payload，五份全漏了這個欄位，
+   * 而漏掉它既不報錯也不進日誌（原生側的 resize 路徑一行日誌都不寫）。
    */
   private listeningPayload(overrides: Record<string, unknown> = {}) {
     return {
@@ -285,13 +285,13 @@ export class OverlayService {
     }, MIC_SOURCE_HINT_DURATION_MS)
   }
 
-  /** 文本即将进入不可逆的系统粘贴阶段；先关闭全局 Esc 取消，避免“已取消”后仍完成粘贴。 */
+  /** 文本即將進入不可逆的系統貼上階段；先關閉全域性 Esc 取消，避免“已取消”後仍完成貼上。 */
   async disableEscapeAction(): Promise<void> {
-    // 同时解除卡片按键接管：粘贴一旦开始就不该再有任何悬浮窗快捷键生效。
+    // 同時解除卡片按鍵接管：貼上一旦開始就不該再有任何懸浮窗快捷鍵生效。
     this.stopCardKeepAlive()
     try {
       await bridge.setEscapeActionMode('off', 0)
-    } catch { /* 原生钩子不可用时不影响文本插入 */ }
+    } catch { /* 原生鉤子不可用時不影響文本插入 */ }
   }
 
   showWaiting() {
@@ -310,20 +310,20 @@ export class OverlayService {
   startListeningTicker(token = 0) {
     this.currentState = 'listening'
     this.stopListeningTicker()
-    // 真实录音代次才开启全局 Esc；PTT Lab 等 token=0 的预览绝不吞系统按键。
+    // 真實錄音代次才開啟全域性 Esc；PTT Lab 等 token=0 的預覽絕不吞系統按鍵。
     this.enterTransientState(token > 0 ? 'cancel_recording' : 'off', token)
     this.playReadySound()
-    // 采集链路已经成功启动时立刻发布 listening；不要再为 ticker 的首个 33ms
-    // 人为保留 waiting。PCM 随后仍通过 pushListeningBars 驱动真实波形。
+    // 採集鏈路已經成功啟動時立刻釋出 listening；不要再為 ticker 的首個 33ms
+    // 人為保留 waiting。PCM 隨後仍透過 pushListeningBars 驅動真實波形。
     this.pushListeningBars(undefined, true)
-    // 有 PCM 时波形那一路（pushListeningBars）已经按 33ms 带着计时和流式文本在发了，
-    // 这里只在很久没人发过时补位（采集卡住、还没收到第一帧）。原来两路各自 33ms，
-    // 合起来每秒约 60 次 IPC 和 60 次悬浮窗重渲染，画面却只需要 30 帧。
+    // 有 PCM 時波形那一路（pushListeningBars）已經按 33ms 帶著計時和流式文本在發了，
+    // 這裡只在很久沒人發過時補位（採集卡住、還沒收到第一幀）。原來兩路各自 33ms，
+    // 合起來每秒約 60 次 IPC 和 60 次懸浮窗重渲染，畫面卻只需要 30 幀。
     //
-    // 补位阈值必须明显大于波形那一路的 33ms 节流：两者共用 lastFrameAt，阈值若也是 33ms，
-    // 这个 33ms 的定时器每轮都刚好过线、先把名额拿走，而它发的帧不带 bars，
-    // 波形帧全被节流丢掉（0.2.3 悬浮窗波形掉帧，issue #90）。
-    // 补位只为推进秒表（一秒才变一次），250ms 足够；间隔同步放大，免得每秒空转 30 次。
+    // 補位閾值必須明顯大於波形那一路的 33ms 節流：兩者共用 lastFrameAt，閾值若也是 33ms，
+    // 這個 33ms 的定時器每輪都剛好過線、先把名額拿走，而它發的幀不帶 bars，
+    // 波形幀全被節流丟掉（0.2.3 懸浮窗波形掉幀，issue #90）。
+    // 補位只為推進秒錶（一秒才變一次），250ms 足夠；間隔同步放大，免得每秒空轉 30 次。
     this.tickerId = setInterval(() => {
       const now = Date.now()
       if (now - this.lastFrameAt < LISTENING_TICKER_IDLE_MS) return
@@ -332,18 +332,18 @@ export class OverlayService {
     }, LISTENING_TICKER_IDLE_MS)
   }
 
-  /** 设置本次录音是否开启流式实时显示（录音开始时调用）。开启后气泡从一开始就显示占位。 */
+  /** 設定本次錄音是否開啟流式即時顯示（錄音開始時呼叫）。開啟後氣泡從一開始就顯示佔位。 */
   setStreamingActive(on: boolean) {
     this.streamingActive = on
   }
 
-  /** 更新流式实时识别文本。下一次 listening 心跳（33ms）会把它带给悬浮窗一起渲染。
-   *  传空字符串可清除气泡。 */
+  /** 更新流式即時識別文本。下一次 listening 心跳（33ms）會把它帶給懸浮窗一起渲染。
+   *  傳空字串可清除氣泡。 */
   setStreamingText(text: string) {
     this.streamingText = text || ''
   }
 
-  /** 清除流式实时文本与激活标志（录音停止 / 重置时调用）。 */
+  /** 清除流式即時文本與啟用標誌（錄音停止 / 重置時呼叫）。 */
   resetStreamingText() {
     this.streamingText = ''
     this.streamingActive = false
@@ -364,12 +364,12 @@ export class OverlayService {
   }
 
   /**
-   * @param options.ai 这次处理会走 AI 整理（按本次的 aiPolicy.allowCall，不按开关：
-   *   开关开着但录音短于门槛时并不整理，那时显示「AI 整理中」就是假的）。
+   * @param options.ai 這次處理會走 AI 整理（按本次的 aiPolicy.allowCall，不按開關：
+   *   開關開著但錄音短於門檻時並不整理，那時顯示「AI 整理中」就是假的）。
    */
   showThinking(elapsedSec: number, token = 0, options: { ai?: boolean } = {}) {
     this.currentState = 'thinking'
-    // PTT Lab 也复用 thinking 动画，但没有真实录音代次；token=0 时只显示，绝不吞全局 Esc。
+    // PTT Lab 也複用 thinking 動畫，但沒有真實錄音代次；token=0 時只顯示，絕不吞全域性 Esc。
     this.enterTransientState(token > 0 ? 'cancel_processing' : 'off', token)
     void bridge.updateOverlay({
       state: 'thinking',
@@ -381,10 +381,10 @@ export class OverlayService {
   }
 
   /**
-   * 即将到达单次上限的提示。**一闪即走**，之后由计时区的倒计时持续告知剩余时间。
+   * 即將到達單次上限的提示。**一閃即走**，之後由計時區的倒計時持續告知剩餘時間。
    *
-   * 以前这条是常驻到录音结束的，加上 Overlay 里"有警告就不显示计时"的条件，
-   * 导致最后一整分钟只剩一句「单次记录最长300s」，既不知道已录多久、也不知道还剩多久。
+   * 以前這條是常駐到錄音結束的，加上 Overlay 裡"有警告就不顯示計時"的條件，
+   * 導致最後一整分鐘只剩一句「單次記錄最長300s」，既不知道已錄多久、也不知道還剩多久。
    */
   showTimeoutWarning() {
     const text = t('overlay.warnMaxDuration', { limit: formatRecordingLimit() })
@@ -394,14 +394,14 @@ export class OverlayService {
     if (this.timeoutWarningHideId) clearTimeout(this.timeoutWarningHideId)
     this.timeoutWarningHideId = setTimeout(() => {
       this.timeoutWarningHideId = null
-      // 期间若被更高优先级的警告（如麦克风被静音）取代，就不要抢回来
+      // 期間若被更高優先順序的警告（如麥克風被靜音）取代，就不要搶回來
       if (this.activeWarning !== text) return
       this.activeWarning = ''
       void bridge.updateOverlay(this.listeningPayload({ warning: '', warningTone: 'warn' }))
     }, 4000)
   }
 
-  /** Show low volume warning on the overlay（有声音但偏低：请靠近麦克风，琥珀色） */
+  /** Show low volume warning on the overlay（有聲音但偏低：請靠近麥克風，琥珀色） */
   showLowVolumeWarning() {
     if (this.activeWarning) return
     void bridge.updateOverlay(this.listeningPayload({
@@ -410,9 +410,9 @@ export class OverlayService {
     }))
   }
 
-  /** Show "no signal detected" warning（持续无输入意味着设备不可用，使用红色高警）。
-   *  打开的是虚拟声卡时直接说出来：「未检测到声音」会把人引去查麦克风线和静音键，
-   *  而真正要做的是换设备。 */
+  /** Show "no signal detected" warning（持續無輸入意味著裝置不可用，使用紅色高警）。
+   *  開啟的是虛擬音效卡時直接說出來：「未檢測到聲音」會把人引去查麥克風線和靜音鍵，
+   *  而真正要做的是換裝置。 */
   showNoSignalWarning(options: { virtualMic?: boolean } = {}) {
     if (this.activeWarning) return
     void bridge.updateOverlay(this.listeningPayload({
@@ -421,7 +421,7 @@ export class OverlayService {
     }))
   }
 
-  /** Show "mic is muted" high-alert（系统层面确认被静音：红色高警） */
+  /** Show "mic is muted" high-alert（系統層面確認被靜音：紅色高警） */
   showMicMutedAlert() {
     if (this.activeWarning) return
     void bridge.updateOverlay(this.listeningPayload({
@@ -437,8 +437,8 @@ export class OverlayService {
   }
 
   /**
-   * 是否有常驻（sticky）警告正在挡住临时警告的显示/清除。
-   * 排查"低音量提示不消失/不出现"这类问题时很有用：那类症状多半就是被它挡着。
+   * 是否有常駐（sticky）警告正在擋住臨時警告的顯示/清除。
+   * 排查"低音量提示不消失/不出現"這類問題時很有用：那類症狀多半就是被它擋著。
    */
   hasStickyWarning() {
     return !!this.activeWarning
@@ -454,12 +454,12 @@ export class OverlayService {
   }
 
   /**
-   * 目标窗口收不下文本时的结果卡：显示识别结果，用户自己取走。
+   * 目標視窗收不下文本時的結果卡：顯示識別結果，使用者自己取走。
    *
-   * **不自动消失**（2026-09 改）。原先 10 秒就隐藏，等于把"文本还没交付"当成
-   * "通知已读"：用户去够鼠标的时间里卡片就没了，文字也跟着没了（那时剪贴板里
-   * 也没有它——不可编辑那条路刻意不提前改写剪贴板）。现在靠 Esc / 关闭按钮 /
-   * Ctrl+C 显式收场，只有 CARD_MAX_VISIBLE_MS 作为最终安全网。
+   * **不自動消失**（2026-09 改）。原先 10 秒就隱藏，等於把"文本還沒交付"當成
+   * "通知已讀"：使用者去夠滑鼠的時間裡卡片就沒了，文字也跟著沒了（那時剪貼簿裡
+   * 也沒有它——不可編輯那條路刻意不提前改寫剪貼簿）。現在靠 Esc / 關閉按鈕 /
+   * Ctrl+C 顯式收場，只有 CARD_MAX_VISIBLE_MS 作為最終安全網。
    */
   showFallback(text: string, reason: string, token = 0) {
     this.currentState = 'fallback'
@@ -476,17 +476,17 @@ export class OverlayService {
       cardToken: token,
       ...this.getCommonPayload(),
     })
-    // token=0 的 PTT Lab 预览没有 Orchestrator 代次，不能开启无人消费的全局按键接管。
+    // token=0 的 PTT Lab 預覽沒有 Orchestrator 代次，不能開啟無人消費的全域性按鍵接管。
     this.beginCardLifecycle(token, 'dismiss_fallback', text ? ['copy'] : [], { autoHide: false })
   }
 
   /**
-   * 识别失败（而不是"没插进去"）时的卡片。
+   * 識別失敗（而不是"沒插進去"）時的卡片。
    *
-   * 与结果卡的区别：没有文本可交付，只有一条原因和一个关闭按钮，所以不注册 Ctrl+C。
-   * `recovery` 决定要不要告诉用户"可以去历史记录重新识别" —— 它必须来自**实际存档
-   * 结果**，不能靠设置开关猜：历史关着、录音保留关着、写盘失败，任何一条都会让
-   * 那句话变成空头承诺。拿不到结论时传 'unknown'，界面就什么都不承诺。
+   * 與結果卡的區別：沒有文本可交付，只有一條原因和一個關閉按鈕，所以不註冊 Ctrl+C。
+   * `recovery` 決定要不要告訴使用者"可以去歷史記錄重新識別" —— 它必須來自**實際存檔
+   * 結果**，不能靠設定開關猜：歷史關著、錄音保留關著、寫盤失敗，任何一條都會讓
+   * 那句話變成空頭承諾。拿不到結論時傳 'unknown'，介面就什麼都不承諾。
    */
   showFailure(params: {
     title: string
@@ -510,23 +510,23 @@ export class OverlayService {
       cardToken: token,
       ...this.getCommonPayload(),
     })
-    // 失败卡里没有需要交付给用户的内容，只有一条原因和一个操作机会，所以允许自动收起。
+    // 失敗卡里沒有需要交付給使用者的內容，只有一條原因和一個操作機會，所以允許自動收起。
     this.beginCardLifecycle(token, 'dismiss_fallback', [], { autoHide: true })
   }
 
   /**
-   * 失败卡已经显示之后，音频存档才有结论 —— 就地把那句恢复提示补上。
+   * 失敗卡已經顯示之後，音訊存檔才有結論 —— 就地把那句恢復提示補上。
    *
-   * 为什么要分两步：提示必须在失败的**那一刻**出现（用户正盯着屏幕等结果），而
-   * 存档是异步的，最长可能等 30 秒（AUDIO_ARCHIVE_WAIT_MS）。宁可先说"失败了"、
-   * 稍后再补"录音留下了"，也不要为了凑齐一句完整的话让用户先干等半分钟。
+   * 為什麼要分兩步：提示必須在失敗的**那一刻**出現（使用者正盯著螢幕等結果），而
+   * 存檔是非同步的，最長可能等 30 秒（AUDIO_ARCHIVE_WAIT_MS）。寧可先說"失敗了"、
+   * 稍後再補"錄音留下了"，也不要為了湊齊一句完整的話讓使用者先乾等半分鐘。
    */
   updateFailureRecovery(recovery: FailureRecovery, token: number) {
     if (this.currentState !== 'failure') return
     if (token !== this.activeCardToken) return
     void bridge.updateOverlay({
       state: 'failure',
-      // 标题和原因必须**每次都重发**，见 failureCardPayload 上的注释。
+      // 標題和原因必須**每次都重發**，見 failureCardPayload 上的註釋。
       ...this.failureCardPayload(),
       failureRecovery: recovery,
       ...this.getCommonPayload(),
@@ -534,11 +534,11 @@ export class OverlayService {
   }
 
   /**
-   * 处理已超时，但还在宽限期里等迟到结果。
+   * 處理已超時，但還在寬限期裡等遲到結果。
    *
-   * 这一步以前是**完全静默**的：悬浮窗直接消失，而 15 秒内迟到的 final 仍会自动
-   * 插字。用户看到的是"什么都没发生，然后文字忽然出现"。现在明确告知仍在等待，
-   * 并且给 Esc 一个放弃的机会（放弃后迟到结果不再插字）。
+   * 這一步以前是**完全靜默**的：懸浮窗直接消失，而 15 秒內遲到的 final 仍會自動
+   * 插字。使用者看到的是"什麼都沒發生，然後文字忽然出現"。現在明確告知仍在等待，
+   * 並且給 Esc 一個放棄的機會（放棄後遲到結果不再插字）。
    */
   showAwaitingLateResult(graceSec: number, token: number) {
     this.currentState = 'thinking'
@@ -554,10 +554,10 @@ export class OverlayService {
   }
 
   /**
-   * 进入一张常驻卡片的生命周期：注册按键接管，并在可见期间周期性续期。
+   * 進入一張常駐卡片的生命週期：註冊按鍵接管，並在可見期間週期性續期。
    *
-   * Rust 侧那两个 TTL 是异常兜底，不是正常生命周期（见 CARD_KEEPALIVE_INTERVAL_MS）。
-   * 卡片既然不再自动消失，就必须由这里持续证明"我还在"。
+   * Rust 側那兩個 TTL 是異常兜底，不是正常生命週期（見 CARD_KEEPALIVE_INTERVAL_MS）。
+   * 卡片既然不再自動消失，就必須由這裡持續證明"我還在"。
    */
   private beginCardLifecycle(
     token: number,
@@ -593,11 +593,11 @@ export class OverlayService {
   }
 
   /**
-   * 悬浮窗那边自己收起了卡片（点关闭按钮、或复制完成后自动收起）。
+   * 懸浮窗那邊自己收起了卡片（點關閉按鈕、或複製完成後自動收起）。
    *
-   * 卡片的生命周期归这里管，悬浮窗只是渲染端。不收到这个通知的话，续期定时器会在
-   * 8 秒后把 Esc / Ctrl+C 重新注册一遍 —— 卡片早已不在，用户的按键却还被接管，
-   * 而且原生侧会重新抓一次前台窗口（那时可能已经是别的程序）。
+   * 卡片的生命週期歸這裡管，懸浮窗只是渲染端。不收到這個通知的話，續期定時器會在
+   * 8 秒後把 Esc / Ctrl+C 重新註冊一遍 —— 卡片早已不在，使用者的按鍵卻還被接管，
+   * 而且原生側會重新抓一次前台視窗（那時可能已經是別的程式）。
    */
   noteCardDismissed(token: number) {
     if (token !== this.activeCardToken) {
@@ -609,7 +609,7 @@ export class OverlayService {
     }
     this.currentState = 'toast'
     this.clearFallbackHideTimer()
-    // 这里**不**再调 hideOverlay：悬浮窗自己已经隐藏了，重复下发只会多一次 IPC。
+    // 這裡**不**再調 hideOverlay：懸浮窗自己已經隱藏了，重複下發只會多一次 IPC。
     this.enterTransientState('off', 0)
   }
 
@@ -627,7 +627,7 @@ export class OverlayService {
   }
 
   private setCardHotkeys(actions: bridge.CardHotkeyAction[], token: number) {
-    void bridge.setCardHotkeys(actions, token).catch(() => { /* 原生钩子不可用时不影响卡片 */ })
+    void bridge.setCardHotkeys(actions, token).catch(() => { /* 原生鉤子不可用時不影響卡片 */ })
   }
 
   clearFallbackHideTimer() {
@@ -639,15 +639,15 @@ export class OverlayService {
 
   hide() {
     this.clearMicSourceHint()
-    // 卡片没了，标题和原因就不该再被任何一次下发带出去。
+    // 卡片沒了，標題和原因就不該再被任何一次下發帶出去。
     this.activeFailureCard = null
     this.clearFallbackHideTimer()
-    // enterTransientState 内部会解除卡片的按键接管并停掉续期定时器。
+    // enterTransientState 內部會解除卡片的按鍵接管並停掉續期定時器。
     this.enterTransientState('off', 0)
     void bridge.hideOverlay()
   }
 
-  /** 快捷键切换润色模式后，用悬浮窗短暂提示当前模式名，约 1.6s 后自动隐藏。 */
+  /** 快捷鍵切換潤色模式後，用懸浮窗短暫提示當前模式名，約 1.6s 後自動隱藏。 */
   showPresetSwitched(name: string) {
     this.currentState = 'toast'
     this.clearMicSourceHint()
@@ -662,7 +662,7 @@ export class OverlayService {
     this.fallbackHideId = setTimeout(() => this.hide(), 1600)
   }
 
-  /** 全局快捷键切换 AI 整理后的轻量确认，不打断正在录音的状态。 */
+  /** 全域性快捷鍵切換 AI 整理後的輕量確認，不打斷正在錄音的狀態。 */
   showAiCleanupToggled(enabled: boolean) {
     this.currentState = 'toast'
     this.clearMicSourceHint()
@@ -678,28 +678,28 @@ export class OverlayService {
   }
 
   /**
-   * 识别结果为空（未检测到有效声音）时的提示。
+   * 識別結果為空（未檢測到有效聲音）時的提示。
    *
-   * `diagnostic` 由调用方补充成因上下文。日志刻意放在这里、而不是各个调用点：
-   * 这句提示是全软件最容易被误读的一条 —— 真实成因可能是用户没说话、供应商额度
-   * 耗尽、服务端提前断开、文本后处理失败，用户看到的却是同一句话。放在这个唯一
-   * 出口，就保证「用户看到这句」和「日志里有记录」永远一一对应，不会因为将来
-   * 新增一个调用点而漏掉。
+   * `diagnostic` 由呼叫方補充成因上下文。日誌刻意放在這裡、而不是各個呼叫點：
+   * 這句提示是全軟體最容易被誤讀的一條 —— 真實成因可能是使用者沒說話、供應商額度
+   * 耗盡、服務端提前斷開、文本後處理失敗，使用者看到的卻是同一句話。放在這個唯一
+   * 出口，就保證「使用者看到這句」和「日誌裡有記錄」永遠一一對應，不會因為將來
+   * 新增一個呼叫點而漏掉。
    */
   /**
-   * 识别没出文字时的短提示。两种成因共用这一条路，**都不弹失败卡**。
+   * 識別沒出文字時的短提示。兩種成因共用這一條路，**都不彈失敗卡**。
    *
-   * - `'silent'`：采集侧有近静音实证，确实没人说话。
-   * - `'no_text'`：录到了声音，但识别没返回任何文字。
+   * - `'silent'`：採集側有近靜音實證，確實沒人說話。
+   * - `'no_text'`：錄到了聲音，但識別沒返回任何文字。
    *
-   * 为什么 `'no_text'` 也只给 toast：原先拿采集侧峰值（> 0.01）区分「没说话」和
-   * 「调用失败」，这个判据两头都穿。实测日志里连着三次都是什么都没说，一次弹了失败卡
-   * 两次只弹 toast，差别仅仅是底噪峰值（0.019 / 0.0001 / 0.0015）—— 一次呼吸、碰一下
-   * 桌子就能超过 0.01；反过来额度耗尽同样会返回空文本、峰值却很低。用它当判据只会
-   * 让同一个动作时而弹卡片时而不弹。
+   * 為什麼 `'no_text'` 也只給 toast：原先拿採集側峰值（> 0.01）區分「沒說話」和
+   * 「呼叫失敗」，這個判據兩頭都穿。實測日誌裡連著三次都是什麼都沒說，一次彈了失敗卡
+   * 兩次只彈 toast，差別僅僅是底噪峰值（0.019 / 0.0001 / 0.0015）—— 一次呼吸、碰一下
+   * 桌子就能超過 0.01；反過來額度耗盡同樣會返回空文本、峰值卻很低。用它當判據只會
+   * 讓同一個動作時而彈卡片時而不彈。
    *
-   * 真正的故障都有各自的路径（连接断开 / stop 发不出去 / 处理超时 / 后处理把文字清空），
-   * 失败卡留给那几条。
+   * 真正的故障都有各自的路徑（連線斷開 / stop 發不出去 / 處理超時 / 後處理把文字清空），
+   * 失敗卡留給那幾條。
    */
   showNoSpeech(reason: 'silent' | 'no_text', diagnostic?: Record<string, unknown>) {
     this.currentState = 'toast'
@@ -708,7 +708,7 @@ export class OverlayService {
     this.enterTransientState('off', 0)
     void bridge.presentOverlay({
       state: 'toast',
-      // 'no_text' 不说「未检测到有效声音」：声音是收到了，那句话会把用户直接引去查麦克风。
+      // 'no_text' 不說「未檢測到有效聲音」：聲音是收到了，那句話會把使用者直接引去查麥克風。
       toastText: t(reason === 'silent' ? 'overlay.toastNoSpeech' : 'overlay.toastNoText'),
       toastTone: 'warn',
       ...this.getCommonPayload(),
@@ -732,7 +732,7 @@ export class OverlayService {
     this.fallbackHideId = setTimeout(() => this.hide(), 900)
   }
 
-  /** 显示错误信息，几秒后自动隐藏 */
+  /** 顯示錯誤資訊，幾秒後自動隱藏 */
   showError(message: string) {
     this.currentState = 'error'
     this.clearMicSourceHint()

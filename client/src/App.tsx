@@ -26,14 +26,14 @@ import * as bridge from './services/bridge'
 
 export default function App() {
   const [showWelcome, setShowWelcome] = useState(false)
-  // 首次挂载时先不渲染主界面，等 onboarding 检查完成再决定，避免"闪一下主页再进向导"
+  // 首次掛載時先不渲染主介面，等 onboarding 檢查完成再決定，避免"閃一下主頁再進嚮導"
   const [onboardingChecked, setOnboardingChecked] = useState(false)
   const navigate = useNavigate()
 
-  // 初始化 + 清理：必须只在挂载/卸载各执行一次。
-  // ⚠️ 依赖数组务必保持为空 []！这里的 cleanup() 会断开 WebSocket，若把会变化的
-  // 值（如 react-router 的 navigate）放进依赖，effect 会反复卸载重装，导致
-  // 「连上→cleanup 断连→重连」的死循环（连上几秒就断、从不发 start）。
+  // 初始化 + 清理：必須只在掛載/解除安裝各執行一次。
+  // ⚠️ 依賴陣列務必保持為空 []！這裡的 cleanup() 會斷開 WebSocket，若把會變化的
+  // 值（如 react-router 的 navigate）放進依賴，effect 會反覆解除安裝重灌，導致
+  // 「連上→cleanup 斷連→重連」的死迴圈（連上幾秒就斷、從不發 start）。
   useEffect(() => {
     void initTheme()
     void initAiEnabled()
@@ -42,7 +42,7 @@ export default function App() {
     // [自訂] 更新已註解停用：void startUpdateService()
     // [自訂] S18／L-19 WebDAV 自動備份已註解停用：void startWebDavBackupService()
 
-      // 检查是否需要显示欢迎向导（仅首次安装）
+      // 檢查是否需要顯示歡迎向導（僅首次安裝）
       ; (async () => {
         const onboardedVersion = await getSetting('onboardingVersion', '')
         if (!onboardedVersion) {
@@ -59,14 +59,14 @@ export default function App() {
   // [自訂] SC-63：點擊光輝只裝在主視窗；錄音懸浮窗是另一個入口，不載入。
   useEffect(() => startClickGlow(), [])
 
-  // 自动更新安装完成后，看门人进程会带 --open-about 重新拉起本程序，
-  // Rust 端据此发出 open-about 事件，这里跳转到关于页方便用户确认更新已生效。
-  // 单独一个 effect：它的清理只是取消监听，不会断开连接，所以依赖 navigate 无副作用。
+  // 自動更新安裝完成後，看門人程序會帶 --open-about 重新拉起本程式，
+  // Rust 端據此發出 open-about 事件，這裡跳轉到關於頁方便使用者確認更新已生效。
+  // 單獨一個 effect：它的清理只是取消監聽，不會斷開連線，所以依賴 navigate 無副作用。
   useEffect(() => {
     const unlistenOpenAbout = listen('open-about', () => {
       navigate('/about')
     })
-    // macOS 应用菜单的「设置…」（⌘,）；Windows 不会发这个事件
+    // macOS 應用選單的「設定…」（⌘,）；Windows 不會發這個事件
     const unlistenOpenSettings = listen('open-settings', () => {
       navigate('/settings')
     })
@@ -79,11 +79,11 @@ export default function App() {
   const handleWelcomeComplete = () => {
     setShowWelcome(false)
     void setSetting('onboardingVersion', __APP_VERSION__)
-    // 向导完成后通知 Rust 端重新加载快捷键配置
+    // 嚮導完成後通知 Rust 端重新載入快捷鍵配置
     bridge.notifyShortcutsChanged()
   }
 
-  // onboarding 检查未完成前只渲染与背景同色的空壳，避免首次安装时主页闪现
+  // onboarding 檢查未完成前只渲染與背景同色的空殼，避免首次安裝時主頁閃現
   if (!onboardingChecked) {
     return <div className="h-screen bg-background" />
   }

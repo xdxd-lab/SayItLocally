@@ -10,7 +10,7 @@ import { UPDATE_NOTIFICATION_ACTION, UPDATE_NOTIFICATION_EVENT, UPDATE_NOTIFICAT
 import '@/index.css'
 import './notification.css'
 
-// 仅开发服务器支持的视觉预览，不读写更新设置、不下载或启动安装程序。
+// 僅開發伺服器支援的視覺預覽，不讀寫更新設定、不下載或啟動安裝程式。
 const preview = import.meta.env.DEV && !isTauri()
 if (preview) document.documentElement.classList.add('update-notification-preview')
 const params = new URLSearchParams(location.search)
@@ -41,7 +41,7 @@ function Notification() {
       if (!disposed) setSnapshot((current) => next.revision >= current.revision ? next : current)
     }
     void (async () => {
-      // 先监听再取快照：首次创建时发送的事件可能早于 WebView 挂载。
+      // 先監聽再取快照：首次建立時傳送的事件可能早於 WebView 掛載。
       stop = await listen<UpdateNotificationSnapshot>(UPDATE_NOTIFICATION_EVENT, ({ payload }) => apply(payload))
       if (disposed) { stop(); return }
       apply(await getUpdateNotification())
@@ -60,12 +60,12 @@ function Notification() {
     const element = shell.current
     const resize = () => {
       const bounds = element.getBoundingClientRect()
-      // 宽度用设计值：初始 WebView 可能因文本缩放而偏窄，测量宽度会把它永远锁在窄尺寸。
+      // 寬度用設計值：初始 WebView 可能因文本縮放而偏窄，測量寬度會把它永遠鎖在窄尺寸。
       void fitUpdateNotification(snapshot.revision, UPDATE_NOTIFICATION_WIDTH, bounds.height, window.devicePixelRatio).catch(console.error)
     }
     const observer = new ResizeObserver(resize)
     observer.observe(element)
-    // 内容绘制好、尺寸测量完成才显示原生窗口，避免白闪或裁掉按钮。
+    // 內容繪製好、尺寸測量完成才顯示原生視窗，避免白閃或裁掉按鈕。
     const frame = requestAnimationFrame(resize)
     window.addEventListener('resize', resize)
     return () => {

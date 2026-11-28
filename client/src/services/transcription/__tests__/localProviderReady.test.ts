@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-// 这些依赖都会走 Tauri IPC，测试里替换掉
+// 這些依賴都會走 Tauri IPC，測試裡替換掉
 const invokeMock = vi.fn()
 const getSettingMock = vi.fn()
 
@@ -11,7 +11,7 @@ vi.mock('../../debugLog', () => ({ addRuntimeEvent: () => { } }))
 import { LocalProvider } from '../LocalProvider'
 import { describeProviderError } from '@/lib/errorMessages'
 
-/** 让 getSetting 返回选中的模型 id，其余键给默认值 */
+/** 讓 getSetting 返回選中的模型 id，其餘鍵給預設值 */
 function settings(modelId: string) {
   getSettingMock.mockImplementation((key: string, fallback: unknown) =>
     Promise.resolve(key === 'localAsr.modelId' ? modelId : fallback))

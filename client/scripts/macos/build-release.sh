@@ -1,12 +1,12 @@
 #!/bin/zsh
 # 构建 macOS 发布包：
-#   - SayItLocally_<版本>_<架构>.dmg  给用户下载安装
-#   - SayItLocally_<版本>_<架构>.zip  + latest.yml  给自动更新（放到服务器 releases/darwin/<架构>/）
+#   - SayItLocally_<版本>_<架構>.dmg  給使用者下載安裝
+#   - SayItLocally_<版本>_<架構>.zip  + latest.yml  給自動更新（放到伺服器 releases/darwin/<架構>/）
 #
 # 用法：scripts/macos/build-release.sh
-# 环境变量：
-#   SAYIT_SIGN_IDENTITY  签名证书名，默认「SayItLocally Self-Signed」（先跑 create-signing-cert.sh）；
-#                        找不到就退回 ad-hoc 签名（能用，但用户每次更新都要重新授权辅助功能）。
+# 環境變數：
+#   SAYIT_SIGN_IDENTITY  簽名證書名，預設「SayItLocally Self-Signed」（先跑 create-signing-cert.sh）；
+#                        找不到就退回 ad-hoc 簽名（能用，但使用者每次更新都要重新授權輔助功能）。
 set -euo pipefail
 
 SCRIPT_DIR=${0:A:h}
@@ -24,11 +24,11 @@ esac
 IDENTITY="${SAYIT_SIGN_IDENTITY:-SayItLocally Self-Signed}"
 if security find-identity -v -p codesigning | grep -q "\"$IDENTITY\""; then
   export APPLE_SIGNING_IDENTITY="$IDENTITY"
-  echo "签名证书：$IDENTITY"
+  echo "簽名證書：$IDENTITY"
 else
   export APPLE_SIGNING_IDENTITY="-"
-  echo "⚠️ 没找到签名证书「$IDENTITY」，改用 ad-hoc 签名。"
-  echo "   ad-hoc 签名的版本每次更新后，用户都要重新勾选「辅助功能」。先运行 scripts/macos/create-signing-cert.sh。"
+  echo "⚠️ 沒找到簽名證書「$IDENTITY」，改用 ad-hoc 簽名。"
+  echo "   ad-hoc 簽名的版本每次更新後，使用者都要重新勾選「輔助功能」。先執行 scripts/macos/create-signing-cert.sh。"
 fi
 
 npx tauri build --bundles app,dmg
@@ -41,16 +41,16 @@ ZIP_NAME="SayItLocally_${VERSION}_${ARCH}.zip"
 DMG_NAME="SayItLocally_${VERSION}_${ARCH}.dmg"
 mkdir -p "$OUT"
 
-# 发布物一律从一份不带扩展属性的干净拷贝生成，不直接用构建目录里那份 .app：
-# 它签完名以后，Finder 或 iCloud「桌面与文稿」同步还可能往 .app 根目录写 com.apple.FinderInfo
-# 之类的扩展属性（codesign 管这叫 detritus），codesign --strict 校验不过，Tauri 打的 dmg 里也会带上。
-# 签名本身不依赖扩展属性，去掉不影响签名。
+# 釋出物一律從一份不帶擴充套件屬性的乾淨複製生成，不直接用構建目錄裡那份 .app：
+# 它簽完名以後，Finder 或 iCloud「桌面與文稿」同步還可能往 .app 根目錄寫 com.apple.FinderInfo
+# 之類的擴充套件屬性（codesign 管這叫 detritus），codesign --strict 校驗不過，Tauri 打的 dmg 裡也會帶上。
+# 簽名本身不依賴擴充套件屬性，去掉不影響簽名。
 WORK=$(mktemp -d /tmp/sayit-release.XXXXXX)
 MNT="$WORK/mnt"
 MOUNTED=0
 detach_dmg() {
   local i
-  # Spotlight 正在索引时卸载会报「资源忙」，等一下再试，最后才强制卸载
+  # Spotlight 正在索引時解除安裝會報「資源忙」，等一下再試，最後才強制解除安裝
   for i in 1 2 3; do
     if /usr/bin/hdiutil detach -quiet "$MNT"; then
       MOUNTED=0
@@ -70,30 +70,30 @@ trap cleanup EXIT
 /usr/bin/ditto --norsrc --noextattr "$APP" "$WORK/SayItLocally.app"
 /usr/bin/codesign --verify --deep --strict "$WORK/SayItLocally.app"
 
-# zip 给自动更新用。ditto 会保留 .app 里的符号链接和签名；zip 命令会弄坏签名。
-# --norsrc --noextattr：不把扩展属性打成 ._ 文件，换别的解压工具也不会在包里多出文件、破坏签名。
+# zip 給自動更新用。ditto 會保留 .app 裡的符號連結和簽名；zip 命令會弄壞簽名。
+# --norsrc --noextattr：不把擴充套件屬性打成 ._ 檔案，換別的解壓工具也不會在包裡多出檔案、破壞簽名。
 /usr/bin/ditto -c -k --norsrc --noextattr --keepParent "$WORK/SayItLocally.app" "$OUT/$ZIP_NAME"
 
-# dmg 沿用 Tauri 打好的那个（窗口布局、卷图标、「应用程序」快捷方式都在里面），
-# 只就地清掉里面 .app 的扩展属性，再压缩、签名。就地清理不会在卷里留下旧文件的空闲块，dmg 不会变大。
-# xattr -c 清不掉 com.apple.provenance（系统保护，会静默保留），codesign 也不管它。
+# dmg 沿用 Tauri 打好的那個（視窗布局、捲圖示、「應用程式」快捷方式都在裡面），
+# 只就地清掉裡面 .app 的擴充套件屬性，再壓縮、簽名。就地清理不會在卷裡留下舊檔案的空閒塊，dmg 不會變大。
+# xattr -c 清不掉 com.apple.provenance（系統保護，會靜默保留），codesign 也不管它。
 /usr/bin/hdiutil convert -quiet "$DMG" -format UDRW -o "$WORK/rw.dmg"
 mkdir "$MNT"
 /usr/bin/hdiutil attach -quiet -nobrowse -noautoopen -noverify -mountpoint "$MNT" "$WORK/rw.dmg"
 MOUNTED=1
 /usr/bin/xattr -cr "$MNT/SayItLocally.app"
 /usr/bin/codesign --verify --deep --strict "$MNT/SayItLocally.app"
-# 挂载期间系统写进卷里的事件日志，和 Tauri 打包时一样删掉（可能删不掉，不影响使用）
+# 掛載期間系統寫進卷裡的事件日誌，和 Tauri 打包時一樣刪掉（可能刪不掉，不影響使用）
 rm -rf "$MNT/.fseventsd" 2>/dev/null || true
 detach_dmg
 /usr/bin/hdiutil convert -quiet "$WORK/rw.dmg" -format UDZO -ov -o "$OUT/$DMG_NAME"
-# ad-hoc 时不签 dmg：dmg 本身不需要签名，要紧的是里面的 .app
+# ad-hoc 時不籤 dmg：dmg 本身不需要簽名，要緊的是裡面的 .app
 if [ "$APPLE_SIGNING_IDENTITY" != "-" ]; then
   /usr/bin/codesign --force --sign "$APPLE_SIGNING_IDENTITY" "$OUT/$DMG_NAME"
   /usr/bin/codesign --verify "$OUT/$DMG_NAME"
 fi
 
-# manifest 里的 sha512 是 Base64（与 Windows 的 latest.yml 相同，客户端按 Base64 比对）
+# manifest 裡的 sha512 是 Base64（與 Windows 的 latest.yml 相同，客戶端按 Base64 比對）
 SHA512=$(/usr/bin/openssl dgst -sha512 -binary "$OUT/$ZIP_NAME" | /usr/bin/base64)
 SIZE=$(stat -f %z "$OUT/$ZIP_NAME")
 DATE=$(date -u +%Y-%m-%dT%H:%M:%S.000Z)
@@ -109,9 +109,9 @@ releaseDate: '$DATE'
 EOF
 
 echo
-echo "产物在 $CLIENT_DIR/$OUT ："
+echo "產物在 $CLIENT_DIR/$OUT ："
 ls -la "$OUT"
 echo
 echo "发布："
-echo "  1. $DMG_NAME 上传到 GitHub Release，给用户下载"
-echo "  2. $ZIP_NAME 和 latest.yml 放到服务器的 releases/darwin/$ARCH/ 下，客户端自动更新从这里取"
+echo "  1. $DMG_NAME 上傳到 GitHub Release，給使用者下載"
+echo "  2. $ZIP_NAME 和 latest.yml 放到伺服器的 releases/darwin/$ARCH/ 下，客戶端自動更新從這裡取"

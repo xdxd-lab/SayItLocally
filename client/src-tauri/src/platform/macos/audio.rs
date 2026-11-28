@@ -1,4 +1,4 @@
-//! CoreAudio：静音默认输出设备、查询输入设备静音状态。对应 Windows 侧的 IAudioEndpointVolume。
+//! CoreAudio：靜音預設輸出裝置、查詢輸入裝置靜音狀態。對應 Windows 側的 IAudioEndpointVolume。
 
 use super::cf::{cfstring_to_string, CfOwned};
 use super::ffi::*;
@@ -79,7 +79,7 @@ pub fn default_device(input: bool) -> Option<AudioObjectID> {
     (id != kAudioObjectUnknown).then_some(id)
 }
 
-/// 设备的名称（kAudioObjectPropertyName）。
+/// 裝置的名稱（kAudioObjectPropertyName）。
 pub fn device_name(id: AudioObjectID) -> Option<String> {
     let addr = address(kAudioObjectPropertyName, kAudioObjectPropertyScopeGlobal, kAudioObjectPropertyElementMain);
     unsafe {
@@ -97,8 +97,8 @@ pub fn device_name(id: AudioObjectID) -> Option<String> {
     }
 }
 
-/// 设备挂在哪种连接上（kAudioDevicePropertyTransportType）：内置 `bltn`、USB `usb `、
-/// 蓝牙 `blue`、纯软件驱动 `virt`……拿不到时返回 None。
+/// 裝置掛在哪種連線上（kAudioDevicePropertyTransportType）：內建 `bltn`、USB `usb `、
+/// 藍牙 `blue`、純軟體驅動 `virt`……拿不到時返回 None。
 pub fn transport_type(id: AudioObjectID) -> Option<u32> {
     let addr = address(kAudioDevicePropertyTransportType, kAudioObjectPropertyScopeGlobal, kAudioObjectPropertyElementMain);
     unsafe { get_u32(id, &addr) }
@@ -127,10 +127,10 @@ pub fn input_devices() -> Vec<AudioObjectID> {
     }
 }
 
-/// 要检查的通道：主元素优先，没有主元素静音的设备（部分 USB / HDMI）逐通道看。
+/// 要檢查的通道：主元素優先，沒有主元素靜音的裝置（部分 USB / HDMI）逐通道看。
 const MUTE_ELEMENTS: [u32; 3] = [kAudioObjectPropertyElementMain, 1, 2];
 
-/// 设备在给定方向上是否静音。拿不到静音属性时返回 None。
+/// 裝置在給定方向上是否靜音。拿不到靜音屬性時返回 None。
 pub fn device_muted(id: AudioObjectID, input: bool) -> Option<bool> {
     let scope = if input { kAudioDevicePropertyScopeInput } else { kAudioDevicePropertyScopeOutput };
     let mut seen = false;
@@ -149,16 +149,16 @@ pub fn device_muted(id: AudioObjectID, input: bool) -> Option<bool> {
     seen.then_some(false)
 }
 
-/// 输出静音前保存的状态，用于原样还原。
+/// 輸出靜音前儲存的狀態，用於原樣還原。
 #[derive(Debug, Clone, Copy)]
 pub enum SavedOutputState {
-    /// 走的是 Mute 属性：记下原来是否静音
+    /// 走的是 Mute 屬性：記下原來是否靜音
     Mute { device: AudioObjectID, was_muted: bool },
-    /// 设备不支持 Mute，只能把音量调成 0：记下原来的各通道音量
+    /// 裝置不支援 Mute，只能把音量調成 0：記下原來的各通道音量
     Volume { device: AudioObjectID, volumes: [Option<f32>; 3] },
 }
 
-/// 静音默认输出设备。返回之前的状态（还原用）。
+/// 靜音預設輸出裝置。返回之前的狀態（還原用）。
 pub fn mute_default_output() -> Result<SavedOutputState, String> {
     let device = default_device(false).ok_or("no default output device")?;
     // 1. Mute 属性（主元素或各通道）
@@ -180,7 +180,7 @@ pub fn mute_default_output() -> Result<SavedOutputState, String> {
             return Ok(SavedOutputState::Mute { device, was_muted });
         }
     }
-    // 2. 退回音量：记下各通道音量后设 0
+    // 2. 退回音量：記下各通道音量後設 0
     let mut volumes = [None; 3];
     let mut any = false;
     for (slot, element) in MUTE_ELEMENTS.iter().enumerate() {
@@ -233,7 +233,7 @@ mod tests {
 
     #[test]
     fn default_devices_are_queryable_without_side_effects() {
-        // 没有声卡的 CI 机器上可能拿不到；只要别崩。
+        // 沒有音效卡的 CI 機器上可能拿不到；只要別崩。
         if let Some(id) = default_device(false) {
             let _ = device_name(id);
             let _ = device_muted(id, false);

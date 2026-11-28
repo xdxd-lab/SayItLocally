@@ -17,8 +17,8 @@ describe('matchesAppPromptRule', () => {
   })
 
   it('拿到进程名时，标题不再独立触发：在 Outlook 里写含 Teams 的邮件不应命中 Teams', () => {
-    // 这是改动前的真实误判：标题「包含」teams 就命中 Teams 规则，
-    // 且 Teams 优先级(100) > Outlook(95)，正式邮件会被按即时聊天风格整理。
+    // 這是改動前的真實誤判：標題「包含」teams 就命中 Teams 規則，
+    // 且 Teams 優先順序(100) > Outlook(95)，正式郵件會被按即時聊天風格整理。
     const ctx: ActiveAppContext = { processName: 'outlook.exe', windowTitle: 'Teams 会议纪要 - Outlook' }
     expect(matchesAppPromptRule(ruleById('teams'), ctx)).toBe(false)
     expect(matchesAppPromptRule(ruleById('outlook'), ctx)).toBe(true)
@@ -46,7 +46,7 @@ describe('matchesAppPromptRule', () => {
   })
 
   it('拿不到进程名时仍回落到标题匹配（不能因为进程名为空就判不命中）', () => {
-    // 内置规则已不带标题列表，这里显式构造一条"两者都写"的规则来验证兜底分支
+    // 內建規則已不帶標題列表，這裡顯式構造一條"兩者都寫"的規則來驗證兜底分支
     const rule: AppPromptRule = {
       ...ruleById('outlook'),
       matcher: { processNames: ['outlook.exe'], windowTitleIncludes: ['outlook'] },

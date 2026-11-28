@@ -9,10 +9,10 @@ export type DiagnosticOccurrence =
   | 'not_sure'
 
 /**
- * 反馈时选的问题类型。取值会原样写进诊断包的 manifest.json，作用是让收到 ticket
- * 的人不必读完整份日志就知道该看哪一段（insert_failed 看 gate= 那几行，no_text 看
- * 音频与 provider 的空结果日志）。所以这些码是**对外契约**，改名会让历史 ticket
- * 对不上；新增类型往后加即可。
+ * 反饋時選的問題型別。取值會原樣寫進診斷包的 manifest.json，作用是讓收到 ticket
+ * 的人不必讀完整份日誌就知道該看哪一段（insert_failed 看 gate= 那幾行，no_text 看
+ * 音訊與 provider 的空結果日誌）。所以這些碼是**對外契約**，改名會讓歷史 ticket
+ * 對不上；新增型別往後加即可。
  */
 export type DiagnosticIssueType =
   | 'insert_failed'
@@ -69,7 +69,7 @@ export interface ClientRuntimeInfo {
   hostname: string
   clientVersion: string
   platform: string
-  /** CPU 架构（x86_64 / aarch64），更新通道按它选安装包 */
+  /** CPU 架構（x86_64 / aarch64），更新通道按它選安裝包 */
   arch?: string
   osVersion: string
   localIp: string

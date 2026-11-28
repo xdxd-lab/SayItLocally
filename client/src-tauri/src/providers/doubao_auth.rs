@@ -1,46 +1,46 @@
-// 豆包（火山引擎）ASR 的鉴权头与资源 ID —— 三条调用路径（flash / nostream / 双向流式）共用。
+// 豆包（火山引擎）ASR 的鑑權頭與資源 ID —— 三條呼叫路徑（flash / nostream / 雙向流式）共用。
 //
-// 火山有两代控制台，鉴权方式不同：
+// 火山有兩代控制台，鑑權方式不同：
 //
-//   旧版控制台：X-Api-App-Key（App ID） + X-Api-Access-Key（Access Token）
+//   舊版控制台：X-Api-App-Key（App ID） + X-Api-Access-Key（Access Token）
 //   新版控制台：只要 X-Api-Key（APP Key）
 //
-// 两代的密钥**不是同一个东西**，不能互换：把 Access Token 当 X-Api-Key 发，或者把
-// APP Key 当 App ID 发，都只会拿到一个长得像「密钥填错了」的 401，用户根本猜不到
-// 是控制台代次不对。所以模式由调用方明确给出，这里不做任何猜测式回退。
+// 兩代的金鑰**不是同一個東西**，不能互換：把 Access Token 當 X-Api-Key 發，或者把
+// APP Key 當 App ID 發，都只會拿到一個長得像「金鑰填錯了」的 401，使用者根本猜不到
+// 是控制台代次不對。所以模式由呼叫方明確給出，這裡不做任何猜測式回退。
 //
-// 判定口径：**app_id 是否为空**。前端按用户选择的控制台版本，把「本次生效的凭据」
-// 写进运行时配置——新版只写 api_key、app_id 留空；旧版两个都写。于是线上格式是自解释的，
-// 不需要再额外传一个模式字段（也就不会出现某个调用点忘了传、导致一半用户报错的情况）。
+// 判定口徑：**app_id 是否為空**。前端按使用者選擇的控制台版本，把「本次生效的憑據」
+// 寫進執行時配置——新版只寫 api_key、app_id 留空；舊版兩個都寫。於是線上格式是自解釋的，
+// 不需要再額外傳一個模式欄位（也就不會出現某個呼叫點忘了傳、導致一半使用者報錯的情況）。
 //
-// 这里刻意不保留历史上那个 `if app_id.is_empty() { app_id = api_key }` 的回退：
-// 它既发不出正确的新版请求头，还会把密钥当 uid 塞进请求体。
+// 這裡刻意不保留歷史上那個 `if app_id.is_empty() { app_id = api_key }` 的回退：
+// 它既發不出正確的新版請求頭，還會把金鑰當 uid 塞進請求體。
 
 use super::types::AsrProviderConfig;
 
-/// 豆包 Seed-ASR 2.0 流式资源 ID。小时版（包时）与并发版（按量）是两种计费方式，
-/// 同一个账号通常只开通其中之一，所以连接时要依次尝试。
+/// 豆包 Seed-ASR 2.0 流式資源 ID。小時版（包時）與併發版（按量）是兩種計費方式，
+/// 同一個賬號通常只開通其中之一，所以連線時要依次嘗試。
 pub const RESOURCE_ID_SAUC_DURATION: &str = "volc.seedasr.sauc.duration";
 pub const RESOURCE_ID_SAUC_CONCURRENT: &str = "volc.seedasr.sauc.concurrent";
 
-/// 流式端点按「小时版 → 并发版」依次尝试的资源 ID。
+/// 流式端點按「小時版 → 併發版」依次嘗試的資源 ID。
 pub const SAUC_RESOURCE_CANDIDATES: &[&str] =
     &[RESOURCE_ID_SAUC_DURATION, RESOURCE_ID_SAUC_CONCURRENT];
 
-/// 请求体 `user.uid`。新版控制台没有 App ID 可填，而这个字段只是给服务端做调用方标识，
-/// 绝不能拿密钥顶替（历史实现就是这么干的，等于把 Access Token 写进请求体）。
+/// 請求體 `user.uid`。新版控制台沒有 App ID 可填，而這個欄位只是給服務端做呼叫方標識，
+/// 絕不能拿金鑰頂替（歷史實現就是這麼幹的，等於把 Access Token 寫進請求體）。
 const FALLBACK_UID: &str = "sayit";
 
-/// 一次调用要用哪套鉴权。
+/// 一次呼叫要用哪套鑑權。
 pub enum DoubaoAuth<'a> {
     /// 新版控制台：只发 X-Api-Key。
     ApiKey { api_key: &'a str },
-    /// 旧版控制台：App ID + Access Token。
+    /// 舊版控制台：App ID + Access Token。
     AppIdAccessKey { app_id: &'a str, access_key: &'a str },
 }
 
 impl<'a> DoubaoAuth<'a> {
-    /// 从前端传入的配置判定鉴权方式。空 app_id = 新版控制台。
+    /// 從前端傳入的配置判定鑑權方式。空 app_id = 新版控制台。
     pub fn from_config(config: &'a AsrProviderConfig) -> Self {
         let app_id = config.app_id.trim();
         if app_id.is_empty() {
@@ -53,8 +53,8 @@ impl<'a> DoubaoAuth<'a> {
         }
     }
 
-    /// 请求体里的 `user.uid`。旧版用 App ID（它本来就是公开的账号标识），
-    /// 新版没有可用标识，用固定占位符，绝不回落到密钥。
+    /// 請求體裡的 `user.uid`。舊版用 App ID（它本來就是公開的賬號標識），
+    /// 新版沒有可用標識，用固定佔位符，絕不回落到金鑰。
     pub fn uid(&self) -> &str {
         match self {
             DoubaoAuth::ApiKey { .. } => FALLBACK_UID,
@@ -62,7 +62,7 @@ impl<'a> DoubaoAuth<'a> {
         }
     }
 
-    /// 供日志使用的模式名（不含任何密钥）。
+    /// 供日誌使用的模式名（不含任何金鑰）。
     pub fn mode_name(&self) -> &'static str {
         match self {
             DoubaoAuth::ApiKey { .. } => "api_key(new-console)",
@@ -70,7 +70,7 @@ impl<'a> DoubaoAuth<'a> {
         }
     }
 
-    /// 凭据是否填全。缺东西就别发请求：网关只会回一个含义模糊的鉴权错误。
+    /// 憑據是否填全。缺東西就別發請求：閘道器只會回一個含義模糊的鑑權錯誤。
     pub fn missing_field(&self) -> Option<&'static str> {
         match self {
             DoubaoAuth::ApiKey { api_key } if api_key.is_empty() => Some("API Key"),
@@ -81,7 +81,7 @@ impl<'a> DoubaoAuth<'a> {
         }
     }
 
-    /// 以 (名, 值) 形式返回本模式需要的鉴权头，调用方逐个塞进 builder。
+    /// 以 (名, 值) 形式返回本模式需要的鑑權頭，呼叫方逐個塞進 builder。
     pub fn headers(&self) -> Vec<(&'static str, &'a str)> {
         match self {
             DoubaoAuth::ApiKey { api_key } => vec![("X-Api-Key", api_key)],
@@ -93,19 +93,19 @@ impl<'a> DoubaoAuth<'a> {
     }
 }
 
-/// 把火山的状态码翻成用户能照着做事的一句话。
+/// 把火山的狀態碼翻成使用者能照著做事的一句話。
 ///
-/// 这些码会经历史记录的「原因」展示给用户看 —— 只给一串数字等于没说。
+/// 這些碼會經歷史記錄的「原因」展示給使用者看 —— 只給一串數字等於沒說。
 ///
-/// **只写有实据的**：`20000003` 有本仓库既有代码为证（test_connection 一直把它当静音音频
-/// 放行），`45000030` 是拿真实凭据打线上接口实测到的（`requested resource not granted`）。
-/// 其余按前缀分族给一个方向性说明，不猜具体含义 —— 猜错了比不写更坏，会把用户引到
-/// 错误的地方去排查。
+/// **只寫有實據的**：`20000003` 有本倉庫既有程式碼為證（test_connection 一直把它當靜音音訊
+/// 放行），`45000030` 是拿真實憑據打線上介面實測到的（`requested resource not granted`）。
+/// 其餘按字首分族給一個方向性說明，不猜具體含義 —— 猜錯了比不寫更壞，會把使用者引到
+/// 錯誤的地方去排查。
 pub fn explain_status_code(code: &str) -> Option<&'static str> {
     match code {
         "20000003" => Some("The audio was classified as silence; no speech was detected"),
         "45000030" => Some("This account has not enabled the requested resource or has exhausted its quota; check the Volcengine console"),
-        // 以下三条出自官方《大模型流式语音识别API》错误码表（docs.volcengine.com/docs/6561/1354869）
+        // 以下三條出自官方《大模型流式語音識別API》錯誤碼錶（docs.volcengine.com/docs/6561/1354869）
         "45000002" => Some("The audio sent to Volcengine was empty"),
         "45000081" => Some("Volcengine stopped waiting for the next audio packet; the connection stalled while uploading"),
         "55000031" => Some("Volcengine is overloaded; try again later"),
@@ -121,13 +121,13 @@ pub fn explain_status_code(code: &str) -> Option<&'static str> {
     }
 }
 
-/// 从服务端返回的 JSON 里取出状态码并翻成人话，拼成可直接展示的后缀。
-/// 拿不到码就返回空串，调用方直接拼接即可。
+/// 從服務端返回的 JSON 裡取出狀態碼並翻成人話，拼成可直接展示的字尾。
+/// 拿不到碼就返回空串，呼叫方直接拼接即可。
 pub fn explain_payload(payload: &str) -> String {
     let Ok(json) = serde_json::from_str::<serde_json::Value>(payload) else {
         return String::new();
     };
-    // code 可能是数字也可能是字符串，两种都取
+    // code 可能是數字也可能是字串，兩種都取
     let code = json
         .get("code")
         .map(|v| match v {
@@ -141,10 +141,10 @@ pub fn explain_payload(payload: &str) -> String {
     }
 }
 
-/// 从 WebSocket 握手响应里取 X-Tt-Logid 并写日志。
+/// 從 WebSocket 握手響應裡取 X-Tt-Logid 並寫日誌。
 ///
-/// 火山文档明确「强烈建议记录 logid 作为排错线索」：这是服务端给的唯一追踪 ID，
-/// 用户报「豆包连不上」时带着它才能找火山定位，没有就只能猜。
+/// 火山文件明確「強烈建議記錄 logid 作為排錯線索」：這是服務端給的唯一追蹤 ID，
+/// 使用者報「豆包連不上」時帶著它才能找火山定位，沒有就只能猜。
 pub fn log_ws_logid(scope: &str, response: &tokio_tungstenite::tungstenite::handshake::client::Response) {
     let logid = response
         .headers()
@@ -157,7 +157,7 @@ pub fn log_ws_logid(scope: &str, response: &tokio_tungstenite::tungstenite::hand
     ));
 }
 
-/// 从 HTTP 响应里取 X-Tt-Logid 并写日志。
+/// 從 HTTP 響應裡取 X-Tt-Logid 並寫日誌。
 pub fn log_http_logid(scope: &str, headers: &reqwest::header::HeaderMap) {
     let logid = headers
         .get("X-Tt-Logid")
@@ -190,7 +190,7 @@ mod tests {
         assert_eq!(auth.headers(), vec![("X-Api-Key", "APPKEY")]);
     }
 
-    /// 有 app_id = 旧版控制台，发 App Key + Access Key 两个头。
+    /// 有 app_id = 舊版控制台，發 App Key + Access Key 兩個頭。
     #[test]
     fn app_id_selects_legacy_console() {
         let c = cfg("TOKEN", "1234567890");
@@ -204,8 +204,8 @@ mod tests {
         );
     }
 
-    /// 关键回归：密钥绝不能出现在 uid 里。历史实现在 app_id 为空时用 api_key 顶替，
-    /// 于是 Access Token 被写进请求体。
+    /// 關鍵迴歸：金鑰絕不能出現在 uid 裡。歷史實現在 app_id 為空時用 api_key 頂替，
+    /// 於是 Access Token 被寫進請求體。
     #[test]
     fn uid_never_leaks_the_secret() {
         let c = cfg("SECRET", "");
@@ -214,14 +214,14 @@ mod tests {
         assert_ne!(auth.uid(), "SECRET");
     }
 
-    /// 旧版下 uid 用 App ID —— 它是账号标识，不是密钥。
+    /// 舊版下 uid 用 App ID —— 它是賬號標識，不是金鑰。
     #[test]
     fn uid_uses_app_id_on_legacy() {
         let c = cfg("TOKEN", "1234567890");
         assert_eq!(DoubaoAuth::from_config(&c).uid(), "1234567890");
     }
 
-    /// 两种模式各自缺料时要能报出缺的是什么。
+    /// 兩種模式各自缺料時要能報出缺的是什麼。
     #[test]
     fn reports_the_missing_credential() {
         assert_eq!(DoubaoAuth::from_config(&cfg("", "")).missing_field(), Some("API Key"));
@@ -233,21 +233,21 @@ mod tests {
         assert_eq!(DoubaoAuth::from_config(&cfg("k", "123")).missing_field(), None);
     }
 
-    /// 有实据的两个码要给出具体说明。
+    /// 有實據的兩個碼要給出具體說明。
     #[test]
     fn explains_the_codes_we_have_evidence_for() {
         assert!(explain_status_code("20000003").unwrap().contains("silence"));
         assert!(explain_status_code("45000030").unwrap().contains("quota"));
     }
 
-    /// 没实据的码按前缀给方向，不编造具体含义。
+    /// 沒實據的碼按字首給方向，不編造具體含義。
     #[test]
     fn falls_back_to_code_family() {
         assert!(explain_status_code("45000001").unwrap().contains("rejected"));
         assert!(explain_status_code("55000031").unwrap().contains("Volcengine"));
     }
 
-    /// 成功码和无法识别的码不该产生任何提示。
+    /// 成功碼和無法識別的碼不該產生任何提示。
     #[test]
     fn no_hint_for_success_or_unknown() {
         assert_eq!(explain_status_code("20000000"), None);
@@ -255,14 +255,14 @@ mod tests {
         assert_eq!(explain_status_code("abc"), None);
     }
 
-    /// 返回体里的 code 可能是数字也可能是字符串，两种都要认。
+    /// 返回體裡的 code 可能是數字也可能是字串，兩種都要認。
     #[test]
     fn explains_payload_with_either_code_type() {
         assert!(explain_payload(r#"{"code":45000030}"#).contains("quota"));
         assert!(explain_payload(r#"{"code":"45000030"}"#).contains("quota"));
     }
 
-    /// 拿不到码就返回空串，调用方直接拼接不会多出括号。
+    /// 拿不到碼就返回空串，呼叫方直接拼接不會多出括號。
     #[test]
     fn explains_payload_returns_empty_when_no_code() {
         assert_eq!(explain_payload("not json"), "");
@@ -270,7 +270,7 @@ mod tests {
         assert_eq!(explain_payload(r#"{"code":20000000}"#), "");
     }
 
-    /// 前后空白是粘贴时常见的脏数据，判定与发送都应按 trim 后的值。
+    /// 前後空白是貼上時常見的髒資料，判定與傳送都應按 trim 後的值。
     #[test]
     fn trims_whitespace_around_credentials() {
         let c = cfg("  KEY  ", "  ");
@@ -283,8 +283,8 @@ mod tests {
 mod status_code_tests {
     use super::explain_status_code;
 
-    /// 文档里写明的码要有专门的说明，不能落进「45 开头 = 请求被拒」的笼统分支 ——
-    /// 45000081 是网络卡住，让用户去查参数和额度就是把人往错的方向引。
+    /// 文件裡寫明的碼要有專門的說明，不能落進「45 開頭 = 請求被拒」的籠統分支 ——
+    /// 45000081 是網路卡住，讓使用者去查引數和額度就是把人往錯的方向引。
     #[test]
     fn documented_codes_get_specific_explanations() {
         assert!(explain_status_code("45000081").unwrap().contains("next audio packet"));

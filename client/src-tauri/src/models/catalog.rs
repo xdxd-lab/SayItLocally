@@ -19,38 +19,38 @@ pub struct ModelFile {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelInfo {
     pub id: String,
-    /// 展示名，不带 GGUF/量化档等术语（那些进 `quant`，前端排进小字参数行）
+    /// 展示名，不帶 GGUF/量化檔等術語（那些進 `quant`，前端排進小字引數行）
     pub name: String,
-    /// 一句话定位（"速度極快，日常首選"），不再混内存/语种——那些有各自的字段
+    /// 一句話定位（"速度極快，日常首選"），不再混記憶體/語種——那些有各自的欄位
     pub description: String,
     pub model_type: String,
     pub total_size_bytes: u64,
     pub languages: Vec<String>,
     pub sources: Vec<DownloadSource>,
-    /// 速度评级 0–10（可带小数，10 最快）
+    /// 速度評級 0–10（可帶小數，10 最快）
     #[serde(default)]
     pub speed: f32,
-    /// 准确度评级 0–10（可带小数，10 最准）
+    /// 準確度評級 0–10（可帶小數，10 最準）
     #[serde(default)]
     pub accuracy: f32,
-    /// 是否为推荐（默认）模型
+    /// 是否為推薦（預設）模型
     #[serde(default)]
     pub recommended: bool,
-    /// 加载后的常驻内存（MB，**实测工作集**，不是权重体积推算——权重之外还有
-    /// KV cache、计算缓冲，Qwen3 这类自回归模型多出 700 MB ~ 1 GB。实测方法见
+    /// 載入後的常駐記憶體（MB，**實測工作集**，不是權重體積推算——權重之外還有
+    /// KV cache、計算緩衝，Qwen3 這類自迴歸模型多出 700 MB ~ 1 GB。實測方法見
     /// gguf_asr.rs 的 `footprint_report`）。
     #[serde(default)]
     pub memory_mb: u64,
-    /// 语种的展示文案（"中、英、日、韓、粵語" / "30+ 語種"）。`languages` 留给逻辑用，
-    /// 展示不从 code 拼：Qwen3 支持 30 种，逐个列 code 没有意义。
+    /// 語種的展示文案（"中、英、日、韓、粵語" / "30+ 語種"）。`languages` 留給邏輯用，
+    /// 展示不從 code 拼：Qwen3 支援 30 種，逐個列 code 沒有意義。
     #[serde(default)]
     pub languages_label: String,
-    /// 量化档（"Q8_0" / "Q4_K_M"…）。列表 UI 不再展示（普通用户看不懂），
-    /// 留作数据：离线下载指引的文件名里有它，将来放 Tooltip 也用得上。
+    /// 量化檔（"Q8_0" / "Q4_K_M"…）。列表 UI 不再展示（普通使用者看不懂），
+    /// 留作資料：離線下載指引的檔名裡有它，將來放 Tooltip 也用得上。
     #[serde(default)]
     pub quant: String,
     /// 是否直接展示在模型列表里。恰好三个：小（最快）/ 中（均衡）/ 大（最准），
-    /// 其余折叠进「更多」——五个平铺用户反而不知道选哪个。
+    /// 其餘摺疊進「更多」——五個平鋪使用者反而不知道選哪個。
     #[serde(default)]
     pub featured: bool,
 }
@@ -75,12 +75,12 @@ fn hf(repo: &str, revision: &str, file: &str) -> String {
 //     format!("https://hf-mirror.com/{}/resolve/main/{}", repo, file)
 // }
 
-/// 一份 GGUF 权重的坐标（仓库 / 文件名 / 字节数 / sha256）。
+/// 一份 GGUF 權重的座標（倉庫 / 檔名 / 位元組數 / sha256）。
 ///
-/// 抽成一个结构体是为了让体积和校验和**只写一遍**：每个模型要在镜像源和官方源
-/// 各出现一次、`total_size_bytes` 还要再写一次。手写三遍的话，换量化档时漏改
-/// 其中一处会变成"只有走某个源的用户下载失败"——这种只发生在一半用户身上的
-/// 问题最难被发现。
+/// 抽成一個結構體是為了讓體積和校驗和**只寫一遍**：每個模型要在映象源和官方源
+/// 各出現一次、`total_size_bytes` 還要再寫一次。手寫三遍的話，換量化檔時漏改
+/// 其中一處會變成"只有走某個源的使用者下載失敗"——這種只發生在一半使用者身上的
+/// 問題最難被發現。
 struct GgufWeight {
     repo: &'static str,
     /// [自訂] SC-68：下載用的版本。上游轉存的權重沿用 "main"；新增的第三方權重固定在某個 commit。
@@ -113,10 +113,10 @@ impl GgufWeight {
 }
 
 /// 本地可用模型。全部是 GGUF（ggml / transcribe.cpp）——上一代 ONNX 模型
-/// 已随 sherpa-onnx 一并移除，旧目录由 local_asr::reclaim_legacy_models 回收。
+/// 已隨 sherpa-onnx 一併移除，舊目錄由 local_asr::reclaim_legacy_models 回收。
 ///
-/// 列表顺序 = UI 展示顺序（前端不排序）。按**从快到准**排：越往下越准、越慢、
-/// 下载越大，用户从上往下扫一遍就能理解这几项的关系。
+/// 列表順序 = UI 展示順序（前端不排序）。按**從快到準**排：越往下越準、越慢、
+/// 下載越大，使用者從上往下掃一遍就能理解這幾項的關係。
 pub fn get_available_models() -> Vec<ModelInfo> {
     available_models().to_vec()
 }
@@ -131,13 +131,13 @@ pub fn available_models() -> &'static [ModelInfo] {
 fn build_catalog() -> Vec<ModelInfo> {
     vec![
         // ── Parakeet Unified EN 0.6B GGUF（NVIDIA，parakeet 族）──
-        // 英文专用，但在英文上**同时**是本目录里最快和最准的一档：
+        // 英文專用，但在英文上**同時**是本目錄裡最快和最準的一檔：
         // 上游 WER（LibriSpeech test-clean）Q4_K_M = 1.62%，比 Qwen3-ASR 1.7B 的
-        // 高精度档（1.65%）还略好，而本机实测 RTF 0.056（CPU）/ 0.023（Vulkan），
-        // 比 SenseVoice 的 0.063 还快。也就是说它严格支配所有其它条目 —— 前提是
-        // 只说英文。中文音频会输出**空字符串**（实测），所以它不能当通用默认。
-        // 标点和大小写是模型固有行为，不挂 ITN/PNC 开关（两个都报 unsupported，
-        // 见 gguf_asr.rs 的 run_options）；数字会规范化（"2026" 而不是拼读）。
+        // 高精度檔（1.65%）還略好，而本機實測 RTF 0.056（CPU）/ 0.023（Vulkan），
+        // 比 SenseVoice 的 0.063 還快。也就是說它嚴格支配所有其它條目 —— 前提是
+        // 只說英文。中文音訊會輸出**空字串**（實測），所以它不能當通用預設。
+        // 標點和大小寫是模型固有行為，不掛 ITN/PNC 開關（兩個都報 unsupported，
+        // 見 gguf_asr.rs 的 run_options）；數字會規範化（"2026" 而不是拼讀）。
         ModelInfo {
             id: "parakeet-unified-en-0.6b-gguf".into(),
             name: "Parakeet Unified EN".into(),
@@ -155,8 +155,8 @@ fn build_catalog() -> Vec<ModelInfo> {
             sources: PARAKEET_UNIFIED_EN_Q4.sources(),
         },
         // ── SenseVoice Small GGUF（ggml 引擎）──
-        // 标点靠 RunOptions 的 itn=on 打开（默认是 <|woitn|> 分支、无标点），
-        // 实测 9s 音频纯 CPU RTF 0.063，与 sherpa 版同一量级。
+        // 標點靠 RunOptions 的 itn=on 開啟（預設是 <|woitn|> 分支、無標點），
+        // 實測 9s 音訊純 CPU RTF 0.063，與 sherpa 版同一量級。
         ModelInfo {
             id: "sensevoice-small-gguf".into(),
             name: "SenseVoice Small".into(),
@@ -174,16 +174,16 @@ fn build_catalog() -> Vec<ModelInfo> {
             sources: SENSEVOICE.sources(),
         },
         // ── Nemotron 3.5 ASR Streaming 0.6B GGUF（NVIDIA，parakeet 族）──
-        // 存在的意义是**语种覆盖面**：32 个 locale，含西/法/德/意/葡/荷/俄/阿/印地/
-        // 土/越/乌 等 Qwen3 也没有或更慢的语种。上游标称原生标点与大小写（PnC），
-        // 数字保持口语形式（训练文本就是 spoken form，不是缺陷）。
-        // 准确度明显不如 parakeet：LibriSpeech test-clean Q4_K_M = 3.28% vs 1.62%，
-        // 所以只说英文的话没有理由选它。实测 RTF 0.069（CPU）/ 0.032（Vulkan）。
+        // 存在的意義是**語種覆蓋面**：32 個 locale，含西/法/德/意/葡/荷/俄/阿/印地/
+        // 土/越/烏 等 Qwen3 也沒有或更慢的語種。上游標稱原生標點與大小寫（PnC），
+        // 數字保持口語形式（訓練文本就是 spoken form，不是缺陷）。
+        // 準確度明顯不如 parakeet：LibriSpeech test-clean Q4_K_M = 3.28% vs 1.62%，
+        // 所以只說英文的話沒有理由選它。實測 RTF 0.069（CPU）/ 0.032（Vulkan）。
         //
-        // ⚠️ 这是本目录里第一个用**带地区 locale**（`en-US` / `zh-CN`）自报语种的
-        //    模型，且只认这种形式。界面上的 `localAsr.language` 只有 auto/zh/en/ja/ko，
-        //    直接透传会 `unsupported language (status 10)` —— 映射在
-        //    gguf_asr.rs 的 `resolve_language`，别绕过它。
+        // ⚠️ 這是本目錄裡第一個用**帶地區 locale**（`en-US` / `zh-CN`）自報語種的
+        //    模型，且只認這種形式。介面上的 `localAsr.language` 只有 auto/zh/en/ja/ko，
+        //    直接透傳會 `unsupported language (status 10)` —— 對映在
+        //    gguf_asr.rs 的 `resolve_language`，別繞過它。
         ModelInfo {
             id: "nemotron-asr-streaming-0.6b-gguf".into(),
             name: "Nemotron 3.5 ASR".into(),
@@ -211,14 +211,14 @@ fn build_catalog() -> Vec<ModelInfo> {
             ],
             sources: NEMOTRON_STREAMING_Q4.sources(),
         },
-        // ── Fun-ASR Nano 2512 GGUF（SenseVoice 编码器 + Qwen3 解码器）──
-        // FunAudioLLM 出的，和 SenseVoice 同一个实验室，只做中/英/日三语。
-        // 它在**速度和准确度上同时**优于 Qwen3-ASR 0.6B：
-        //   上游 WER 1.79% vs 2.11%，参考机（Ryzen 4750U + Vulkan）10.5x 实时 vs 8.0x。
-        // 本机实测 RTF 0.075（0.6B 是 0.094、1.7B Q5 是 0.153），内存 1.4 G。
-        // 也就是说它拿到了接近 1.7B 的准确度（1.79 vs 1.65），但只花 1.7B 一半的时间、
-        // 一半多点的内存。代价是语种少：只有 zh/en/ja，不像 Qwen3 有 30 种。
-        // 注意 itn=true：标点和 SenseVoice 一样挂在 ITN 开关上，不开就没有标点。
+        // ── Fun-ASR Nano 2512 GGUF（SenseVoice 編碼器 + Qwen3 解碼器）──
+        // FunAudioLLM 出的，和 SenseVoice 同一個實驗室，只做中/英/日三語。
+        // 它在**速度和準確度上同時**優於 Qwen3-ASR 0.6B：
+        //   上游 WER 1.79% vs 2.11%，參考機（Ryzen 4750U + Vulkan）10.5x 即時 vs 8.0x。
+        // 本機實測 RTF 0.075（0.6B 是 0.094、1.7B Q5 是 0.153），記憶體 1.4 G。
+        // 也就是說它拿到了接近 1.7B 的準確度（1.79 vs 1.65），但只花 1.7B 一半的時間、
+        // 一半多點的記憶體。代價是語種少：只有 zh/en/ja，不像 Qwen3 有 30 種。
+        // 注意 itn=true：標點和 SenseVoice 一樣掛在 ITN 開關上，不開就沒有標點。
         ModelInfo {
             id: "funasr-nano-2512-gguf".into(),
             name: "Fun-ASR Nano".into(),
@@ -236,8 +236,8 @@ fn build_catalog() -> Vec<ModelInfo> {
             sources: FUNASR_NANO_Q8.sources(),
         },
         // ── Qwen3-ASR 0.6B GGUF（ggml 引擎，transcribe.cpp）──
-        // GGUF 块量化 + ggml 推理：实测 9s 中文音频纯 CPU RTF 0.167（同一模型走
-        // ONNX INT8 慢一个量级），且自带标点、输出无模板前缀。
+        // GGUF 塊量化 + ggml 推理：實測 9s 中文音訊純 CPU RTF 0.167（同一模型走
+        // ONNX INT8 慢一個量級），且自帶標點、輸出無模板字首。
         // 上游 WER（LibriSpeech test-clean）Q8_0 = 2.11%。
         ModelInfo {
             id: "qwen3-asr-0.6b-gguf".into(),
@@ -255,11 +255,11 @@ fn build_catalog() -> Vec<ModelInfo> {
             languages: vec!["zh".into(), "en".into(), "yue".into(), "ja".into(), "ko".into()],
             sources: QWEN3_06B_Q8.sources(),
         },
-        // ── Qwen3-ASR 1.7B GGUF Q4_K_M（1.7B 的轻量档）──
-        // 存在的意义是让"想要 1.7B 的准确度但不想下 1.4 GB / 不想占 2 GB 内存"
-        // 的人有得选。上游 WER 1.81%，仍明显好于 0.6B 的 Q8_0（2.11%），
-        // 下载只比 0.6B 多 448 MB。
-        // 比 Q5_K_M 小 188 MB、实测快 14~20%（少一成多显存带宽），代价是 WER 1.65 → 1.81。
+        // ── Qwen3-ASR 1.7B GGUF Q4_K_M（1.7B 的輕量檔）──
+        // 存在的意義是讓"想要 1.7B 的準確度但不想下 1.4 GB / 不想佔 2 GB 記憶體"
+        // 的人有得選。上游 WER 1.81%，仍明顯好於 0.6B 的 Q8_0（2.11%），
+        // 下載只比 0.6B 多 448 MB。
+        // 比 Q5_K_M 小 188 MB、實測快 14~20%（少一成多視訊記憶體頻寬），代價是 WER 1.65 → 1.81。
         ModelInfo {
             id: "qwen3-asr-1.7b-q4-gguf".into(),
             name: "Qwen3-ASR 1.7B".into(),
@@ -278,7 +278,7 @@ fn build_catalog() -> Vec<ModelInfo> {
         },
         // ── Qwen3-ASR 1.7B GGUF Q5_K_M（精度上限）──
         // 上游 WER 1.65%（Q8_0 是 1.61%，但要下 2.19 GB，性价比不值）；Q5_K_M
-        // 也是上游对 1.7B 的默认档。解码成本约 0.6B 的 2 倍。
+        // 也是上游對 1.7B 的預設檔。解碼成本約 0.6B 的 2 倍。
         ModelInfo {
             id: "qwen3-asr-1.7b-gguf".into(),
             name: "Qwen3-ASR 1.7B 高精度".into(),
@@ -317,21 +317,21 @@ fn build_catalog() -> Vec<ModelInfo> {
     ]
 }
 
-// GGUF 权重坐标（仓库 / 文件名 / 字节数 / sha256）。
-// 这几份权重是自托管在 `cswk/sayit-asr-gguf`——从 handy-computer 那套
-// **transcribe.cpp 兼容**的 GGUF 原样转存（字节完全一致，故体积 / sha256 不变），
-// 目的是不再依赖第三方仓库（对方删库我们就抓瞎）。体积 / sha256 用每个文件的
-// Git-LFS 指针核对过（`https://huggingface.co/<repo>/raw/main/<file>` 返回 oid+size）。
-// 换量化档时改这里就够，模型条目里不再重复写体积和校验和。
-// （`memory_mb` 是实测工作集，不是从这里的体积推算的——见 ModelInfo 字段注释。）
+// GGUF 權重座標（倉庫 / 檔名 / 位元組數 / sha256）。
+// 這幾份權重是自託管在 `cswk/sayit-asr-gguf`——從 handy-computer 那套
+// **transcribe.cpp 相容**的 GGUF 原樣轉存（位元組完全一致，故體積 / sha256 不變），
+// 目的是不再依賴第三方倉庫（對方刪庫我們就抓瞎）。體積 / sha256 用每個檔案的
+// Git-LFS 指標核對過（`https://huggingface.co/<repo>/raw/main/<file>` 返回 oid+size）。
+// 換量化檔時改這裡就夠，模型條目裡不再重複寫體積和校驗和。
+// （`memory_mb` 是實測工作集，不是從這裡的體積推算的——見 ModelInfo 欄位註釋。）
 //
-// ⚠️ 别随便换成"看起来同名"的其它 HF 仓库（如 FunAudioLLM 官方、mradermacher、
-//    cstr 的 GGUF）：它们是给别的运行时（llama.cpp 系）转的，`general.architecture`
-//    标成了 `sensevoice-small` / 其它，而我们的引擎 transcribe.cpp 只认 handy-computer
-//    这套转换所用的架构标签（如 `sensevoice`）。换了会在加载时报
-//    "unsupported architecture (status 5)"，下载/校验和都正常也没用。
-//    要换源，只能转存"transcribe.cpp 兼容"的那一份（就像现在这样），而不是另找重转的。
-//    size_bytes 会在下载前与服务器报告值核对；sha256 会在入库前校验完整文件，二者都必须准确。
+// ⚠️ 別隨便換成"看起來同名"的其它 HF 倉庫（如 FunAudioLLM 官方、mradermacher、
+//    cstr 的 GGUF）：它們是給別的執行時（llama.cpp 系）轉的，`general.architecture`
+//    標成了 `sensevoice-small` / 其它，而我們的引擎 transcribe.cpp 只認 handy-computer
+//    這套轉換所用的架構標籤（如 `sensevoice`）。換了會在載入時報
+//    "unsupported architecture (status 5)"，下載/校驗和都正常也沒用。
+//    要換源，只能轉存"transcribe.cpp 相容"的那一份（就像現在這樣），而不是另找重轉的。
+//    size_bytes 會在下載前與伺服器報告值核對；sha256 會在入庫前校驗完整檔案，二者都必須準確。
 
 const PARAKEET_UNIFIED_EN_Q4: GgufWeight = GgufWeight {
     repo: "cswk/sayit-asr-gguf",
@@ -413,7 +413,7 @@ mod tests {
         assert_eq!(serde_json::to_value(get_available_models()).unwrap(), cached);
     }
 
-    /// 目录的结构性不变量。跑得快、不碰网络，纯粹是防手写坐标时的低级错误。
+    /// 目錄的結構性不變數。跑得快、不碰網路，純粹是防手寫座標時的低階錯誤。
     #[test]
     fn catalog_entries_are_internally_consistent() {
         let models = get_available_models();
@@ -423,18 +423,18 @@ mod tests {
         let mut names = std::collections::HashSet::new();
         for m in &models {
             assert!(ids.insert(m.id.clone()), "模型 id 重复: {}", m.id);
-            // 展示名去掉量化档后缀后必须仍然互不相同（两个 1.7B 靠"高精度"区分），
-            // 否则删除确认框、当前模型提示这些只显示 name 的地方会分不清
+            // 展示名去掉量化檔字尾後必須仍然互不相同（兩個 1.7B 靠"高精度"區分），
+            // 否則刪除確認框、當前模型提示這些只顯示 name 的地方會分不清
             assert!(names.insert(m.name.clone()), "模型展示名重复: {}", m.name);
-            // id 决定权重的落盘目录，重名会让两个量化档下到同一个文件夹里
+            // id 決定權重的落盤目錄，重名會讓兩個量化檔下到同一個資料夾裡
             assert!(m.id.ends_with("-gguf"), "{} 的 id 应以 -gguf 结尾", m.id);
             assert!(!m.sources.is_empty(), "{} 没有下载源", m.id);
 
-            // 参数行三件套：加新模型时漏填其中一个，UI 上就是一截空白
+            // 引數行三件套：加新模型時漏填其中一個，UI 上就是一截空白
             assert!(m.memory_mb > 0, "{} 缺 memory_mb（实测值，见字段注释）", m.id);
             assert!(!m.languages_label.is_empty(), "{} 缺 languages_label", m.id);
             assert!(!m.quant.is_empty(), "{} 缺 quant", m.id);
-            // 展示名不该再带术语后缀（GGUF/量化档都在 quant 字段里）
+            // 展示名不該再帶術語字尾（GGUF/量化檔都在 quant 欄位裡）
             assert!(
                 !m.name.contains("GGUF") && !m.name.contains("Q8") && !m.name.contains("Q4") && !m.name.contains("Q5"),
                 "{} 的展示名还带着量化档术语: {}",
@@ -457,15 +457,15 @@ mod tests {
             }
         }
 
-        // 恰好一个推荐模型：前端拿它当默认高亮，多个或零个都是配置错误
+        // 恰好一個推薦模型：前端拿它當預設高亮，多個或零個都是配置錯誤
         assert_eq!(
             models.iter().filter(|m| m.recommended).count(),
             1,
             "推荐模型必须且只能有一个"
         );
 
-        // 直接展示的模型恰好三个（小/中/大），其余折叠进「更多」；
-        // 推荐模型必须在直接展示之列，不能藏在折叠里
+        // 直接展示的模型恰好三個（小/中/大），其餘摺疊進「更多」；
+        // 推薦模型必須在直接展示之列，不能藏在摺疊裡
         assert_eq!(
             models.iter().filter(|m| m.featured).count(),
             3,
@@ -520,9 +520,9 @@ mod tests {
         }
     }
 
-    /// 前端的下载源下拉框是拿 `models[0].sources` 生成的，然后把选中的名字用于
-    /// **所有**模型的下载。所以每个模型都必须提供同一组源名，否则选了某个源之后
-    /// 下载别的模型会静默回落到第一个源。
+    /// 前端的下載源下拉框是拿 `models[0].sources` 生成的，然後把選中的名字用於
+    /// **所有**模型的下載。所以每個模型都必須提供同一組源名，否則選了某個源之後
+    /// 下載別的模型會靜默回落到第一個源。
     #[test]
     fn every_model_offers_the_same_download_sources() {
         let models = get_available_models();
@@ -531,7 +531,7 @@ mod tests {
             let got: Vec<&str> = m.sources.iter().map(|s| s.source.as_str()).collect();
             assert_eq!(got, expected, "{} 的下载源与第一个模型不一致", m.id);
         }
-        // defaults.ts 里 localAsr.downloadSource 的默认值必须能对上其中一个
+        // defaults.ts 裡 localAsr.downloadSource 的預設值必須能對上其中一個
         // [自訂] S25/S56：只允許官方 HuggingFace（原斷言 contains "HuggingFace Mirror"）
         assert_eq!(expected, vec!["HuggingFace"]);
         for m in &models {
@@ -543,15 +543,15 @@ mod tests {
         }
     }
 
-    /// 排序契约：列表顺序就是 UI 顺序，按 speed 从高到低。写成测试是因为
-    /// 以后加模型时很容易随手 append 到末尾，把这个顺序打乱。
+    /// 排序契約：列表順序就是 UI 順序，按 speed 從高到低。寫成測試是因為
+    /// 以後加模型時很容易隨手 append 到末尾，把這個順序打亂。
     ///
-    /// 只断言 speed 单调，**不断言 accuracy 反向单调**：Fun-ASR Nano 比
-    /// Qwen3-ASR 0.6B 又快又准（严格支配它），所以"越往下越准"这个更强的
-    /// 约定已经不成立了。留 0.6B 是因为它有 30 语种、Fun-ASR 只有 3 种。
-    /// Parakeet Unified EN 把这一点推到了极端：它在英文上同时是最快和最准的
-    /// （RTF 0.056 / WER 1.62%），排在最前却拿着最高的 accuracy。列表能这么排
-    /// 是因为**语种**才是真正的取舍维度 —— 它只会英文。
+    /// 只斷言 speed 單調，**不斷言 accuracy 反向單調**：Fun-ASR Nano 比
+    /// Qwen3-ASR 0.6B 又快又準（嚴格支配它），所以"越往下越準"這個更強的
+    /// 約定已經不成立了。留 0.6B 是因為它有 30 語種、Fun-ASR 只有 3 種。
+    /// Parakeet Unified EN 把這一點推到了極端：它在英文上同時是最快和最準的
+    /// （RTF 0.056 / WER 1.62%），排在最前卻拿著最高的 accuracy。列表能這麼排
+    /// 是因為**語種**才是真正的取捨維度 —— 它只會英文。
     #[test]
     fn models_are_ordered_from_fast_to_slow() {
         let models = get_available_models();

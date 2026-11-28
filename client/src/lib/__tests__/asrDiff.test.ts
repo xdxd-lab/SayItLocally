@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { computeAsrDiff, countAsrDiffChanges, hasAsrDiffChange, normalizeForDiff } from '../asrDiff'
 
-/** 把 segments 还原成两侧文本，用来证明没丢字。 */
+/** 把 segments 還原成兩側文本，用來證明沒丟字。 */
 function rebuild(segments: ReturnType<typeof computeAsrDiff>) {
   const left = segments.filter((s) => s.kind !== 'insert').map((s) => s.text).join('')
   const right = segments.filter((s) => s.kind !== 'delete').map((s) => s.text).join('')
@@ -37,12 +37,12 @@ describe('computeAsrDiff', () => {
   })
 
   it('英文改动不会摊成一大片碎片', () => {
-    // 语义整理（fast-diff 的第 4 个参数）负责把改动收拢：
-    // 单词内部改一个字母时它不会扩展成整词（recogni|z→s|e 是预期的、也读得懂），
-    // 但**不能**出现"每隔一两个字符就交替一次"的碎片流 —— 那种才没法看。
+    // 語義整理（fast-diff 的第 4 個引數）負責把改動收攏：
+    // 單詞內部改一個字母時它不會擴充套件成整詞（recogni|z→s|e 是預期的、也讀得懂），
+    // 但**不能**出現"每隔一兩個字元就交替一次"的碎片流 —— 那種才沒法看。
     const segments = computeAsrDiff('please recognize this word', 'please recognise that word')
     expect(segments.length).toBeLessThanOrEqual(8)
-    // 未改动的部分必须整段保留，而不是被切碎
+    // 未改動的部分必須整段保留，而不是被切碎
     expect(segments.some((s) => s.kind === 'equal' && s.text.includes('please recogni'))).toBe(true)
     expect(segments.some((s) => s.kind === 'equal' && s.text.includes('word'))).toBe(true)
   })

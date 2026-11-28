@@ -105,8 +105,8 @@ fn parse_log_line(line: &str) -> Option<TimelineEntry> {
         return None;
     }
 
-    // 提取 timestamp。个别行可能是 [[2026-...]] 这种多方括号开头，去掉前导 '[' 并校验，
-    // 否则带 '[' 的时间戳字符串排序会排到最后，污染「覆盖记录终点」显示。
+    // 提取 timestamp。個別行可能是 [[2026-...]] 這種多方括號開頭，去掉前導 '[' 並校驗，
+    // 否則帶 '[' 的時間戳字串排序會排到最後，汙染「覆蓋記錄終點」顯示。
     let ts_end = line.find(']')?;
     let ts = line[1..ts_end].trim_start_matches('[').trim();
     if ts.is_empty() || !ts.as_bytes()[0].is_ascii_digit() {
@@ -125,7 +125,7 @@ fn parse_log_line(line: &str) -> Option<TimelineEntry> {
 
     let rest2 = rest[level_end + 1..].trim_start();
     if !rest2.starts_with('[') {
-        // 没有 module 标签，用 "unknown"
+        // 沒有 module 標籤，用 "unknown"
         return Some(TimelineEntry {
             ts: ts.to_string(),
             level,
@@ -162,7 +162,7 @@ fn issue_window_label(occurrence: &str) -> &'static str {
     }
 }
 
-/// 根据 issue_occurrence 计算时间窗口的起始时间字符串
+/// 根據 issue_occurrence 計算時間視窗的起始時間字串
 fn occurrence_cutoff(occurrence: &str) -> Option<String> {
     let now = chrono::Local::now();
     let cutoff = match occurrence {
@@ -173,7 +173,7 @@ fn occurrence_cutoff(occurrence: &str) -> Option<String> {
         "yesterday" => (now.date_naive() - chrono::Duration::days(1))
             .and_hms_opt(0, 0, 0)
             .map(|naive| naive.and_local_timezone(chrono::Local).unwrap())?,
-        // "older" / "not_sure" — 不过滤
+        // "older" / "not_sure" — 不過濾
         _ => return None,
     };
     Some(cutoff.format("%Y-%m-%d %H:%M:%S").to_string())
@@ -290,9 +290,9 @@ fn build_diagnostics_preview(req: PreviewRequest, storage: &Storage) -> Result<V
 #[derive(Deserialize)]
 struct DiagnosticsZipRequest {
     description: String,
-    /// 用户选的问题类型码（insert_failed / no_text / …，定义在 types/appApi.d.ts）。
-    /// 写进 manifest 是为了让收到 ticket 的人不必读完整份日志就知道该看哪一段。
-    /// 老版本客户端不发这个字段，所以要能缺省。
+    /// 使用者選的問題型別碼（insert_failed / no_text / …，定義在 types/appApi.d.ts）。
+    /// 寫進 manifest 是為了讓收到 ticket 的人不必讀完整份日誌就知道該看哪一段。
+    /// 老版本客戶端不發這個欄位，所以要能預設。
     #[serde(rename = "issueType", default)]
     issue_type: String,
     settings: Value,
@@ -307,7 +307,7 @@ struct DiagImage {
     #[serde(rename = "type")]
     mime_type: String,
     size: usize,
-    /// 旧命令里是 JSON 数字数组；create_diagnostics_zip_raw 里缺省，由二进制载荷按 size 切出来。
+    /// 舊命令裡是 JSON 數字陣列；create_diagnostics_zip_raw 裡預設，由二進位制載荷按 size 切出來。
     #[serde(default)]
     data: Vec<u8>,
 }
@@ -319,9 +319,9 @@ pub async fn create_diagnostics_zip(data: Value) -> Result<String, String> {
         .await.map_err(|e| e.to_string())?
 }
 
-/// 同 create_diagnostics_zip，但截图以原始字节发过来（见 ipc_body），按 images[].size 依次切开。
+/// 同 create_diagnostics_zip，但截圖以原始位元組發過來（見 ipc_body），按 images[].size 依次切開。
 ///
-/// 原来截图在前端被 `Array.from(new Uint8Array(...))` 转成 JSON 数字数组，一张 20 MB 的图
+/// 原來截圖在前端被 `Array.from(new Uint8Array(...))` 轉成 JSON 數字陣列，一張 20 MB 的圖
 /// 变成六七十 MB 的字符串再解析一遍。
 #[tauri::command]
 pub async fn create_diagnostics_zip_raw(request: tauri::ipc::Request<'_>) -> Result<String, String> {
@@ -332,7 +332,7 @@ pub async fn create_diagnostics_zip_raw(request: tauri::ipc::Request<'_>) -> Res
     }).await.map_err(|e| e.to_string())?
 }
 
-/// 按每张图声明的 size 依次从载荷里切出字节；总数对不上就拒绝（宁可报错也别把图切错位）。
+/// 按每張圖宣告的 size 依次從載荷裡切出位元組；總數對不上就拒絕（寧可報錯也別把圖切錯位）。
 fn attach_image_bytes(images: &mut [DiagImage], payload: &[u8]) -> Result<(), String> {
     let mut offset = 0usize;
     for image in images.iter_mut() {
@@ -568,7 +568,7 @@ fn write_diagnostics_zip(
         }
     }
 
-    // 4. 截图
+    // 4. 截圖
     let image_names = req.images.iter().enumerate().map(|(i, img)| {
         let ext = match img.mime_type.as_str() {
             "image/png" => "png",
@@ -667,8 +667,8 @@ fn diagnostics_dir() -> std::path::PathBuf {
         .join("diagnostics")
 }
 
-/// 诊断包只会是 create_diagnostics_zip 生成在诊断目录里的 .zip。
-/// 读命令把内容整个交给前端，复制命令复制完还会删掉源文件，所以两边都不能接受任意路径。
+/// 診斷包只會是 create_diagnostics_zip 生成在診斷目錄裡的 .zip。
+/// 讀命令把內容整個交給前端，複製命令複製完還會刪掉原始檔，所以兩邊都不能接受任意路徑。
 fn diagnostics_zip_in_dir(path: &str) -> Option<std::path::PathBuf> {
     let path = std::path::PathBuf::from(path);
     if !crate::path_guard::has_extension(&path, &["zip"]) {
@@ -686,9 +686,9 @@ pub fn read_diagnostics_zip(path: String) -> Result<Option<Vec<u8>>, String> {
     Ok(Some(data))
 }
 
-/// 同 read_diagnostics_zip，但直接回字节（前端拿到 ArrayBuffer）。
-/// 原来是 `Vec<u8>` 走 JSON，诊断包每个字节变成数组里的一个数字，最大 52 MB 的包是一两百 MB 的字符串。
-/// 文件不在时返回空字节。
+/// 同 read_diagnostics_zip，但直接回位元組（前端拿到 ArrayBuffer）。
+/// 原來是 `Vec<u8>` 走 JSON，診斷包每個位元組變成陣列裡的一個數字，最大 52 MB 的包是一兩百 MB 的字串。
+/// 檔案不在時返回空位元組。
 #[tauri::command]
 pub fn read_diagnostics_zip_bytes(path: String) -> Result<tauri::ipc::Response, String> {
     let bytes = match diagnostics_zip_in_dir(&path) {
@@ -747,12 +747,12 @@ pub fn copy_diagnostics_zip(source: String, destination: String) -> Result<(), S
     let Some(src) = diagnostics_zip_in_dir(&source) else {
         return Err("The diagnostics file does not exist".to_string());
     };
-    // 目标来自保存对话框（只给了 zip 过滤器），这里再确认一次扩展名，免得被拿来往任意位置写可执行文件。
+    // 目標來自儲存對話方塊（只給了 zip 過濾器），這裡再確認一次副檔名，免得被拿來往任意位置寫執行檔。
     if !crate::path_guard::has_extension(std::path::Path::new(&destination), &["zip"]) {
         return Err("The diagnostics file must be saved as a .zip".to_string());
     }
     std::fs::copy(&src, &destination).map_err(|e| format!("Failed to copy diagnostics file: {}", e))?;
-    // 清理临时文件
+    // 清理臨時檔案
     let _ = std::fs::remove_file(&src);
     Ok(())
 }
@@ -776,7 +776,7 @@ pub fn read_log_file(log_type: String) -> Result<Option<String>, String> {
         return Ok(None);
     }
 
-    // 最多读 200KB
+    // 最多讀 200KB
     let meta = std::fs::metadata(&path).map_err(|e| e.to_string())?;
     let size = meta.len();
     const MAX_READ: u64 = 200 * 1024;

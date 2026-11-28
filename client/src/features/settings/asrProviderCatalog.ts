@@ -1,14 +1,14 @@
-// 云 API 语音识别的供应商目录、服务档案（profile）解析与延迟分档。
+// 雲 API 語音識別的供應商目錄、服務檔案（profile）解析與延遲分檔。
 //
-// 结构与「AI 服务」页对齐：一张卡 = 一份完整配置（供应商 + 该平台的凭据），可以存多份，
-// 同一家也能存多份（比如两个百炼账号、两套豆包密钥）。启用哪一份由 activeProfileId 决定。
+// 結構與「AI 服務」頁對齊：一張卡 = 一份完整配置（供應商 + 該平台的憑據），可以存多份，
+// 同一家也能存多份（比如兩個百鍊賬號、兩套豆包金鑰）。啟用哪一份由 activeProfileId 決定。
 //
-// 和 AI 服务的唯一实质差别：供应商只能从内置清单里选，不能填任意地址 —— 每家 ASR 的
-// 协议都要一份专门的 Rust 实现（asr_doubao / asr_qwen / asr_qwen_omni / asr_mimo），
+// 和 AI 服務的唯一實質差別：供應商只能從內建清單裡選，不能填任意地址 —— 每家 ASR 的
+// 協議都要一份專門的 Rust 實現（asr_doubao / asr_qwen / asr_qwen_omni / asr_mimo），
 // 不像 AI 整理那边只要是 OpenAI 兼容端点就能接。
 //
-// 「同平台重复粘密钥」的问题不靠"按平台存"解决（那样一张卡就不再是一份完整配置了），
-// 而是照 AI 服务的做法：新建时若该平台已有配置，自动把密钥带过来，界面上说明它从哪来。
+// 「同平台重複粘金鑰」的問題不靠"按平台存"解決（那樣一張卡就不再是一份完整配置了），
+// 而是照 AI 服務的做法：新建時若該平台已有配置，自動把金鑰帶過來，介面上說明它從哪來。
 
 import {
   describeDoubaoMissing,
@@ -17,34 +17,34 @@ import {
   type DoubaoCredentials,
 } from '@/lib/cloudAsrCreds'
 
-/** 凭据归属的平台。同平台的服务用同一种密钥形态。 */
+/** 憑據歸屬的平台。同平台的服務用同一種金鑰形態。 */
 import { t } from '@/i18n'
 
 export type AsrPlatform =
   | 'doubao' | 'qwen' | 'mimo' | 'groq' | 'openai' | 'google' | 'openrouter'
-  // 这个不是「一家服务商」，而是「一类协议」：地址由用户填，对面是谁我们不知道。
+  // 這個不是「一家服務商」，而是「一類協議」：地址由使用者填，對面是誰我們不知道。
   | 'openai_compat'
 
 export interface AsrPlatformInfo {
   label: string
-  /** 去哪儿领密钥 */
+  /** 去哪兒領金鑰 */
   consoleUrl: string
 }
 
-// label 用 getter：这是模块级常量，普通字段会把加载那一刻的语言固化下来。
-// 见 aiProviderCatalog.ts 里 AiProvider.label 的注释。
+// label 用 getter：這是模組級常量，普通欄位會把載入那一刻的語言固化下來。
+// 見 aiProviderCatalog.ts 裡 AiProvider.label 的註釋。
 export const ASR_PLATFORMS: Record<AsrPlatform, AsrPlatformInfo> = {
   doubao: { get label() { return t('asrPlatform.doubao') }, consoleUrl: 'https://console.volcengine.com/speech/app' },
   qwen: { get label() { return t('asrPlatform.qwen') }, consoleUrl: 'https://bailian.console.aliyun.com' },
   mimo: { get label() { return t('asrPlatform.mimo') }, consoleUrl: 'https://xiaoai.mi.com' },
   groq: { label: 'Groq', consoleUrl: 'https://console.groq.com/keys' },
   openai: { label: 'OpenAI', consoleUrl: 'https://platform.openai.com/api-keys' },
-  // Gemini API 的 key 在 AI Studio 领，不是 Google Cloud 控制台 —— 后者那套
-  // （项目 + 服务账号 + OAuth）我们刻意没接，见 providers/asr_gemini.rs 的文件头。
+  // Gemini API 的 key 在 AI Studio 領，不是 Google Cloud 控制台 —— 後者那套
+  // （專案 + 服務賬號 + OAuth）我們刻意沒接，見 providers/asr_gemini.rs 的檔案頭。
   google: { label: 'Google Gemini', consoleUrl: 'https://aistudio.google.com/apikey' },
   openrouter: { label: 'OpenRouter', consoleUrl: 'https://openrouter.ai/keys' },
-  // consoleUrl 指向协议文档而不是某家控制台 —— 密钥去哪儿领取决于用户对接的是谁，
-  // 我们给不出那个链接，能给的是「这条协议长什么样」。
+  // consoleUrl 指向協議文件而不是某家控制台 —— 金鑰去哪兒領取決於使用者對接的是誰，
+  // 我們給不出那個連結，能給的是「這條協議長什麼樣」。
   openai_compat: {
     get label() { return t('asrPlatform.openaiCompat') },
     consoleUrl: 'https://platform.openai.com/docs/api-reference/audio/createTranscription',
@@ -52,19 +52,19 @@ export const ASR_PLATFORMS: Record<AsrPlatform, AsrPlatformInfo> = {
 }
 
 /**
- * 「OpenAI 兼容」那张卡实际说哪种协议。
+ * 「OpenAI 相容」那張卡實際說哪種協議。
  *
- * 这两套协议都被叫做「OpenAI 兼容」，但地址、请求体、响应形状完全不同：
- *   · `transcriptions` → `/audio/transcriptions`，multipart 传文件，响应 `{"text": ...}`。
- *     OpenAI 自己、Groq、硅基流动、whisper.cpp / faster-whisper / FunASR 的包装都是这套。
+ * 這兩套協議都被叫做「OpenAI 相容」，但地址、請求體、響應形狀完全不同：
+ *   · `transcriptions` → `/audio/transcriptions`，multipart 傳檔案，響應 `{"text": ...}`。
+ *     OpenAI 自己、Groq、矽基流動、whisper.cpp / faster-whisper / FunASR 的包裝都是這套。
  *   · `chat`           → `/chat/completions`，阿里云百炼 data URL 字符串。
- *   · `chat_standard`  → `/chat/completions`，标准 OpenAI `input_audio.data`（裸 base64）
- *     与 `input_audio.format`。兼容 Gemini 等使用标准 OpenAI 格式的网关。
+ *   · `chat_standard`  → `/chat/completions`，標準 OpenAI `input_audio.data`（裸 base64）
+ *     與 `input_audio.format`。相容 Gemini 等使用標準 OpenAI 格式的閘道器。
  *
- * **默认是 `auto`，让代码自己试出来。** 协议是端点的属性、不是用户的偏好 ——
- * 要用户先去翻对方文档才知道该选哪个，等于把我们的实现细节推给他承担。
- * 显式值留作退路：探测判不准时（比如填的模型名只在其中一种协议下有效，
- * 另一种的失败就不是协议原因）用户得能直接指定。
+ * **預設是 `auto`，讓程式碼自己試出來。** 協議是端點的屬性、不是使用者的偏好 ——
+ * 要使用者先去翻對方文件才知道該選哪個，等於把我們的實現細節推給他承擔。
+ * 顯式值留作退路：探測判不準時（比如填的模型名只在其中一種協議下有效，
+ * 另一種的失敗就不是協議原因）使用者得能直接指定。
  */
 export type AsrCompatProtocol = 'auto' | 'transcriptions' | 'chat' | 'chat_standard'
 
@@ -75,107 +75,107 @@ export function parseAsrCompatProtocol(value: unknown): AsrCompatProtocol {
 }
 
 /**
- * 一家平台下的一个可选模型。
+ * 一家平台下的一個可選模型。
  *
- * **关键在 `provider`：同一张卡里的模型可以走完全不同的后端实现。**
- * 千问那五个就是四种协议（DashScope duplex / HTTP 一次性 / OpenAI-Realtime 风格 /
+ * **關鍵在 `provider`：同一張卡里的模型可以走完全不同的後端實現。**
+ * 千問那五個就是四種協議（DashScope duplex / HTTP 一次性 / OpenAI-Realtime 風格 /
  * chat+base64），OpenAI 与 Gemini 也各是「HTTP 一次性」加「WebSocket 流式」两种。
  *
- * 这个字段的存在就是为了让「界面按平台归拢」和「后端按协议分发」两件事同时成立 ——
- * 早先的做法是一个模型占一张卡（`qwen_audio_stream`、`qwen_realtime`… 各一张），
- * 界面上千问一家占了五张卡，用户得先知道协议差异才能选。
+ * 這個欄位的存在就是為了讓「介面按平台歸攏」和「後端按協議分發」兩件事同時成立 ——
+ * 早先的做法是一個模型佔一張卡（`qwen_audio_stream`、`qwen_realtime`… 各一張），
+ * 介面上千問一家佔了五張卡，使用者得先知道協議差異才能選。
  */
 export interface AsrModelOption {
   /**
-   * 存进 `profile.model`，也是下拉里的值。同一张卡内唯一。
-   * 用真实模型名（不是内部代号），这样用户在下拉里看到的和服务商文档里写的是一个东西。
+   * 存進 `profile.model`，也是下拉里的值。同一張卡內唯一。
+   * 用真實模型名（不是內部代號），這樣使用者在下拉里看到的和服務商文件裡寫的是一個東西。
    */
   id: string
-  /** 走哪份后端实现 —— 即 Rust `registry.rs` 分发用的 key，会写进 `cloudAsr.provider` */
+  /** 走哪份後端實現 —— 即 Rust `registry.rs` 分發用的 key，會寫進 `cloudAsr.provider` */
   provider: string
   /**
-   * 实际发给服务端的模型名，缺省等于 `id`。
+   * 實際發給服務端的模型名，預設等於 `id`。
    *
-   * 目前只有 Omni 那两个用得上：它们的接口模型名带 `-realtime` 后缀
-   * （`qwen3.5-omni-plus-realtime`），而产品名是不带的。以前这层映射在
-   * asrModels.ts 的 QWEN_OMNI_MODEL_MAP 里按 provider id 索引，现在跟着模型走。
+   * 目前只有 Omni 那兩個用得上：它們的介面模型名帶 `-realtime` 字尾
+   * （`qwen3.5-omni-plus-realtime`），而產品名是不帶的。以前這層對映在
+   * asrModels.ts 的 QWEN_OMNI_MODEL_MAP 裡按 provider id 索引，現在跟著模型走。
    */
   apiModel?: string
-  // ⚠️ 这里刻意**没有** label 字段。
+  // ⚠️ 這裡刻意**沒有** label 欄位。
   //
-  // 曾经有过，值是「千问 ASR 一次性」「千问 3.5 Omni Plus」这种 —— 那是
-  // 「一张卡 = 一个模型」时代的**卡片标题**，「一次性」靠跟「流式」那张卡对比才有意义。
-  // 归拢成一卡一平台后它们成了卡内的模型名，于是「千问」前缀重复、对比对象也消失了，
-  // 用户在「模型」那一栏看到的是一个既不像模型、也说不清是什么的词（用户原话：
-  // 「还有什么『千问一次性』…下面不是应该显示模型吗」）。
+  // 曾經有過，值是「千問 ASR 一次性」「千問 3.5 Omni Plus」這種 —— 那是
+  // 「一張卡 = 一個模型」時代的**卡片標題**，「一次性」靠跟「流式」那張卡對比才有意義。
+  // 歸攏成一卡一平台後它們成了卡內的模型名，於是「千問」字首重複、對比物件也消失了，
+  // 使用者在「模型」那一欄看到的是一個既不像模型、也說不清是什麼的詞（使用者原話：
+  // 「還有什麼『千問一次性』…下面不是應該顯示模型嗎」）。
   //
-  // 现在一律显示真实模型 ID：它一眼认得出是模型，还能拿去对服务商文档和账单。
-  // 「这个模型什么时候该选」交给 blurb 说，那本来就是它的活。
+  // 現在一律顯示真實模型 ID：它一眼認得出是模型，還能拿去對服務商文件和賬單。
+  // 「這個模型什麼時候該選」交給 blurb 說，那本來就是它的活。
   /**
-   * 一句话说清「什么时候选这个模型」，显示在模型下拉下面。
+   * 一句話說清「什麼時候選這個模型」，顯示在模型下拉下面。
    *
-   * 平台卡的 blurb 只能说这一家整体如何，而真正要帮用户做的决定是**在一家里面选哪个**
-   * （千问那五个的差别比千问和豆包的差别还大）。所以这些文案留在模型级。
+   * 平台卡的 blurb 只能說這一家整體如何，而真正要幫使用者做的決定是**在一家裡面選哪個**
+   * （千問那五個的差別比千問和豆包的差別還大）。所以這些文案留在模型級。
    */
   blurb?: string
-  /** 边说边出字（实时字幕）。**这是模型的属性，不是平台的** */
+  /** 邊說邊出字（即時字幕）。**這是模型的屬性，不是平台的** */
   streaming?: boolean
-  /** 识别与 AI 整理一步完成，不需要单独配 AI 服务 */
+  /** 識別與 AI 整理一步完成，不需要單獨配 AI 服務 */
   omni?: boolean
   /** 需要百炼「业务空间 ID」才能用 */
   needsWorkspaceId?: boolean
   /**
-   * 这个模型的地址可以由用户覆盖（填了就用他的，空着就用实现里内置的官方地址）。
+   * 這個模型的地址可以由使用者覆蓋（填了就用他的，空著就用實現裡內建的官方地址）。
    *
-   * **这是协议的属性，不是平台的属性** —— 所以它挂在模型上而不是卡片上。
-   * 千问那张卡里 `qwen3.8-omni-flash` 是 HTTP（能改），`qwen3.5-omni-plus` 是
-   * realtime WebSocket（改不了）：同一张卡里两种答案，挂在卡片上就表达不了。
+   * **這是協議的屬性，不是平台的屬性** —— 所以它掛在模型上而不是卡片上。
+   * 千問那張卡里 `qwen3.8-omni-flash` 是 HTTP（能改），`qwen3.5-omni-plus` 是
+   * realtime WebSocket（改不了）：同一張卡里兩種答案，掛在卡片上就表達不了。
    *
-   * 为什么内置卡也要开放：中转站/反代很常见（尤其 OpenAI 和 Gemini），
-   * 用户拿的是官方协议、只是换了个域名。不给填就等于逼他们用不了。
+   * 為什麼內建卡也要開放：中轉站/反代很常見（尤其 OpenAI 和 Gemini），
+   * 使用者拿的是官方協議、只是換了個域名。不給填就等於逼他們用不了。
    *
    * 安全边界靠两件事守住，缺一不可：
-   *  1. 这个标记为假的模型，`asrEndpointUrl` 一律返回空串 —— 档案里即使残留了
-   *     地址也发不出去（切过供应商就会留下残值）；
-   *  2. WebSocket 那几份实现压根不读 `extra.baseUrl`。
+   *  1. 這個標記為假的模型，`asrEndpointUrl` 一律返回空串 —— 檔案裡即使殘留了
+   *     地址也發不出去（切過供應商就會留下殘值）；
+   *  2. WebSocket 那幾份實現壓根不讀 `extra.baseUrl`。
    */
   supportsCustomUrl?: boolean
-  /** 地址是必填的（协议卡），不是可选覆盖 */
+  /** 地址是必填的（協議卡），不是可選覆蓋 */
   requiresCustomUrl?: boolean
 }
 
 export interface AsrProviderEntry {
   /**
-   * 卡片 id，存进 `profile.provider`。**一张卡 = 一个平台**，所以它等于 `platform`。
+   * 卡片 id，存進 `profile.provider`。**一張卡 = 一個平台**，所以它等於 `platform`。
    *
-   * ⚠️ 它不再是 Rust 侧的分发 key —— 那个现在由选中模型的 `provider` 决定。
-   * 存量配置里 `profile.provider` 存的是旧的分发 key（`qwen_audio_stream` 之类），
-   * 由 parseAsrProfiles 迁移过来，见 LEGACY_PROVIDERS。
+   * ⚠️ 它不再是 Rust 側的分發 key —— 那個現在由選中模型的 `provider` 決定。
+   * 存量配置裡 `profile.provider` 存的是舊的分發 key（`qwen_audio_stream` 之類），
+   * 由 parseAsrProfiles 遷移過來，見 LEGACY_PROVIDERS。
    */
   id: string
-  /** 卡片标题，短 */
+  /** 卡片標題，短 */
   label: string
   platform: AsrPlatform
-  /** 一句定位，说清「什么时候选这家」 */
+  /** 一句定位，說清「什麼時候選這家」 */
   blurb: string
   /**
-   * 当前内置端点与控制台所面向的账号地区。
-   * `global` 是海外端点，国内直连可能不稳定，卡片上要如实标出来 ——
-   * 否则用户会把「连不上」当成自己密钥填错。
+   * 當前內建端點與控制台所面向的賬號地區。
+   * `global` 是海外端點，國內直連可能不穩定，卡片上要如實標出來 ——
+   * 否則使用者會把「連不上」當成自己金鑰填錯。
    */
   availability: 'mainland_china' | 'global'
-  /** 这家有哪些模型。**第一项是默认**（新建配置时选它） */
+  /** 這家有哪些模型。**第一項是預設**（新建配置時選它） */
   models: AsrModelOption[]
   /**
-   * 这是「协议卡」：对面是谁我们不知道，地址必填、模型名是自由文本。
+   * 這是「協議卡」：對面是誰我們不知道，地址必填、模型名是自由文本。
    *
-   * 两处与内置卡不同：
-   *  · 地址为空时这张卡不算配置完整（内置卡地址是可选的，空着就用官方地址）；
-   *  · 模型名**自由文本**而不是下拉 —— 对面挂什么模型无从知道，
-   *    `models` 只当推荐值用，用户填的值必须原样保留（见 resolveAsrModelOption）。
+   * 兩處與內建卡不同：
+   *  · 地址為空時這張卡不算配置完整（內建卡地址是可選的，空著就用官方地址）；
+   *  · 模型名**自由文本**而不是下拉 —— 對面掛什麼模型無從知道，
+   *    `models` 只當推薦值用，使用者填的值必須原樣保留（見 resolveAsrModelOption）。
    *
-   * ⚠️ 「能不能改地址」**不由这个字段决定**，那是模型级的 `supportsCustomUrl` ——
-   * 理由见那边的注释。
+   * ⚠️ 「能不能改地址」**不由這個欄位決定**，那是模型級的 `supportsCustomUrl` ——
+   * 理由見那邊的註釋。
    */
   customEndpoint?: boolean
   /** 「接口地址」输入框的占位示例 */
@@ -183,39 +183,39 @@ export interface AsrProviderEntry {
 }
 
 /**
- * OpenRouter 上的全部转写模型（拉取自 `/api/v1/models?output_modalities=transcription`，
+ * OpenRouter 上的全部轉寫模型（拉取自 `/api/v1/models?output_modalities=transcription`，
  * 2026-09-16，共 21 个）。
  *
- * **这些 slug 是从那个接口原样抄下来的，不是照模型页的展示名推的。**
+ * **這些 slug 是從那個介面原樣抄下來的，不是照模型頁的展示名推的。**
  * 展示名和 slug 经常不是一回事（"Whisper Large V3 Turbo" 的 slug 是
  * `openai/whisper-large-v3-turbo`，但 "Grok STT 1.0" 是 `x-ai/grok-stt-1.0`、
- * "Qwen3 ASR Flash" 带日期后缀 `qwen/qwen3-asr-flash-2026-02-10`）。
- * 猜错的表现是 404 "model not found" —— 看着像模型下线了，其实是名字写错。
- * 那个接口**不需要密钥**，要更新清单直接跑：
+ * "Qwen3 ASR Flash" 帶日期字尾 `qwen/qwen3-asr-flash-2026-02-10`）。
+ * 猜錯的表現是 404 "model not found" —— 看著像模型下線了，其實是名字寫錯。
+ * 那個介面**不需要金鑰**，要更新清單直接跑：
  *   `python dev-scripts/probe_new_asr_providers.py --target openrouter --list-models`
  *
- * ── 排序按「什么时候选它」，不按厂商也不按价格 ──
- * 第一项是默认值（resolveAsrModel 在用户没选过时给它），所以第一项必须是
- * 「不知道选什么就用这个」那一个。往后依次是：中文口述、多语种、便宜、其余。
+ * ── 排序按「什麼時候選它」，不按廠商也不按價格 ──
+ * 第一項是預設值（resolveAsrModel 在使用者沒選過時給它），所以第一項必須是
+ * 「不知道選什麼就用這個」那一個。往後依次是：中文口述、多語種、便宜、其餘。
  *
- * ── 有一类要特别说明：Whisper 系在这里可能没有中文标点 ──
- * OpenRouter 的两种请求形态都没有 prompt 通道（它接受 prompt 字段但忽略），
- * 而 Whisper 全靠「拿带标点的句子做示范」才会输出标点。所以 whisper-* 这几个
- * 转写中文短句可能一个标点都没有，排在自带标点的那些后面。
- * 详见 providers/asr_openrouter.rs 的文件头。
+ * ── 有一類要特別說明：Whisper 系在這裡可能沒有中文標點 ──
+ * OpenRouter 的兩種請求形態都沒有 prompt 通道（它接受 prompt 欄位但忽略），
+ * 而 Whisper 全靠「拿帶標點的句子做示範」才會輸出標點。所以 whisper-* 這幾個
+ * 轉寫中文短句可能一個標點都沒有，排在自帶標點的那些後面。
+ * 詳見 providers/asr_openrouter.rs 的檔案頭。
  */
 const OPENROUTER_SLUGS = [
-  // 默认：自带标点、准确率第一档
+  // 預設：自帶標點、準確率第一檔
   'openai/gpt-transcribe',
-  // 中文口述优先：qwen 这几个覆盖 30 语言 + 22 种中文方言，而且便宜
+  // 中文口述優先：qwen 這幾個覆蓋 30 語言 + 22 種中文方言，而且便宜
   'qwen/qwen3-asr-flash-2026-02-10',
   'qwen/qwen3-asr-1.7b',
   'qwen/qwen3-asr-0.6b',
-  // 多语种最强的几个：mai-transcribe-2 是 FLEURS 榜首（60 语言），chirp-3 自带标点
+  // 多語種最強的幾個：mai-transcribe-2 是 FLEURS 榜首（60 語言），chirp-3 自帶標點
   'microsoft/mai-transcribe-2',
   'google/chirp-3',
   'microsoft/mai-transcribe-1.5',
-  // OpenAI 其余几代（token 计费的两个更透明，whisper 系按时长）
+  // OpenAI 其餘幾代（token 計費的兩個更透明，whisper 系按時長）
   'openai/gpt-4o-transcribe',
   'openai/gpt-4o-mini-transcribe',
   'openai/whisper-large-v3-turbo',
@@ -233,33 +233,33 @@ const OPENROUTER_SLUGS = [
   'fish-audio/transcribe-1',
 ]
 
-/** 这 21 个都走同一份实现（asr_openrouter.rs），只换 model 字符串。 */
+/** 這 21 個都走同一份實現（asr_openrouter.rs），只換 model 字串。 */
 const OPENROUTER_MODELS: AsrModelOption[] = OPENROUTER_SLUGS.map((id) => ({
   id,
   provider: 'openrouter_transcribe',
-  // OpenRouter 本身就是路由层，改地址的用处不大，但它是 HTTP 协议、
-  // 自建反代也有人用，没有理由单独禁掉。
+  // OpenRouter 本身就是路由層，改地址的用處不大，但它是 HTTP 協議、
+  // 自建反代也有人用，沒有理由單獨禁掉。
   supportsCustomUrl: true,
 }))
 
 /**
- * 内置服务清单。顺序即卡片顺序，也是新建时下拉的顺序：把最推荐的放前面。
+ * 內建服務清單。順序即卡片順序，也是新建時下拉的順序：把最推薦的放前面。
  *
- * label 刻意不带模型名后缀（模型名单独一行小字），否则卡片标题会被
- * 「千问 3.5 Omni Plus（qwen3.5-omni-plus，ASR+AI）」这种括号串撑爆。
+ * label 刻意不帶模型名字尾（模型名單獨一行小字），否則卡片標題會被
+ * 「千問 3.5 Omni Plus（qwen3.5-omni-plus，ASR+AI）」這種括號串撐爆。
  *
- * ── blurb 的口径（改文案前先读这段）──
- * 每条只回答一件事：**什么时候该选它**，而且七条放在一起要能相互区分。
- * 早期的文案是各写各的优点（「准确率高、速度快」同时挂在两家上），等于没给出
- * 选择依据 —— 用户看完还是不知道该点哪一张。现在的口径：
- *   · 准确率的结论是**有条件的**，条件要写出来。豆包只有在**关掉实时字幕**时
- *     才是中文最准的一档，一开字幕就掉档；Audio 3.0 反过来，开着字幕也是第一档。
- *     少了这个前提，两张卡的「最准」会互相矛盾。
- *   · 不如别家的地方照实写（千问 realtime 不及 Audio 3.0、MiMo 准确率一般），
- *     但用词留余地 —— 目录里留着它们是因为有人的账号/网络只有那一家能用。
- *   · 引用别的卡一律用**产品名**（"Audio 3.0"、"Omni Plus"），不要用「上面那个」
- *     「同上」：顺序会变，位置指代改一次顺序就错。
- *   · 这些准确率结论来自实际使用对比，不是跑分。改结论前先真用一遍。
+ * ── blurb 的口徑（改文案前先讀這段）──
+ * 每條只回答一件事：**什麼時候該選它**，而且七條放在一起要能相互區分。
+ * 早期的文案是各寫各的優點（「準確率高、速度快」同時掛在兩家上），等於沒給出
+ * 選擇依據 —— 使用者看完還是不知道該點哪一張。現在的口徑：
+ *   · 準確率的結論是**有條件的**，條件要寫出來。豆包只有在**關掉即時字幕**時
+ *     才是中文最準的一檔，一開字幕就掉檔；Audio 3.0 反過來，開著字幕也是第一檔。
+ *     少了這個前提，兩張卡的「最準」會互相矛盾。
+ *   · 不如別家的地方照實寫（千問 realtime 不及 Audio 3.0、MiMo 準確率一般），
+ *     但用詞留餘地 —— 目錄裡留著它們是因為有人的賬號/網路只有那一家能用。
+ *   · 引用別的卡一律用**產品名**（"Audio 3.0"、"Omni Plus"），不要用「上面那個」
+ *     「同上」：順序會變，位置指代改一次順序就錯。
+ *   · 這些準確率結論來自實際使用對比，不是跑分。改結論前先真用一遍。
  */
 export const ASR_PROVIDERS: AsrProviderEntry[] = [
   {
@@ -272,37 +272,37 @@ export const ASR_PROVIDERS: AsrProviderEntry[] = [
       {
         id: 'Doubao-Seed-ASR-2.0',
         provider: 'doubao_v2',
-        // 它一直支持实时字幕（走火山流式语音识别 2.0，isStreamingDisplayReady 认它）。
-        // blurb 里"不开字幕时最准"是产品建议，不代表它没有这个能力。
+        // 它一直支援即時字幕（走火山流式語音識別 2.0，isStreamingDisplayReady 認它）。
+        // blurb 裡"不開字幕時最準"是產品建議，不代表它沒有這個能力。
         streaming: true,
       },
     ],
   },
   /**
-   * 千问一家八个模型，**四种不同协议** —— 这张卡是 AsrModelOption.provider
-   * 存在的原因。以前它们各占一张卡，界面上千问一家就是五张，用户得先懂协议差异
-   * 才知道该点哪张。
+   * 千問一家八個模型，**四種不同協議** —— 這張卡是 AsrModelOption.provider
+   * 存在的原因。以前它們各佔一張卡，介面上千問一家就是五張，使用者得先懂協議差異
+   * 才知道該點哪張。
    *
-   * 模型顺序即推荐顺序，第一个是默认：
-   *   · Audio 3.1 流式放第一 —— 最新一代，实测与 3.0 同协议、同节奏但延迟略低；
-   *     开着实时字幕时这一族比豆包更准（豆包最准的用法是关掉字幕，一开就掉一档），
-   *     而且不需要业务空间 ID，填了密钥就能用；
-   *   · Audio 3.0 流式留作退路 —— 仍完全可用，给「3.1 上有问题」的人一个落脚点；
-   *   · qwen3-asr-flash 是录完一次性出字，多语种均衡；
-   *   · realtime 那个效果不及 Audio 3.x，还要业务空间 ID，所以排在后面；
-   *   · 四个 Omni 是「识别+整理」一体，选它们就不用再配 AI 服务。3.8 那两个是
-   *     同一代的两条协议（HTTP / realtime WS），不是新旧关系。
+   * 模型順序即推薦順序，第一個是預設：
+   *   · Audio 3.1 流式放第一 —— 最新一代，實測與 3.0 同協議、同節奏但延遲略低；
+   *     開著即時字幕時這一族比豆包更準（豆包最準的用法是關掉字幕，一開就掉一檔），
+   *     而且不需要業務空間 ID，填了金鑰就能用；
+   *   · Audio 3.0 流式留作退路 —— 仍完全可用，給「3.1 上有問題」的人一個落腳點；
+   *   · qwen3-asr-flash 是錄完一次性出字，多語種均衡；
+   *   · realtime 那個效果不及 Audio 3.x，還要業務空間 ID，所以排在後面；
+   *   · 四個 Omni 是「識別+整理」一體，選它們就不用再配 AI 服務。3.8 那兩個是
+   *     同一代的兩條協議（HTTP / realtime WS），不是新舊關係。
    *
-   * ── 这里**不放**哪些百炼模型，以及为什么（2026-09-23 实测，见 dev-scripts）──
-   *  · `qwen3-omni-flash` / `qwen-omni-turbo`：已从清单里删掉。官网标了「即将下线」，
-   *    而且**实测已经在被缩容** —— 前者读超时，后者直接回
-   *    「Too many requests ... system capacity limits」。百炼的下线机制是先逐步压
-   *    QPM/TPM 再正式下线，所以这两个的表现不是偶发抖动。存量配置的落点见
+   * ── 這裡**不放**哪些百鍊模型，以及為什麼（2026-09-23 實測，見 dev-scripts）──
+   *  · `qwen3-omni-flash` / `qwen-omni-turbo`：已從清單裡刪掉。官網標了「即將下線」，
+   *    而且**實測已經在被縮容** —— 前者讀超時，後者直接回
+   *    「Too many requests ... system capacity limits」。百鍊的下線機制是先逐步壓
+   *    QPM/TPM 再正式下線，所以這兩個的表現不是偶發抖動。存量配置的落點見
    *    RETIRED_MODELS。
-   *  · `qwen-audio-3.1-asr-flash-filetrans` / `-message`：filetrans 只收音频 URL
-   *    （我们发的是 base64，回 `InvalidParameter: url error`）；message 在
-   *    OpenAI 兼容模式下明确 `model_not_supported`，在 duplex WS 上倒是能转写，
-   *    但**一条中间结果都不产出**，做不了实时字幕。
+   *  · `qwen-audio-3.1-asr-flash-filetrans` / `-message`：filetrans 只收音訊 URL
+   *    （我們發的是 base64，回 `InvalidParameter: url error`）；message 在
+   *    OpenAI 相容模式下明確 `model_not_supported`，在 duplex WS 上倒是能轉寫，
+   *    但**一條中間結果都不產出**，做不了即時字幕。
    */
   {
     id: 'qwen',
@@ -312,8 +312,8 @@ export const ASR_PROVIDERS: AsrProviderEntry[] = [
     get blurb() { return t('asrProvider.qwenPlatformBlurb') },
     models: [
       {
-        // 与 3.0 走同一份 Rust 实现（asr_qwen_audio_stream.rs），模型名经
-        // extra.model 传下去。实测同协议、同中间结果节奏、同样接受热词字段。
+        // 與 3.0 走同一份 Rust 實現（asr_qwen_audio_stream.rs），模型名經
+        // extra.model 傳下去。實測同協議、同中間結果節奏、同樣接受熱詞欄位。
         id: 'qwen-audio-3.1-asr-flash-streaming',
         provider: 'qwen_audio_stream',
         get blurb() { return t('asrProvider.qwenAudio31StreamBlurb') },
@@ -339,47 +339,47 @@ export const ASR_PROVIDERS: AsrProviderEntry[] = [
       },
       {
         /**
-         * 最新一代 Omni，**走非实时那条路**（OpenAI 兼容 chat/completions）。
+         * 最新一代 Omni，**走非即時那條路**（OpenAI 相容 chat/completions）。
          *
-         * 它和下面那个 `-realtime` 是同一代的两条协议，不是新旧关系：这个走 HTTP、
-         * 地址可改；那个走 realtime WebSocket、地址固定。对 SayIt 的用法（整段发完
-         * 再取文本）两者结果一样，差别在计费口径和能不能换地址。
+         * 它和下面那個 `-realtime` 是同一代的兩條協議，不是新舊關係：這個走 HTTP、
+         * 地址可改；那個走 realtime WebSocket、地址固定。對 SayIt 的用法（整段發完
+         * 再取文本）兩者結果一樣，差別在計費口徑和能不能換地址。
          *
-         * 排在 realtime 那个前面：HTTP 那条路能配中转站/业务空间专属域名，
+         * 排在 realtime 那個前面：HTTP 那條路能配中轉站/業務空間專屬域名，
          * 适用面更广。
          */
         id: 'qwen3.8-omni-flash',
         provider: 'qwen_chat_audio',
         get blurb() { return t('asrProvider.omni38Blurb') },
         omni: true,
-        // HTTP 协议，地址可改 —— 百炼官方推荐迁到业务空间专属域名
-        // （`{WorkspaceId}.cn-beijing.maas.aliyuncs.com`），那就得靠这一栏。
+        // HTTP 協議，地址可改 —— 百鍊官方推薦遷到業務空間專屬域名
+        // （`{WorkspaceId}.cn-beijing.maas.aliyuncs.com`），那就得靠這一欄。
         supportsCustomUrl: true,
       },
       {
         /**
          * 同一代 Omni 的 realtime 版，走 asr_qwen_omni.rs 那条 WebSocket。
          *
-         * ⚠️ 它曾经被判成「加不了」，理由是它在我们的代码路径上会被拒
-         * （`Voice 'Chelsie' is not supported`）。那个结论**错在没做对照实验**：
-         * 当时"带 voice"和"不发 response.create"两个变量一起变了，所以分不清是哪个
-         * 起的作用。固定发 `response.create`、只变音色字段重测之后结论很干脆 ——
+         * ⚠️ 它曾經被判成「加不了」，理由是它在我們的程式碼路徑上會被拒
+         * （`Voice 'Chelsie' is not supported`）。那個結論**錯在沒做對照實驗**：
+         * 當時"帶 voice"和"不發 response.create"兩個變數一起變了，所以分不清是哪個
+         * 起的作用。固定發 `response.create`、只變音色欄位重測之後結論很乾脆 ——
          * 加一个 `session.audio.output.voice` 就能用，而且 3.5 两代也接受同一个字段，
-         * 一份会话形状通吃。实测脚本：`dev-scripts/probe_qwen38_omni_voice.py`。
+         * 一份會話形狀通吃。實測指令碼：`dev-scripts/probe_qwen38_omni_voice.py`。
          *
-         * 所以这里没有任何特殊字段：那个音色字段是 asr_qwen_omni.rs 对所有 Omni
-         * 统一发的，不是给这个模型开的后门。
+         * 所以這裡沒有任何特殊欄位：那個音色欄位是 asr_qwen_omni.rs 對所有 Omni
+         * 統一發的，不是給這個模型開的後門。
          */
         id: 'qwen3.8-omni-flash-realtime',
-        // 产品名就带 -realtime，所以**不需要** apiModel（别顺手补一个
+        // 產品名就帶 -realtime，所以**不需要** apiModel（別順手補一個
         // `qwen3.8-omni-flash-realtime-realtime`）。
         provider: 'qwen_omni',
         get blurb() { return t('asrProvider.omni38RealtimeBlurb') },
         omni: true,
       },
       {
-        // 接口模型名带 -realtime 后缀，产品名不带 —— 这层映射以前在
-        // asrModels.ts 的 QWEN_OMNI_MODEL_MAP 里按 provider id 索引，现在跟着模型走。
+        // 介面模型名帶 -realtime 字尾，產品名不帶 —— 這層對映以前在
+        // asrModels.ts 的 QWEN_OMNI_MODEL_MAP 裡按 provider id 索引，現在跟著模型走。
         id: 'qwen3.5-omni-plus',
         apiModel: 'qwen3.5-omni-plus-realtime',
         provider: 'qwen_omni',
@@ -393,9 +393,9 @@ export const ASR_PROVIDERS: AsrProviderEntry[] = [
         get blurb() { return t('asrProvider.omniFlashBlurb') },
         omni: true,
       },
-      // 上一代 Omni（qwen3-omni-flash / qwen-omni-turbo）曾经排在这里，理由是
-      // 「便宜 + 让存量配置有地方落」。现在删掉了：实测它们的实时端点已经被缩容到
-      // 不可用（超时 / 容量限流），留着等于在下拉里摆两个点了就坏的选项，比没有更糟。
+      // 上一代 Omni（qwen3-omni-flash / qwen-omni-turbo）曾經排在這裡，理由是
+      // 「便宜 + 讓存量配置有地方落」。現在刪掉了：實測它們的即時端點已經被縮容到
+      // 不可用（超時 / 容量限流），留著等於在下拉里擺兩個點了就壞的選項，比沒有更糟。
       // 存量配置改由 RETIRED_MODELS 接到 qwen3.5-omni-flash 上。
     ],
   },
@@ -413,19 +413,19 @@ export const ASR_PROVIDERS: AsrProviderEntry[] = [
     platform: 'groq',
     availability: 'global',
     get blurb() { return t('asrProvider.groqBlurb') },
-    // 两个都走同一份实现（asr_groq.rs 的 multipart），只换 model 字符串。
-    // turbo 放第一位：它是 large-v3 剪掉解码层的版本，快得多而准确率只差一点。
+    // 兩個都走同一份實現（asr_groq.rs 的 multipart），只換 model 字串。
+    // turbo 放第一位：它是 large-v3 剪掉解碼層的版本，快得多而準確率只差一點。
     models: [
       { id: 'whisper-large-v3-turbo', provider: 'groq_whisper', supportsCustomUrl: true },
       { id: 'whisper-large-v3', provider: 'groq_whisper', supportsCustomUrl: true },
     ],
   },
   /**
-   * OpenAI 一张卡，两种实现：前四个走 `/audio/transcriptions`（HTTP multipart，
-   * asr_groq.rs 那份），最后一个走 Realtime 转写会话（WebSocket，asr_openai_realtime.rs）。
+   * OpenAI 一張卡，兩種實現：前四個走 `/audio/transcriptions`（HTTP multipart，
+   * asr_groq.rs 那份），最後一個走 Realtime 轉寫會話（WebSocket，asr_openai_realtime.rs）。
    *
-   * **流式那个模型在文件端点上不存在**，所以它关掉实时字幕时会回落到
-   * `gpt-transcribe` —— 那层换名在 asr_groq.rs 的 OPENAI_FILE_FALLBACK 档里做，
+   * **流式那個模型在檔案端點上不存在**，所以它關掉即時字幕時會回落到
+   * `gpt-transcribe` —— 那層換名在 asr_groq.rs 的 OPENAI_FILE_FALLBACK 檔裡做，
    * 用户不会看到「模型不存在」。
    */
   {
@@ -435,7 +435,7 @@ export const ASR_PROVIDERS: AsrProviderEntry[] = [
     availability: 'global',
     get blurb() { return t('asrProvider.openaiBlurb') },
     models: [
-      // 前四个是 HTTP，地址可改 —— 用中转站/反代接 OpenAI 很常见。
+      // 前四個是 HTTP，地址可改 —— 用中轉站/反代接 OpenAI 很常見。
       {
         id: 'gpt-transcribe',
         provider: 'openai_transcribe',
@@ -444,12 +444,12 @@ export const ASR_PROVIDERS: AsrProviderEntry[] = [
       },
       { id: 'gpt-4o-transcribe', provider: 'openai_transcribe', supportsCustomUrl: true },
       { id: 'gpt-4o-mini-transcribe', provider: 'openai_transcribe', supportsCustomUrl: true },
-      // 最老那版，留着给「按 whisper-1 调好了 prompt、不想动」的人
+      // 最老那版，留著給「按 whisper-1 調好了 prompt、不想動」的人
       { id: 'whisper-1', provider: 'openai_transcribe', supportsCustomUrl: true },
       {
-        // 这个是 WebSocket realtime，地址改不了（中转站基本不转发它）。
-        // 它关掉实时字幕时会回落到 HTTP，但那条路也不带用户地址 ——
-        // 否则「我没给这个模型填地址」和「回落时却用了别处的地址」就对不上了。
+        // 這個是 WebSocket realtime，地址改不了（中轉站基本不轉發它）。
+        // 它關掉即時字幕時會回落到 HTTP，但那條路也不帶使用者地址 ——
+        // 否則「我沒給這個模型填地址」和「回落時卻用了別處的地址」就對不上了。
         id: 'gpt-live-transcribe',
         provider: 'openai_live_transcribe',
         get blurb() { return t('asrProvider.openaiLiveBlurb') },
@@ -457,7 +457,7 @@ export const ASR_PROVIDERS: AsrProviderEntry[] = [
       },
     ],
   },
-  /** Gemini 一张卡两种实现：generateContent（HTTP）与 Live API（WebSocket）。 */
+  /** Gemini 一張卡兩種實現：generateContent（HTTP）與 Live API（WebSocket）。 */
   {
     id: 'google',
     get label() { return t('asrProvider.gemini') },
@@ -466,7 +466,7 @@ export const ASR_PROVIDERS: AsrProviderEntry[] = [
     get blurb() { return t('asrProvider.geminiBlurb') },
     models: [
       {
-        // HTTP，地址可改（反代 Gemini 的中转站不少）
+        // HTTP，地址可改（反代 Gemini 的中轉站不少）
         id: 'gemini-3.5-transcribe',
         provider: 'gemini_transcribe',
         get blurb() { return t('asrProvider.geminiFileBlurb') },
@@ -481,11 +481,11 @@ export const ASR_PROVIDERS: AsrProviderEntry[] = [
     ],
   },
   /**
-   * OpenRouter 是**路由层**，不是一家模型厂商 —— 一把 key 通往多家 STT 模型，
-   * 所以它是这份清单里模型选项最多的一张卡，也是唯一「换模型就等于换厂商」的一张。
+   * OpenRouter 是**路由層**，不是一家模型廠商 —— 一把 key 通往多家 STT 模型，
+   * 所以它是這份清單裡模型選項最多的一張卡，也是唯一「換模型就等於換廠商」的一張。
    *
-   * 放在最后：它多出一层中间商（价格与延迟都比直连略高），适合的场景是
-   * 「不想为每家单独开账号」。已经有 OpenAI / Google key 的人直连更划算。
+   * 放在最後：它多出一層中間商（價格與延遲都比直連略高），適合的場景是
+   * 「不想為每家單獨開賬號」。已經有 OpenAI / Google key 的人直連更划算。
    */
   {
     id: 'openrouter',
@@ -496,25 +496,25 @@ export const ASR_PROVIDERS: AsrProviderEntry[] = [
     models: OPENROUTER_MODELS,
   },
   /**
-   * ── 「协议卡」：不是某一家服务商，而是「内置清单里没有你要的那家」时用的 ──
+   * ── 「協議卡」：不是某一家服務商，而是「內建清單裡沒有你要的那家」時用的 ──
    *
-   * 起因是 issue #67：内置清单穷举不完，而自建服务（whisper.cpp / faster-whisper /
-   * FunASR）和聚合网关的地址每台机器都不一样，我们不可能替用户写进代码。
+   * 起因是 issue #67：內建清單窮舉不完，而自建服務（whisper.cpp / faster-whisper /
+   * FunASR）和聚合閘道器的地址每台機器都不一樣，我們不可能替使用者寫進程式碼。
    *
-   * **只有一张卡，协议由代码自己试出来。** 「OpenAI 兼容」在语音这块其实是两套
-   * 完全不同的协议（实测见 `dev-scripts/probe_bailian_openai_audio.py`）：
-   *   · `/audio/transcriptions`：multipart 上传文件，响应 `{"text": "..."}`。
-   *     OpenAI 自己、Groq、硅基流动、FunASR、whisper.cpp、faster-whisper 都是这套。
-   *   · `/chat/completions`：音频作为 `input_audio` 内容项塞进 messages。
-   *     百炼（qwen3-asr-flash / Omni / livetranslate）走的是这套。
+   * **只有一張卡，協議由程式碼自己試出來。** 「OpenAI 相容」在語音這塊其實是兩套
+   * 完全不同的協議（實測見 `dev-scripts/probe_bailian_openai_audio.py`）：
+   *   · `/audio/transcriptions`：multipart 上傳檔案，響應 `{"text": "..."}`。
+   *     OpenAI 自己、Groq、矽基流動、FunASR、whisper.cpp、faster-whisper 都是這套。
+   *   · `/chat/completions`：音訊作為 `input_audio` 內容項塞進 messages。
+   *     百鍊（qwen3-asr-flash / Omni / livetranslate）走的是這套。
    *
-   * 这里曾经做成两张卡、让用户自己选。否掉了：用户没办法知道自己要连的服务说哪种
-   * 协议 —— 他得去翻对方文档，或者两张卡轮流试。那是把我们的实现细节推给他承担。
-   * 而且名字上只能靠「（对话式）」这种括号区分，加上真正的 OpenAI 卡，列表里会有
-   * 三项都以「OpenAI」开头。协议探测放进 Rust（asr_openai_compat.rs），
-   * `profile.protocol` 只作为探测判不准时的手动退路。
+   * 這裡曾經做成兩張卡、讓使用者自己選。否掉了：使用者沒辦法知道自己要連的服務說哪種
+   * 協議 —— 他得去翻對方文件，或者兩張卡輪流試。那是把我們的實現細節推給他承擔。
+   * 而且名字上只能靠「（對話式）」這種括號區分，加上真正的 OpenAI 卡，列表裡會有
+   * 三項都以「OpenAI」開頭。協議探測放進 Rust（asr_openai_compat.rs），
+   * `profile.protocol` 只作為探測判不準時的手動退路。
    *
-   * 放在最后：内置卡是推荐项，这张是兜底。
+   * 放在最後：內建卡是推薦項，這張是兜底。
    */
   {
     id: 'openai_compat',
@@ -524,8 +524,8 @@ export const ASR_PROVIDERS: AsrProviderEntry[] = [
     customEndpoint: true,
     urlPlaceholder: 'http://127.0.0.1:8000/v1',
     get blurb() { return t('asrProvider.openaiCompatBlurb') },
-    // 模型名是自由文本，这里只给个常见默认值（whisper.cpp / faster-whisper
-    // 的 OpenAI 兼容服务基本都认它）。
+    // 模型名是自由文本，這裡只給個常見預設值（whisper.cpp / faster-whisper
+    // 的 OpenAI 相容服務基本都認它）。
     models: [{
       id: 'whisper-1',
       provider: 'openai_compat',
@@ -535,26 +535,26 @@ export const ASR_PROVIDERS: AsrProviderEntry[] = [
   },
 ]
 
-/** 这张卡有哪些模型（第一个是默认）。 */
+/** 這張卡有哪些模型（第一個是預設）。 */
 export function asrModelsOf(entry: AsrProviderEntry): AsrModelOption[] {
   return entry.models
 }
 
-// 模型的显示名就是它的 id，所以这里没有 asrModelLabel / asrModelShortLabel ——
-// 理由写在 AsrModelOption 上（原来那两个函数是为 label 字段服务的）。
+// 模型的顯示名就是它的 id，所以這裡沒有 asrModelLabel / asrModelShortLabel ——
+// 理由寫在 AsrModelOption 上（原來那兩個函式是為 label 欄位服務的）。
 
 /**
- * 旧 provider id → 新的（卡片 id, 模型 id）。
+ * 舊 provider id → 新的（卡片 id, 模型 id）。
  *
- * **这张表是存量配置的生命线。** 改成「一张卡 = 一个平台」之后，老 profile 里
- * `provider` 存的还是旧的分发 key（`qwen_audio_stream`、`gemini_live_transcribe`…），
- * 而那些值不再是任何卡片的 id —— 没有这张表，parseAsrProfiles 会把它们**整条丢掉**，
- * 用户的全部服务配置连密钥一起消失。
+ * **這張表是存量配置的生命線。** 改成「一張卡 = 一個平台」之後，老 profile 裡
+ * `provider` 存的還是舊的分發 key（`qwen_audio_stream`、`gemini_live_transcribe`…），
+ * 而那些值不再是任何卡片的 id —— 沒有這張表，parseAsrProfiles 會把它們**整條丟掉**，
+ * 使用者的全部服務配置連金鑰一起消失。
  *
- * `doubao` / `aliyun` 这两个是更早的别名（registry.rs 里还认），一并映射过来。
+ * `doubao` / `aliyun` 這兩個是更早的別名（registry.rs 裡還認），一併對映過來。
  *
- * 上一代 Omni 那三个旧 id 也在表里 —— 它们对应的模型现在作为选项留在千问卡里
- * （走的是同一份 asr_qwen_omni.rs），所以能原地落下来。表里没有的值才丢弃。
+ * 上一代 Omni 那三個舊 id 也在表裡 —— 它們對應的模型現在作為選項留在千問卡里
+ * （走的是同一份 asr_qwen_omni.rs），所以能原地落下來。表裡沒有的值才丟棄。
  */
 const LEGACY_PROVIDERS: Record<string, { provider: string; model: string }> = {
   doubao: { provider: 'doubao', model: 'Doubao-Seed-ASR-2.0' },
@@ -565,12 +565,12 @@ const LEGACY_PROVIDERS: Record<string, { provider: string; model: string }> = {
   qwen_realtime: { provider: 'qwen', model: 'qwen3-asr-flash-realtime' },
   qwen_omni_35_plus: { provider: 'qwen', model: 'qwen3.5-omni-plus' },
   qwen_omni_35_flash: { provider: 'qwen', model: 'qwen3.5-omni-flash' },
-  // 上一代 Omni 的三个旧 id。它们对应的模型现在作为选项留在千问卡里，
-  // 所以这些配置能落下来而不是被丢弃（早先没有它们，用户的卡直接消失）。
+  // 上一代 Omni 的三個舊 id。它們對應的模型現在作為選項留在千問卡里，
+  // 所以這些配置能落下來而不是被丟棄（早先沒有它們，使用者的卡直接消失）。
   qwen_omni_plus: { provider: 'qwen', model: 'qwen3.5-omni-plus' },
-  // 这两个指向的模型已经从目录里删掉（被百炼缩容），所以落到同族还活着的那个。
-  // 目标必须和 RETIRED_MODELS 一致 —— 两张表给出不同答案的话，同一个用户
-  // 走迁移路径和走回落路径会得到不同的模型。
+  // 這兩個指向的模型已經從目錄裡刪掉（被百鍊縮容），所以落到同族還活著的那個。
+  // 目標必須和 RETIRED_MODELS 一致 —— 兩張表給出不同答案的話，同一個使用者
+  // 走遷移路徑和走回落路徑會得到不同的模型。
   qwen_omni_flash: { provider: 'qwen', model: 'qwen3.5-omni-flash' },
   qwen_omni_turbo: { provider: 'qwen', model: 'qwen3.5-omni-flash' },
   mimo: { provider: 'mimo', model: 'mimo-v2.5-asr' },
@@ -580,28 +580,28 @@ const LEGACY_PROVIDERS: Record<string, { provider: string; model: string }> = {
   gemini_transcribe: { provider: 'google', model: 'gemini-3.5-transcribe' },
   gemini_live_transcribe: { provider: 'google', model: 'gemini-3.5-transcribe-live' },
   openrouter_transcribe: { provider: 'openrouter', model: 'openai/gpt-transcribe' },
-  // 协议卡合并前的两个 id。合并后都落到同一张卡上，模型名由用户自己填过，
-  // 这里只给个兜底值 —— 真实值在 profile.model 里，迁移不会动它。
-  // 协议交给 auto 重新探测：原来分成两张卡的时候，卡片 id 本身就是协议，
-  // 而合并后那个信息只能靠探测拿回来。
+  // 協議卡合併前的兩個 id。合併後都落到同一張卡上，模型名由使用者自己填過，
+  // 這裡只給個兜底值 —— 真實值在 profile.model 裡，遷移不會動它。
+  // 協議交給 auto 重新探測：原來分成兩張卡的時候，卡片 id 本身就是協議，
+  // 而合併後那個資訊只能靠探測拿回來。
   openai_compat_transcribe: { provider: 'openai_compat', model: 'whisper-1' },
   openai_chat_audio: { provider: 'openai_compat', model: 'qwen3-asr-flash' },
 }
 
 /**
- * 已从目录里删掉的模型 → 接替它的那个。
+ * 已從目錄裡刪掉的模型 → 接替它的那個。
  *
- * **为什么不能只靠"回落到卡片默认"。** migrateLegacyProvider 的第 3 种情形本来就会
- * 把认不出的模型名回落到该卡第一项，数据不会丢。但千问卡的第一项是纯 ASR，而这里
- * 退役的两个都是 Omni（识别 + 整理一体）—— 回落过去会把用户从「不用配 AI 服务」
- * 悄悄搬到「必须另配 AI 服务」，而他不会收到任何提示，只会发现整理效果不对了。
- * 跨语义的替换要么明确指定落点，要么就不该发生。
+ * **為什麼不能只靠"回落到卡片預設"。** migrateLegacyProvider 的第 3 種情形本來就會
+ * 把認不出的模型名回落到該卡第一項，資料不會丟。但千問卡的第一項是純 ASR，而這裡
+ * 退役的兩個都是 Omni（識別 + 整理一體）—— 回落過去會把使用者從「不用配 AI 服務」
+ * 悄悄搬到「必須另配 AI 服務」，而他不會收到任何提示，只會發現整理效果不對了。
+ * 跨語義的替換要麼明確指定落點，要麼就不該發生。
  *
- * 所以这张表只放**同族替代**：退役的 Omni → 还活着的 Omni。找不到同族替代的模型
- * 不要往这里加，让它走回落，那至少是个诚实的默认值。
+ * 所以這張表只放**同族替代**：退役的 Omni → 還活著的 Omni。找不到同族替代的模型
+ * 不要往這裡加，讓它走回落，那至少是個誠實的預設值。
  */
 const RETIRED_MODELS: Record<string, string> = {
-  // 2026-09-23：官网标「即将下线」，且实测实时端点已被缩容（超时 / 容量限流）。
+  // 2026-09-23：官網標「即將下線」，且實測即時端點已被縮容（超時 / 容量限流）。
   'qwen3-omni-flash': 'qwen3.5-omni-flash',
   'qwen-omni-turbo': 'qwen3.5-omni-flash',
 }
@@ -609,36 +609,36 @@ const RETIRED_MODELS: Record<string, string> = {
 /**
  * 把存量条目的 provider 迁移成（卡片 id, 模型 id）。
  *
- * ── 判据必须是「provider + model 这一对是否自洽」，不能只看其中一个 ──
- * 早先写成「有 model 就是新数据」，结果把用户的卡片全弄丢了：`model` 字段是**上一个
- * 版本**就加进来的（那时它表示"同实现下选哪个模型"），所以存量数据里
- * `provider='gemini_transcribe'` 配 `model='gemini-3.5-transcribe'` 是完全正常的组合 ——
- * 判成新数据后 `findAsrProvider('gemini_transcribe')` 返回 undefined，整条被丢掉。
+ * ── 判據必須是「provider + model 這一對是否自洽」，不能只看其中一個 ──
+ * 早先寫成「有 model 就是新資料」，結果把使用者的卡片全弄丟了：`model` 欄位是**上一個
+ * 版本**就加進來的（那時它表示"同實現下選哪個模型"），所以存量資料裡
+ * `provider='gemini_transcribe'` 配 `model='gemini-3.5-transcribe'` 是完全正常的組合 ——
+ * 判成新資料後 `findAsrProvider('gemini_transcribe')` 返回 undefined，整條被丟掉。
  *
- * 五种情形，顺序有讲究：
- *   1. provider 是卡片 id 且 model 属于这张卡 → 新数据，原样；
- *   2. provider 在迁移表里 → 按表迁移，但**用户选过的模型如果新卡也有就保留**
- *      （否则在 Groq 卡上选过 large-v3 的人会被打回 turbo）；
- *   3. provider 是卡片 id 且 model 是刚退役的模型 → 换成 RETIRED_MODELS 指定的替代；
- *   4. provider 是卡片 id 但 model 不认识（新建后没选、或模型下线）→ 回落该卡默认；
- *   5. 都不是 → 丢弃。
+ * 五種情形，順序有講究：
+ *   1. provider 是卡片 id 且 model 屬於這張卡 → 新資料，原樣；
+ *   2. provider 在遷移表裡 → 按表遷移，但**使用者選過的模型如果新卡也有就保留**
+ *      （否則在 Groq 卡上選過 large-v3 的人會被打回 turbo）；
+ *   3. provider 是卡片 id 且 model 是剛退役的模型 → 換成 RETIRED_MODELS 指定的替代；
+ *   4. provider 是卡片 id 但 model 不認識（新建後沒選、或模型下線）→ 回落該卡預設；
+ *   5. 都不是 → 丟棄。
  *
- * 情形 3 必须排在 4 前面，否则退役的 Omni 会先被情形 4 吃掉、落到卡片默认那个
- * 纯 ASR 模型上 —— 理由见 RETIRED_MODELS。
+ * 情形 3 必須排在 4 前面，否則退役的 Omni 會先被情形 4 吃掉、落到卡片預設那個
+ * 純 ASR 模型上 —— 理由見 RETIRED_MODELS。
  */
 function migrateLegacyProvider(
   provider: string,
   model: string,
 ): { provider: string; model: string } | null {
-  // 退役模型先换名，**必须在所有分支之前**。
+  // 退役模型先換名，**必須在所有分支之前**。
   //
-  // 踩过的坑：这段原来放在最后那个 `if (direct)` 分支里，而 `qwen` / `doubao` /
-  // `mimo` 这些值**同时**是旧分发 key 和新卡片 id —— 它们会先被下面的
-  // LEGACY_PROVIDERS 拦住并直接返回，于是退役映射对最需要它的那批配置
-  // （千问卡上的 Omni）压根不执行。测试里表现为退役 Omni 落到了 qwen3-asr-flash。
+  // 踩過的坑：這段原來放在最後那個 `if (direct)` 分支裡，而 `qwen` / `doubao` /
+  // `mimo` 這些值**同時**是舊分發 key 和新卡片 id —— 它們會先被下面的
+  // LEGACY_PROVIDERS 攔住並直接返回，於是退役對映對最需要它的那批配置
+  // （千問卡上的 Omni）壓根不執行。測試裡表現為退役 Omni 落到了 qwen3-asr-flash。
   //
-  // 换完名之后由 belongsTo 承担「替代确实还在这张卡里」的校验，所以这里不必
-  // 再自己查一遍：替代要是也没了，会照常回落，不会返回一个不存在的模型名。
+  // 換完名之後由 belongsTo 承擔「替代確實還在這張卡里」的校驗，所以這裡不必
+  // 再自己查一遍：替代要是也沒了，會照常回落，不會返回一個不存在的模型名。
   const trimmed = RETIRED_MODELS[model.trim()] ?? model.trim()
   const direct = findAsrProvider(provider)
   const belongsTo = (entry: AsrProviderEntry) =>
@@ -660,26 +660,26 @@ function migrateLegacyProvider(
 }
 
 /**
- * 旧 provider id → 它现在属于哪张卡（不认识就原样返回）。
+ * 舊 provider id → 它現在屬於哪張卡（不認識就原樣返回）。
  *
- * 给「已经自动补建过哪些」那份记账用（`cloudAsr.autoCreatedProviders`）：
- * 存量里记的是旧的分发 key，不换算的话新代码认不出来，会把用户主动删掉的卡
- * 重新补回来一次。
+ * 給「已經自動補建過哪些」那份記賬用（`cloudAsr.autoCreatedProviders`）：
+ * 存量裡記的是舊的分發 key，不換算的話新程式碼認不出來，會把使用者主動刪掉的卡
+ * 重新補回來一次。
  */
 export function asrCardIdOfLegacyProvider(provider: string): string {
   return LEGACY_PROVIDERS[provider]?.provider ?? provider
 }
 
 /**
- * 把模型清单按厂商前缀分组，供下拉的 optgroup 用。
+ * 把模型清單按廠商字首分組，供下拉的 optgroup 用。
  *
- * 只有 OpenRouter 用得上：它一张卡下有 20 多个模型、来自十来家厂商，平铺成一列
- * 找起来很费劲，而 slug 的前缀天然就是厂商名。返回 null 表示「不该分组」——
- * 别家的模型名不带 `/`（`whisper-large-v3`、`gpt-transcribe`），
- * 硬分组只会得到一个名叫空串的组。
+ * 只有 OpenRouter 用得上：它一張卡下有 20 多個模型、來自十來家廠商，平鋪成一列
+ * 找起來很費勁，而 slug 的字首天然就是廠商名。返回 null 表示「不該分組」——
+ * 別家的模型名不帶 `/`（`whisper-large-v3`、`gpt-transcribe`），
+ * 硬分組只會得到一個名叫空串的組。
  *
- * 组内保持原清单顺序（那是「什么时候选它」的推荐顺序），组的顺序按各组第一个
- * 元素在原清单里的位置 —— 这样默认模型所在的组一定排在最前面。
+ * 組內保持原清單順序（那是「什麼時候選它」的推薦順序），組的順序按各組第一個
+ * 元素在原清單裡的位置 —— 這樣預設模型所在的組一定排在最前面。
  */
 export function groupAsrModelsByVendor(
   models: AsrModelOption[],
@@ -700,16 +700,16 @@ export function findAsrProvider(id: string): AsrProviderEntry | undefined {
 }
 
 /**
- * 地区提示，**只在需要提醒时才给字**。
+ * 地區提示，**只在需要提醒時才給字**。
  *
- * `mainland_china` 刻意返回空串：内置清单里绝大多数都是国内端点，那是默认情形，
- * 每张卡上都挂一句「面向中国大陆账号」等于把噪音重复七遍，还把真正要紧的
- * 「这个要海外网络才连得上」冲淡了。availability 字段本身保留 —— 它是数据，
- * 只是这一条不值得占界面上的字。
+ * `mainland_china` 刻意返回空串：內建清單裡絕大多數都是國內端點，那是預設情形，
+ * 每張卡上都掛一句「面向中國大陸賬號」等於把噪音重複七遍，還把真正要緊的
+ * 「這個要海外網路才連得上」沖淡了。availability 欄位本身保留 —— 它是資料，
+ * 只是這一條不值得佔介面上的字。
  */
 export function asrAvailabilityLabel(entry: AsrProviderEntry): string {
-  // 地址由用户填的卡不谈地区：对面可能是 localhost，也可能是境外网关，
-  // 挂一句「需要海外网络」只会误导。
+  // 地址由使用者填的卡不談地區：對面可能是 localhost，也可能是境外閘道器，
+  // 掛一句「需要海外網路」只會誤導。
   if (entry.customEndpoint) return ''
   switch (entry.availability) {
     case 'global': return t('asrProvider.regionGlobal')
@@ -718,14 +718,14 @@ export function asrAvailabilityLabel(entry: AsrProviderEntry): string {
 }
 
 /**
- * 这次要发往的接口地址（空 = 用实现里内置的官方地址）。
+ * 這次要發往的介面地址（空 = 用實現裡內建的官方地址）。
  *
- * 闸门在**选中的那个模型**上，不在卡片上：只有标了 `supportsCustomUrl` 的模型
- * （即 HTTP 协议那些）才会返回非空值。两个理由：
- *  · 同一张卡里两种协议并存 —— 千问卡的 qwen3.8-omni-flash 是 HTTP、
- *    qwen3.5-omni-plus 是 realtime WebSocket，后者改地址没有意义；
- *  · 档案里可能残留地址（用户换过供应商 / 换过模型），残值绝不能被发出去 ——
- *    那会把音频送到一个他早就不打算用的地方。
+ * 閘門在**選中的那個模型**上，不在卡片上：只有標了 `supportsCustomUrl` 的模型
+ * （即 HTTP 協議那些）才會返回非空值。兩個理由：
+ *  · 同一張卡里兩種協議並存 —— 千問卡的 qwen3.8-omni-flash 是 HTTP、
+ *    qwen3.5-omni-plus 是 realtime WebSocket，後者改地址沒有意義；
+ *  · 檔案裡可能殘留地址（使用者換過供應商 / 換過模型），殘值絕不能被髮出去 ——
+ *    那會把音訊送到一個他早就不打算用的地方。
  */
 export function asrEndpointUrl(profile: AsrProfile): string {
   if (!resolveAsrModelOption(profile)?.supportsCustomUrl) return ''
@@ -733,10 +733,10 @@ export function asrEndpointUrl(profile: AsrProfile): string {
 }
 
 /**
- * 接口地址里的主机名，用于在卡片上区分同平台的多张卡。
+ * 介面地址裡的主機名，用於在卡片上區分同平台的多張卡。
  *
- * 用主机名而不是整条 URL：卡片标题只有一行，`http://192.168.1.9:9000/v1` 这种
- * 会把标题挤没。解析失败就原样返回（用户可能填了一半），不抛。
+ * 用主機名而不是整條 URL：卡片標題只有一行，`http://192.168.1.9:9000/v1` 這種
+ * 會把標題擠沒。解析失敗就原樣返回（使用者可能填了一半），不拋。
  */
 export function asrEndpointHost(profile: AsrProfile): string {
   const url = asrEndpointUrl(profile)
@@ -751,30 +751,30 @@ export function asrEndpointHost(profile: AsrProfile): string {
 /**
  * 同一平台下有哪些卡。
  *
- * 现在是「一张卡 = 一个平台」，所以它恒返回 0 或 1 条 —— 保留这个函数是因为
- * 那条不变量值得有断言看着（见 asrProviderCatalog.test.ts）。
+ * 現在是「一張卡 = 一個平台」，所以它恆返回 0 或 1 條 —— 保留這個函式是因為
+ * 那條不變數值得有斷言看著（見 asrProviderCatalog.test.ts）。
  */
 export function providersOfPlatform(platform: AsrPlatform): AsrProviderEntry[] {
   return ASR_PROVIDERS.filter((p) => p.platform === platform)
 }
 
-// ─────────────────────────── 检测结果 ───────────────────────────
+// ─────────────────────────── 檢測結果 ───────────────────────────
 
 /**
- * 一次识别测试的结论。
+ * 一次識別測試的結論。
  *
- * 存的是结论而不只是耗时：只有耗时的话，界面上能说出「多快」，说不出「行不行」。
- * 不可用也要留痕，否则用户点完测试、切走再回来，只看到一张和没测过一样的卡。
+ * 存的是結論而不只是耗時：只有耗時的話，介面上能說出「多快」，說不出「行不行」。
+ * 不可用也要留痕，否則使用者點完測試、切走再回來，只看到一張和沒測過一樣的卡。
  */
 export interface AsrCheck {
   ok: boolean
-  /** 测试时间戳，用来判断结论是否还新鲜 */
+  /** 測試時間戳，用來判斷結論是否還新鮮 */
   at: number
-  /** 转写这段测试音频花了多久（毫秒），只有测通才有 */
+  /** 轉寫這段測試音訊花了多久（毫秒），只有測通才有 */
   latencyMs?: number
-  /** 测试音频时长（秒）。延迟要除以它才能横向比较，所以一起存 */
+  /** 測試音訊時長（秒）。延遲要除以它才能橫向比較，所以一起存 */
   audioSec?: number
-  /** 不可用时的原因，一句话 */
+  /** 不可用時的原因，一句話 */
   reason?: string
 }
 
@@ -797,59 +797,59 @@ function parseCheck(raw: unknown): AsrCheck | undefined {
   }
 }
 
-// ─────────────────────────── 服务档案 ───────────────────────────
+// ─────────────────────────── 服務檔案 ───────────────────────────
 
 /**
- * 一份语音识别服务配置 = 选定的供应商 + 该平台需要的凭据。
+ * 一份語音識別服務配置 = 選定的供應商 + 該平台需要的憑據。
  *
- * 凭据直接挂在档案上（而不是按平台共享），这样一张卡就是一份自洽的完整配置，
- * 也才可能同时存两个账号。重复粘密钥的问题由「新建时自动沿用同平台上一份」解决。
+ * 憑據直接掛在檔案上（而不是按平台共享），這樣一張卡就是一份自洽的完整配置，
+ * 也才可能同時存兩個賬號。重複粘金鑰的問題由「新建時自動沿用同平台上一份」解決。
  */
 export interface AsrProfile {
   id: string
-  /** 供应商 id，必须是 ASR_PROVIDERS 里的一个 */
+  /** 供應商 id，必須是 ASR_PROVIDERS 裡的一個 */
   provider: string
   /**
-   * 用户给这张卡起的名字，可空。
+   * 使用者給這張卡起的名字，可空。
    *
-   * 存在的理由：同一个平台可以有多张卡（两个账号、或两个自建地址），而卡片标题
-   * 只有平台名时它们长得一模一样。这里原来是自动补「密钥末 4 位」，用户一眼就把它
-   * 认成「密钥被显示出来了」—— 那种区分方式不该由我们替他选，让他自己起名。
+   * 存在的理由：同一個平台可以有多張卡（兩個賬號、或兩個自建地址），而卡片標題
+   * 只有平台名時它們長得一模一樣。這裡原來是自動補「金鑰末 4 位」，使用者一眼就把它
+   * 認成「金鑰被顯示出來了」—— 那種區分方式不該由我們替他選，讓他自己起名。
    */
   name: string
   /**
    * 自定义接口地址。
    *
-   * 协议卡必填；内置卡**可选** —— 空着就用实现里的官方地址，填了就走用户的
-   * （中转站 / 反代很常见，尤其 OpenAI 和 Gemini）。只对选中模型标了
-   * `supportsCustomUrl` 时才会真的发出去，见 asrEndpointUrl。
+   * 協議卡必填；內建卡**可選** —— 空著就用實現裡的官方地址，填了就走使用者的
+   * （中轉站 / 反代很常見，尤其 OpenAI 和 Gemini）。只對選中模型標了
+   * `supportsCustomUrl` 時才會真的發出去，見 asrEndpointUrl。
    */
   apiUrl: string
   /**
-   * 「OpenAI 兼容」那张卡说哪种协议。其余卡片这个值无意义（协议是写死的）。
-   * 默认 `auto`，由 Rust 侧探测；两个显式值是探测判不准时的退路。
+   * 「OpenAI 相容」那張卡說哪種協議。其餘卡片這個值無意義（協議是寫死的）。
+   * 預設 `auto`，由 Rust 側探測；兩個顯式值是探測判不準時的退路。
    */
   protocol: AsrCompatProtocol
   /**
-   * 选定的模型 id（该卡 models 清单里的一个）。
+   * 選定的模型 id（該卡 models 清單裡的一個）。
    *
-   * 新写入的条目一律显式带值，见 emptyAsrProfile 上的说明。读取时空值或不认识的值
-   * 由 resolveAsrModelOption 回落到该卡默认，不会让整条配置失效。
+   * 新寫入的條目一律顯式帶值，見 emptyAsrProfile 上的說明。讀取時空值或不認識的值
+   * 由 resolveAsrModelOption 回落到該卡預設，不會讓整條配置失效。
    */
   model: string
-  /** 千问 / 小米：API Key；豆包：当前控制台代次那一份密钥 */
+  /** 千問 / 小米：API Key；豆包：當前控制台代次那一份金鑰 */
   apiKey: string
-  /** 豆包旧版控制台的 App ID */
+  /** 豆包舊版控制台的 App ID */
   appId: string
   /** 豆包控制台代次 */
   console: DoubaoConsole
-  /** 豆包另一代的密钥，切换代次时原样保留，不用重新粘 */
+  /** 豆包另一代的金鑰，切換代次時原樣保留，不用重新粘 */
   otherKey: string
-  /** 百炼业务空间 ID（流式识别需要） */
+  /** 百鍊業務空間 ID（流式識別需要） */
   workspaceId: string
-  /** Omni 模型的 System Prompt（识别与整理一体，属于这份服务的行为） */
+  /** Omni 模型的 System Prompt（識別與整理一體，屬於這份服務的行為） */
   omniPrompt: string
-  /** 上次识别测试的结论 */
+  /** 上次識別測試的結論 */
   check?: AsrCheck
 }
 
@@ -858,12 +858,12 @@ export function makeAsrProfileId(): string {
 }
 
 /**
- * 一份空白档案。provider 默认给最推荐的那张卡。
+ * 一份空白檔案。provider 預設給最推薦的那張卡。
  *
- * **model 一定显式写入**，不留空串：`parseAsrProfiles` 靠「有没有 model」区分
- * 新老数据（`qwen` / `mimo` / `doubao` 这几个值既是旧分发 key 又是新卡片 id，
- * 光看 provider 分不出来）。留空会让新建的条目被当成存量数据走迁移，
- * 于是默认模型被换成迁移表里那个 —— 用户什么都没选，模型却不是默认的那个。
+ * **model 一定顯式寫入**，不留空串：`parseAsrProfiles` 靠「有沒有 model」區分
+ * 新老資料（`qwen` / `mimo` / `doubao` 這幾個值既是舊分發 key 又是新卡片 id，
+ * 光看 provider 分不出來）。留空會讓新建的條目被當成存量資料走遷移，
+ * 於是預設模型被換成遷移表裡那個 —— 使用者什麼都沒選，模型卻不是預設的那個。
  */
 export function emptyAsrProfile(provider = ASR_PROVIDERS[0].id): AsrProfile {
   const entry = findAsrProvider(provider)
@@ -888,22 +888,22 @@ function str(v: unknown): string {
 }
 
 /**
- * 容错解析存储里的档案列表。
+ * 容錯解析儲存裡的檔案列表。
  *
- * 存储可能被手改过、也可能是更早版本写的，坏条目一律丢弃而不是让整页崩掉。
- * provider 不在内置清单里的条目也丢掉 —— 留着只会渲染出一张点不动的卡。
+ * 儲存可能被手改過、也可能是更早版本寫的，壞條目一律丟棄而不是讓整頁崩掉。
+ * provider 不在內建清單裡的條目也丟掉 —— 留著只會渲染出一張點不動的卡。
  */
 export function parseAsrProfiles(raw: unknown): AsrProfile[] {
   return parseAsrProfilesDetailed(raw).profiles
 }
 
 /**
- * 同 parseAsrProfiles，但**把解析不出来的原始条目也交回去**。
+ * 同 parseAsrProfiles，但**把解析不出來的原始條目也交回去**。
  *
- * 存在的理由是一次真实的数据损失：解析逻辑有 bug 时，被丢掉的条目会在下一次
- * 「归一化后写回」时从磁盘上永久消失 —— 用户丢的是配置连带密钥，而密钥没有第二份。
- * 调用方（loadAsrProfiles / saveAsrProfiles）拿着 orphans 原样写回存储，
- * 这样即使解析再出错，原始 JSON 也一直躺在 db 里，改好代码就能恢复。
+ * 存在的理由是一次真實的資料損失：解析邏輯有 bug 時，被丟掉的條目會在下一次
+ * 「歸一化後寫回」時從磁碟上永久消失 —— 使用者丟的是配置連帶金鑰，而金鑰沒有第二份。
+ * 呼叫方（loadAsrProfiles / saveAsrProfiles）拿著 orphans 原樣寫回儲存，
+ * 這樣即使解析再出錯，原始 JSON 也一直躺在 db 裡，改好程式碼就能恢復。
  */
 export function parseAsrProfilesDetailed(
   raw: unknown,
@@ -918,8 +918,8 @@ export function parseAsrProfilesDetailed(
       continue
     }
     const v = item as Record<string, unknown>
-    // 存量条目的 provider 是旧的分发 key，先迁移成（卡片 id, 模型 id）。
-    // 迁移不了（未知 provider）才留作 orphan —— 绝不静默删除，见上面的说明。
+    // 存量條目的 provider 是舊的分發 key，先遷移成（卡片 id, 模型 id）。
+    // 遷移不了（未知 provider）才留作 orphan —— 絕不靜默刪除，見上面的說明。
     const migrated = migrateLegacyProvider(str(v.provider), str(v.model))
     if (!migrated || !findAsrProvider(migrated.provider)) {
       orphans.push(item)
@@ -939,8 +939,8 @@ export function parseAsrProfilesDetailed(
       name: str(v.name),
       apiUrl: str(v.apiUrl),
       protocol: parseAsrCompatProtocol(v.protocol),
-      // 不在这里校验模型名：清单会变，而校验放在 resolveAsrModelOption 里，
-      // 存了个已下线的名字也只会回落到默认，不至于让整条配置被丢掉
+      // 不在這裡校驗模型名：清單會變，而校驗放在 resolveAsrModelOption 裡，
+      // 存了個已下線的名字也只會回落到預設，不至於讓整條配置被丟掉
       model,
       apiKey: str(v.apiKey),
       appId: str(v.appId),
@@ -955,11 +955,11 @@ export function parseAsrProfilesDetailed(
 }
 
 /**
- * 一份档案实际选中的那个模型（含它走哪份实现）。
+ * 一份檔案實際選中的那個模型（含它走哪份實現）。
  *
- * 不在清单里的值一律回落到该卡的默认模型，而不是原样用 —— 存量配置可能留着一个
- * 已经下线的模型名（服务商淘汰模型比我们改代码勤），照发只会换来一个含义模糊的 400。
- * 卡片本身不存在时返回 undefined，由调用方决定怎么处理。
+ * 不在清單裡的值一律回落到該卡的預設模型，而不是原樣用 —— 存量配置可能留著一個
+ * 已經下線的模型名（服務商淘汰模型比我們改程式碼勤），照發只會換來一個含義模糊的 400。
+ * 卡片本身不存在時返回 undefined，由呼叫方決定怎麼處理。
  */
 export function resolveAsrModelOption(profile: AsrProfile): AsrModelOption | undefined {
   const entry = findAsrProvider(profile.provider)
@@ -968,37 +968,37 @@ export function resolveAsrModelOption(profile: AsrProfile): AsrModelOption | und
   const picked = profile.model.trim()
   const found = models.find((m) => m.id === picked)
   if (found) return found
-  // 自定义端点的卡：模型名是用户敲的，对面挂什么模型我们无从校验，
-  // 不能回落到清单里那个默认值 —— 那等于把用户填的模型悄悄换掉。
-  // 只借用第一项的 provider（分发 key），模型名由 resolveAsrApiModel 用档案里的原值。
+  // 自定義端點的卡：模型名是使用者敲的，對面掛什麼模型我們無從校驗，
+  // 不能回落到清單裡那個預設值 —— 那等於把使用者填的模型悄悄換掉。
+  // 只借用第一項的 provider（分發 key），模型名由 resolveAsrApiModel 用檔案裡的原值。
   if (entry.customEndpoint && picked) return { ...models[0], id: picked }
   return models[0]
 }
 
-/** 一份档案实际会用哪个模型（显示与存储用的那个名字）。 */
+/** 一份檔案實際會用哪個模型（顯示與儲存用的那個名字）。 */
 export function resolveAsrModel(profile: AsrProfile): string {
   return resolveAsrModelOption(profile)?.id ?? ''
 }
 
 /**
- * 运行时 `cloudAsr.provider` 该写什么 —— 也就是 Rust 侧的分发 key。
+ * 執行時 `cloudAsr.provider` 該寫什麼 —— 也就是 Rust 側的分發 key。
  *
- * **这是卡片 id 与后端实现分离之后最容易搞错的一处。** 卡片 id 是平台
- * （`qwen`），而真正决定走哪个协议的是选中模型的 provider（`qwen_audio_stream`）。
- * 写错的表现是「换了模型但行为没变」，或者更糟：发给一个不认识这个模型的端点。
+ * **這是卡片 id 與後端實現分離之後最容易搞錯的一處。** 卡片 id 是平台
+ * （`qwen`），而真正決定走哪個協議的是選中模型的 provider（`qwen_audio_stream`）。
+ * 寫錯的表現是「換了模型但行為沒變」，或者更糟：發給一個不認識這個模型的端點。
  */
 export function resolveAsrRuntimeProvider(profile: AsrProfile): string {
   return resolveAsrModelOption(profile)?.provider ?? ''
 }
 
-/** 运行时 `cloudAsr.model` 该写什么 —— 实际发给服务端的模型名。 */
+/** 執行時 `cloudAsr.model` 該寫什麼 —— 實際發給服務端的模型名。 */
 export function resolveAsrApiModel(profile: AsrProfile): string {
   const option = resolveAsrModelOption(profile)
   if (!option) return ''
   return option.apiModel ?? option.id
 }
 
-/** 启用项归一化：指向不存在的 id 时回落到第一条 */
+/** 啟用項歸一化：指向不存在的 id 時回落到第一條 */
 export function resolveActiveAsrProfile(
   profiles: AsrProfile[],
   activeId: string,
@@ -1007,10 +1007,10 @@ export function resolveActiveAsrProfile(
 }
 
 /**
- * 档案里的豆包字段 → lib/cloudAsrCreds 的凭据结构。
+ * 檔案裡的豆包欄位 → lib/cloudAsrCreds 的憑據結構。
  *
- * 抽出来是因为两处都要用（算生效凭据、判断缺什么）。档案里只存「当前代次那把密钥」
- * 加「另一代那把」，映射时按代次还原成 consoleKey / accessToken。
+ * 抽出來是因為兩處都要用（算生效憑據、判斷缺什麼）。檔案裡只存「當前代次那把金鑰」
+ * 加「另一代那把」，對映時按代次還原成 consoleKey / accessToken。
  */
 function toDoubaoCreds(profile: AsrProfile): DoubaoCredentials {
   return {
@@ -1022,10 +1022,10 @@ function toDoubaoCreds(profile: AsrProfile): DoubaoCredentials {
 }
 
 /**
- * 算出一份档案「本次生效的凭据」。
+ * 算出一份檔案「本次生效的憑據」。
  *
- * 豆包新版控制台下 appId 必须是空串 —— Rust 侧就是靠它区分两代鉴权头，
- * 这条不变量的说明与测试在 lib/cloudAsrCreds.ts。
+ * 豆包新版控制台下 appId 必須是空串 —— Rust 側就是靠它區分兩代鑑權頭，
+ * 這條不變數的說明與測試在 lib/cloudAsrCreds.ts。
  */
 export function effectiveAsrCredentials(profile: AsrProfile): { apiKey: string; appId: string } {
   if (findAsrProvider(profile.provider)?.platform === 'doubao') {
@@ -1035,19 +1035,19 @@ export function effectiveAsrCredentials(profile: AsrProfile): { apiKey: string; 
 }
 
 /**
- * 这份档案还缺什么才能用（空串 = 齐了）。文案直接可展示。
+ * 這份檔案還缺什麼才能用（空串 = 齊了）。文案直接可展示。
  *
  * 豆包那套直接委托 describeDoubaoMissing，不再自己抄一遍：抄的那版曾经把
- * 「还没填 API Key」写成没有空格的「还没填API Key」，而同一句话会和左下角就绪指示
- * 同屏出现，差一个空格就露馅。同一句用户可见文案只该有一个出处。
+ * 「還沒填 API Key」寫成沒有空格的「還沒填API Key」，而同一句話會和左下角就緒指示
+ * 同屏出現，差一個空格就露餡。同一句使用者可見文案只該有一個出處。
  */
 export function describeAsrMissing(profile: AsrProfile): string {
   const entry = findAsrProvider(profile.provider)
   if (entry?.platform === 'doubao') {
     return describeDoubaoMissing(toDoubaoCreds(profile))
   }
-  // 协议卡：地址先于密钥。没有地址这张卡压根不知道该往哪儿发，
-  // 而自建服务很多是不校验密钥的，所以密钥在这里不是必填。
+  // 協議卡：地址先於金鑰。沒有地址這張卡壓根不知道該往哪兒發，
+  // 而自建服務很多是不校驗金鑰的，所以金鑰在這裡不是必填。
   if (resolveAsrModelOption(profile)?.requiresCustomUrl) {
     if (!profile.apiUrl.trim()) return t('asrProvider.missingUrl')
     return ''
@@ -1056,18 +1056,18 @@ export function describeAsrMissing(profile: AsrProfile): string {
 }
 
 /**
- * 卡片标题。
+ * 卡片標題。
  *
- * ⚠️ **绝不要在这里拼密钥的任何部分。** 这里原来的做法是：同平台有多张卡时补上
- * 「•• + 密钥末 4 位」当区分标记。当时的理由是两张卡只差凭据、否则长得一模一样；
- * 但用户看到的第一反应是「我的 API Key 怎么被显示出来了」—— 在一个专门用眼睛图标
- * 遮住密钥的界面里，标题上却挂着密钥的尾巴，这个自相矛盾比它解决的问题更严重。
+ * ⚠️ **絕不要在這裡拼金鑰的任何部分。** 這裡原來的做法是：同平台有多張卡時補上
+ * 「•• + 金鑰末 4 位」當區分標記。當時的理由是兩張卡只差憑據、否則長得一模一樣；
+ * 但使用者看到的第一反應是「我的 API Key 怎麼被顯示出來了」—— 在一個專門用眼睛圖示
+ * 遮住金鑰的介面裡，標題上卻掛著金鑰的尾巴，這個自相矛盾比它解決的問題更嚴重。
  *
- * 现在的区分方式，按优先级：
- *  1. 用户自己起的名字（`profile.name`）—— 他最清楚这两张卡差在哪；
- *  2. 自定义端点的主机名 —— 非机密，而且正好是自建卡之间真正的差别；
- *  3. 都没有就只显示平台名。此时两张卡靠下面那行「模型」区分，
- *     模型也相同的话让用户去起个名字，我们不替他编一个。
+ * 現在的區分方式，按優先順序：
+ *  1. 使用者自己起的名字（`profile.name`）—— 他最清楚這兩張卡差在哪；
+ *  2. 自定義端點的主機名 —— 非機密，而且正好是自建卡之間真正的差別；
+ *  3. 都沒有就只顯示平台名。此時兩張卡靠下面那行「模型」區分，
+ *     模型也相同的話讓使用者去起個名字，我們不替他編一個。
  */
 export function asrCardTitle(profile: AsrProfile, siblings: number): string {
   const named = profile.name.trim()
@@ -1079,31 +1079,31 @@ export function asrCardTitle(profile: AsrProfile, siblings: number): string {
   return host ? `${base} · ${host}` : base
 }
 
-// ─────────────────────────── 延迟分档 ───────────────────────────
+// ─────────────────────────── 延遲分檔 ───────────────────────────
 
 /**
- * 为什么不直接复用 AI 服务那套 gradeLatency：口径完全不同。
+ * 為什麼不直接複用 AI 服務那套 gradeLatency：口徑完全不同。
  *
- * 那边测的是一次极小的 LLM 往返，1 秒就算慢。这边测的是**把一段音频转写成文字**，
- * 一段 3 秒的话花 1 秒返回是正常水平。照搬阈值会把所有 ASR 服务标成「太慢」。
+ * 那邊測的是一次極小的 LLM 往返，1 秒就算慢。這邊測的是**把一段音訊轉寫成文字**，
+ * 一段 3 秒的話花 1 秒返回是正常水平。照搬閾值會把所有 ASR 服務標成「太慢」。
  *
- * 所以按 RTF（耗时 ÷ 音频时长）分档，界面上仍显示毫秒数（用户看得懂的是这个），
- * 但结论词来自 RTF —— 这样即使将来换了测试音频，档位也不会跟着漂。
+ * 所以按 RTF（耗時 ÷ 音訊時長）分檔，介面上仍顯示毫秒數（使用者看得懂的是這個），
+ * 但結論詞來自 RTF —— 這樣即使將來換了測試音訊，檔位也不會跟著漂。
  */
 export type AsrLatencyTier = 'instant' | 'fast' | 'normal' | 'slow' | 'tooSlow'
 
 export interface AsrLatencyGrade {
   tier: AsrLatencyTier
   label: string
-  /** ok = 放心用，warn = 能用但拖，bad = 不建议用于口述 */
+  /** ok = 放心用，warn = 能用但拖，bad = 不建議用於口述 */
   tone: 'ok' | 'warn' | 'bad'
 }
 
-/** RTF 分界值集中在这里，想调手感只改这一处 */
+/** RTF 分界值集中在這裡，想調手感只改這一處 */
 const RTF_THRESHOLDS = { instant: 0.15, fast: 0.3, normal: 0.5, slow: 0.8 } as const
 
 export function gradeAsrLatency(latencyMs: number, audioSec: number): AsrLatencyGrade {
-  // 音频时长缺失或不合理时不硬猜档位，只说「已测通」，避免给出一个凭空的结论
+  // 音訊時長缺失或不合理時不硬猜檔位，只說「已測通」，避免給出一個憑空的結論
   if (!Number.isFinite(audioSec) || audioSec <= 0) {
     return { tier: 'normal', label: t('grade.tested'), tone: 'ok' }
   }

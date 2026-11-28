@@ -1,4 +1,4 @@
-// 供应商注册表 — Tauri commands 入口
+// 供應商登錄檔 — Tauri commands 入口
 
 use super::types::*;
 use super::{
@@ -39,18 +39,18 @@ fn ensure_local_ollama_only(provider: &str, api_url: &str) -> Result<(), String>
     Ok(())
 }
 
-/// 云端 AI 校对（Tauri command）
+/// 雲端 AI 校對（Tauri command）
 #[tauri::command]
 pub async fn cloud_polish(request: CloudPolishRequest) -> Result<AiResult, String> {
     let config = &request.ai_config;
     // [自訂] S34／S42：先過本機 Ollama 守衛，不符合就不連線。
     ensure_local_ollama_only(&config.provider, &config.api_url)?;
     match config.provider.as_str() {
-        // Groq 与智谱都是标准的 OpenAI 兼容 chat/completions，直接复用通用实现，
-        // 不需要单独的文件（base_url 已带版本段 /v1、/v4，normalize_base_url 会原样保留）。
+        // Groq 與智譜都是標準的 OpenAI 相容 chat/completions，直接複用通用實現，
+        // 不需要單獨的檔案（base_url 已帶版本段 /v1、/v4，normalize_base_url 會原樣保留）。
         //
-        // ⚠️ 这个清单是白名单：前端 AI_PROVIDERS 里新增一家却漏了这里，用户会拿到
-        // 「Unknown AI provider: xxx」，而那句话看不出问题在路由层。两处必须一起改。
+        // ⚠️ 這個清單是白名單：前端 AI_PROVIDERS 裡新增一家卻漏了這裡，使用者會拿到
+        // 「Unknown AI provider: xxx」，而那句話看不出問題在路由層。兩處必須一起改。
         //
         // [自訂] S34／S22 已註解停用雲端 AI 分支（含 provider 名稱 "deepseek"）：
         // "openai_compat" | "deepseek" | "doubao" | "qwen" | "mimo" | "groq" | "zhipu"
@@ -85,14 +85,14 @@ fn finalize_polish(mut result: AiResult) -> AiResult {
     result
 }
 
-/// 测试 AI 连接（Tauri command）
+/// 測試 AI 連線（Tauri command）
 #[tauri::command]
 pub async fn test_ai_connection(config: AiProviderConfig) -> Result<TestResult, String> {
     // [自訂] S20／S34：「檢查連線」同樣只允許本機 Ollama，不會把金鑰送到雲端。
     ensure_local_ollama_only(&config.provider, &config.api_url)?;
     match config.provider.as_str() {
-        // 与 cloud_polish 的清单必须一致：只加一处会出现「测试通了但校对报未知供应商」
-        // 或者反过来，两种都很难从错误信息看出是路由问题。
+        // 與 cloud_polish 的清單必須一致：只加一處會出現「測試通了但校對報未知供應商」
+        // 或者反過來，兩種都很難從錯誤資訊看出是路由問題。
         // [自訂] S34／S22 已註解停用雲端 AI 分支：
         // "openai_compat" | "deepseek" | "doubao" | "qwen" | "mimo" | "groq" | "zhipu"
         // | "openrouter" => {
@@ -106,10 +106,10 @@ pub async fn test_ai_connection(config: AiProviderConfig) -> Result<TestResult, 
     }
 }
 
-/// 同 cloud_transcribe，但音频以原始 PCM 字节发过来（见 ipc_body）。
+/// 同 cloud_transcribe，但音訊以原始 PCM 位元組發過來（見 ipc_body）。
 ///
-/// 各家接口本身要 base64（JSON 请求体），所以在这里转：Rust 转 10 MB 是几毫秒，
-/// 网页里那个逐字节拼字符串的转码要 0.7 秒，还跑在主窗主线程上。
+/// 各家介面本身要 base64（JSON 請求體），所以在這裡轉：Rust 轉 10 MB 是幾毫秒，
+/// 網頁裡那個逐位元組拼字串的轉碼要 0.7 秒，還跑在主窗主執行緒上。
 #[tauri::command]
 pub async fn cloud_transcribe_raw(request: tauri::ipc::Request<'_>) -> Result<AsrResult, String> {
     use base64::Engine;
@@ -118,7 +118,7 @@ pub async fn cloud_transcribe_raw(request: tauri::ipc::Request<'_>) -> Result<As
     cloud_transcribe(meta).await
 }
 
-/// 云端 ASR 转写（Tauri command）
+/// 雲端 ASR 轉寫（Tauri command）
 #[tauri::command]
 pub async fn cloud_transcribe(request: CloudTranscribeRequest) -> Result<AsrResult, String> {
     let config = &request.asr_config;
@@ -150,9 +150,9 @@ pub async fn cloud_transcribe(request: CloudTranscribeRequest) -> Result<AsrResu
             )
             .await
         }
-        // qwen3-asr-flash-realtime 关掉实时字幕、或流式没连上时的录完再发。
-        // ⚠️ 别并回上面那个分支：asr_qwen 的模型写死 qwen3-asr-flash，用户选 realtime
-        // 却被另一个模型识别、计费，界面上看不出来（2026-10 用户反馈后才发现）。
+        // qwen3-asr-flash-realtime 關掉即時字幕、或流式沒連上時的錄完再發。
+        // ⚠️ 別並回上面那個分支：asr_qwen 的模型寫死 qwen3-asr-flash，使用者選 realtime
+        // 卻被另一個模型識別、計費，介面上看不出來（2026-10 使用者反饋後才發現）。
         "qwen_realtime" => {
             asr_qwen_realtime::transcribe(
                 &request.audio_b64,
@@ -163,8 +163,8 @@ pub async fn cloud_transcribe(request: CloudTranscribeRequest) -> Result<AsrResu
             .await
         }
         // Qwen-Audio-ASR-Flash 流式（3.0 / 3.1 共用，具体哪代看 extra.model）：
-        // 关掉实时字幕、以及设置页的识别测试都走这条一次性路径。
-        // 用的仍是同一个 duplex 协议，只是整段音频推完再收结果。
+        // 關掉即時字幕、以及設定頁的識別測試都走這條一次性路徑。
+        // 用的仍是同一個 duplex 協議，只是整段音訊推完再收結果。
         "qwen_audio_stream" => {
             asr_qwen_audio_stream::transcribe(
                 &request.audio_b64,
@@ -192,16 +192,16 @@ pub async fn cloud_transcribe(request: CloudTranscribeRequest) -> Result<AsrResu
             )
             .await
         }
-        // Groq 与 OpenAI 官方共用一份 /audio/transcriptions 实现，
-        // 具体打哪个域名、用哪个默认模型由 asr_groq::endpoint_for 按 provider 分。
+        // Groq 與 OpenAI 官方共用一份 /audio/transcriptions 實現，
+        // 具體打哪個域名、用哪個預設模型由 asr_groq::endpoint_for 按 provider 分。
         //
-        // openai_live_transcribe 也走这里：那是它**关掉实时字幕**时的路径。
-        // 流式模型（gpt-live-transcribe）在文件端点上不存在，所以 endpoint_for 给它
-        // 单独一档，把模型换成 gpt-transcribe —— 用 WebSocket 传一段已经录完的音频
-        // 没有任何好处，一次 HTTP 更简单也更快。
+        // openai_live_transcribe 也走這裡：那是它**關掉即時字幕**時的路徑。
+        // 流式模型（gpt-live-transcribe）在檔案端點上不存在，所以 endpoint_for 給它
+        // 單獨一檔，把模型換成 gpt-transcribe —— 用 WebSocket 傳一段已經錄完的音訊
+        // 沒有任何好處，一次 HTTP 更簡單也更快。
         //
-        // openai_compat_transcribe 是同一套协议、地址由用户填的那一档
-        // （自建 whisper.cpp / faster-whisper / FunASR、聚合网关）。
+        // openai_compat_transcribe 是同一套協議、地址由使用者填的那一檔
+        // （自建 whisper.cpp / faster-whisper / FunASR、聚合閘道器）。
         "groq_whisper" | "openai_transcribe" | "openai_live_transcribe"
         | "openai_compat_transcribe" => {
             asr_groq::transcribe(
@@ -212,8 +212,8 @@ pub async fn cloud_transcribe(request: CloudTranscribeRequest) -> Result<AsrResu
             )
             .await
         }
-        // 「OpenAI 兼容」那张卡：协议由 asr_openai_compat 探测后再分发到上下两组之一。
-        // 用户在设置里手动指定过协议时它直接照办，不探测。
+        // 「OpenAI 相容」那張卡：協議由 asr_openai_compat 探測後再分發到上下兩組之一。
+        // 使用者在設定裡手動指定過協議時它直接照辦，不探測。
         "openai_compat" => {
             asr_openai_compat::transcribe(
                 &request.audio_b64,
@@ -223,10 +223,10 @@ pub async fn cloud_transcribe(request: CloudTranscribeRequest) -> Result<AsrResu
             )
             .await
         }
-        // chat/completions + input_audio 那一套。**与上面那组不是同一个协议**，
-        // 别看着都叫「OpenAI 兼容」就并过去（地址、请求体、响应形状全不一样）。
-        // qwen_chat_audio 地址内置为百炼（qwen3.8-omni-flash 走这条）；
-        // openai_chat_audio 是 asr_openai_compat 分发下来的内部 key。
+        // chat/completions + input_audio 那一套。**與上面那組不是同一個協議**，
+        // 別看著都叫「OpenAI 相容」就並過去（地址、請求體、響應形狀全不一樣）。
+        // qwen_chat_audio 地址內建為百鍊（qwen3.8-omni-flash 走這條）；
+        // openai_chat_audio 是 asr_openai_compat 分發下來的內部 key。
         "qwen_chat_audio" | "openai_chat_audio" | "openai_chat_audio_standard" => {
             asr_openai_chat_audio::transcribe(
                 &request.audio_b64,
@@ -236,7 +236,7 @@ pub async fn cloud_transcribe(request: CloudTranscribeRequest) -> Result<AsrResu
             )
             .await
         }
-        // Gemini 同理：流式那张卡关掉字幕就走文件转写，模型换回 gemini-3.5-transcribe。
+        // Gemini 同理：流式那張卡關掉字幕就走檔案轉寫，模型換回 gemini-3.5-transcribe。
         "gemini_transcribe" | "gemini_live_transcribe" => {
             asr_gemini::transcribe(
                 &request.audio_b64,
@@ -246,9 +246,9 @@ pub async fn cloud_transcribe(request: CloudTranscribeRequest) -> Result<AsrResu
             )
             .await
         }
-        // OpenRouter 是路由层：一把 key 通往多家 STT 模型，具体哪家由模型 slug 决定。
-        // 它自己的 JSON 形态（input_audio + base64），不是 multipart —— 别并进上面
-        // asr_groq 那一组，理由见 asr_openrouter.rs 的文件头。
+        // OpenRouter 是路由層：一把 key 通往多家 STT 模型，具體哪家由模型 slug 決定。
+        // 它自己的 JSON 形態（input_audio + base64），不是 multipart —— 別並進上面
+        // asr_groq 那一組，理由見 asr_openrouter.rs 的檔案頭。
         "openrouter_transcribe" => {
             asr_openrouter::transcribe(
                 &request.audio_b64,
@@ -265,31 +265,31 @@ pub async fn cloud_transcribe(request: CloudTranscribeRequest) -> Result<AsrResu
     }
 }
 
-/// 上面那个 `cloud_transcribe` 的 match 认识的全部 key，**从它的源码里读出来**。
+/// 上面那個 `cloud_transcribe` 的 match 認識的全部 key，**從它的原始碼裡讀出來**。
 ///
-/// 存在的理由是给 `capabilities.rs` 的测试当对照：热词能力声明必须覆盖每一个分发
-/// key，漏一个就会把「我们没声明」显示成「这家不支持热词」。
+/// 存在的理由是給 `capabilities.rs` 的測試當對照：熱詞能力宣告必須覆蓋每一個分發
+/// key，漏一個就會把「我們沒宣告」顯示成「這家不支援熱詞」。
 ///
-/// ## 为什么不是一份手写清单
+/// ## 為什麼不是一份手寫清單
 ///
-/// 原来这里是手抄的 `&["doubao", "doubao_v2", …]`。那样写的问题是**它和真实分发之间
-/// 没有任何关系**：改 `cloud_transcribe` 的 match 而不动这份清单，「声明与分发一致」
-/// 那条测试照样全绿 —— 它比对的是两份手写副本，测的是"我抄得一致吗"，
-/// 不是"声明覆盖了真实分发吗"。新增和删除分支都漏得掉。
+/// 原來這裡是手抄的 `&["doubao", "doubao_v2", …]`。那樣寫的問題是**它和真實分發之間
+/// 沒有任何關係**：改 `cloud_transcribe` 的 match 而不動這份清單，「宣告與分發一致」
+/// 那條測試照樣全綠 —— 它比對的是兩份手寫副本，測的是"我抄得一致嗎"，
+/// 不是"宣告覆蓋了真實分發嗎"。新增和刪除分支都漏得掉。
 ///
-/// 所以改成扫源码。Rust 没有反射，但 `include_str!` 拿得到本文件的内容，而 match 臂
-/// 的形状在 rustfmt 下是稳定的（臂头 trim 后以 `"` 开头，续行以 `|` 开头）。
+/// 所以改成掃原始碼。Rust 沒有反射，但 `include_str!` 拿得到本檔案的內容，而 match 臂
+/// 的形狀在 rustfmt 下是穩定的（臂頭 trim 後以 `"` 開頭，續行以 `|` 開頭）。
 ///
-/// ## 它坏掉的时候不会静默
+/// ## 它壞掉的時候不會靜默
 ///
-/// 扫描器的任何失效都会让 key 集合变得不对（多抓、少抓、空集），而调用方做的是
-/// **集合相等**断言 —— 一律当场红。这是选它而不是选"宏生成 match"的原因：
-/// 后者要把这段带大量注释的 match 塞进宏，可读性代价远大于收益。
+/// 掃描器的任何失效都會讓 key 集合變得不對（多抓、少抓、空集），而呼叫方做的是
+/// **集合相等**斷言 —— 一律當場紅。這是選它而不是選"宏生成 match"的原因：
+/// 後者要把這段帶大量註釋的 match 塞進宏，可讀性代價遠大於收益。
 #[cfg(test)]
 pub fn dispatch_keys_for_test() -> Vec<&'static str> {
     let keys = match_arm_keys(fn_body(include_str!("registry.rs"), CLOUD_TRANSCRIBE_SIGNATURE));
-    // 扫描器自己活着的信号。真实 match 有十几条臂，抓到个位数只可能是扫描逻辑坏了
-    // （比如 rustfmt 换了臂头缩进风格），这时要修的是扫描器，不是声明清单。
+    // 掃描器自己活著的訊號。真實 match 有十幾條臂，抓到個位數只可能是掃描邏輯壞了
+    // （比如 rustfmt 換了臂頭縮排風格），這時要修的是掃描器，不是宣告清單。
     assert!(
         keys.len() >= 10,
         "从 cloud_transcribe 源码里只抓到 {} 个分发 key，扫描逻辑多半已经失效：{:?}",
@@ -299,18 +299,18 @@ pub fn dispatch_keys_for_test() -> Vec<&'static str> {
     keys
 }
 
-/// 刻意用 `concat!` 拼出来而不是写成一整个字面量：`fn_body` 找的是**第一次**出现，
-/// 而这行常量定义本身也在同一个文件里。写全了就等于在源码里埋下第二个匹配点，
-/// 哪天这行挪到 `cloud_transcribe` 上面去，截出来的就是这行所在的位置。
+/// 刻意用 `concat!` 拼出來而不是寫成一整個字面量：`fn_body` 找的是**第一次**出現，
+/// 而這行常量定義本身也在同一個檔案裡。寫全了就等於在原始碼裡埋下第二個匹配點，
+/// 哪天這行挪到 `cloud_transcribe` 上面去，截出來的就是這行所在的位置。
 #[cfg(test)]
-// 带上左括号：同文件里还有 cloud_transcribe_raw，只按前缀找会先找到它。
+// 帶上左括號：同檔案裡還有 cloud_transcribe_raw，只按字首找會先找到它。
 const CLOUD_TRANSCRIBE_SIGNATURE: &str = concat!("pub async fn ", "cloud_transcribe", "(");
 
-/// 截出某个顶层函数的源码片段。
+/// 截出某個頂層函式的原始碼片段。
 ///
-/// 结束判据是**顶格的 `}`**（`"\n}"`），不是花括号配对计数：顶层 `fn` 的收尾花括号
-/// 在第 0 列，而函数体内部的每一个 `}` 都有缩进。计数法会被字符串字面量里的花括号
-/// （这个函数体里就有 `format!("… \"{}\" …")`）带偏，判据反而更脆。
+/// 結束判據是**頂格的 `}`**（`"\n}"`），不是花括號配對計數：頂層 `fn` 的收尾花括號
+/// 在第 0 列，而函式體內部的每一個 `}` 都有縮排。計數法會被字串字面量裡的花括號
+/// （這個函式體裡就有 `format!("… \"{}\" …")`）帶偏，判據反而更脆。
 #[cfg(test)]
 fn fn_body<'a>(source: &'a str, signature: &str) -> &'a str {
     let start = source
@@ -321,31 +321,31 @@ fn fn_body<'a>(source: &'a str, signature: &str) -> &'a str {
     &rest[..end]
 }
 
-/// 从一段源码里提取 match 臂上的字符串字面量 key。
+/// 從一段原始碼裡提取 match 臂上的字串字面量 key。
 ///
-/// 只认「trim 后以 `"` 或 `|` 开头、直到出现 `=>`」的行序列，所以：
+/// 只認「trim 後以 `"` 或 `|` 開頭、直到出現 `=>`」的行序列，所以：
 ///   · `"qwen" | "aliyun" => {` —— 一行抓两个；
-///   · 臂头换行写的（`"groq_whisper" | …` 换行后 `| "openai_compat_transcribe" => {`）
-///     靠累积缓冲抓全；
-///   · `other => Err(…)` 那条兜底臂不以引号开头，不会被抓（它不是一个分发 key）；
-///   · 臂体里恰好顶行写着字符串的（`"connect_failed",`）会进缓冲，但它后面那行不以
-///     引号或 `|` 开头，缓冲随即清空，不会被误算成 key。
+///   · 臂頭換行寫的（`"groq_whisper" | …` 換行後 `| "openai_compat_transcribe" => {`）
+///     靠累積緩衝抓全；
+///   · `other => Err(…)` 那條兜底臂不以引號開頭，不會被抓（它不是一個分發 key）；
+///   · 臂體裡恰好頂行寫著字串的（`"connect_failed",`）會進緩衝，但它後面那行不以
+///     引號或 `|` 開頭，緩衝隨即清空，不會被誤算成 key。
 #[cfg(test)]
 fn match_arm_keys<'a>(source: &'a str) -> Vec<&'a str> {
     let mut keys: Vec<&'a str> = Vec::new();
-    // 攒的是行切片而不是拼接 String：这样提取出来的 key 天然借着原文的生命周期，
-    // 不需要为了还原它再回原文查一次。
+    // 攢的是行切片而不是拼接 String：這樣提取出來的 key 天然藉著原文的生命週期，
+    // 不需要為了還原它再回原文查一次。
     let mut head: Vec<&'a str> = Vec::new();
     for raw in source.lines() {
-        // 剥行注释：注释里提到别家 provider 名是常事（这个 match 的注释里就有），
-        // 不剥会误抓。代价是函数体里不能有含 `//` 的字符串字面量（目前没有），
-        // 真有的话结果是少抓一个 key —— 调用方的集合相等断言会红，不会静默。
+        // 剝行註釋：註釋裡提到別家 provider 名是常事（這個 match 的註釋裡就有），
+        // 不剝會誤抓。代價是函式體裡不能有含 `//` 的字串字面量（目前沒有），
+        // 真有的話結果是少抓一個 key —— 呼叫方的集合相等斷言會紅，不會靜默。
         let line = match raw.find("//") {
             Some(at) => &raw[..at],
             None => raw,
         };
         let line = line.trim();
-        // 空行（含被剥空的纯注释行）既不累积也不打断：臂头中间插一行注释仍能抓全。
+        // 空行（含被剝空的純註釋行）既不累積也不打斷：臂頭中間插一行註釋仍能抓全。
         if line.is_empty() {
             continue;
         }
@@ -353,7 +353,7 @@ fn match_arm_keys<'a>(source: &'a str) -> Vec<&'a str> {
             head.clear();
             continue;
         }
-        // `=>` 之前的部分才是臂头，之后是臂体（`"key" => Ok(…)` 那种单行臂）。
+        // `=>` 之前的部分才是臂頭，之後是臂體（`"key" => Ok(…)` 那種單行臂）。
         let (fragment, complete) = match line.find("=>") {
             Some(at) => (&line[..at], true),
             None => (line, false),
@@ -368,7 +368,7 @@ fn match_arm_keys<'a>(source: &'a str) -> Vec<&'a str> {
     keys
 }
 
-/// 取出一段文本里所有双引号包住的内容。
+/// 取出一段文本里所有雙引號包住的內容。
 #[cfg(test)]
 fn quoted_literals<'a>(text: &'a str) -> Vec<&'a str> {
     let mut out = Vec::new();
@@ -384,7 +384,7 @@ fn quoted_literals<'a>(text: &'a str) -> Vec<&'a str> {
     out
 }
 
-/// 测试 ASR 连接（Tauri command）
+/// 測試 ASR 連線（Tauri command）
 #[tauri::command]
 pub async fn test_asr_connection(config: AsrProviderConfig) -> Result<TestResult, String> {
     match config.provider.as_str() {
@@ -404,9 +404,9 @@ pub async fn test_asr_connection(config: AsrProviderConfig) -> Result<TestResult
         "openai_compat" => Ok(asr_openai_compat::test_connection(&config).await),
         "gemini_transcribe" => Ok(asr_gemini::test_connection(&config).await),
         "openrouter_transcribe" => Ok(asr_openrouter::test_connection(&config).await),
-        // 流式那两家的连通性测试打的是**流式那条连接**（而不是它们回落用的 HTTP）：
-        // 这个命令要回答的是"这份配置能不能用"，而它们平时用的就是 WebSocket。
-        // HTTP 那条路由设置页的识别测试覆盖（见 cloud_transcribe 的分支）。
+        // 流式那兩家的連通性測試打的是**流式那條連線**（而不是它們回落用的 HTTP）：
+        // 這個命令要回答的是"這份配置能不能用"，而它們平時用的就是 WebSocket。
+        // HTTP 那條路由設定頁的識別測試覆蓋（見 cloud_transcribe 的分支）。
         "openai_live_transcribe" => Ok(asr_openai_realtime::test_connection(&config).await),
         "gemini_live_transcribe" => Ok(asr_gemini_live::test_connection(&config).await),
         other => Err(error_protocol::encode(
@@ -431,14 +431,14 @@ mod tests {
         assert_eq!(result.elapsed_ms, 7);
     }
 
-    /// 一段人造的分发函数，形状覆盖真实 match 里出现过的每一种臂。
+    /// 一段人造的分發函式，形狀覆蓋真實 match 裡出現過的每一種臂。
     ///
-    /// 用人造源码而不是真实源码来验扫描器本身：真实源码会变，而"删一条臂就该少一个
-    /// key"这件事必须在一个可控的输入上断言，否则测试会跟着业务改动一起漂。
+    /// 用人造原始碼而不是真實原始碼來驗掃描器本身：真實原始碼會變，而"刪一條臂就該少一個
+    /// key"這件事必須在一個可控的輸入上斷言，否則測試會跟著業務改動一起漂。
     const FAKE_DISPATCH: &str = r#"pub async fn fake_dispatch(x: &str) -> Result<(), String> {
     match x {
         "alpha" => Ok(()),
-        // 注释里提到 "ghost" 是常事，不能被当成分发 key
+        // 註釋裡提到 "ghost" 是常事，不能被當成分發 key
         "beta" | "gamma" => Ok(()),
         "delta"
         | "epsilon" => Ok(()),
@@ -454,7 +454,7 @@ mod tests {
         match_arm_keys(fn_body(source, "pub async fn fake_dispatch"))
     }
 
-    /// 扫描器要认得真实 match 里出现过的全部臂形状，并且只认臂头。
+    /// 掃描器要認得真實 match 裡出現過的全部臂形狀，並且只認臂頭。
     #[test]
     fn the_scanner_handles_every_arm_shape_and_nothing_else() {
         assert_eq!(
@@ -463,11 +463,11 @@ mod tests {
         );
     }
 
-    /// 注释里的 provider 名不能被抓走。
+    /// 註釋裡的 provider 名不能被抓走。
     ///
-    /// 这不是假想：`cloud_transcribe` 的注释里就写着别家的 key（"openai_compat_transcribe
-    /// 是同一套协议…"）。不剥注释的话对照集合会凭空多出几个，而多出来的那几个
-    /// 会让「声明清单」被迫去声明不存在的分发分支。
+    /// 這不是假想：`cloud_transcribe` 的註釋裡就寫著別家的 key（"openai_compat_transcribe
+    /// 是同一套協議…"）。不剝註釋的話對照集合會憑空多出幾個，而多出來的那幾個
+    /// 會讓「宣告清單」被迫去宣告不存在的分發分支。
     #[test]
     fn the_scanner_ignores_provider_names_inside_comments() {
         assert!(!fake_keys(FAKE_DISPATCH).contains(&"ghost"));
@@ -478,14 +478,14 @@ mod tests {
     fn the_scanner_skips_the_fallback_arm_and_arm_bodies() {
         // `other => Err(…)` 不是一个 provider
         assert!(!fake_keys(FAKE_DISPATCH).contains(&"other"));
-        // `"connect_failed"` 顶行写在臂体里，形状上很像臂头
+        // `"connect_failed"` 頂行寫在臂體裡，形狀上很像臂頭
         assert!(!fake_keys(FAKE_DISPATCH).contains(&"connect_failed"));
     }
 
-    /// **删掉一条分发分支，对照集合必须立刻少掉那些 key。**
+    /// **刪掉一條分發分支，對照集合必須立刻少掉那些 key。**
     ///
-    /// 这是审核指出的那个洞：原来的对照是另一份手写清单，删掉真实分支而保留清单，
-    /// 「声明与分发一致」那条测试照样绿。现在对照来自源码，删除是可见的。
+    /// 這是稽核指出的那個洞：原來的對照是另一份手寫清單，刪掉真實分支而保留清單，
+    /// 「宣告與分發一致」那條測試照樣綠。現在對照來自原始碼，刪除是可見的。
     #[test]
     fn removing_a_dispatch_branch_shrinks_the_reference_set() {
         let without = FAKE_DISPATCH.replace("        \"beta\" | \"gamma\" => Ok(()),\n", "");
@@ -497,10 +497,10 @@ mod tests {
         assert_eq!(keys, vec!["alpha", "delta", "epsilon"]);
     }
 
-    /// **新增一条分发分支，对照集合必须立刻多出那个 key。**
+    /// **新增一條分發分支，對照集合必須立刻多出那個 key。**
     ///
-    /// 配合 `capabilities.rs` 的集合相等断言，效果是：加一家 provider 只改
-    /// `cloud_transcribe` 而忘了声明热词行为，测试当场红。
+    /// 配合 `capabilities.rs` 的集合相等斷言，效果是：加一家 provider 只改
+    /// `cloud_transcribe` 而忘了宣告熱詞行為，測試當場紅。
     #[test]
     fn adding_a_dispatch_branch_grows_the_reference_set() {
         let with = FAKE_DISPATCH.replace(
@@ -511,23 +511,23 @@ mod tests {
         assert!(fake_keys(&with).contains(&"zeta"));
     }
 
-    /// 真实源码上的行为锚点。
+    /// 真實原始碼上的行為錨點。
     ///
-    /// 刻意**不写成"等于某份清单"** —— 那就又变成手抄副本了。这里只钉三件
-    /// 扫描器容易做错的事：跨行臂头要抓全、单 key 臂要抓到、臂体里的字符串不能混进来。
+    /// 刻意**不寫成"等於某份清單"** —— 那就又變成手抄副本了。這裡只釘三件
+    /// 掃描器容易做錯的事：跨行臂頭要抓全、單 key 臂要抓到、臂體裡的字串不能混進來。
     #[test]
     fn the_real_dispatch_table_is_read_from_source() {
         let keys = dispatch_keys_for_test();
-        // 跨行臂头：这个 key 写在 `| "openai_compat_transcribe" => {` 那行的续行上
+        // 跨行臂頭：這個 key 寫在 `| "openai_compat_transcribe" => {` 那行的續行上
         assert!(
             keys.contains(&"openai_compat_transcribe"),
             "跨行写的臂头没抓全：{keys:?}",
         );
-        // 单 key 臂
+        // 單 key 臂
         assert!(keys.contains(&"openai_compat"), "{keys:?}");
         // 臂体里的字符串不是分发 key
         assert!(!keys.contains(&"connect_failed"), "{keys:?}");
-        // 同一个 key 不该被抓两次（集合相等断言会因为重复项失败，先在这里定性）
+        // 同一個 key 不該被抓兩次（集合相等斷言會因為重複項失敗，先在這裡定性）
         let mut sorted = keys.clone();
         sorted.sort_unstable();
         let before = sorted.len();

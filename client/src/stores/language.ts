@@ -1,9 +1,9 @@
 /**
- * 界面语言状态管理
- * 负责语言偏好的持久化（存到 settings）和初始化，形状对齐 stores/theme.ts。
+ * 介面語言狀態管理
+ * 負責語言偏好的持久化（存到 settings）和初始化，形狀對齊 stores/theme.ts。
  *
- * ⚠️ 这里管的是**界面文字**。识别语种是另外三个东西（localAsr.language、
- * server.language、Preset 的输出语种），改语言不动它们，也不要在这里联动。
+ * ⚠️ 這裡管的是**介面文字**。識別語種是另外三個東西（localAsr.language、
+ * server.language、Preset 的輸出語種），改語言不動它們，也不要在這裡聯動。
  */
 import * as bridge from '@/services/bridge'
 import { getSetting, setSetting } from '@/services/store'
@@ -20,11 +20,11 @@ import {
 const LANGUAGE_SETTING_KEY = 'ui.language'
 
 /**
- * 系统显示语言。优先问 Rust —— 托盘菜单用的是同一个判定，
- * 走同一个来源才不会出现「托盘中文、界面英文」。
+ * 系統顯示語言。優先問 Rust —— 托盤選單用的是同一個判定，
+ * 走同一個來源才不會出現「托盤中文、介面英文」。
  *
- * 兜底才用 `navigator.language`：命令不可用（如纯浏览器里跑 vitest）时
- * 总比硬编码一个语言好。
+ * 兜底才用 `navigator.language`：命令不可用（如純瀏覽器裡跑 vitest）時
+ * 總比硬編碼一個語言好。
  */
 async function detectSystemLocale(): Promise<Locale> {
   try {
@@ -35,15 +35,15 @@ async function detectSystemLocale(): Promise<Locale> {
   }
 }
 
-/** 把偏好解析成真正要用的语言。 */
+/** 把偏好解析成真正要用的語言。 */
 async function resolvePreference(preference: LanguagePreference): Promise<Locale> {
   return preference === 'auto' ? detectSystemLocale() : preference
 }
 
 /**
- * 初始化界面语言：读偏好 → 解析 → 应用。
+ * 初始化介面語言：讀偏好 → 解析 → 應用。
  *
- * 必须在首帧渲染之前 await（见 main.tsx），否则会先闪一帧默认语言再跳。
+ * 必須在首幀渲染之前 await（見 main.tsx），否則會先閃一幀預設語言再跳。
  */
 export async function initLanguage(): Promise<Locale> {
   const stored = await getSetting<unknown>(LANGUAGE_SETTING_KEY, 'auto')
@@ -56,8 +56,8 @@ export async function initLanguage(): Promise<Locale> {
 }
 
 /**
- * 只在键从未写入时落一次地区相关默认值；已有设置（包括空字符串）绝不覆盖。
- * 这一步必须在 initLanguage 之后调用，不能用尚未解析的 `auto` 偏好来猜地区。
+ * 只在鍵從未寫入時落一次地區相關預設值；已有設定（包括空字串）絕不覆蓋。
+ * 這一步必須在 initLanguage 之後呼叫，不能用尚未解析的 `auto` 偏好來猜地區。
  */
 export async function initLocaleDefaults(locale: Locale): Promise<void> {
   const defaults: Record<string, string> = {
@@ -75,7 +75,7 @@ export async function initLocaleDefaults(locale: Locale): Promise<void> {
   }))
 }
 
-/** 切换语言并持久化。传 'auto' 表示重新跟随系统。 */
+/** 切換語言並持久化。傳 'auto' 表示重新跟隨系統。 */
 export async function switchLanguage(preference: LanguagePreference): Promise<Locale> {
   const normalized = normalizePreference(preference)
   const locale = await resolvePreference(normalized)
@@ -84,12 +84,12 @@ export async function switchLanguage(preference: LanguagePreference): Promise<Lo
   return locale
 }
 
-/** 读回持久化的偏好（可能是 'auto'）；设置页要用它显示当前选中项。 */
+/** 讀回持久化的偏好（可能是 'auto'）；設定頁要用它顯示當前選中項。 */
 export async function getLanguagePreference(): Promise<LanguagePreference> {
   return normalizePreference(await getSetting(LANGUAGE_SETTING_KEY, 'auto'))
 }
 
-/** 当前实际生效的语言（永远是具体值，不会是 'auto'）。 */
+/** 當前實際生效的語言（永遠是具體值，不會是 'auto'）。 */
 export function getActiveLanguage(): Locale {
   return getLocale()
 }

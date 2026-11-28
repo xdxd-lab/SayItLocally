@@ -1,14 +1,14 @@
 /**
- * 悬浮窗波形配色：内置三套 + 用户自定义（单色 / 两色渐变）。
+ * 懸浮窗波形配色：內建三套 + 使用者自定義（單色 / 兩色漸變）。
  *
- * 悬浮窗（overlay/Overlay.tsx）和设置页预览（AppearancePage）都从这里取色。以前两边
- * 各抄了一份一模一样的配色函数，改一边忘另一边，预览就和真实悬浮窗对不上。
+ * 懸浮窗（overlay/Overlay.tsx）和設定頁預覽（AppearancePage）都從這裡取色。以前兩邊
+ * 各抄了一份一模一樣的配色函式，改一邊忘另一邊，預覽就和真實懸浮窗對不上。
  *
- * 自定义颜色有两条约束，都是因为胶囊底色固定是黑的：
- * 1. **亮度有下限**（OKLab L ≥ MIN_VISIBLE_L）。用户挑了深蓝/纯黑的话波形在黑底上
- *    完全看不见，像悬浮窗坏了。宁可替他调亮，预览里直接画调亮后的效果，所见即所得。
- * 2. **渐变在 OKLCH 里插值**。sRGB / HSL 里插两种互补色，中段会发灰发脏；OKLCH 沿色相走，
- *    明度感知均匀，两色渐变能得到接近内置彩虹那种干净的过渡。
+ * 自定義顏色有兩條約束，都是因為膠囊底色固定是黑的：
+ * 1. **亮度有下限**（OKLab L ≥ MIN_VISIBLE_L）。使用者挑了深藍/純黑的話波形在黑底上
+ *    完全看不見，像懸浮窗壞了。寧可替他調亮，預覽裡直接畫調亮後的效果，所見即所得。
+ * 2. **漸變在 OKLCH 裡插值**。sRGB / HSL 裡插兩種互補色，中段會發灰髮髒；OKLCH 沿色相走，
+ *    明度感知均勻，兩色漸變能得到接近內建彩虹那種乾淨的過渡。
  */
 
 export type OverlayWaveTheme = 'black-white' | 'black-blue' | 'black-rainbow' | 'custom'
@@ -17,9 +17,9 @@ export type CustomWaveMode = 'solid' | 'gradient'
 
 export interface CustomWaveColors {
   mode: CustomWaveMode
-  /** 单色模式的颜色 / 渐变起点（波形最左边），#rrggbb */
+  /** 單色模式的顏色 / 漸變起點（波形最左邊），#rrggbb */
   from: string
-  /** 渐变终点（波形最右边），#rrggbb。单色模式下保留不用，切回渐变时还在 */
+  /** 漸變終點（波形最右邊），#rrggbb。單色模式下保留不用，切回漸變時還在 */
   to: string
 }
 
@@ -29,7 +29,7 @@ export const DEFAULT_CUSTOM_WAVE: CustomWaveColors = {
   to: '#f472b6',
 }
 
-/** 推荐配色。单色给一排色块，渐变给成对的起止色，点一下就能用。 */
+/** 推薦配色。單色給一排色塊，漸變給成對的起止色，點一下就能用。 */
 export const SOLID_WAVE_PRESETS: readonly string[] = [
   '#f472b6', '#a78bfa', '#60a5fa', '#2dd4bf', '#34d399', '#a3e635', '#fbbf24', '#f87171',
 ]
@@ -44,14 +44,14 @@ export const GRADIENT_WAVE_PRESETS: ReadonlyArray<readonly [string, string]> = [
 ]
 
 /**
- * 黑底上可辨认的最低 OKLab 明度。0.62 对应相对亮度约 0.24（中性灰），与纯黑的对比度约 5.7:1。
- * 内置三套的条都比这亮得多，下限只拦真正会"消失"的深色，不会把用户挑的中等亮度色改掉。
+ * 黑底上可辨認的最低 OKLab 明度。0.62 對應相對亮度約 0.24（中性灰），與純黑的對比度約 5.7:1。
+ * 內建三套的條都比這亮得多，下限只攔真正會"消失"的深色，不會把使用者挑的中等亮度色改掉。
  */
 export const MIN_VISIBLE_L = 0.62
 
 const HEX_RE = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i
 
-/** 把用户输入的色值规整成小写 #rrggbb；不是合法色值返回 null。接受 3 位简写和省略 #。 */
+/** 把使用者輸入的色值規整成小寫 #rrggbb；不是合法色值返回 null。接受 3 位簡寫和省略 #。 */
 export function parseHexColor(input: unknown): string | null {
   if (typeof input !== 'string') return null
   const m = HEX_RE.exec(input.trim())
@@ -68,7 +68,7 @@ export function normalizeWaveTheme(value: unknown, fallback: OverlayWaveTheme): 
   return fallback
 }
 
-/** 设置/备份/payload 里读回来的值都不可信，逐字段校验，坏的字段回落默认值。 */
+/** 設定/備份/payload 裡讀回來的值都不可信，逐欄位校驗，壞的欄位回落預設值。 */
 export function normalizeCustomWave(value: unknown): CustomWaveColors {
   const raw = (value && typeof value === 'object') ? value as Record<string, unknown> : {}
   return {
@@ -109,7 +109,7 @@ function hexToLch(hex: string): Lch {
   return { l: L, c: Math.hypot(A, B), h: h < 0 ? h + 360 : h }
 }
 
-/** OKLCH → 线性前的 sRGB 三通道（可能越界，越界说明这个颜色在 sRGB 里画不出来）。 */
+/** OKLCH → 線性前的 sRGB 三通道（可能越界，越界說明這個顏色在 sRGB 裡畫不出來）。 */
 function lchToRgb({ l, c, h }: Lch): [number, number, number] {
   const rad = (h * Math.PI) / 180
   const A = c * Math.cos(rad)
@@ -132,8 +132,8 @@ function inGamut(rgb: [number, number, number]): boolean {
 }
 
 /**
- * 转回 hex。明度调高之后原来的彩度常常超出 sRGB（例如亮度拉高的纯蓝），
- * 直接截断通道会偏色，所以保持明度和色相、二分收缩彩度直到落进色域。
+ * 轉回 hex。明度調高之後原來的彩度常常超出 sRGB（例如亮度拉高的純藍），
+ * 直接截斷通道會偏色，所以保持明度和色相、二分收縮彩度直到落進色域。
  */
 function lchToHex(lch: Lch): string {
   let rgb = lchToRgb(lch)
@@ -154,20 +154,20 @@ function withVisibleLightness(lch: Lch): Lch {
   return lch.l >= MIN_VISIBLE_L ? lch : { ...lch, l: MIN_VISIBLE_L }
 }
 
-/** 这个颜色放到黑底胶囊上会不会被调亮（设置页据此提示用户）。 */
+/** 這個顏色放到黑底膠囊上會不會被調亮（設定頁據此提示使用者）。 */
 export function needsBrightening(hex: string): boolean {
   const parsed = parseHexColor(hex)
   return parsed ? hexToLch(parsed).l < MIN_VISIBLE_L : false
 }
 
-/** 黑底上实际会画出来的颜色：够亮的原样返回，太暗的提到亮度下限。 */
+/** 黑底上實際會畫出來的顏色：夠亮的原樣返回，太暗的提到亮度下限。 */
 export function visibleOnBlack(hex: string): string {
   const parsed = parseHexColor(hex) ?? DEFAULT_CUSTOM_WAVE.from
   if (!needsBrightening(parsed)) return parsed
   return lchToHex(withVisibleLightness(hexToLch(parsed)))
 }
 
-/** 接近灰色的颜色色相没有意义（atan2 的结果是噪声），插值时借另一端的色相，避免中段乱跳。 */
+/** 接近灰色的顏色色相沒有意義（atan2 的結果是噪聲），插值時借另一端的色相，避免中段亂跳。 */
 const ACHROMATIC_C = 0.02
 
 function mixLch(a: Lch, b: Lch, t: number): Lch {
@@ -175,7 +175,7 @@ function mixLch(a: Lch, b: Lch, t: number): Lch {
   let hb = b.h
   if (a.c < ACHROMATIC_C) ha = hb
   if (b.c < ACHROMATIC_C) hb = ha
-  // 走较短的那段色环：紫→粉应该经过品红，不该绕一大圈穿过绿色
+  // 走較短的那段色環：紫→粉應該經過品紅，不該繞一大圈穿過綠色
   let dh = hb - ha
   if (dh > 180) dh -= 360
   if (dh < -180) dh += 360
@@ -187,7 +187,7 @@ function mixLch(a: Lch, b: Lch, t: number): Lch {
   }
 }
 
-/** 自定义配色在位置 t（0=最左，1=最右）的颜色，已保证黑底可见。 */
+/** 自定義配色在位置 t（0=最左，1=最右）的顏色，已保證黑底可見。 */
 function customColorAt(custom: CustomWaveColors, t: number): string {
   const from = hexToLch(parseHexColor(custom.from) ?? DEFAULT_CUSTOM_WAVE.from)
   if (custom.mode === 'solid') return lchToHex(withVisibleLightness(from))
@@ -195,13 +195,13 @@ function customColorAt(custom: CustomWaveColors, t: number): string {
   return lchToHex(withVisibleLightness(mixLch(from, to, t)))
 }
 
-// ── 对外的取色函数 ────────────────────────────────────────────────
+// ── 對外的取色函式 ────────────────────────────────────────────────
 
 /**
- * 整条波形的颜色，按条从左到右。
+ * 整條波形的顏色，按條從左到右。
  *
- * 一次算完整组而不是每根条单独算：悬浮窗录音时 30 帧/秒重渲染，每帧二十几根条，
- * 自定义色要走 OKLCH 换算和色域收缩；调用方配合 useMemo 只在配色或条数变化时重算。
+ * 一次算完整組而不是每根條單獨算：懸浮窗錄音時 30 幀/秒重渲染，每幀二十幾根條，
+ * 自定義色要走 OKLCH 換算和色域收縮；呼叫方配合 useMemo 只在配色或條數變化時重算。
  */
 export function buildWavePalette(total: number, theme: OverlayWaveTheme, custom: CustomWaveColors): string[] {
   const count = Math.max(0, Math.floor(total))
@@ -222,8 +222,8 @@ export function buildWavePalette(total: number, theme: OverlayWaveTheme, custom:
 }
 
 /**
- * 计时数字的颜色。自定义配色不让用户单独挑：从主色派生一个更浅、更淡的版本，
- * 和内置主题的做法一致（蓝色主题的计时是浅天蓝 #bae6fd），选项少一点也不容易配丑。
+ * 計時數字的顏色。自定義配色不讓使用者單獨挑：從主色派生一個更淺、更淡的版本，
+ * 和內建主題的做法一致（藍色主題的計時是淺天藍 #bae6fd），選項少一點也不容易配醜。
  */
 export function getWaveTimerColor(theme: OverlayWaveTheme, custom: CustomWaveColors): string {
   if (theme === 'black-white') return '#e5e7eb'
@@ -235,7 +235,7 @@ export function getWaveTimerColor(theme: OverlayWaveTheme, custom: CustomWaveCol
   return '#bae6fd'
 }
 
-/** 「识别中」动画的颜色：取主色中段，明度略高于波形，保证在黑底上醒目。 */
+/** 「識別中」動畫的顏色：取主色中段，明度略高於波形，保證在黑底上醒目。 */
 export function getWaveThinkingColor(theme: OverlayWaveTheme, custom: CustomWaveColors): string {
   if (theme === 'black-white') return '#e2e8f0'
   if (theme === 'black-rainbow') return '#facc15'

@@ -6,7 +6,7 @@ export interface TextContext {
   selectionTruncated: boolean
 }
 
-/** 原生层读正文的诊断，只有原因码和计数（原因码见 context/mod.rs 的 TextContextDiag）。 */
+/** 原生層讀正文的診斷，只有原因碼和計數（原因碼見 context/mod.rs 的 TextContextDiag）。 */
 export interface TextContextDiag {
   result: string
   depth?: number
@@ -21,7 +21,7 @@ export interface ActiveAppContext {
   tid?: number
   processName?: string
   exePath?: string
-  /** macOS 的 Bundle ID（如 com.tencent.xinWeChat）；Windows 上没有 */
+  /** macOS 的 Bundle ID（如 com.tencent.xinWeChat）；Windows 上沒有 */
   bundleId?: string
   windowTitle?: string
   windowClass?: string
@@ -46,6 +46,6 @@ export interface ActiveAppContext {
   isCurrentAppProcess?: boolean
   /** Only populated for a recording when context-aware writing is explicitly enabled. */
   textContext?: TextContext
-  /** 请求了正文时才有，读到或没读到都有。 */
+  /** 請求了正文時才有，讀到或沒讀到都有。 */
   textContextDiag?: TextContextDiag
 }

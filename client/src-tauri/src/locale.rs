@@ -1,17 +1,17 @@
-//! 界面语言：系统显示语言读取 + `ui.language` 偏好解析。
+//! 介面語言：系統顯示語言讀取 + `ui.language` 偏好解析。
 //!
-//! 为什么这件事必须有 Rust 侧的一份：**托盘菜单是原生菜单、在 Rust 建**
-//! （commands/tray.rs 的 build_tray），要它开机就是正确语言，就不能等前端起来再告诉它。
+//! 為什麼這件事必須有 Rust 側的一份：**托盤選單是原生選單、在 Rust 建**
+//! （commands/tray.rs 的 build_tray），要它開機就是正確語言，就不能等前端起來再告訴它。
 //!
-//! 为什么不加 `sys-locale` 依赖：`Win32_Globalization` 已经在 Cargo.toml 的
-//! windows feature 列表里，需要的 API 直接可用。这是 Windows 独占应用，
-//! 没必要为一次读取多背一个 crate。
+//! 為什麼不加 `sys-locale` 依賴：`Win32_Globalization` 已經在 Cargo.toml 的
+//! windows feature 列表裡，需要的 API 直接可用。這是 Windows 獨佔應用，
+//! 沒必要為一次讀取多背一個 crate。
 //!
 //! ⚠️ **不要和 `commands/system.rs` 的 `get_system_locale()` 合并**，那个用的是
-//! `GetUserDefaultLocaleName`（**区域格式**，如日期货币怎么写），报给诊断用；
-//! 这里用 `GetUserDefaultUILanguage`（**显示语言**，Windows 界面本身什么语言）。
-//! 两者可以不一致 —— 英文版 Windows 把区域设成中国是很常见的组合。
-//! 界面语言只能跟显示语言，跟区域格式会把英文用户判成中文。
+//! `GetUserDefaultLocaleName`（**區域格式**，如日期貨幣怎麼寫），報給診斷用；
+//! 這裡用 `GetUserDefaultUILanguage`（**顯示語言**，Windows 介面本身什麼語言）。
+//! 兩者可以不一致 —— 英文版 Windows 把區域設成中國是很常見的組合。
+//! 介面語言只能跟顯示語言，跟區域格式會把英文使用者判成中文。
 
 /// 支援的介面語言。取值與前端 `Locale` 一一對應。
 ///
@@ -53,7 +53,7 @@ fn lang_from_langid(langid: u16) -> Lang {
     }
 }
 
-/// 系统显示语言。取不到时按英文处理（英文是更安全的默认：看不懂中文的人更多）。
+/// 系統顯示語言。取不到時按英文處理（英文是更安全的預設：看不懂中文的人更多）。
 #[cfg(windows)]
 pub fn system_ui_lang() -> Lang {
     use windows::Win32::Globalization::GetUserDefaultUILanguage;
@@ -65,10 +65,10 @@ pub fn system_ui_lang() -> Lang {
     lang_from_langid(langid)
 }
 
-/// macOS：「系统设置 → 通用 → 语言与地区」里排第一的首选语言。
+/// macOS：「系統設定 → 通用 → 語言與地區」裡排第一的首選語言。
 ///
-/// 不能读 `LANG`：从 Finder / Dock / 登录项启动的 App 一般没有这个环境变量，
-/// 中文系统会被误判成英文。
+/// 不能讀 `LANG`：從 Finder / Dock / 登入項啟動的 App 一般沒有這個環境變數，
+/// 中文系統會被誤判成英文。
 #[cfg(target_os = "macos")]
 pub fn system_ui_lang() -> Lang {
     lang_from_language_tag(

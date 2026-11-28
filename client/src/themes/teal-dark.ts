@@ -2,8 +2,8 @@ import type { ThemeDefinition } from './types'
 import { t } from '@/i18n'
 
 /**
- * 青绿深色主题 — 墨玉
- * 深灰底带极微青色调，青绿强调色，沉稳护眼
+ * 青綠深色主題 — 墨玉
+ * 深灰底帶極微青色調，青綠強調色，沉穩護眼
  */
 const tealDark: ThemeDefinition = {
   id: 'teal-dark',
@@ -16,12 +16,12 @@ const tealDark: ThemeDefinition = {
     accent: '#222928',
   },
   vars: {
-    // 基础色 — 深灰微青
+    // 基礎色 — 深灰微青
     '--background': '180 5% 10%',          // #191d1d
     '--foreground': '170 5% 88%',
     '--card': '180 4% 13%',
     '--card-foreground': '170 5% 88%',
-    '--primary': '174 65% 47%',            // #2ec4b6 亮青绿
+    '--primary': '174 65% 47%',            // #2ec4b6 亮青綠
     '--primary-foreground': '180 8% 6%',
     '--secondary': '180 4% 16%',
     '--secondary-foreground': '170 5% 85%',
@@ -37,7 +37,7 @@ const tealDark: ThemeDefinition = {
     '--ring': '174 65% 47%',
     '--radius': '0.5rem',
 
-    // 区域色
+    // 區域色
     '--sidebar-bg': '180 6% 8%',
     '--sidebar-border': '180 4% 16%',
     '--sidebar-item-active-bg': '178 8% 15%',
@@ -49,14 +49,14 @@ const tealDark: ThemeDefinition = {
     '--titlebar-close-hover-bg': '0 55% 50%',
     '--titlebar-close-hover-text': '0 0% 100%',
 
-    // 表单控件
+    // 表單控制元件
     '--input-bg': '180 4% 11%',
     '--input-border': '180 4% 20%',
     '--input-focus-border': '174 65% 47%',
     '--input-focus-ring': '174 65% 47%',
     '--input-placeholder': '170 3% 40%',
 
-    // 状态色（暗底，-strong 略提亮，见 types.ts）
+    // 狀態色（暗底，-strong 略提亮，見 types.ts）
     '--success': '160 45% 52%',
     '--success-foreground': '0 0% 100%',
     '--success-strong': '160 50% 62%',

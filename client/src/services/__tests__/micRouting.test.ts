@@ -5,7 +5,7 @@ vi.mock('../store', () => ({ getSetting: vi.fn(async (_k: string, d: unknown) =>
 
 import { endpointKey, isVirtualLabel, planMicDevice, type CaptureEndpoint } from '../micRouting'
 
-/** 2026-11-07 本机现场：耳麦拔掉后系统默认变成 VB-Cable，还剩英特尔麦克风阵列。名字取自 sayit.log 与注册表。 */
+/** 2026-11-07 本機現場：耳麥拔掉後系統預設變成 VB-Cable，還剩英特爾麥克風陣列。名字取自 sayit.log 與登錄檔。 */
 const CABLE = 'CABLE Output (VB-Audio Virtual Cable)'
 const INTEL = '麦克风阵列 (适用于数字麦克风的英特尔® 智音技术)'
 const HEADSET = '耳机式麦克风 (Plantronics Blackwire 5220 Series)'

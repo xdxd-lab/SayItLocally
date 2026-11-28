@@ -6,8 +6,8 @@ import {
 } from '../errorMessages'
 
 /**
- * 这些断言守住一条规则：设置页里不再出现原始异常文本作为主文案。
- * 每条错误都必须给出「发生了什么 + 往哪查」，并把原文降级到 detail。
+ * 這些斷言守住一條規則：設定頁裡不再出現原始異常文本作為主文案。
+ * 每條錯誤都必須給出「發生了什麼 + 往哪查」，並把原文降級到 detail。
  */
 describe('describeServerError', () => {
   it('把 Failed to fetch 翻译成可行动的提示，并建议恢复默认地址', () => {
@@ -68,14 +68,14 @@ describe('describeProviderError', () => {
   })
 
   /**
-   * 实测（2026-09-16，OpenRouter）：余额不足返回的是 402，响应体是
+   * 實測（2026-09-16，OpenRouter）：餘額不足返回的是 402，響應體是
    * `{"error":{"message":"This request requires at least $0.50 in balance for audio","code":402}}`
    *
-   * 以前 402 一条分类都没命中，落到 connect_failed 显示成「连接失败」——
-   * 而真实原因是账户里没钱，用户完全看不出该去干什么。
+   * 以前 402 一條分類都沒命中，落到 connect_failed 顯示成「連線失敗」——
+   * 而真實原因是賬戶裡沒錢，使用者完全看不出該去幹什麼。
    *
-   * 它必须和限流分开：两者给用户的动作是相反的。限流等一会儿就好；
-   * 余额不足等到明年也还是不行，得去充值。
+   * 它必須和限流分開：兩者給使用者的動作是相反的。限流等一會兒就好；
+   * 餘額不足等到明年也還是不行，得去充值。
    */
   it('402 余额不足单独一类，不混进限流', () => {
     const raw = describeProviderError(new Error(
@@ -85,9 +85,9 @@ describe('describeProviderError', () => {
     expect(raw.code).toBe('provider_insufficient_balance')
     expect(raw.message).toContain('餘額不足')
     expect(raw.message).not.toContain('請求頻率')
-    // 动作要把用户带到那份配置上（充值入口和密钥在同一个后台），而不是让他重试
+    // 動作要把使用者帶到那份配置上（充值入口和金鑰在同一個後台），而不是讓他重試
     expect(raw.action).toBe('check_key')
-    // 具体金额和链接在服务商给的原文里，必须保留在 detail 供用户看
+    // 具體金額和連結在服務商給的原文裡，必須保留在 detail 供使用者看
     expect(raw.detail).toContain('$0.50')
 
     const tagged = describeProviderError('sayit_error:provider_insufficient_balance:HTTP 402')
@@ -101,19 +101,19 @@ describe('describeProviderError', () => {
       .toBe('provider_rate_limit')
   })
 
-  // 实测：Groq 在中国大陆 IP 上返回 403 {"error":{"message":"Forbidden"}}，
-  // 而假密钥、真密钥、完全不带鉴权头三种情况的响应**完全相同** —— 请求在边缘节点
-  // 就被拒了，密钥从未被验证。归成「密钥被拒绝」会把用户引去反复重建密钥。
+  // 實測：Groq 在中國大陸 IP 上返回 403 {"error":{"message":"Forbidden"}}，
+  // 而假金鑰、真金鑰、完全不帶鑑權頭三種情況的響應**完全相同** —— 請求在邊緣節點
+  // 就被拒了，金鑰從未被驗證。歸成「金鑰被拒絕」會把使用者引去反覆重建金鑰。
   it('403 不报成密钥问题，而是指出可能是地区或权限', () => {
-    // 实际链路：Rust 已经分好类，前端只按错误码取文案
+    // 實際鏈路：Rust 已經分好類，前端只按錯誤碼取文案
     const tagged = describeProviderError('sayit_error:provider_forbidden:API error 403 Forbidden [http=403]')
     expect(tagged.code).toBe('provider_forbidden')
     expect(tagged.message).not.toContain('金鑰被拒絕')
     expect(tagged.action).toBe('switch_source')
 
-    // 退路：拿不到错误码时按文本分类，也不能落回「密钥被拒绝」。
-    // 这里刻意用 `[http=403]` —— 那是 diag::http_summary 的格式，
-    // 曾经因为正则认不出来而被归成"认不出的错误"。
+    // 退路：拿不到錯誤碼時按文本分類，也不能落回「金鑰被拒絕」。
+    // 這裡刻意用 `[http=403]` —— 那是 diag::http_summary 的格式，
+    // 曾經因為正則認不出來而被歸成"認不出的錯誤"。
     const raw = describeProviderError(new Error('API error 403 Forbidden [http=403]: {"error":{"message":"Forbidden"}}'))
     expect(raw.code).toBe('provider_forbidden')
   })

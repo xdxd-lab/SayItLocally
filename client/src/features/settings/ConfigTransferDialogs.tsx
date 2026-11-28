@@ -1,11 +1,11 @@
-// 配置导出 / 导入弹窗。
+// 配置匯出 / 匯入彈窗。
 //
-// 设计约束（改过两轮，记一下免得又走回头路）：
-// 1. 主题里 --primary 在浅色下接近纯黑，bg-primary/5 与 accent 悬停几乎同色，
-//    所以选中态不靠底色/描边，靠「勾选框填充 + 未选中文字降为 muted」的对比表达。
-// 2. 少用描边。同类条目收进一块 rounded-xl 面板里用发丝分割线，不做一行一个框。
-// 3. 层级靠字号、颜色和留白拉开；颜色只用主题 token，不用裸色阶。
-// 4. 入场动画复用 index.css 的 animate-fade-in-scale。
+// 設計約束（改過兩輪，記一下免得又走回頭路）：
+// 1. 主題裡 --primary 在淺色下接近純黑，bg-primary/5 與 accent 懸停幾乎同色，
+//    所以選中態不靠底色/描邊，靠「勾選框填充 + 未選中文字降為 muted」的對比表達。
+// 2. 少用描邊。同類條目收進一塊 rounded-xl 面板裡用髮絲分割線，不做一行一個框。
+// 3. 層級靠字號、顏色和留白拉開；顏色只用主題 token，不用裸色階。
+// 4. 入場動畫複用 index.css 的 animate-fade-in-scale。
 
 import { useEffect, useState, type ReactNode } from 'react'
 import {
@@ -31,7 +31,7 @@ import { useT } from '@/i18n/useT'
 import { useBackdropDismiss } from '@/hooks/useBackdropDismiss'
 import { promptPresetDisplayName } from '@/i18n/displayNames'
 
-/** 头部图标底托，弹窗的视觉锚点。 */
+/** 頭部圖示底託，彈窗的視覺錨點。 */
 function IconTile({ children, tone = 'default' }: { children: ReactNode; tone?: 'default' | 'warning' }) {
   const warning = tone === 'warning'
   return (
@@ -44,7 +44,7 @@ function IconTile({ children, tone = 'default' }: { children: ReactNode; tone?: 
   )
 }
 
-/** 弹窗外壳：头部与底栏固定、中间滚动；支持 Esc 与点遮罩关闭。 */
+/** 彈窗外殼：頭部與底欄固定、中間滾動；支援 Esc 與點遮罩關閉。 */
 function DialogShell({
   icon,
   title,
@@ -115,7 +115,7 @@ function DialogShell({
   )
 }
 
-/** 分段切换器：muted 轨道 + card 滑块，比描边按钮组更干净。 */
+/** 分段切換器：muted 軌道 + card 滑塊，比描邊按鈕組更乾淨。 */
 function SegmentedTabs<T extends string>({
   value,
   options,
@@ -147,14 +147,14 @@ function SegmentedTabs<T extends string>({
   )
 }
 
-/** 条目面板：一组同类条目共用一块面板 + 发丝分割线。 */
+/** 條目面板：一組同類條目共用一塊麵板 + 髮絲分割線。 */
 function Panel({ children }: { children: ReactNode }) {
   return (
     <div className="overflow-hidden rounded-xl border border-border/70 divide-y divide-border/60">{children}</div>
   )
 }
 
-/** 小标题：分组名 + 右侧轻量文字按钮。 */
+/** 小標題：分組名 + 右側輕量文字按鈕。 */
 function GroupLabel({
   icon,
   title,
@@ -187,7 +187,7 @@ function TextButton({ onClick, children }: { onClick: () => void; children: Reac
   )
 }
 
-/** 只读信息行，用于「完整配置」清单。 */
+/** 只讀資訊行，用於「完整配置」清單。 */
 function InfoRow({
   icon,
   title,
@@ -209,7 +209,7 @@ function InfoRow({
   )
 }
 
-/** 勾选行：选中靠填充框 + 正常文字色，未选中整行降为 muted。 */
+/** 勾選行：選中靠填充框 + 正常文字色，未選中整行降為 muted。 */
 function ChoiceRow({
   checked,
   onChange,
@@ -253,7 +253,7 @@ function EmptyRow({ children }: { children: ReactNode }) {
   return <p className="px-3.5 py-3 text-xs text-muted-foreground/70">{children}</p>
 }
 
-/** 警示条，只在真正需要提醒时出现。 */
+/** 警示條，只在真正需要提醒時出現。 */
 function WarningNote({ children }: { children: ReactNode }) {
   return (
     <div className="flex items-start gap-2 rounded-xl border border-warning/25 bg-warning/[0.07] px-3.5 py-2.5 text-xs leading-relaxed text-foreground/75">
@@ -636,7 +636,7 @@ export function ConfigImportDialog({
   )
 }
 
-/** 全部数据导入的覆盖确认。与配置导入共用外壳，避免同一面板里出现两套弹窗风格。 */
+/** 全部資料匯入的覆蓋確認。與配置匯入共用外殼，避免同一面板裡出現兩套彈窗風格。 */
 export function FullImportConfirmDialog({
   filePath,
   onClose,
@@ -687,7 +687,7 @@ export function FullImportConfirmDialog({
   )
 }
 
-/** 导入成功提示，稍后自动重启。居中图标样式与自动更新弹窗一致。 */
+/** 匯入成功提示，稍後自動重啟。居中圖示樣式與自動更新彈窗一致。 */
 export function ImportDoneDialog() {
   const t = useT()
   return (

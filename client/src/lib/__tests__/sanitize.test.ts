@@ -61,7 +61,7 @@ describe('sanitizeObject', () => {
     expect(result.cloudAsr.provider).toBe('doubao')
     expect(result.cloudAi.model).toBe('deepseek-chat')
 
-    // 敏感字段被脱敏
+    // 敏感欄位被脫敏
     expect(result.cloudAsr.apiKey).toBe('sk-***ef')
     expect(result.cloudAsr.appId).toBe('app***10')
     expect(result.cloudAi.apiKey).toBe('key***mn')

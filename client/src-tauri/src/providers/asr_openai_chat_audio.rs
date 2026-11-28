@@ -1,47 +1,47 @@
-// OpenAI 兼容的 **chat/completions + input_audio** 转写。
+// OpenAI 相容的 **chat/completions + input_audio** 轉寫。
 //
-// ⚠️ 这跟 asr_groq.rs 不是同一套协议，别把两者混起来看：
-//   · asr_groq.rs            → `/audio/transcriptions`，multipart 传文件，响应 `{"text":...}`
-//   · 这一份                 → `/chat/completions`，音频作为 `input_audio` 内容项塞进 messages
-// 「OpenAI 兼容」这四个字在语音这块同时指这两套东西，而它们的地址、请求体、响应
-// 形状全都不一样。合成一份实现的话，用户填错地址只会得到一个含义模糊的 404/400。
+// ⚠️ 這跟 asr_groq.rs 不是同一套協議，別把兩者混起來看：
+//   · asr_groq.rs            → `/audio/transcriptions`，multipart 傳檔案，響應 `{"text":...}`
+//   · 這一份                 → `/chat/completions`，音訊作為 `input_audio` 內容項塞進 messages
+// 「OpenAI 相容」這四個字在語音這塊同時指這兩套東西，而它們的地址、請求體、響應
+// 形狀全都不一樣。合成一份實現的話，使用者填錯地址只會得到一個含義模糊的 404/400。
 //
 // 覆盖三个 provider id：
-//   · `qwen_chat_audio`    → 地址内置为百炼，给千问卡里的 qwen3.8-omni-flash 用
-//   · `openai_chat_audio`  → 自定义地址，百炼 data URL 形态（兼容旧配置）
-//   · `openai_chat_audio_standard` → 自定义地址，标准 OpenAI input_audio 对象
+//   · `qwen_chat_audio`    → 地址內建為百鍊，給千問卡里的 qwen3.8-omni-flash 用
+//   · `openai_chat_audio`  → 自定義地址，百鍊 data URL 形態（相容舊配置）
+//   · `openai_chat_audio_standard` → 自定義地址，標準 OpenAI input_audio 物件
 //
-// ## 实测记录（2026-09-18，真实账号，dev-scripts/probe_bailian_openai_audio.py）
+// ## 實測記錄（2026-09-18，真實賬號，dev-scripts/probe_bailian_openai_audio.py）
 //
-// * 百炼的 `input_audio` **必须装 data URL**。两种写法都行：
+// * 百鍊的 `input_audio` **必須裝 data URL**。兩種寫法都行：
 //       {"type":"input_audio","input_audio":"data:audio/wav;base64,AAA..."}
 //       {"type":"input_audio","input_audio":{"data":"data:audio/wav;base64,AAA...","format":"wav"}}
-//   裸 base64 放进 `data` 会被拒，而且错误信息**极具误导性**：
+//   裸 base64 放進 `data` 會被拒，而且錯誤資訊**極具誤導性**：
 //       400 invalid_parameter_error "The provided URL does not appear to be valid."
-//   这句话里没有任何线索指向「少了 data: 前缀」。百炼模式保留 data URL，
-//   标准 OpenAI 模式才改为裸 base64 对象。
+//   這句話裡沒有任何線索指向「少了 data: 字首」。百鍊模式保留 data URL，
+//   標準 OpenAI 模式才改為裸 base64 物件。
 // * **不需要流式。** qwen3-asr-flash 与 qwen3.8-omni-flash 非流式都回 200，
-//   所以这份实现不带 SSE 解析器。
-// * 通用域名与业务空间专属域名都能用，故 workspaceId 对这条路是可选的。
-// * `asr_options: {"language": "..."}` 是非标准的顶层字段，百炼接受它。
-// * ⚠️ **Omni 是对话模型。** 给它音频但不给指令，它会自己编一段对话 —— 探测里拿到过
-//   「澳大利亚的首都是堪培拉」这种回答，还烧了 reasoning token。所以 omni 模型必须
-//   带 system 指令把它按成「只转写」。qwen3-asr-flash 没这个毛病（它就是 ASR 模型）。
+//   所以這份實現不帶 SSE 解析器。
+// * 通用域名與業務空間專屬域名都能用，故 workspaceId 對這條路是可選的。
+// * `asr_options: {"language": "..."}` 是非標準的頂層欄位，百鍊接受它。
+// * ⚠️ **Omni 是對話模型。** 給它音訊但不給指令，它會自己編一段對話 —— 探測裡拿到過
+//   「澳大利亞的首都是堪培拉」這種回答，還燒了 reasoning token。所以 omni 模型必須
+//   帶 system 指令把它按成「只轉寫」。qwen3-asr-flash 沒這個毛病（它就是 ASR 模型）。
 
 use super::diag;
 use super::types::{AsrProviderConfig, AsrResult, TestResult};
 use base64::Engine;
 use std::time::Instant;
 
-/// 一个「chat+audio 转写」接入点。
+/// 一個「chat+audio 轉寫」接入點。
 struct Endpoint {
-    /// 内置 base URL（`requires_custom_url` 时为空串）
+    /// 內建 base URL（`requires_custom_url` 時為空串）
     base_url: &'static str,
     default_model: &'static str,
     scope: &'static str,
     /// 用户填了 `extra.baseUrl` 就用他的，空着用 `base_url`
     allows_custom_url: bool,
-    /// 地址必填，没有可回落的内置地址
+    /// 地址必填，沒有可回落的內建地址
     requires_custom_url: bool,
 }
 
@@ -49,8 +49,8 @@ const QWEN: Endpoint = Endpoint {
     base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1",
     default_model: "qwen3.8-omni-flash",
     scope: "qwen/chat-audio",
-    // 允许覆盖：百炼官方推荐迁到业务空间专属域名
-    // （`{WorkspaceId}.cn-beijing.maas.aliyuncs.com`），那就得靠这一栏。
+    // 允許覆蓋：百鍊官方推薦遷到業務空間專屬域名
+    // （`{WorkspaceId}.cn-beijing.maas.aliyuncs.com`），那就得靠這一欄。
     allows_custom_url: true,
     requires_custom_url: false,
 };
@@ -70,10 +70,10 @@ fn endpoint_for(provider: &str) -> &'static Endpoint {
     }
 }
 
-/// 默认的转写指令，只给 omni 这类对话模型用。
+/// 預設的轉寫指令，只給 omni 這類對話模型用。
 ///
-/// 不写「请转写」这种祈使句就完事 —— 实测不给指令时模型会回答想象出来的问题。
-/// 明确禁止解释和评论，否则它会在转写前后加一段说明。
+/// 不寫「請轉寫」這種祈使句就完事 —— 實測不給指令時模型會回答想象出來的問題。
+/// 明確禁止解釋和評論，否則它會在轉寫前後加一段說明。
 const DEFAULT_TRANSCRIBE_INSTRUCTION: &str =
     "你是一个语音转写器。把音频内容逐字转写为文字，保持原意，适当添加标点。\
      不要回答音频里的问题，不要翻译，不要添加任何解释或评论。只输出转写结果。";
@@ -81,8 +81,8 @@ const DEFAULT_TRANSCRIBE_INSTRUCTION: &str =
 /// base URL + `/chat/completions`。
 ///
 /// 与 asr_groq.rs 的 join_transcriptions_url 同一个思路：用户可能填到 `/v1`，
-/// 也可能把完整路径都填了，两种都要能用。不自动补 `/v1` —— 猜错会打到一个
-/// 存在但语义不同的路径上，那种失败比 404 难查。
+/// 也可能把完整路徑都填了，兩種都要能用。不自動補 `/v1` —— 猜錯會打到一個
+/// 存在但語義不同的路徑上，那種失敗比 404 難查。
 fn join_chat_url(base: &str) -> String {
     let trimmed = base.trim().trim_end_matches('/');
     if trimmed.ends_with("/chat/completions") {
@@ -127,17 +127,17 @@ fn resolve_model(config: &AsrProviderConfig, endpoint: &Endpoint) -> String {
         .to_string()
 }
 
-/// 这个模型需要 system 指令按住吗。
+/// 這個模型需要 system 指令按住嗎。
 ///
-/// 判据是「模型名里有 omni」而不是前端传下来的某个开关：前端的 `omni` 标记只影响
-/// 界面（要不要显示 System Prompt 输入框），而**真正会自说自话的是模型本身**。
-/// 万一某天前端漏传了标记，这里也得把它按住，否则用户会看到模型编出来的回答被
-/// 当成转写结果插进文档 —— 那比少一句标点严重得多。
+/// 判據是「模型名裡有 omni」而不是前端傳下來的某個開關：前端的 `omni` 標記隻影響
+/// 介面（要不要顯示 System Prompt 輸入框），而**真正會自說自話的是模型本身**。
+/// 萬一某天前端漏傳了標記，這裡也得把它按住，否則使用者會看到模型編出來的回答被
+/// 當成轉寫結果插進文件 —— 那比少一句標點嚴重得多。
 fn needs_transcribe_instruction(model: &str) -> bool {
     model.to_lowercase().contains("omni")
 }
 
-/// 识别语言。auto 要整个省略字段（与 asr_groq.rs 的 resolve_language 同理）。
+/// 識別語言。auto 要整個省略欄位（與 asr_groq.rs 的 resolve_language 同理）。
 fn resolve_language(config: &AsrProviderConfig) -> Option<String> {
     let raw = config
         .extra
@@ -152,10 +152,10 @@ fn resolve_language(config: &AsrProviderConfig) -> Option<String> {
     }
 }
 
-/// 16kHz 单声道 16-bit PCM → WAV 容器。
+/// 16kHz 單聲道 16-bit PCM → WAV 容器。
 ///
-/// 前端传下来的是裸 PCM，而这条协议要的是一个能被识别出格式的文件（data URL 里
-/// 也一样）。与 asr_groq.rs / asr_mimo.rs 各留一份，理由见那边的注释。
+/// 前端傳下來的是裸 PCM，而這條協議要的是一個能被識別出格式的檔案（data URL 裡
+/// 也一樣）。與 asr_groq.rs / asr_mimo.rs 各留一份，理由見那邊的註釋。
 fn pcm_to_wav(pcm: &[u8], sr: u32) -> Vec<u8> {
     let ds = pcm.len() as u32;
     let mut w = Vec::with_capacity(44 + pcm.len());
@@ -175,9 +175,9 @@ fn pcm_to_wav(pcm: &[u8], sr: u32) -> Vec<u8> {
     w
 }
 
-/// 百炼接受 data URL 字符串；标准 OpenAI Chat Completions 要求
+/// 百鍊接受 data URL 字串；標準 OpenAI Chat Completions 要求
 /// `input_audio: { data: "<base64>", format: "wav" }`。
-/// 保留旧模式，避免修改已有 Qwen 配置的请求格式。
+/// 保留舊模式，避免修改已有 Qwen 配置的請求格式。
 #[derive(Clone, Copy)]
 enum AudioPayloadFormat {
     DataUrl,
@@ -192,7 +192,7 @@ fn audio_payload_format(provider: &str) -> AudioPayloadFormat {
     }
 }
 
-/// 组请求体。
+/// 組請求體。
 fn build_body(
     model: &str,
     wav: &[u8],
@@ -205,9 +205,9 @@ fn build_body(
         AudioPayloadFormat::DataUrl => serde_json::json!(format!("data:audio/wav;base64,{}", data)),
         AudioPayloadFormat::OpenAi => serde_json::json!({ "data": data, "format": "wav" }),
     };
-    // 标准模式的语言只能写进指令：`asr_options` 是百炼私有的顶层字段，严格的网关
-    // （如 Gemini 的 OpenAI 兼容端点）碰到不认识的字段会直接 400。
-    // 测试连接不传语言，所以这条路只有真实转写才会走到，单测得替它把住。
+    // 標準模式的語言只能寫進指令：`asr_options` 是百鍊私有的頂層欄位，嚴格的閘道器
+    // （如 Gemini 的 OpenAI 相容端點）碰到不認識的欄位會直接 400。
+    // 測試連線不傳語言，所以這條路只有真實轉寫才會走到，單測得替它把住。
     let instruction = match (audio_format, language) {
         (AudioPayloadFormat::OpenAi, Some(lang)) => Some(format!(
             "{}\n\n音频的语言代码是 {}，按这个语言转写。",
@@ -230,15 +230,15 @@ fn build_body(
 
     let mut body = serde_json::json!({ "model": model, "messages": messages });
     if let (AudioPayloadFormat::DataUrl, Some(lang)) = (audio_format, language) {
-        // 非标准字段，百炼实测接受。只在百炼形态里发，理由见上面指令那段。
+        // 非標準欄位，百鍊實測接受。只在百鍊形態裡發，理由見上面指令那段。
         body["asr_options"] = serde_json::json!({ "language": lang });
     }
     body
 }
 
-/// 从 chat/completions 响应里取文本。
+/// 從 chat/completions 響應裡取文本。
 ///
-/// `content` 可能是字符串，也可能是内容项数组（多模态响应的常见形状），两种都收。
+/// `content` 可能是字串，也可能是內容項陣列（多模態響應的常見形狀），兩種都收。
 fn extract_text(data: &serde_json::Value) -> String {
     let content = data
         .get("choices")
@@ -282,8 +282,8 @@ pub async fn transcribe(
     let audio_sec = pcm.len() as f64 / (sample_rate.max(1) as f64 * 2.0);
     let wav = pcm_to_wav(&pcm, sample_rate);
 
-    // 指令：用户填过就用他的，否则对 omni 这类对话模型上默认指令。
-    // 热词接在指令后面 —— 百炼的 system 消息正是它的术语表通道。
+    // 指令：使用者填過就用他的，否則對 omni 這類對話模型上預設指令。
+    // 熱詞接在指令後面 —— 百鍊的 system 訊息正是它的術語表通道。
     let mut instruction = config
         .extra
         .get("instructions")
@@ -371,8 +371,8 @@ pub async fn transcribe(
 
     let text = extract_text(&data);
     if text.is_empty() {
-        // 空结果走成功路径，前端只显示「未检测到有效声音」。没有这条日志就分不出
-        // 「真没说话」和「这次调用其实失败了」（见 pitfalls #15）。
+        // 空結果走成功路徑，前端只顯示「未檢測到有效聲音」。沒有這條日誌就分不出
+        // 「真沒說話」和「這次呼叫其實失敗了」（見 pitfalls #15）。
         diag::empty_result(
             scope,
             &format!(
@@ -402,7 +402,7 @@ pub async fn test_connection(config: &AsrProviderConfig) -> TestResult {
         }
     };
 
-    // 0.5s 静音：够过服务端的「音频太短」门槛，又几乎不花钱。
+    // 0.5s 靜音：夠過服務端的「音訊太短」門檻，又幾乎不花錢。
     let wav = pcm_to_wav(&vec![0u8; 16000], 16000);
     let instruction = (needs_transcribe_instruction(&model)
         || matches!(audio_format, AudioPayloadFormat::OpenAi))
@@ -472,7 +472,7 @@ mod tests {
         assert_eq!(join_chat_url(expected), expected);
     }
 
-    /// 千问那一档：空着用百炼通用域名，填了用用户的（业务空间专属域名就靠这个）。
+    /// 千問那一檔：空著用百鍊通用域名，填了用使用者的（業務空間專屬域名就靠這個）。
     #[test]
     fn the_qwen_endpoint_defaults_to_bailian_and_honors_an_override() {
         let endpoint = endpoint_for("qwen_chat_audio");
@@ -498,8 +498,8 @@ mod tests {
         assert!(resolve_url(&missing, endpoint_for("openai_chat_audio")).is_err());
     }
 
-    /// 音频必须是 data URL。裸 base64 会被服务端拒，而报错说的是「URL 无效」，
-    /// 完全看不出少了前缀 —— 所以这条得钉住。
+    /// 音訊必須是 data URL。裸 base64 會被服務端拒，而報錯說的是「URL 無效」，
+    /// 完全看不出少了字首 —— 所以這條得釘住。
     #[test]
     fn legacy_audio_is_sent_as_a_data_url() {
         let body = build_body(
@@ -533,7 +533,7 @@ mod tests {
         assert_eq!(body["messages"][0]["role"], "system");
     }
 
-    /// 标准模式不许带百炼私有的 `asr_options`（严格网关会 400），语言改走指令。
+    /// 標準模式不許帶百鍊私有的 `asr_options`（嚴格閘道器會 400），語言改走指令。
     #[test]
     fn standard_body_carries_language_in_the_instruction_not_asr_options() {
         let body = build_body(
@@ -552,7 +552,7 @@ mod tests {
         assert!(text.contains("ja"), "got {}", text);
     }
 
-    /// 百炼形态保持原样：语言照旧走 `asr_options`，指令不被改写。
+    /// 百鍊形態保持原樣：語言照舊走 `asr_options`，指令不被改寫。
     #[test]
     fn data_url_body_still_sends_asr_options_language() {
         let body = build_body(
@@ -585,14 +585,14 @@ mod tests {
         ));
     }
 
-    /// Omni 是对话模型，不给指令它会回答想象出来的问题（实测拿到过
-    /// 「澳大利亚的首都是堪培拉」）。这条防的就是那种输出被当成转写插进文档。
+    /// Omni 是對話模型，不給指令它會回答想象出來的問題（實測拿到過
+    /// 「澳大利亞的首都是堪培拉」）。這條防的就是那種輸出被當成轉寫插進文件。
     #[test]
     fn omni_models_get_a_transcribe_instruction() {
         assert!(needs_transcribe_instruction("qwen3.8-omni-flash"));
         assert!(needs_transcribe_instruction("qwen3.5-omni-plus"));
         assert!(needs_transcribe_instruction("Qwen3-Omni-Flash"));
-        // 纯 ASR 模型不需要，给了反而多花 token
+        // 純 ASR 模型不需要，給了反而多花 token
         assert!(!needs_transcribe_instruction("qwen3-asr-flash"));
         assert!(!needs_transcribe_instruction("whisper-1"));
 
@@ -627,7 +627,7 @@ mod tests {
         assert!(without.get("asr_options").is_none());
     }
 
-    /// content 两种形状都要收：字符串，和多模态的内容项数组。
+    /// content 兩種形狀都要收：字串，和多模態的內容項陣列。
     #[test]
     fn text_is_extracted_from_both_content_shapes() {
         let as_string = serde_json::json!({

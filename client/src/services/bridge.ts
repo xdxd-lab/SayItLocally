@@ -1,5 +1,5 @@
 /**
- * Tauri IPC Bridge — 所有前端代码通过这个模块与 Rust 后端通信。
+ * Tauri IPC Bridge — 所有前端程式碼透過這個模組與 Rust 後端通訊。
  */
 
 import { invoke } from '@tauri-apps/api/core'
@@ -74,7 +74,7 @@ export interface OverlayHealthSnapshot {
   }
 }
 
-/** 原子地更新状态并显示悬浮窗，返回本次显示的关联 id。 */
+/** 原子地更新狀態並顯示懸浮窗，返回本次顯示的關聯 id。 */
 export function presentOverlay(data: unknown) {
   return invoke<number>('present_overlay', { data }).catch((err) => {
     logOverlayIpcError('present_overlay', err)
@@ -82,7 +82,7 @@ export function presentOverlay(data: unknown) {
   })
 }
 
-/** 兼容旧调用；新显示流程应优先使用 presentOverlay。 */
+/** 相容舊呼叫；新顯示流程應優先使用 presentOverlay。 */
 export function showOverlay() {
   return invoke<number>('show_overlay').catch((err) => {
     logOverlayIpcError('show_overlay', err)
@@ -102,8 +102,8 @@ export function updateOverlay(data: unknown) {
   })
 }
 
-// devicePixelRatio 在这里就上报：预热时（还没有任何一次显示）是原生侧唯一能在第一次
-// 显示之前拿到 webview 真实缩放的时机，否则用户第一次口述会看到尺寸不对的悬浮窗。
+// devicePixelRatio 在這裡就上報：預熱時（還沒有任何一次顯示）是原生側唯一能在第一次
+// 顯示之前拿到 webview 真實縮放的時機，否則使用者第一次口述會看到尺寸不對的懸浮窗。
 export function overlayReady(devicePixelRatio?: number) {
   return invoke<void>('overlay_ready', { devicePixelRatio })
 }
@@ -123,20 +123,20 @@ export type EscapeActionMode =
   | 'dismiss_fallback'
   | 'abandon_late_result'
 
-/** 只在悬浮窗需要响应全局 Esc 时开启；Rust 侧带超时保险，避免异常后永久吞键。 */
+/** 只在懸浮窗需要響應全域性 Esc 時開啟；Rust 側帶超時保險，避免異常後永久吞鍵。 */
 export function setEscapeActionMode(mode: EscapeActionMode, token = 0) {
   return invoke<void>('set_escape_action_mode', { mode, token })
 }
 
-/** 悬浮窗卡片上的临时组合键。字符串值是与 Rust 的契约，见 keyboard::card_hotkey_action_name。 */
+/** 懸浮窗卡片上的臨時組合鍵。字串值是與 Rust 的契約，見 keyboard::card_hotkey_action_name。 */
 export type CardHotkeyAction = 'copy'
 
 /**
- * 开启/续期/解除卡片快捷键；传空数组即解除。
+ * 開啟/續期/解除卡片快捷鍵；傳空陣列即解除。
  *
- * 为什么要经过原生：悬浮窗不抢焦点，按键始终发给用户原来的程序，webview 里的
- * keydown 永远不会触发。Rust 侧带硬 TTL（20s）兜底，所以**卡片可见期间必须周期性
- * 续期**，间隔要明显小于 TTL。
+ * 為什麼要經過原生：懸浮窗不搶焦點，按鍵始終發給使用者原來的程式，webview 裡的
+ * keydown 永遠不會觸發。Rust 側帶硬 TTL（20s）兜底，所以**卡片可見期間必須週期性
+ * 續期**，間隔要明顯小於 TTL。
  */
 export function setCardHotkeys(actions: CardHotkeyAction[], token = 0) {
   return invoke<void>('set_card_hotkeys', { actions, token })
@@ -158,7 +158,7 @@ export function getProbeResult() {
   return invoke<Record<string, unknown>>('get_probe_result')
 }
 
-/** 一次原生捕获同时返回录音目标上下文与插字探测结果。 */
+/** 一次原生捕獲同時返回錄音目標上下文與插字探測結果。 */
 export function getRecordingContext(includeTextContext = false) {
   return invoke<{
     appContext: Record<string, unknown>
@@ -175,7 +175,7 @@ export function getActiveAppContext() {
   return invoke<Record<string, unknown> | null>('get_active_app_context')
 }
 
-/** 系统权限状态（macOS：辅助功能 / 麦克风 / 安全输入；Windows 恒为已授权）。 */
+/** 系統許可權狀態（macOS：輔助功能 / 麥克風 / 安全輸入；Windows 恆為已授權）。 */
 export interface PlatformPermissions {
   platform: string
   accessibility: boolean
@@ -190,17 +190,17 @@ export function getPlatformPermissions() {
   return invoke<PlatformPermissions>('get_platform_permissions')
 }
 
-/** 请求「辅助功能」授权（没授权时系统会弹出引导框）。返回当前是否已授权。 */
+/** 請求「輔助功能」授權（沒授權時系統會彈出引導框）。返回當前是否已授權。 */
 export function requestAccessibilityPermission() {
   return invoke<boolean>('request_accessibility_permission')
 }
 
-/** 打开系统设置的隐私面板：accessibility / microphone / input_monitoring。 */
+/** 開啟系統設定的隱私面板：accessibility / microphone / input_monitoring。 */
 export function openPrivacySettings(pane: 'accessibility' | 'microphone' | 'input_monitoring') {
   return invoke<void>('open_privacy_settings', { pane })
 }
 
-/** 界面语言切换后重建 mac 的原生菜单（菜单栏图标菜单、顶部应用菜单）。Windows 上是空操作。 */
+/** 介面語言切換後重建 mac 的原生選單（選單欄圖示選單、頂部應用選單）。Windows 上是空操作。 */
 export function refreshNativeMenus() {
   return invoke<void>('refresh_native_menus')
 }
@@ -225,9 +225,9 @@ export function getClientRuntimeInfo() {
 /**
  * 系統**顯示語言**，回傳 `zh-TW` / `en`。
  *
- * 与 `getClientRuntimeInfo().systemLocale` 不是一回事：那个是**区域格式**
- * （日期货币怎么写），诊断用；这个是 Windows 界面本身的语言，决定界面语言。
- * 判定只在 Rust 一处（`locale::system_ui_lang`），托盘和界面才不会各说一套。
+ * 與 `getClientRuntimeInfo().systemLocale` 不是一回事：那個是**區域格式**
+ * （日期貨幣怎麼寫），診斷用；這個是 Windows 介面本身的語言，決定介面語言。
+ * 判定只在 Rust 一處（`locale::system_ui_lang`），托盤和介面才不會各說一套。
  */
 export function getSystemUiLanguage() {
   return invoke<string>('get_system_ui_language')
@@ -237,14 +237,14 @@ export function copyText(text: string) {
   return invoke('copy_text', { text })
 }
 
-// ─── 系统输出静音（录音期间防回采）───
+// ─── 系統輸出靜音（錄音期間防回採）───
 
-/** 记录当前默认输出设备静音状态并将其静音。返回是否已处理。 */
+/** 記錄當前預設輸出裝置靜音狀態並將其靜音。返回是否已處理。 */
 export function muteSystemOutput() {
   return invoke<boolean>('mute_system_output')
 }
 
-/** 恢复到 muteSystemOutput 之前记录的静音状态。 */
+/** 恢復到 muteSystemOutput 之前記錄的靜音狀態。 */
 export function restoreSystemOutput() {
   return invoke<boolean>('restore_system_output')
 }
@@ -370,12 +370,12 @@ export function saveExportBundle(payload: {
 
 // ─── Shortcuts ───
 
-/** 前端内部广播：快捷键设置已变化，供页面（如首页提示）实时刷新显示。 */
+/** 前端內部廣播：快捷鍵設定已變化，供頁面（如首頁提示）即時重新整理顯示。 */
 export const SHORTCUTS_CHANGED_EVENT = 'sayit:shortcuts-changed'
 
 export function notifyShortcutsChanged() {
   invoke('shortcuts_changed')
-  // 同时在前端广播，让依赖快捷键显示的页面无需切换路由即可刷新
+  // 同時在前端廣播，讓依賴快捷鍵顯示的頁面無需切換路由即可重新整理
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent(SHORTCUTS_CHANGED_EVENT))
   }
@@ -385,22 +385,22 @@ export function testShortcut(accelerator: string) {
   return invoke<boolean>('test_shortcut', { accelerator })
 }
 
-/** 查询 PTT DOM code 对应按键当前是否真实物理按下（顺序与输入一致）。 */
+/** 查詢 PTT DOM code 對應按鍵當前是否真實物理按下（順序與輸入一致）。 */
 export function getPTTPhysicalKeyStates(codes: string[]) {
   return invoke<boolean[]>('get_ptt_physical_key_states', { codes })
 }
 
 /**
- * 开始快捷键录制捕获（设置页点开录制时调用）。Rust 侧会：
- * - 底层鼠标钩子吞掉下一个侧键并通过 mouse-shortcut-captured 回报；
- * - 键盘钩子在录制期间放行 PTT/免提单键，不触发录音；
- * - 注销全部 global_shortcut，避免已绑定的组合键被系统抢走、录不进来。
+ * 開始快捷鍵錄製捕獲（設定頁點開錄製時呼叫）。Rust 側會：
+ * - 底層滑鼠鉤子吞掉下一個側鍵並透過 mouse-shortcut-captured 回報；
+ * - 鍵盤鉤子在錄製期間放行 PTT/擴音單鍵，不觸發錄音；
+ * - 登出全部 global_shortcut，避免已繫結的組合鍵被系統搶走、錄不進來。
  */
 export function beginShortcutCapture() {
   return invoke('begin_shortcut_capture').catch(() => { })
 }
 
-/** 结束快捷键录制捕获（录制结束/取消时调用），并恢复 Rust 侧的热键注册。 */
+/** 結束快捷鍵錄製捕獲（錄製結束/取消時呼叫），並恢復 Rust 側的熱鍵註冊。 */
 export function endShortcutCapture() {
   return invoke('end_shortcut_capture').catch(() => { })
 }
@@ -416,20 +416,20 @@ export function setAutoLaunch(enable: boolean) {
 }
 
 /**
- * 拉起安装程序并退出应用。
- * relaunch=true 装完自动重开（用户主动点更新时）；退出路径上的兜底安装走 Rust 内部，
- * 传 false —— 用户是要关掉 SayIt，装完再拉起来会表现成"这软件关不掉"。
+ * 拉起安裝程式並退出應用。
+ * relaunch=true 裝完自動重開（使用者主動點更新時）；退出路徑上的兜底安裝走 Rust 內部，
+ * 傳 false —— 使用者是要關掉 SayIt，裝完再拉起來會表現成"這軟體關不掉"。
  */
 export function installDownloadedUpdate(filePath: string, relaunch: boolean) {
   return invoke('install_downloaded_update', { filePath, relaunch })
 }
 
-/** 下载安装包到临时目录，返回完整路径。传了 sha512（Base64）就由 Rust 侧校验完整性。 */
+/** 下載安裝包到臨時目錄，返回完整路徑。傳了 sha512（Base64）就由 Rust 側校驗完整性。 */
 export function downloadUpdate(url: string, sha512?: string | null) {
   return invoke<string>('download_update', { url, sha512: sha512 ?? null })
 }
 
-/** 磁盘上那个安装包还能不能用（存在 + 哈希对得上）。用于启动时复用上次下载的包。 */
+/** 磁碟上那個安裝包還能不能用（存在 + 雜湊對得上）。用於啟動時複用上次下載的包。 */
 export function verifyUpdatePackage(filePath: string, sha512?: string | null) {
   return invoke<boolean>('verify_update_package', { filePath, sha512: sha512 ?? null })
 }
@@ -437,16 +437,16 @@ export function verifyUpdatePackage(filePath: string, sha512?: string | null) {
 // ─── Tray ───
 
 /**
- * 把托盘右键菜单里「AI 整理」那一项刷成给定状态（文字上的开/关 + 状态图标）。
+ * 把托盤右鍵選單裡「AI 整理」那一項刷成給定狀態（文字上的開/關 + 狀態圖示）。
  *
- * 托盘菜单只在启动时建一次（Tauri v2 没有「菜单即将弹出」的钩子），
- * 所以界面里每次切开关都要主动回写，否则右键看到的是上一次的状态。
+ * 托盤選單隻在啟動時建一次（Tauri v2 沒有「選單即將彈出」的鉤子），
+ * 所以介面裡每次切開關都要主動回寫，否則右鍵看到的是上一次的狀態。
  */
 export function setTrayAiEnabled(enabled: boolean) {
   return invoke<void>('set_tray_ai_enabled', { enabled }).catch(() => { })
 }
 
-/** 托盘右键切换了「AI 整理」（Rust 已落库，payload 是切换后的值）。 */
+/** 托盤右鍵切換了「AI 整理」（Rust 已落庫，payload 是切換後的值）。 */
 export function onAiCleanupChanged(cb: (enabled: boolean) => void) {
   const unlisten = listen<{ enabled?: boolean }>('ai-cleanup-changed', (event) => {
     cb(Boolean(event.payload?.enabled))
@@ -454,7 +454,7 @@ export function onAiCleanupChanged(cb: (enabled: boolean) => void) {
   return () => { unlisten.then((fn) => fn()) }
 }
 
-/** AI 整理快捷键被触发；前端负责更新内存、持久化和悬浮窗提示。 */
+/** AI 整理快捷鍵被觸發；前端負責更新記憶體、持久化和懸浮窗提示。 */
 export function onAiCleanupToggleRequested(cb: () => void) {
   const unlisten = listen('toggle-ai-cleanup', () => cb())
   return () => { unlisten.then((fn) => fn()) }
@@ -478,11 +478,11 @@ export function savePcmAsWav(id: string, pcmBase64: string, sampleRate?: number)
 }
 
 /**
- * 二进制请求体：`[4 字节小端 JSON 长度][JSON 参数][原始字节]`，与 Rust 的 ipc_body 对应。
+ * 二進位制請求體：`[4 位元組小端 JSON 長度][JSON 引數][原始位元組]`，與 Rust 的 ipc_body 對應。
  *
- * 音频原来先转 base64 再塞进 JSON。lib/encoding 那个转码是逐字节拼字符串，2 分钟录音约
- * 0.4 秒、5 分钟约 0.7 秒，跑在主窗主线程上（悬浮窗那段时间也跟着卡），本地 / 云 API
- * 模式录完还要转两次。直接发原始字节就没有这一段了。
+ * 音訊原來先轉 base64 再塞進 JSON。lib/encoding 那個轉碼是逐位元組拼字串，2 分鐘錄音約
+ * 0.4 秒、5 分鐘約 0.7 秒，跑在主窗主執行緒上（懸浮窗那段時間也跟著卡），本地 / 雲 API
+ * 模式錄完還要轉兩次。直接發原始位元組就沒有這一段了。
  */
 export function framedBody(meta: unknown, payload: Uint8Array): Uint8Array {
   const json = new TextEncoder().encode(JSON.stringify(meta))
@@ -493,13 +493,13 @@ export function framedBody(meta: unknown, payload: Uint8Array): Uint8Array {
   return out
 }
 
-/** 读录音的原始字节。文件不在（保留期过了、被删了）时返回 null。 */
+/** 讀錄音的原始位元組。檔案不在（保留期過了、被刪了）時返回 null。 */
 export async function readAudioFileBytes(filePath: string): Promise<Uint8Array<ArrayBuffer> | null> {
   const buffer = await invoke<ArrayBuffer>('read_audio_file_bytes', { filePath })
   return buffer && buffer.byteLength > 0 ? new Uint8Array(buffer) : null
 }
 
-/** 把录音直接复制到「下载」文件夹（由 Rust 复制文件，不经过网页）。 */
+/** 把錄音直接複製到「下載」資料夾（由 Rust 複製檔案，不經過網頁）。 */
 export function saveRecordingToDownloads(filePath: string, filename: string) {
   return invoke<string>('save_recording_to_downloads', { filePath, filename })
 }
@@ -527,10 +527,10 @@ export function readAudioFile(filePath: string) {
 }
 
 /**
- * 录音文件是否还在。
+ * 錄音檔案是否還在。
  *
- * 保留期到了之后 Rust 只删文件、不清历史记录里的 audioFilePath，
- * 所以「记录里有路径」不等于「文件还在」，凡是依赖录音的入口都要先问这一句。
+ * 保留期到了之後 Rust 只刪檔案、不清歷史記錄裡的 audioFilePath，
+ * 所以「記錄裡有路徑」不等於「檔案還在」，凡是依賴錄音的入口都要先問這一句。
  */
 export function audioFileExists(filePath: string) {
   return invoke<boolean>('audio_file_exists', { filePath })
@@ -570,7 +570,7 @@ export function createDiagnosticsZip(data: unknown) {
   return invoke<string>('create_diagnostics_zip', { data })
 }
 
-/** 截图走二进制：参数里每张图只带 name / type / size，字节按顺序拼在后面（见 framedBody）。 */
+/** 截圖走二進位制：引數裡每張圖只帶 name / type / size，位元組按順序拼在後面（見 framedBody）。 */
 export function createDiagnosticsZipRaw(
   meta: { description: string; issueType: string; settings: unknown; issueOccurrence: string },
   images: Array<{ name: string; type: string; bytes: Uint8Array }>,
@@ -586,7 +586,7 @@ export function createDiagnosticsZipRaw(
   return invoke<string>('create_diagnostics_zip_raw', framedBody({ ...meta, images: imageMeta }, payload))
 }
 
-/** 读诊断包的原始字节；文件不在时返回 null。 */
+/** 讀診斷包的原始位元組；檔案不在時返回 null。 */
 export async function readDiagnosticsZipBytes(path: string): Promise<Uint8Array<ArrayBuffer> | null> {
   const buffer = await invoke<ArrayBuffer>('read_diagnostics_zip_bytes', { path })
   return buffer && buffer.byteLength > 0 ? new Uint8Array(buffer) : null
@@ -655,16 +655,16 @@ export function onCardHotkey(cb: (data: { action: CardHotkeyAction; token: numbe
   return () => { unlisten.then((fn) => fn()) }
 }
 
-/** 事件名：悬浮窗自己收起了卡片（点关闭、或复制完成后自动收起）。 */
+/** 事件名：懸浮窗自己收起了卡片（點關閉、或複製完成後自動收起）。 */
 export const OVERLAY_CARD_DISMISSED = 'overlay-card-dismissed'
 
 /**
- * 悬浮窗收起卡片后回报主窗。
+ * 懸浮窗收起卡片後回報主窗。
  *
- * 为什么必须回报：卡片的**生命周期归主窗的 OverlayService 管**（它持有续期定时器）。
- * 悬浮窗那边只是一个渲染端，它 hideOverlay() 之后主窗毫不知情，8 秒后续期定时器
- * 又会把 Esc / Ctrl+C 重新注册一遍 —— 卡片早就没了，用户的按键却还被接管着，
- * 而且原生侧会重新抓一次前台窗口（此时可能已经是别的程序）。
+ * 為什麼必須回報：卡片的**生命週期歸主窗的 OverlayService 管**（它持有續期定時器）。
+ * 懸浮窗那邊只是一個渲染端，它 hideOverlay() 之後主窗毫不知情，8 秒後續期定時器
+ * 又會把 Esc / Ctrl+C 重新註冊一遍 —— 卡片早就沒了，使用者的按鍵卻還被接管著，
+ * 而且原生側會重新抓一次前台視窗（此時可能已經是別的程式）。
  */
 export function notifyCardDismissed(reason: string, token: number) {
   return emit(OVERLAY_CARD_DISMISSED, { reason, token })
@@ -686,14 +686,14 @@ export function onPTTLabEvent(cb: (data?: unknown) => void) {
 }
 
 /**
- * 这家 ASR 拿用户的热词做什么。**权威声明在 Rust**（providers/capabilities.rs）。
+ * 這家 ASR 拿使用者的熱詞做什麼。**權威宣告在 Rust**（providers/capabilities.rs）。
  *
- * 前端刻意不自己维护一份「哪家支持热词」的清单：issue #67 的成因正是实现在 Rust、
- * 声明在前端一张手写表格，两者无人对账，结果 6 家云服务被漏掉，界面平静地告诉
- * 用户热词生效。
+ * 前端刻意不自己維護一份「哪家支援熱詞」的清單：issue #67 的成因正是實現在 Rust、
+ * 宣告在前端一張手寫表格，兩者無人對賬，結果 6 家雲服務被漏掉，介面平靜地告訴
+ * 使用者熱詞生效。
  *
- * 失败时返回 null（而不是编一个"不支持"）—— 让调用方能把"查不到"和"确定不传"
- * 分开显示。老版本 Rust 没有这个 command 时也走这条。
+ * 失敗時返回 null（而不是編一個"不支援"）—— 讓呼叫方能把"查不到"和"確定不傳"
+ * 分開顯示。老版本 Rust 沒有這個 command 時也走這條。
  */
 export function asrHotwordCapability(provider: string, extra?: Record<string, unknown>) {
   return invoke<AsrHotwordCapability>('asr_hotword_capability', { provider, extra })
@@ -701,12 +701,12 @@ export function asrHotwordCapability(provider: string, extra?: Record<string, un
 }
 
 /**
- * 全部服务的热词行为，供「各服务对热词的支持」对照表使用。
+ * 全部服務的熱詞行為，供「各服務對熱詞的支援」對照表使用。
  *
- * 这张表因此是**实现的投影**，不是界面里的第二份手写清单 —— 后者就是 issue #67：
- * 表格漏了 6 家、还把「不支持」说成只是本地模型的问题，而没人会在改实现时想起它。
+ * 這張表因此是**實現的投影**，不是介面裡的第二份手寫清單 —— 後者就是 issue #67：
+ * 表格漏了 6 家、還把「不支援」說成只是本地模型的問題，而沒人會在改實現時想起它。
  *
- * 失败返回 null，调用方据此显示"暂时取不到"，不要退化成一张空表（空表看起来像
+ * 失敗返回 null，呼叫方據此顯示"暫時取不到"，不要退化成一張空表（空表看起來像
  * "所有服务都不支持"）。
  */
 export function asrHotwordCapabilityMatrix() {
@@ -715,15 +715,15 @@ export function asrHotwordCapabilityMatrix() {
 }
 
 /**
- * 前端内部广播：刚走完一次一次性云端转写，热词能力的答案可能已经变了。
+ * 前端內部廣播：剛走完一次一次性雲端轉寫，熱詞能力的答案可能已經變了。
  *
- * 只有「OpenAI 兼容」的 auto 协议会这样：它的答案在探测之前是 `undecided_protocol`，
- * 而探测就发生在 `cloud_transcribe` 内部（结果进 `asr_openai_compat` 的 PROTOCOL_CACHE）。
- * 热词页开着不动的时候完成首次录音，页面上那句"还没探测出来"会一直挂着 —— 它的查询
- * 只在挂载时跑过一次。
+ * 只有「OpenAI 相容」的 auto 協議會這樣：它的答案在探測之前是 `undecided_protocol`，
+ * 而探測就發生在 `cloud_transcribe` 內部（結果進 `asr_openai_compat` 的 PROTOCOL_CACHE）。
+ * 熱詞頁開著不動的時候完成首次錄音，頁面上那句"還沒探測出來"會一直掛著 —— 它的查詢
+ * 只在掛載時跑過一次。
  *
- * 广播点刻意只放在 `cloud_transcribe` 之后，不放在录音结束：流式路径不碰协议探测
- * （`openai_compat` 没有流式实现），本地与服务器模式更不会。
+ * 廣播點刻意只放在 `cloud_transcribe` 之後，不放在錄音結束：流式路徑不碰協議探測
+ * （`openai_compat` 沒有流式實現），本地與伺服器模式更不會。
  */
 export const ASR_CAPABILITY_MAYBE_CHANGED_EVENT = 'sayit:asr-capability-maybe-changed'
 

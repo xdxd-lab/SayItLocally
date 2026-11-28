@@ -5,7 +5,7 @@ export function useAiEnabled() {
   return useSyncExternalStore(subscribeAiEnabled, getAiEnabled)
 }
 
-/** AI 开关初始值是否已就绪（首帧前为 false，用于抑制启动时的开关闪动） */
+/** AI 開關初始值是否已就緒（首幀前為 false，用於抑制啟動時的開關閃動） */
 export function useAiEnabledReady() {
   return useSyncExternalStore(subscribeAiEnabled, getAiEnabledReady)
 }

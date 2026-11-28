@@ -1,5 +1,5 @@
-// 标准测试音频 — 生成一段包含正弦波的 PCM 音频用于 ASR 速度测试
-// 实际使用时应该用真实的语音录音，这里先用静音+提示
+// 標準測試音訊 — 生成一段包含正弦波的 PCM 音訊用於 ASR 速度測試
+// 實際使用時應該用真實的語音錄音，這裡先用靜音+提示
 
 use serde::Serialize;
 use tauri::Manager;
@@ -13,8 +13,8 @@ pub struct AsrBenchmarkResult {
     pub rtf: f64, // Real-Time Factor: elapsed / audio_duration (越小越快)
 }
 
-/// 运行 ASR 速度测试（Tauri command）
-/// 使用内置的中文测试音频或用户提供的音频
+/// 執行 ASR 速度測試（Tauri command）
+/// 使用內建的中文測試音訊或使用者提供的音訊
 #[tauri::command]
 pub async fn run_asr_benchmark(
     app_handle: tauri::AppHandle,
@@ -26,13 +26,13 @@ pub async fn run_asr_benchmark(
         base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &b64)
             .map_err(|e| format!("Failed to decode base64 audio: {}", e))?
     } else {
-        // 读取内置测试音频（WAV 格式，需要跳过 44 字节 header 提取 PCM）
+        // 讀取內建測試音訊（WAV 格式，需要跳過 44 位元組 header 提取 PCM）
         let resource_path = app_handle.path()
             .resolve("resources/test_zh.wav", tauri::path::BaseDirectory::Resource)
             .map_err(|e| format!("Could not locate test audio: {}", e))?;
         let wav_bytes = std::fs::read(&resource_path)
             .map_err(|e| format!("Failed to read test audio: {}", e))?;
-        // 跳过 WAV header（44 字节）
+        // 跳過 WAV header（44 位元組）
         if wav_bytes.len() > 44 {
             wav_bytes[44..].to_vec()
         } else {
@@ -50,8 +50,8 @@ pub async fn run_asr_benchmark(
     let lang = language.unwrap_or_else(|| "auto".into());
 
     tokio::task::spawn_blocking(move || {
-        // 预热与计时分开：这里量的是纯解码耗时，不含模型加载
-        // 加速器与显卡都按"自动"跑分，与这个命令原有的行为一致。
+        // 預熱與計時分開：這裡量的是純解碼耗時，不含模型載入
+        // 加速器與顯示卡都按"自動"跑分，與這個命令原有的行為一致。
         super::gguf_asr::preload(&model_id, "auto", "")?;
 
         let start = std::time::Instant::now();
@@ -85,7 +85,7 @@ fn benchmark_result(
     }
 }
 
-/// 获取内置测试音频的 base64 WAV 数据（供前端播放）
+/// 獲取內建測試音訊的 base64 WAV 資料（供前端播放）
 #[tauri::command]
 pub async fn get_test_audio_b64(app_handle: tauri::AppHandle) -> Result<String, String> {
     let resource_path = app_handle.path()

@@ -1,11 +1,11 @@
-// 远程公告服务 — 与更新机制完全解耦的服务端可控通知通道。
+// 遠端公告服務 — 與更新機制完全解耦的服務端可控通知通道。
 //
-// 即使自动更新出问题、或不想让用户更新软件，也能通过后端下发一条公告，
-// 在 App 内提示用户（例如引导去官网/GitHub 手动下载新版）。
+// 即使自動更新出問題、或不想讓使用者更新軟體，也能透過後端下發一條公告，
+// 在 App 內提示使用者（例如引導去官網/GitHub 手動下載新版）。
 //
-// 安全约束（远程内容视为不可信输入）：
-//   - 文案一律按纯文本渲染（React 默认转义），绝不当 HTML 注入。
-//   - 链接只允许 https，且用系统浏览器打开，绝不导航 WebView 自身。
+// 安全約束（遠端內容視為不可信輸入）：
+//   - 文案一律按純文本渲染（React 預設轉義），絕不當 HTML 注入。
+//   - 連結只允許 https，且用系統瀏覽器開啟，絕不導航 WebView 自身。
 
 import { getBackendBaseUrl } from './runtimeConfig'
 import { getSetting, setSetting } from './store'
@@ -14,23 +14,23 @@ import { getLocale, isLocale, LEGACY_ZH_LOCALE, type Locale } from '@/i18n'
 export type NoticeLevel = 'info' | 'warning' | 'critical'
 
 export interface RemoteNotice {
-  /** 唯一 id：用户关闭后按 id 记忆，不再重复弹 */
+  /** 唯一 id：使用者關閉後按 id 記憶，不再重複彈 */
   id: string
-  /** 级别，决定 banner 配色与图标 */
+  /** 級別，決定 banner 配色與圖示 */
   level: NoticeLevel
   title: string
   body?: string
-  /** 行动按钮链接（仅 https） */
+  /** 行動按鈕連結（僅 https） */
   linkUrl?: string
   linkLabel?: string
-  /** 只对 >= minVersion 的客户端显示 */
+  /** 只對 >= minVersion 的客戶端顯示 */
   minVersion?: string | null
-  /** 只对 <= maxVersion 的客户端显示（例如只提示旧版用户去手动更新） */
+  /** 只對 <= maxVersion 的客戶端顯示（例如只提示舊版使用者去手動更新） */
   maxVersion?: string | null
-  /** 生效时间窗（ISO 字符串），可选 */
+  /** 生效時間窗（ISO 字串），可選 */
   startAt?: string | null
   endAt?: string | null
-  /** 是否允许关闭，默认 true */
+  /** 是否允許關閉，預設 true */
   dismissible?: boolean
 }
 
@@ -122,8 +122,8 @@ async function loadRaw(): Promise<unknown> {
 }
 
 export async function _disabledLoadRaw(): Promise<unknown> {
-  // 开发预览：dev 环境下可在控制台执行
-  //   localStorage.setItem('__devNotice', JSON.stringify({ id:'t1', level:'warning', title:'测试公告', body:'内容…', linkUrl:'https://sayitapp.site', linkLabel:'前往官网' }))
+  // 開發預覽：dev 環境下可在控制台執行
+  //   localStorage.setItem('__devNotice', JSON.stringify({ id:'t1', level:'warning', title:'測試公告', body:'內容…', linkUrl:'https://sayitapp.site', linkLabel:'前往官網' }))
   // 刷新即可看到 banner 效果，无需后端。清除：localStorage.removeItem('__devNotice')
   if (import.meta.env.DEV) {
     try {
@@ -143,7 +143,7 @@ export async function _disabledLoadRaw(): Promise<unknown> {
   return await resp.json()
 }
 
-/** 拉取当前应展示的公告；无公告/不适用当前版本/不在时间窗/已被用户关闭 → 返回 null。 */
+/** 拉取當前應展示的公告；無公告/不適用當前版本/不在時間窗/已被使用者關閉 → 返回 null。 */
 export async function fetchActiveNotice(
   currentVersion: string,
   locale: Locale = getLocale(),
@@ -164,7 +164,7 @@ export async function fetchActiveNotice(
   }
 }
 
-/** 记住某条公告已被用户关闭（按 id）。 */
+/** 記住某條公告已被使用者關閉（按 id）。 */
 export async function dismissNotice(id: string): Promise<void> {
   const dismissed = await getSetting<string[]>(DISMISSED_KEY, [])
   const list = Array.isArray(dismissed) ? dismissed : []
@@ -174,7 +174,7 @@ export async function dismissNotice(id: string): Promise<void> {
   }
 }
 
-/** 校验是否为安全的 https 外链。 */
+/** 校驗是否為安全的 https 外鏈。 */
 export function isSafeHttpsUrl(url: string | undefined): url is string {
   if (!url) return false
   try {

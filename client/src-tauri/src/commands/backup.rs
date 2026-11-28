@@ -1,12 +1,12 @@
-// 备份 / 恢复：配置（JSON）与全部数据（zip，含音频）的导出与导入。
+// 備份 / 恢復：配置（JSON）與全部資料（zip，含音訊）的匯出與匯入。
 //
-// 设计要点：
-// - 导入走活动数据库的正常写入通道（app_settings upsert + 集合表整表替换），
-//   完整还原先试写数据库，再安装录音并提交交易。导入后由前端触发重启使内存状态重载。
-// - 语义为「覆盖」：集合表整表替换；app_settings 逐 key 覆盖（不删除未出现的 key）。
-// - 「配置」不含使用统计 stats，避免覆盖本机计数；「全部」包含 stats。
+// 設計要點：
+// - 匯入走活動資料庫的正常寫入通道（app_settings upsert + 集合表整表替換），
+//   完整還原先試寫資料庫，再安裝錄音並提交交易。匯入後由前端觸發重啟使記憶體狀態過載。
+// - 語義為「覆蓋」：集合表整表替換；app_settings 逐 key 覆蓋（不刪除未出現的 key）。
+// - 「配置」不含使用統計 stats，避免覆蓋本機計數；「全部」包含 stats。
 //   [自訂] S35／S36：本 fork 的「全部」也不含 stats，且兩檔都排除金鑰、密碼、使用統計與隱私開關（見 MACHINE_LOCAL_KEYS）。
-// - 全部导入时，历史记录里的 audioFilePath 是旧机绝对路径，会重写为本机 audio 目录下的同名文件。
+// - 全部匯入時，歷史記錄裡的 audioFilePath 是舊機絕對路徑，會重寫為本機 audio 目錄下的同名檔案。
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
@@ -19,19 +19,19 @@ use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::storage::Storage;
 
-/// 备份文件格式版本。导入时若备份版本高于此值则拒绝。
+/// 備份檔案格式版本。匯入時若備份版本高於此值則拒絕。
 const FORMAT_VERSION: i64 = 1;
-/// 分项配置文件格式；完整配置与全部数据继续使用 v1，保持兼容。
+/// 分項配置檔案格式；完整配置與全部資料繼續使用 v1，保持相容。
 const SELECTED_CONFIG_FORMAT_VERSION: i64 = 2;
 const MAX_HOTWORDS: usize = 1000;
 const BUILTIN_PRESET_IDS: &[&str] = &["intent", "faithful", "zh2en", "casual"];
-/// 只属于这台机器的 app_settings key：导出不带、导入（含 WebDAV 恢复）不写。
+/// 只屬於這台機器的 app_settings key：匯出不帶、匯入（含 WebDAV 恢復）不寫。
 ///
-/// 备份文件可能来自别人（"这是我调好的热词，导入就能用"），所以导入时这些 key 一律当不可信：
-///  · `pendingUpdate` —— 退出时会静默安装它指向的文件。恶意备份曾经能借它运行任意 exe（审核 S3）。
-///  · `backendBaseUrl` —— 更新来源跟随这个地址，导入一个陌生地址就等于把"往这台机器装什么"交给对方，
-///    口述的音频也会发过去。代价：换机恢复后要重新填一次服务器地址。
-///  · 设备 id、开机自启的迁移标记、WebDAV 上次结果 —— 本机状态，带过去只会让两台机器互相冒名或误报。
+/// 備份檔案可能來自別人（"這是我調好的熱詞，匯入就能用"），所以匯入時這些 key 一律當不可信：
+///  · `pendingUpdate` —— 退出時會靜默安裝它指向的檔案。惡意備份曾經能借它執行任意 exe（稽核 S3）。
+///  · `backendBaseUrl` —— 更新來源跟隨這個地址，匯入一個陌生地址就等於把"往這台機器裝什麼"交給對方，
+///    口述的音訊也會發過去。代價：換機恢復後要重新填一次伺服器地址。
+///  · 裝置 id、開機自啟的遷移標記、WebDAV 上次結果 —— 本機狀態，帶過去只會讓兩台機器互相冒名或誤報。
 const MACHINE_LOCAL_KEYS: &[&str] = &[
     "pendingUpdate",
     "backendBaseUrl",
@@ -65,8 +65,8 @@ const MACHINE_LOCAL_KEYS: &[&str] = &[
     // [自訂] SCAN1-11（L-81）：「貼上後還原剪貼簿」屬隱私開關，匯入／還原不可把它關掉。
     "protectClipboard",
 ];
-/// 「配置」档不导出/导入的 app_settings key：本机专属的那些，加上使用统计（属于使用数据，不属于配置）。
-/// 与 MACHINE_LOCAL_KEYS 的包含关系有测试钉住。
+/// 「配置」檔不匯出/匯入的 app_settings key：本機專屬的那些，加上使用統計（屬於使用資料，不屬於配置）。
+/// 與 MACHINE_LOCAL_KEYS 的包含關係有測試釘住。
 const CONFIG_EXCLUDE: &[&str] = &[
     "stats",
     "pendingUpdate",
@@ -116,11 +116,11 @@ pub struct ConfigExportSelection {
     prompt_preset_ids: Vec<String>,
 }
 
-/// 全量备份里除配置之外还装什么。
+/// 全量備份裡除配置之外還裝什麼。
 ///
-/// 两个字段都**不给 serde 默认值**：调用方必须显式表态。给默认值的那一版是个陷阱 ——
-/// 漏传参数时会静默按「全都要」打包，而含音频的包可以有几个 GB，自动备份场景下
-/// 意味着每次悄悄上传几个 GB。宁可让反序列化直接失败，报一条看得见的错。
+/// 兩個欄位都**不給 serde 預設值**：呼叫方必須顯式表態。給預設值的那一版是個陷阱 ——
+/// 漏傳引數時會靜默按「全都要」打包，而含音訊的包可以有幾個 GB，自動備份場景下
+/// 意味著每次悄悄上傳幾個 GB。寧可讓反序列化直接失敗，報一條看得見的錯。
 #[derive(Clone, Copy, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BackupScope {
@@ -200,7 +200,7 @@ fn timestamped_backup_path(prefix: &str, extension: &str) -> PathBuf {
     backup_dir().join(format!("{}-{}.{}", prefix, timestamp, extension))
 }
 
-/// 取路径的文件名部分（兼容 / 和 \ 分隔符，跨平台备份用）。
+/// 取路徑的檔名部分（相容 / 和 \ 分隔符，跨平台備份用）。
 fn basename(path: &str) -> String {
     path.rsplit(|c| c == '/' || c == '\\')
         .next()
@@ -350,11 +350,11 @@ fn build_selected_config_value(
     })
 }
 
-/// 组装 `backup.json`。
+/// 組裝 `backup.json`。
 ///
-/// 不含历史时**整个字段都不写**（而不是写一个空数组）：`import_full` 对缺失段是
-/// `if let Some(...)`，字段缺席就跳过、保留本机现有历史；写成空数组反而会把本机
-/// 历史整表清空。「只备份配置」这一档能安全恢复，全靠这个区别。
+/// 不含歷史時**整個欄位都不寫**（而不是寫一個空陣列）：`import_full` 對缺失段是
+/// `if let Some(...)`，欄位缺席就跳過、保留本機現有歷史；寫成空陣列反而會把本機
+/// 歷史整表清空。「只備份配置」這一檔能安全恢復，全靠這個區別。
 fn build_full_value(storage: &Storage, scope: BackupScope) -> Result<Value, String> {
     storage.with_backup_snapshot(|snapshot| {
         let mut payload = json!({
@@ -406,7 +406,7 @@ fn is_selected_config(data: &Value) -> bool {
             == Some(SELECTED_CONFIG_FORMAT_VERSION)
 }
 
-/// 应用完整配置部分（设置 + Prompt 预设 + 分应用规则），两档共用。
+/// 應用完整配置部分（設定 + Prompt 預設 + 分應用規則），兩檔共用。
 /// [自訂] SC-67：匯入設定裡取代規則的「替換成」欄位轉成台灣正體（與辨識輸出同一個轉換器），
 /// 比對欄與其他設定不改。沒有需要轉的內容時回傳 `None`，沿用原本的設定。
 fn taiwanize_replacement_rules(settings: &Map<String, Value>) -> Option<Map<String, Value>> {
@@ -466,8 +466,8 @@ fn apply_config_part(
         )
 }
 
-/// 备份里的录音文件名只认 `<录音 id>.wav`。原来什么名字都照写，`evil.exe` 也会被当成录音
-/// 落到 audio 目录里，再配合 pendingUpdate 就能在退出时被运行（审核 S3）。
+/// 備份裡的錄音檔名只認 `<錄音 id>.wav`。原來什麼名字都照寫，`evil.exe` 也會被當成錄音
+/// 落到 audio 目錄裡，再配合 pendingUpdate 就能在退出時被執行（稽核 S3）。
 fn is_backup_audio_name(name: &str) -> bool {
     name.strip_suffix(".wav")
         .is_some_and(crate::path_guard::is_record_id)
@@ -640,8 +640,8 @@ fn strip_audio_field(record: &mut Map<String, Value>) {
     }
 }
 
-/// 重写单条历史记录的音频路径：把目录段换成本机 audio 目录，文件名不变。
-/// 文件名不合规的录音不会被释放出来，记录里的路径也一并去掉，免得指向一个不存在或不该碰的文件。
+/// 重寫單條歷史記錄的音訊路徑：把目錄段換成本機 audio 目錄，檔名不變。
+/// 檔名不合規的錄音不會被釋放出來，記錄裡的路徑也一併去掉，免得指向一個不存在或不該碰的檔案。
 fn rewrite_audio_path(rec: &Value, adir: &Path) -> Value {
     let mut rec = rec.clone();
     if let Some(obj) = rec.as_object_mut() {
@@ -976,7 +976,7 @@ fn build_selected_import_plan(storage: &Storage, data: &Value) -> Result<Selecte
     })
 }
 
-// ─── 导出 ───
+// ─── 匯出 ───
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -1264,7 +1264,7 @@ fn is_unsupported_publication(kind: std::io::ErrorKind, code: Option<i32>) -> bo
     matches!(kind, ErrorKind::Unsupported | ErrorKind::InvalidInput)
 }
 
-/// 打包过程中的一帧进度。`phase` 取值与前端 `BackupExportProgress['phase']` 对齐。
+/// 打包過程中的一幀進度。`phase` 取值與前端 `BackupExportProgress['phase']` 對齊。
 pub struct ArchiveProgress<'a> {
     pub phase: &'static str,
     pub current_file: Option<&'a str>,
@@ -1275,17 +1275,17 @@ pub struct ArchiveProgress<'a> {
     pub percent: f64,
 }
 
-/// 把配置（+ 按 scope 决定的历史 / 音频）打成 zip 写到 `output`。
+/// 把配置（+ 按 scope 決定的歷史 / 音訊）打成 zip 寫到 `output`。
 ///
-/// 本地「全部数据」导出与 WebDAV 备份共用这一份实现，两者的差别只在落地位置和
-/// 进度事件名。刻意不让 WebDAV 自己写一套打包：一旦两份代码分家，就会出现
-/// 「本地导出能恢复、云端备份恢复不了」这种只在换机时才暴露的问题。
+/// 本地「全部資料」匯出與 WebDAV 備份共用這一份實現，兩者的差別只在落地位置和
+/// 進度事件名。刻意不讓 WebDAV 自己寫一套打包：一旦兩份程式碼分家，就會出現
+/// 「本地匯出能恢復、雲端備份恢復不了」這種只在換機時才暴露的問題。
 ///
-/// 先写 `.part` 再原子发布，失败时清掉临时文件 —— 中断留下的半个 zip 不能
+/// 先寫 `.part` 再原子釋出，失敗時清掉臨時檔案 —— 中斷留下的半個 zip 不能
 /// 长得像一个有效备份。
 ///
-/// 总量（文件数 / 字节数）通过 `on_progress` 报出去，不作为返回值：调用方要的是
-/// 打包完成后**zip 本身**的大小（用来算上传进度），那个得 stat 产物文件才知道。
+/// 總量（檔案數 / 位元組數）透過 `on_progress` 報出去，不作為返回值：呼叫方要的是
+/// 打包完成後**zip 本身**的大小（用來算上傳進度），那個得 stat 產物檔案才知道。
 pub fn write_backup_archive(
     storage: &Storage,
     scope: BackupScope,
@@ -1415,8 +1415,8 @@ pub async fn export_full(
     let output = timestamped_backup_path("sayit-backup", "zip");
     let out_path = output.to_string_lossy().to_string();
 
-    // 失败分支也要报出总量，所以在回调里留一份最近值：write_backup_archive 出错时
-    // 只给 Err(String)，拿不到它内部算出的 totals。
+    // 失敗分支也要報出總量，所以在回撥裡留一份最近值：write_backup_archive 出錯時
+    // 只給 Err(String)，拿不到它內部算出的 totals。
     let mut seen_totals = (0u64, 0u64);
     let export_result = {
         let progress_app = app.clone();
@@ -1468,7 +1468,7 @@ pub async fn export_full(
             Ok(out_path)
         }
         Err(error) => {
-            // 临时文件已由 write_backup_archive 清理。
+            // 臨時檔案已由 write_backup_archive 清理。
             emit_export_progress(
                 &app,
                 BackupExportProgress {
@@ -1489,7 +1489,7 @@ pub async fn export_full(
     }
 }
 
-// ─── 导入 ───
+// ─── 匯入 ───
 
 fn content_fingerprint(content: &str) -> String {
     let mut hash = 0xcbf29ce484222325u64;
@@ -1541,8 +1541,8 @@ fn validate_config_collection(key: &str, items: &[Value]) -> Result<(), String> 
             .filter(|value| !value.is_empty())
             .ok_or_else(|| format!("Item {} in {} is missing id", index + 1, key))?;
 
-        // 内置 Prompt 的中英文自定义内容共存在 promptPresets 中，因此同一个稳定 id
-        // 可以出现两次，但同一语言仍只能有一份。旧备份没有语言字段，只能是中文。
+        // 內建 Prompt 的中英文自定義內容共存在 promptPresets 中，因此同一個穩定 id
+        // 可以出現兩次，但同一語言仍只能有一份。舊備份沒有語言欄位，只能是中文。
         let unique_id = if key == "promptPresets" && BUILTIN_PRESET_IDS.contains(&id) {
             // [自訂] SC-65：中文內建 Prompt 改為正體中文（zh-TW）；舊備份的 zh-CN 視為同一語言。
             let language = match object
@@ -1738,7 +1738,7 @@ fn apply_config_import(
         return Err("The configuration file changed; select it again and reconfirm".to_string());
     }
 
-    // 完整配置导入排除 stats，避免覆盖本机使用统计。
+    // 完整配置匯入排除 stats，避免覆蓋本機使用統計。
     apply_config_part(storage, &data, CONFIG_EXCLUDE)?;
     Ok(ConfigImportResult {
         changed_sections: vec!["fullConfig".to_string()],
@@ -1756,10 +1756,10 @@ pub async fn import_full(in_path: String, app: AppHandle) -> Result<(), String> 
         .await.map_err(|e| e.to_string())?
 }
 
-/// 应用一个全量备份 zip。本地导入与 WebDAV 恢复共用。
+/// 應用一個全量備份 zip。本地匯入與 WebDAV 恢復共用。
 ///
-/// 对缺失段是宽容的：只含配置的备份（WebDAV 默认档）不会带 `history` 字段，
-/// 此时**保留本机现有历史**而不是清空 —— 见 `build_full_value` 里为什么不写空数组。
+/// 對缺失段是寬容的：只含配置的備份（WebDAV 預設檔）不會帶 `history` 欄位，
+/// 此時**保留本機現有歷史**而不是清空 —— 見 `build_full_value` 裡為什麼不寫空陣列。
 pub fn apply_full_backup(storage: &Storage, in_path: &str) -> Result<(), String> {
     apply_full_backup_in_dir(storage, in_path, &audio_dir())
 }
@@ -1803,7 +1803,7 @@ fn apply_full_backup_archive(
         }
     }
 
-    // 1. 读取并校验 backup.json
+    // 1. 讀取並校驗 backup.json
     let mut json_str = String::new();
     {
         let mut entry = archive
@@ -1917,11 +1917,11 @@ fn restore_audio_file(source: &mut impl Read, dir: &Path, destination: &Path) ->
     result
 }
 
-/// 导入完成后由前端调用，重启应用使内存中的设置/供应商状态全量重载。
+/// 匯入完成後由前端呼叫，重啟應用使記憶體中的設定/供應商狀態全量過載。
 #[tauri::command]
 pub fn restart_app(app: tauri::AppHandle) {
-    // 这次退出的意图是"重启回同一个版本"，不是更新。若让退出兜底安装跑起来，
-    // 重启拉起来的会是正在被安装程序覆盖的 exe。
+    // 這次退出的意圖是"重啟回同一個版本"，不是更新。若讓退出兜底安裝跑起來，
+    // 重啟拉起來的會是正在被安裝程式覆蓋的 exe。
     crate::commands::system::suppress_exit_install();
     // [自訂] SC-60：restart 會先產生新程序再結束本程序，先放開實例鎖，新程序才能成為主程序。
     crate::instance_lock::release_for_restart();
@@ -3141,12 +3141,12 @@ mod tests {
         fs::remove_dir_all(dir).unwrap();
     }
 
-    /// 不含历史时，`history` 字段必须**整个缺席**，不能是空数组。
+    /// 不含歷史時，`history` 欄位必須**整個缺席**，不能是空陣列。
     ///
-    /// 这是「只备份配置」这一档能安全恢复的全部依据：`apply_full_backup` 用
-    /// `if let Some(history)` 判断，字段缺席就保留本机历史，写成空数组则会把本机
-    /// 历史整表清空 —— 一个「只想同步设置」的用户会因此丢掉全部记录，而且备份和
-    /// 恢复都不会报任何错。
+    /// 這是「只備份配置」這一檔能安全恢復的全部依據：`apply_full_backup` 用
+    /// `if let Some(history)` 判斷，欄位缺席就保留本機歷史，寫成空陣列則會把本機
+    /// 歷史整表清空 —— 一個「只想同步設定」的使用者會因此丟掉全部記錄，而且備份和
+    /// 恢復都不會報任何錯。
     #[test]
     fn config_only_backup_omits_history_instead_of_emptying_it() {
         let (storage, dir) = temp_storage("scope");
@@ -3171,7 +3171,7 @@ mod tests {
         );
         assert!(config_only.get("manualCorrections").is_none());
         assert!(config_only.get("feedbackQueue").is_none());
-        // 配置部分照旧在，且 kind 仍是 full —— 用现有的导入路径就能恢复。
+        // 配置部分照舊在，且 kind 仍是 full —— 用現有的匯入路徑就能恢復。
         assert_eq!(config_only.get("kind").and_then(Value::as_str), Some("full"));
         assert!(config_only.get("appSettings").is_some());
         assert_eq!(
@@ -3204,8 +3204,8 @@ mod tests {
         }
     }
 
-    /// 恶意备份的两条腿：设置里塞 pendingUpdate / backendBaseUrl，录音目录里塞 exe。
-    /// 导入完整备份时设置部分必须跳过本机专属 key，其余设置照常写入。
+    /// 惡意備份的兩條腿：設定裡塞 pendingUpdate / backendBaseUrl，錄音目錄裡塞 exe。
+    /// 匯入完整備份時設定部分必須跳過本機專屬 key，其餘設定照常寫入。
     #[test]
     fn full_backup_does_not_import_machine_local_settings() {
         let (storage, dir) = temp_storage("machine-local");
@@ -3645,7 +3645,7 @@ mod tests {
         fs::remove_dir_all(dir).unwrap();
     }
 
-    /// 不含音频时不去扫 audio 目录，也就不会把别的备份的录音塞进来。
+    /// 不含音訊時不去掃 audio 目錄，也就不會把別的備份的錄音塞進來。
     #[test]
     fn audio_files_are_only_collected_when_requested() {
         assert!(collect_audio_export_files(false, Path::new("unused")).unwrap().is_empty());

@@ -1,29 +1,29 @@
 // WebDAV 自动备份的设置面板。
 //
-// 分工：**卡面回答「现在在做什么」，弹窗回答「怎么配」。**
+// 分工：**卡面回答「現在在做什麼」，彈窗回答「怎麼配」。**
 //
-// 这张卡片原先把两件事混在一起——一次性配置服务器，和日常查看/触发备份。前者做完
-// 就再也不碰，常驻在设置页上是最主要的噪声来源（地址、账号、密码、坚果云说明、测试
-// 按钮、测试结果，七组元素占了半张卡，而它们一年用一次）。
+// 這張卡片原先把兩件事混在一起——一次性配置伺服器，和日常檢視/觸發備份。前者做完
+// 就再也不碰，常駐在設定頁上是最主要的噪聲來源（地址、賬號、密碼、堅果雲說明、測試
+// 按鈕、測試結果，七組元素佔了半張卡，而它們一年用一次）。
 //
-// 现在：
-// - 卡面：一句说明 + 「连到了哪、备份什么、多久一次」一行摘要 + 一个主动作 + 一行状态。
-//   没配置时只有说明和右上角一个按钮 —— 绝大多数用户永远不会开这个功能，默认状态
-//   不该给他们一整面控件。
-// - 弹窗：地址凭证、**备份内容**、频率、保留份数。备份内容必须在这里，因为首次配置
-//   时用户就该看见「会上传哪些东西」并当场选择，而不是点了完成之后才在卡面上发现。
-//   三项（配置/历史/录音）全部列出，配置那一项显示「始终包含」而不是藏起来——
-//   「会同步哪些文件」这个问题要有一个看得见的完整答案。
-// - 录音打开时**就地**出现一行提示，不弹二级确认框：弹窗里再套弹窗是反模式，而且
-//   常驻提示比点一次就消失的确认更有用（只要录音是开着的，代价就一直写在那儿）。
+// 現在：
+// - 卡面：一句說明 + 「連到了哪、備份什麼、多久一次」一行摘要 + 一個主動作 + 一行狀態。
+//   沒配置時只有說明和右上角一個按鈕 —— 絕大多數使用者永遠不會開這個功能，預設狀態
+//   不該給他們一整面控制元件。
+// - 彈窗：地址憑證、**備份內容**、頻率、保留份數。備份內容必須在這裡，因為首次配置
+//   時使用者就該看見「會上傳哪些東西」並當場選擇，而不是點了完成之後才在卡面上發現。
+//   三項（配置/歷史/錄音）全部列出，配置那一項顯示「始終包含」而不是藏起來——
+//   「會同步哪些檔案」這個問題要有一個看得見的完整答案。
+// - 錄音開啟時**就地**出現一行提示，不彈二級確認框：彈窗裡再套彈窗是反模式，而且
+//   常駐提示比點一次就消失的確認更有用（只要錄音是開著的，代價就一直寫在那兒）。
 //
-// 功能一个没少，收进弹窗的仍然可达，只是不再和日常操作抢注意力。
+// 功能一個沒少，收進彈窗的仍然可達，只是不再和日常操作搶注意力。
 //
-// 另外两条与视觉无关但同样刻意的：
-// - 档位（含不含历史/录音）只存在设置里，手动备份和定时备份都读设置，界面上勾了
-//   什么就一定是上传的内容。
-// - 录音默认关。录音库能有几个 GB，而网盘有月上传流量额度，默认打开等于替用户做了
-//   一个很贵的决定。
+// 另外兩條與視覺無關但同樣刻意的：
+// - 檔位（含不含歷史/錄音）只存在設定裡，手動備份和定時備份都讀設定，介面上勾了
+//   什麼就一定是上傳的內容。
+// - 錄音預設關。錄音庫能有幾個 GB，而網盤有月上傳流量額度，預設開啟等於替使用者做了
+//   一個很貴的決定。
 
 import { useEffect, useState } from 'react'
 import { CloudUpload, Loader2, RotateCcw, Settings2 } from 'lucide-react'
@@ -63,10 +63,10 @@ const inputClass =
   'h-9 w-full rounded-md border border-input-border bg-input-bg px-3 text-sm transition-colors focus:border-input-focus-border'
 
 /**
- * 卡上图标按钮，与「AI 供应商」服务卡上的那几颗同一套样式。
+ * 卡上圖示按鈕，與「AI 供應商」服務卡上的那幾顆同一套樣式。
  *
- * 与那边的一个区别：这里**不做 hover 才显形**。那边网格里有三五张卡，图标常显会很吵；
- * 这里只有一张卡，藏起来只会让「立即备份」变得找不到。
+ * 與那邊的一個區別：這裡**不做 hover 才顯形**。那邊網格里有三五張卡，圖示常顯會很吵；
+ * 這裡只有一張卡，藏起來只會讓「立即備份」變得找不到。
  */
 const cardIconButtonClass =
   'rounded p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-40'
@@ -89,8 +89,8 @@ const intervalOptions = [
 ] as const satisfies readonly { value: number; labelKey: TranslationKey }[]
 
 /**
- * 四种档位各有一个完整句子，而不是把「配置」「历史记录」拼起来。
- * 拼接在中文里勉强能读，换到别的语言就会出「Settings and 历史记录」式的畸形。
+ * 四種檔位各有一個完整句子，而不是把「配置」「歷史記錄」拼起來。
+ * 拼接在中文裡勉強能讀，換到別的語言就會出「Settings and 歷史記錄」式的畸形。
  */
 const contentSummaryKeys: Record<string, TranslationKey> = {
   'false,false': 'webdav.summary.config',
@@ -101,12 +101,12 @@ const contentSummaryKeys: Record<string, TranslationKey> = {
 
 type Busy = 'test' | 'list' | 'restore' | null
 
-/** 卡面上只需要认出「连到了哪」。协议头永远是 https，显示它等于八个字符的噪声。 */
+/** 卡面上只需要認出「連到了哪」。協議頭永遠是 https，顯示它等於八個字元的噪聲。 */
 function shortServer(url: string): string {
   return url.trim().replace(/^https:\/\//i, '').replace(/\/+$/, '')
 }
 
-/** 摘要行里的时间。完整的 toLocaleString 在 11px 一行里太占地方，年份也没人看。 */
+/** 摘要行裡的時間。完整的 toLocaleString 在 11px 一行裡太佔地方，年份也沒人看。 */
 function shortTime(ms: number): string {
   // [自訂] SC-65：跟介面語言走，不跟系統語系（簡體系統不會帶出簡體字樣）。
   return new Date(ms).toLocaleString(getLocale(), {
@@ -120,9 +120,9 @@ function shortTime(ms: number): string {
 export default function WebDavSection() {
   const t = useT()
 
-  // ready 控制「值到位才显示」，animate 控制「隔两帧才允许过渡」。
-  // 合成一个标志修不掉自己动一下的问题：揭开的同一帧加回 transition，浏览器会把
-  // 「默认值 → 已保存值」真的动画一遍（见 pitfalls 里设置类控件那条）。
+  // ready 控制「值到位才顯示」，animate 控制「隔兩幀才允許過渡」。
+  // 合成一個標誌修不掉自己動一下的問題：揭開的同一幀加回 transition，瀏覽器會把
+  // 「預設值 → 已儲存值」真的動畫一遍（見 pitfalls 裡設定類控制元件那條）。
   const [ready, setReady] = useState(false)
   const [animate, setAnimate] = useState(false)
 
@@ -162,9 +162,9 @@ export default function WebDavSection() {
       ])
       if (cancelled) return
       setEnabled(en)
-      // 地址预填坚果云，但**必须同时落库**：Rust 侧备份时是直接读库的，而 getSetting
-      // 的默认值只活在前端内存里。用户只填了账号密码、没碰过地址栏时，库里就没有这
-      // 一行，备份会以「地址为空」失败 —— 而界面上明明显示着地址。
+      // 地址預填堅果雲，但**必須同時落庫**：Rust 側備份時是直接讀庫的，而 getSetting
+      // 的預設值只活在前端記憶體裡。使用者只填了賬號密碼、沒碰過位址列時，庫裡就沒有這
+      // 一行，備份會以「地址為空」失敗 —— 而介面上明明顯示著地址。
       if (u.trim()) {
         setUrl(u)
       } else {
@@ -179,7 +179,7 @@ export default function WebDavSection() {
       if (keep === 3 || keep === 5 || keep === 10) setKeepCount(keep)
       setLastResult(await refreshLastResult())
       setReady(true)
-      // 隔两帧再允许过渡：第一帧用来把已保存值画上去。
+      // 隔兩幀再允許過渡：第一幀用來把已儲存值畫上去。
       requestAnimationFrame(() => requestAnimationFrame(() => { if (!cancelled) setAnimate(true) }))
     })()
     return () => { cancelled = true }
@@ -190,7 +190,7 @@ export default function WebDavSection() {
     return () => { void unlisten.then((fn) => fn()) }
   }, [])
 
-  // 后台定时备份也会改状态，面板要跟着动，否则用户看到的是打开设置那一刻的快照。
+  // 後台定時備份也會改狀態，面板要跟著動，否則使用者看到的是開啟設定那一刻的快照。
   useEffect(() => {
     const off = onWebDavBackupChange((state) => {
       setRunning(state.running)
@@ -199,17 +199,17 @@ export default function WebDavSection() {
     return off
   }, [])
 
-  // 三样都填了就算配好了。弹窗里边打边存，所以这个值也正好是「测试连接」能不能点。
+  // 三樣都填了就算配好了。彈窗裡邊打邊存，所以這個值也正好是「測試連線」能不能點。
   const configured = Boolean(url.trim() && username.trim() && password)
   const isBusy = busy !== null || running
 
   /**
-   * 地址栏的就地告警。
+   * 位址列的就地告警。
    *
-   * 说明文字里刻意不写「必须是 https」——填对的人不需要被告知规则，填错的人才需要，
-   * 而那时一句针对性的告警比一条常驻的规则有用。所以这里要覆盖**所有**非 https 的
-   * 情况，而不只是 `http://`：只查 http 的话，粘一个裸域名（`dav.jianguoyun.com/dav`）
-   * 会一路没有提示，直到点测试连接才报错。
+   * 說明文字裡刻意不寫「必須是 https」——填對的人不需要被告知規則，填錯的人才需要，
+   * 而那時一句針對性的告警比一條常駐的規則有用。所以這裡要覆蓋**所有**非 https 的
+   * 情況，而不只是 `http://`：只查 http 的話，粘一個裸域名（`dav.jianguoyun.com/dav`）
+   * 會一路沒有提示，直到點測試連線才報錯。
    */
   const urlWarning = (() => {
     const value = url.trim().toLowerCase()
@@ -266,7 +266,7 @@ export default function WebDavSection() {
     try {
       await restoreWebDavBackup(name)
       setRestoreDone(true)
-      // 与本地导入一致：略作停留让用户看到提示，再重启使更改生效。
+      // 與本地匯入一致：略作停留讓使用者看到提示，再重啟使更改生效。
       setTimeout(() => { void restartApp() }, 1500)
     } catch (error) {
       setActionError(describeWebDavError(error))
@@ -282,9 +282,9 @@ export default function WebDavSection() {
   )
 
   /**
-   * 状态徽标，写法沿用「AI 供应商」卡片上的那一枚（同样的圆角、字号、配色语汇）。
-   * 备份中只显示百分比 —— 阶段名（「正在打包录音文件…」）太长，塞进徽标会把地址挤掉，
-   * 它落在下面的进度行里。
+   * 狀態徽標，寫法沿用「AI 供應商」卡片上的那一枚（同樣的圓角、字號、配色語彙）。
+   * 備份中只顯示百分比 —— 階段名（「正在打包錄音檔案…」）太長，塞進徽標會把地址擠掉，
+   * 它落在下面的進度行裡。
    */
   const chip = uploading
     ? { text: `${Math.round(percent)}%`, box: 'bg-warning/10 text-warning-strong' }
@@ -294,7 +294,7 @@ export default function WebDavSection() {
         ? { text: t('webdav.state.failed'), box: 'bg-destructive/10 text-destructive-strong' }
         : { text: t('webdav.state.never'), box: 'bg-muted text-muted-foreground' }
 
-  // 摘要：备份什么 · 多久一次（仅自动备份开启时）· 上次什么时候 · 多大
+  // 摘要：備份什麼 · 多久一次（僅自動備份開啟時）· 上次什麼時候 · 多大
   const metaParts = [contentSummary]
   if (enabled) metaParts.push(intervalLabel)
   if (lastResult) metaParts.push(shortTime(lastResult.at))
@@ -303,7 +303,7 @@ export default function WebDavSection() {
   return (
     <Card>
       <CardContent className="p-6">
-        {/* items-center 是本页卡片头部的既有写法（音频卡、日志卡都是），右侧控件对着
+        {/* items-center 是本頁卡片頭部的既有寫法（音訊卡、日誌卡都是），右側控制元件對著
             标题+说明整块居中。用 items-start 会让 32px 高的按钮压着 28px 的标题行，
             视觉上往下坠；而且「配置服务器」按钮和「自动备份」开关高度不同，
             顶对齐时两个状态的右侧内容会错开。 */}
@@ -312,7 +312,7 @@ export default function WebDavSection() {
             <h2 className="text-lg font-semibold">{t('webdav.title')}</h2>
             <p className="mt-1 text-sm text-muted-foreground">{t('webdav.desc')}</p>
           </div>
-          {/* 右上角这一格是这张卡的开关位：没配置时是唯一的入口，配置完就换成自动备份开关。
+          {/* 右上角這一格是這張卡的開關位：沒配置時是唯一的入口，配置完就換成自動備份開關。
               入口按钮单独放在说明下面会显得像一个孤立的动作，和卡片其它内容对不上。 */}
           <div className="flex shrink-0 items-center gap-2">
             {configured ? (
@@ -339,7 +339,7 @@ export default function WebDavSection() {
 
         {configured && (
           <>
-            {/* 备份目标做成一张有边框的小卡，写法沿用「AI 供应商」的服务卡：
+            {/* 備份目標做成一張有邊框的小卡，寫法沿用「AI 供應商」的服務卡：
                 地址 + 状态徽标一行，摘要一行。原先这些是三段没有容器的散排文字，
                 夹在标题和按钮之间，读起来像还在写说明，而不是「这是已经配好的那个东西」。
                 自动备份开启时用 border-primary + bg-primary/5 —— 这是本仓库表示
@@ -364,7 +364,7 @@ export default function WebDavSection() {
                 </span>
               </div>
 
-              {/* 三个动作收成卡上的图标 + tooltip，和「AI 供应商」服务卡一致。
+              {/* 三個動作收成卡上的圖示 + tooltip，和「AI 供應商」服務卡一致。
                   原先是卡片下面三颗并排的文字按钮：一个实心加两个 ghost，宽窄不齐、
                   又和卡片抢层级，而它们本来就是「对这台服务器做的三件事」，属于这张卡。 */}
               <div className="mt-1 flex items-center gap-2">
@@ -427,13 +427,13 @@ export default function WebDavSection() {
                 </div>
               )}
 
-              {/* 失败原因单独一行：它可能很长，挤进摘要会把前面的信息顶掉。
+              {/* 失敗原因單獨一行：它可能很長，擠進摘要會把前面的資訊頂掉。
                   成功和失败都要能看见 —— 少了失败那一半，一个静默失败几个月的
                   备份在界面上和一个正常工作的备份长得一模一样。 */}
               {!uploading && lastResult && !lastResult.ok && (
                 <p className="mt-1.5 text-[11px] text-destructive">
                   {describeWebDavError(lastResult.error ?? '')}
-                  {/* 翻成中文后原始报错放进「详情」，排查时还能看到 */}
+                  {/* 翻成中文後原始報錯放進「詳情」，排查時還能看到 */}
                   {webDavErrorDetail(lastResult.error ?? '') && (
                     <Tooltip variant="light" content={webDavErrorDetail(lastResult.error ?? '')}>
                       <span className="ml-1.5 cursor-help text-muted-foreground underline underline-offset-2">{t('webdav.errorDetail')}</span>
@@ -503,11 +503,11 @@ export default function WebDavSection() {
               </div>
             </div>
 
-            {/* 坚果云是目前验证过的服务商，它那个必踩的点（要用应用密码）值得占一行。 */}
+            {/* 堅果雲是目前驗證過的服務商，它那個必踩的點（要用應用密碼）值得佔一行。 */}
             <p className="text-[11px] text-muted-foreground">{t('webdav.jianguoyunHint')}</p>
           </div>
 
-          {/* ── 备份内容 ──
+          {/* ── 備份內容 ──
               三项全部列出，配置那一项标「始终包含」而不是不显示：「会同步哪些文件」
               这个问题需要一个看得见的完整答案，而不是从两个开关反推。 */}
           <div className="mt-5 border-t border-border pt-4">
@@ -537,12 +537,12 @@ export default function WebDavSection() {
                 noAnimation={!animate}
               />
             </div>
-            {/* 就地提示而不是二级确认框：弹窗里再套弹窗是反模式，而且只要录音是开着的，
+            {/* 就地提示而不是二級確認框：彈窗裡再套彈窗是反模式，而且只要錄音是開著的，
                 代价就应该一直写在那儿，而不是点一次就消失。 */}
             {includeAudio && <FormatHint text={t('webdav.audioOnHint')} />}
           </div>
 
-          {/* ── 频率与保留 ── */}
+          {/* ── 頻率與保留 ── */}
           <div className="mt-4 space-y-3 border-t border-border pt-4">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <label className="text-sm text-muted-foreground">{t('webdav.intervalLabel')}</label>
@@ -565,14 +565,14 @@ export default function WebDavSection() {
                   className="shrink-0 justify-end"
                 />
               </div>
-              {/* 「保留份数」本身说不清会不会删东西。每次备份是一个新文件、不覆盖旧的，
+              {/* 「保留份數」本身說不清會不會刪東西。每次備份是一個新檔案、不覆蓋舊的，
                   所以必须明说超出的那些会被删掉 —— 用户拿这个数做决定，就得知道代价。 */}
               <p className="mt-1 text-[11px] text-muted-foreground">{t('webdav.keepHint')}</p>
             </div>
           </div>
 
           <div className="mt-5 flex items-center justify-end gap-2">
-            {/* 测试结果和报错共用左边这一格，两者不会同时有意义。 */}
+            {/* 測試結果和報錯共用左邊這一格，兩者不會同時有意義。 */}
             <span className={`min-w-0 flex-1 text-xs ${actionError ? 'text-destructive' : 'text-success-strong'}`}>
               {actionError || testMessage}
             </span>

@@ -17,7 +17,7 @@ import { AudioProgressBar } from './AudioProgressBar'
 import { AsrCorrectionDialog } from './AsrCorrectionDialog'
 import { groupByDay } from './dayGroups'
 
-/** 云 API 内部 key → 用户友好的模型 ID */
+/** 雲 API 內部 key → 使用者友好的模型 ID */
 const ASR_PROVIDER_DISPLAY: Record<string, string> = {
   doubao_v2: 'Doubao-Seed-ASR-2.0',
   doubao: 'Doubao-Seed-ASR',
@@ -34,12 +34,12 @@ interface HistoryRecordListProps {
   onDelete: (id: string) => Promise<void> | void
   onToggleFavorite?: (id: string, nextFavorite: boolean) => Promise<void> | void
   onReprocess?: (record: HistoryRecord) => Promise<void> | void
-  /** 手工编辑转换结果并保存 */
+  /** 手工編輯轉換結果並儲存 */
   onEdit?: (id: string, nextText: string) => Promise<void> | void
-  /** 记下「这条的 ASR 纠错已提交/已撤回」，由页面写回本地记录 */
+  /** 記下「這條的 ASR 糾錯已提交/已撤回」，由頁面寫回本地記錄 */
   onSaveAsrCorrection?: (id: string, patch: Partial<HistoryRecord>) => Promise<void> | void
   emptyText?: string
-  /** 搜索关键词：在正文与 ASR 原文里高亮命中处 */
+  /** 搜尋關鍵詞：在正文與 ASR 原文裡高亮命中處 */
   highlight?: string
 }
 
@@ -51,7 +51,7 @@ function getDayLabel(ts: number): string {
   yesterday.setDate(yesterday.getDate() - 1)
   const recordDay = new Date(date.getFullYear(), date.getMonth(), date.getDate())
 
-  // 日期格式跟界面语言：英文界面下 "August 4" 而不是 "8月4日"
+  // 日期格式跟介面語言：英文介面下 "August 4" 而不是 "8月4日"
   const dateStr = date.toLocaleDateString(getLocale(), { month: 'long', day: 'numeric' })
   if (recordDay.getTime() === today.getTime()) return t('record.dayPrefix', { day: t('record.today'), date: dateStr })
   if (recordDay.getTime() === yesterday.getTime()) return t('record.dayPrefix', { day: t('record.yesterday'), date: dateStr })
@@ -63,7 +63,7 @@ function formatTime(ts: number): string {
   return d.toLocaleTimeString(getLocale(), { hour: '2-digit', minute: '2-digit' })
 }
 
-/** 把 text 中命中 keyword 的子串用 <mark> 高亮（大小写不敏感，用 indexOf 避免正则特殊字符问题）。 */
+/** 把 text 中命中 keyword 的子串用 <mark> 高亮（大小寫不敏感，用 indexOf 避免正則特殊字元問題）。 */
 function highlightText(text: string, keyword: string) {
   const kw = keyword.trim()
   if (!kw) return text
@@ -104,13 +104,13 @@ function HistoryItem({
   onSaveAsrCorrection?: (patch: Partial<HistoryRecord>) => Promise<void> | void
   highlight?: string
 }) {
-  // 详情区靠**点「展开详情」按钮**开合，不用 hover。
+  // 詳情區靠**點「展開詳情」按鈕**開合，不用 hover。
   //
-  // 曾经改成过鼠标悬停展开（进入停留 160ms 才开、离开延迟 180ms 才收，编辑/播放/
-  // 键盘焦点时粘滞不收）。那套逻辑本身是能用的，但被撤掉了：hover 展开意味着
-  // 光标只是路过列表，行高就会变化，读一屏历史时整个列表始终在动；而"展开某条看细节"
-  // 本来就是个明确的意图，值得用户点一下。
-  // 别再改回 hover —— 那条路已经走过一次了。
+  // 曾經改成過滑鼠懸停展開（進入停留 160ms 才開、離開延遲 180ms 才收，編輯/播放/
+  // 鍵盤焦點時粘滯不收）。那套邏輯本身是能用的，但被撤掉了：hover 展開意味著
+  // 游標只是路過列表，行高就會變化，讀一屏歷史時整個列表始終在動；而"展開某條看細節"
+  // 本來就是個明確的意圖，值得使用者點一下。
+  // 別再改回 hover —— 那條路已經走過一次了。
   const [expanded, setExpanded] = useState(false)
   const [editing, setEditing] = useState(false)
   const [editText, setEditText] = useState('')
@@ -132,12 +132,12 @@ function HistoryItem({
   })
 
   /**
-   * 「纠正识别」入口的门槛。
+   * 「糾正識別」入口的門檻。
    *
-   * 只有服务器模式：只有服务器上的模型是我们能改的，云 API / 本地模型认错了，
-   * 把用户音频收上来既没用又是一次隐私意外（见 .kiro/decisions.md）。
-   * 必须有录音路径：没有音频的纠正对改进识别没有用。路径存在但文件已被保留期清掉
-   * 这种情况留给面板去说明 —— 列表渲染时不该为每一行去摸一次磁盘。
+   * 只有伺服器模式：只有伺服器上的模型是我們能改的，雲 API / 本地模型認錯了，
+   * 把使用者音訊收上來既沒用又是一次隱私意外（見 .kiro/decisions.md）。
+   * 必須有錄音路徑：沒有音訊的糾正對改進識別沒有用。路徑存在但檔案已被保留期清掉
+   * 這種情況留給面板去說明 —— 列表渲染時不該為每一行去摸一次磁碟。
    */
   const canCorrectAsr = Boolean(
     onSaveAsrCorrection && record.workMode === 'server' && record.asrText && !isEmpty && record.audioFilePath,
@@ -151,8 +151,8 @@ function HistoryItem({
     try {
       await onReprocess()
     } catch (error) {
-      // 原来没有 catch：失败只在日志里留一行 Unhandled promise rejection，按钮转完就没下文，
-      // 用户以为点了没反应（2026-10-19 本地模型把显卡跑挂那次，连着点了十来次）。
+      // 原來沒有 catch：失敗只在日誌裡留一行 Unhandled promise rejection，按鈕轉完就沒下文，
+      // 使用者以為點了沒反應（2026-10-19 本地模型把顯示卡跑掛那次，連著點了十來次）。
       const reason = errorDetailText(error)
       // [自訂] SC-35：本機模型錯誤使用與聽寫及語音引擎測試相同的提示。
       const modelError = describeLocalModelError(error)
@@ -163,8 +163,8 @@ function HistoryItem({
     }
   }, [onReprocess, reprocessing, record.id])
 
-  // ── 编辑：自动保存（失焦 / 离开页面即存，无需按钮）──
-  // 用 ref 保存最新值，供失焦回调与卸载清理读取，避免闭包拿到旧值。
+  // ── 編輯：自動儲存（失焦 / 離開頁面即存，無需按鈕）──
+  // 用 ref 儲存最新值，供失焦回撥與解除安裝清理讀取，避免閉包拿到舊值。
   const editTextRef = useRef('')
   const editingRef = useRef(false)
   const textRef = useRef(text)
@@ -179,7 +179,7 @@ function HistoryItem({
     setEditing(true)
   }, [text])
 
-  // 提交：仅当仍在编辑且内容有变化时写回。幂等——重复调用（失焦后又卸载）不会重复保存。
+  // 提交：僅當仍在編輯且內容有變化時寫回。冪等——重複呼叫（失焦後又解除安裝）不會重複儲存。
   const commitEdit = useCallback(async () => {
     if (!editingRef.current) return
     editingRef.current = false
@@ -189,13 +189,13 @@ function HistoryItem({
     await onEditRef.current(next)
   }, [])
 
-  // 取消：不保存，直接退出（后续失焦/卸载因 editingRef=false 而跳过）。
+  // 取消：不儲存，直接退出（後續失焦/解除安裝因 editingRef=false 而跳過）。
   const cancelEdit = useCallback(() => {
     editingRef.current = false
     setEditing(false)
   }, [])
 
-  // 离开页面（组件卸载）时若仍在编辑，自动保存。
+  // 離開頁面（元件解除安裝）時若仍在編輯，自動儲存。
   useEffect(() => () => { void commitEdit() }, [commitEdit])
 
   const handleDownloadAudio = useCallback(async () => {
@@ -215,7 +215,7 @@ function HistoryItem({
       const dateStr = `${ts.getFullYear()}${String(ts.getMonth() + 1).padStart(2, '0')}${String(ts.getDate()).padStart(2, '0')}_${String(ts.getHours()).padStart(2, '0')}${String(ts.getMinutes()).padStart(2, '0')}${String(ts.getSeconds()).padStart(2, '0')}`
       const filename = `sayit_${dateStr}.wav`
 
-      // Rust 直接复制文件，不再把整段录音读成 base64 再发回去
+      // Rust 直接複製檔案，不再把整段錄音讀成 base64 再發回去
       const savedPath = await bridge.saveRecordingToDownloads(record.audioFilePath, filename)
 
       setDownloadStatus('ok')
@@ -235,9 +235,9 @@ function HistoryItem({
   return (
     <div
       className="group rounded-md transition-colors hover:bg-accent/50"
-      // 关掉滚动锚定：Chromium 默认会在行高变化时自动调 scrollTop 去"稳住"某个锚点元素，
-      // 锚点若落在展开行下方，补偿的结果就是内容（含你刚点开的这行）往上蹿 ——
-      // 表现为"有时往上、有时往下，挤来挤去"。关掉之后展开一律向下推，行为可预期。
+      // 關掉滾動錨定：Chromium 預設會在行高變化時自動調 scrollTop 去"穩住"某個錨點元素，
+      // 錨點若落在展開行下方，補償的結果就是內容（含你剛點開的這行）往上躥 ——
+      // 表現為"有時往上、有時往下，擠來擠去"。關掉之後展開一律向下推，行為可預期。
       style={{ overflowAnchor: 'none' }}
     >
       <div className="flex items-start gap-2 px-2 py-2">
@@ -282,7 +282,7 @@ function HistoryItem({
                 }}
               >
                 {(() => {
-                  // 编辑过的记录：在正文末尾内联一个小铅笔图标（hover 提示「已编辑」），不占额外行、不混入正文文本
+                  // 編輯過的記錄：在正文末尾內聯一個小鉛筆圖示（hover 提示「已編輯」），不佔額外行、不混入正文文本
                   const editedMark = record.manualEditedAt ? (
                     <Tooltip content={t('record.edited')}>
                       <Pencil className="ml-1 inline-block h-3 w-3 translate-y-[1px] text-muted-foreground/40" />
@@ -361,7 +361,7 @@ function HistoryItem({
             </Tooltip>
           </div>
 
-          {/* 展开动画：grid 0fr→1fr，200ms ease-out。中途试过实测高度 + 自定义曲线 +
+          {/* 展開動畫：grid 0fr→1fr，200ms ease-out。中途試過實測高度 + 自定義曲線 +
               内容淡入位移，叠得越多反而越碎，已经撤掉，别再往上加。 */}
           <div
             className="col-span-2 grid grid-cols-subgrid transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none"
@@ -370,7 +370,7 @@ function HistoryItem({
           >
             <div className="col-span-2 grid grid-cols-subgrid overflow-hidden">
               <div className="col-span-2 mt-2 grid grid-cols-subgrid gap-y-2 text-xs">
-                {/* 空结果的成因。折叠行只能显示「无有效声音」，真实原因（额度耗尽、
+                {/* 空結果的成因。摺疊行只能顯示「無有效聲音」，真實原因（額度耗盡、
                     资源未开通、服务端断连、文本处理清空）放这里。老记录没有这个字段。 */}
                 {isEmpty && (record.failReasonCode || record.failReason) && (
                   <div className="col-span-2 text-muted-foreground">
@@ -405,7 +405,7 @@ function HistoryItem({
                   <span className="text-border">|</span>
                   <span>{t('record.recognizeTime', { total: ((record.asrMs + record.llmMs) / 1000).toFixed(1), asr: record.asrMs, llm: record.llmMs })}</span>
 
-                  {/* 四个操作按钮单独收成一组：它们原来和左边的文字共用外层的 gap-2(8px)，
+                  {/* 四個操作按鈕單獨收成一組：它們原來和左邊的文字共用外層的 gap-2(8px)，
                       按钮之间也就被撑到 8px，比右上角那排（gap-0.5）散得多。
                       这里组内用 gap-0.5 与上排统一，组与文字之间仍由外层的 gap-2 分隔。 */}
                   <div className="flex items-center gap-0.5">
@@ -514,7 +514,7 @@ function HistoryItem({
                     {t('record.reprocessFailed', { reason: reprocessError })}
                   </div>
                 )}
-                {/* 音频进度条 + 倍速 */}
+                {/* 音訊進度條 + 倍速 */}
                 {playback.ready && <AudioProgressBar playback={playback} className="col-span-2 mt-2" />}
               </div>
             </div>
@@ -586,7 +586,7 @@ export default function HistoryRecordList({
   highlight,
 }: HistoryRecordListProps) {
   useT()
-  // 默认值不能写在参数里：默认参数在模块作用域求值不了 t()，写死中文串又会在英文界面漏出来。
+  // 預設值不能寫在引數裡：預設引數在模組作用域求值不了 t()，寫死中文串又會在英文介面漏出來。
   const resolvedEmptyText = emptyText ?? t('history.empty')
   const dayGroups = useMemo(() => groupByDay(records, getDayLabel), [records])
 

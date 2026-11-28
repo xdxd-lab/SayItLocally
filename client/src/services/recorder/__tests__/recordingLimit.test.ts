@@ -10,12 +10,12 @@ describe('formatRecordingTimer', () => {
   it('上限之前显示已录秒数', () => {
     expect(formatRecordingTimer(0)).toMatchObject({ text: '0s', countdown: false })
     expect(formatRecordingTimer(12.7)).toMatchObject({ text: '12s', countdown: false })
-    // 距上限还剩 61 秒，还没进入倒计时
+    // 距上限還剩 61 秒，還沒進入倒計時
     expect(formatRecordingTimer(239)).toMatchObject({ text: '239s', countdown: false })
   })
 
   it('最后一分钟改为显示剩余时间', () => {
-    // 正好剩 60 秒时进入倒计时
+    // 正好剩 60 秒時進入倒計時
     expect(formatRecordingTimer(240)).toMatchObject({ text: '剩餘 60s', countdown: true, remainingSec: 60 })
     expect(formatRecordingTimer(253)).toMatchObject({ text: '剩餘 47s', countdown: true, remainingSec: 47 })
     expect(formatRecordingTimer(299)).toMatchObject({ text: '剩餘 1s', countdown: true, remainingSec: 1 })
@@ -44,7 +44,7 @@ describe('formatRecordingTimer', () => {
 
 describe('formatRecordingLimit', () => {
   it('文案随上限自动变化（避免改了上限忘了改文案）', () => {
-    // 当前上限的中文说明；界面文案直接用它渲染
+    // 當前上限的中文說明；介面文案直接用它渲染
     expect(formatRecordingLimit()).toBe(
       MAX_RECORDING_SEC < 60
         ? `${MAX_RECORDING_SEC} 秒`

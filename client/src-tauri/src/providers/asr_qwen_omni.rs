@@ -1,6 +1,6 @@
-// Qwen-Omni-Realtime ASR+AI — 通过 WebSocket 实时接口
-// 使用 Manual 模式：发送音频 → commit → create_response → 接收文本
-// 同时充当 ASR 和 AI，输出模态设为仅文本
+// Qwen-Omni-Realtime ASR+AI — 透過 WebSocket 即時介面
+// 使用 Manual 模式：傳送音訊 → commit → create_response → 接收文本
+// 同時充當 ASR 和 AI，輸出模態設為僅文本
 
 use super::diag;
 use super::types::{AsrProviderConfig, AsrResult, TestResult};
@@ -9,40 +9,40 @@ use futures_util::{FutureExt, SinkExt, StreamExt};
 use std::time::{Duration, Instant};
 use tokio_tungstenite::tungstenite;
 
-/// `extra.model` 缺失时用哪个。
+/// `extra.model` 缺失時用哪個。
 ///
-/// 2026-09-23 从 `qwen3-omni-flash-realtime` 换过来：那个模型已被阿里公告下线并开始
-/// 缩容，实测连它的实时端点直接读超时。回落值指向一个点了就坏的模型，比报错更难查
-/// —— 用户看到的是「一直转圈然后什么都没有」，而日志里只有一个超时。
+/// 2026-09-23 從 `qwen3-omni-flash-realtime` 換過來：那個模型已被阿里公告下線並開始
+/// 縮容，實測連它的即時端點直接讀超時。回落值指向一個點了就壞的模型，比報錯更難查
+/// —— 使用者看到的是「一直轉圈然後什麼都沒有」，而日誌裡只有一個超時。
 const DEFAULT_MODEL: &str = "qwen3.5-omni-flash-realtime";
 
 /// `session.audio.output.voice` 发什么。
 ///
-/// 我们只要文本，这个值永远不会被合成出来 —— 它存在的唯一原因是 3.8 会在
-/// `response.create` 那一步校验音色。取 Tina 是因为官方文档说它是 3.8 的默认音色，
-/// 而且实测 3.5 两个模型也接受它。详见 start_session 里 session.update 那段注释。
+/// 我們只要文本，這個值永遠不會被合成出來 —— 它存在的唯一原因是 3.8 會在
+/// `response.create` 那一步校驗音色。取 Tina 是因為官方文件說它是 3.8 的預設音色，
+/// 而且實測 3.5 兩個模型也接受它。詳見 start_session 裡 session.update 那段註釋。
 const OUTPUT_VOICE: &str = "Tina";
 
 const SCOPE: &str = "qwen/omni";
 
 // ── 上行限速：先放一段突发，之后按固定速率发 ──
 //
-// 实测（2026-10-09，dev-scripts/probe_qwen_omni_long_audio.py，真实接口，plus 与 flash 都一样）：
-// DashScope realtime 对上行流量限速，超了直接关连接：
+// 實測（2026-10-09，dev-scripts/probe_qwen_omni_long_audio.py，真實介面，plus 與 flash 都一樣）：
+// DashScope realtime 對上行流量限速，超了直接關連線：
 //     close code=1007 reason=Input traffic exceeds the limit of 2560KB/s
-// 文档里没写这条。99 秒录音一口气发（约 4.3MB、0.4 秒）必挂；但 80 秒以内（≤3.46MB）
-// 一口气发每次都过，按 ≤50 倍实时（2.16MB/s）发 240 秒也过 —— 服务端是带突发容量的令牌桶。
-// 上行慢于约 20Mbps 的机器 TCP 自己就压住了速度，所以这个问题「有人遇到、有人遇不到」。
+// 文件裡沒寫這條。99 秒錄音一口氣發（約 4.3MB、0.4 秒）必掛；但 80 秒以內（≤3.46MB）
+// 一口氣發每次都過，按 ≤50 倍即時（2.16MB/s）發 240 秒也過 —— 服務端是帶突發容量的令牌桶。
+// 上行慢於約 20Mbps 的機器 TCP 自己就壓住了速度，所以這個問題「有人遇到、有人遇不到」。
 //
-// 为什么不纯限速：60 秒以内的录音本来就不会触发，纯限速会让每一次口述都白等
-// （30 秒多 0.75 秒、99 秒多 2.5 秒）。先突发后限速，60 秒以内零延迟，99 秒只多约 1 秒。
-// 突发容量没写进文档，所以留了余量；万一阿里调小了，`transcribe` 里还有一次纯限速重试兜底。
-// 改包大小没用（实测 500ms 一包同样被掐），能救的只有降速。
-// 被否掉的其他方案与以后「边录边发」的计划见 `.kiro/decisions.md`「千问 Omni 发送限速」。
+// 為什麼不純限速：60 秒以內的錄音本來就不會觸發，純限速會讓每一次口述都白等
+// （30 秒多 0.75 秒、99 秒多 2.5 秒）。先突發後限速，60 秒以內零延遲，99 秒只多約 1 秒。
+// 突發容量沒寫進文件，所以留了餘量；萬一阿里調小了，`transcribe` 裡還有一次純限速重試兜底。
+// 改包大小沒用（實測 500ms 一包同樣被掐），能救的只有降速。
+// 被否掉的其他方案與以後「邊錄邊發」的計劃見 `.kiro/decisions.md`「千問 Omni 傳送限速」。
 
-/// 突发额度，按线上字节算。2.4MB ≈ 55 秒音频，低于每次都能过的 2.6MB（60 秒）。
+/// 突發額度，按線上位元組算。2.4MB ≈ 55 秒音訊，低於每次都能過的 2.6MB（60 秒）。
 const PACING_BURST_BYTES: u64 = 2_400_000;
-/// 突发之后的速率。约 46 倍实时，比服务端的 2560KB/s 低 20%。
+/// 突發之後的速率。約 46 倍即時，比服務端的 2560KB/s 低 20%。
 const PACING_RATE_BYTES_PER_SEC: u64 = 2_000_000;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -56,7 +56,7 @@ impl Pacing {
         burst_bytes: PACING_BURST_BYTES,
         rate_bytes_per_sec: PACING_RATE_BYTES_PER_SEC,
     };
-    /// 被限速掐断之后的那次重试：不再突发，从第一包起就按速率发。
+    /// 被限速掐斷之後的那次重試：不再突發，從第一包起就按速率發。
     const THROTTLE_ONLY: Pacing = Pacing {
         burst_bytes: 0,
         rate_bytes_per_sec: PACING_RATE_BYTES_PER_SEC,
@@ -71,12 +71,12 @@ impl Pacing {
     }
 }
 
-/// 下一包最早能在「开始发送之后」的哪个时刻发出。`None` = 还在突发额度内，立刻发。
+/// 下一包最早能在「開始傳送之後」的哪個時刻發出。`None` = 還在突發額度內，立刻發。
 ///
-/// 返回的是相对发送起点的**绝对**偏移，不是「再睡多久」：调用方 `sleep_until(起点 + 偏移)`。
-/// 这样醒晚了不会累积 —— Windows 定时器精度约 15.6ms，醒来时后面几包的截止时刻
-/// 往往已经过了，会直接连着发掉，平均速率仍是设定值。
-/// ⚠️ 别改成「每包 sleep 一个固定间隔」：46 倍实时下一包只隔 2ms，按 15.6ms 的精度睡，
+/// 返回的是相對傳送起點的**絕對**偏移，不是「再睡多久」：呼叫方 `sleep_until(起點 + 偏移)`。
+/// 這樣醒晚了不會累積 —— Windows 定時器精度約 15.6ms，醒來時後面幾包的截止時刻
+/// 往往已經過了，會直接連著發掉，平均速率仍是設定值。
+/// ⚠️ 別改成「每包 sleep 一個固定間隔」：46 倍即時下一包只隔 2ms，按 15.6ms 的精度睡，
 /// 990 包会被拖到 15 秒。
 fn pacing_due(sent_bytes: u64, next_bytes: u64, pacing: Pacing) -> Option<Duration> {
     let needed = sent_bytes + next_bytes;
@@ -89,11 +89,11 @@ fn pacing_due(sent_bytes: u64, next_bytes: u64, pacing: Pacing) -> Option<Durati
     ))
 }
 
-/// 这条错误是不是「上行超速被掐」。只认服务端的原话和 close 1007，别的错误一律不重试 ——
-/// 密钥错、额度用完、超时重试一遍只会让用户多等一轮，结果不会变。
-/// 给同一个 DashScope realtime 接口上的其它一次性路径用（asr_qwen_realtime 的录完再发）：
-/// 限速是接口级的，不分模型，2026-10-27 实测 qwen3-asr-flash-realtime 一口气发 89 秒
-/// 同样被 `Input traffic exceeds the limit of 2560KB/s` 掐断。
+/// 這條錯誤是不是「上行超速被掐」。只認服務端的原話和 close 1007，別的錯誤一律不重試 ——
+/// 金鑰錯、額度用完、超時重試一遍只會讓使用者多等一輪，結果不會變。
+/// 給同一個 DashScope realtime 介面上的其它一次性路徑用（asr_qwen_realtime 的錄完再發）：
+/// 限速是介面級的，不分模型，2026-10-27 實測 qwen3-asr-flash-realtime 一口氣發 89 秒
+/// 同樣被 `Input traffic exceeds the limit of 2560KB/s` 掐斷。
 pub(super) fn realtime_upload_due(sent_bytes: u64, next_bytes: u64) -> Option<Duration> {
     pacing_due(sent_bytes, next_bytes, Pacing::NORMAL)
 }
@@ -103,15 +103,15 @@ pub(super) fn is_rate_limited(error: &str) -> bool {
     lower.contains("input traffic exceeds") || lower.contains("code=1007")
 }
 
-/// 一次尝试的失败，带上「值不值得换纯限速再试一次」。
+/// 一次嘗試的失敗，帶上「值不值得換純限速再試一次」。
 struct AttemptError {
     error: String,
     retryable: bool,
 }
 
 impl From<String> for AttemptError {
-    /// 绝大多数失败点都是 `diag::fail(...)?`，在这里按错误原文统一判定。
-    /// 判据只看服务端说的原因，所以 close 帧在发送途中读到、还是 commit 之后才读到，
+    /// 絕大多數失敗點都是 `diag::fail(...)?`，在這裡按錯誤原文統一判定。
+    /// 判據只看服務端說的原因，所以 close 幀在傳送途中讀到、還是 commit 之後才讀到，
     /// 都走同一条路。
     fn from(error: String) -> Self {
         let retryable = is_rate_limited(&error);
@@ -146,7 +146,7 @@ fn pcm_to_wav(pcm: &[u8], sr: u32) -> Vec<u8> {
     w
 }
 
-/// 获取模型 ID（从 extra 字段或使用默认值）
+/// 獲取模型 ID（從 extra 欄位或使用預設值）
 fn get_model(config: &AsrProviderConfig) -> String {
     config
         .extra
@@ -157,7 +157,7 @@ fn get_model(config: &AsrProviderConfig) -> String {
         .to_string()
 }
 
-/// 获取 system prompt（从 extra 字段）
+/// 獲取 system prompt（從 extra 欄位）
 fn get_instructions(config: &AsrProviderConfig) -> String {
     config
         .extra
@@ -168,12 +168,12 @@ fn get_instructions(config: &AsrProviderConfig) -> String {
         .to_string()
 }
 
-/// 一次 Omni 会话里累积下来的东西。
+/// 一次 Omni 會話裡累積下來的東西。
 #[derive(Default)]
 struct OmniTranscript {
     /// 模型的回答（response.text.* / response.audio_transcript.*）
     result_text: String,
-    /// 服务端对**输入音频**的转写。模型没给回答时用它兜底
+    /// 服務端對**輸入音訊**的轉寫。模型沒給回答時用它兜底
     input_transcript: String,
 }
 
@@ -182,7 +182,7 @@ impl OmniTranscript {
         self.result_text.trim().is_empty() && self.input_transcript.trim().is_empty()
     }
 
-    /// 最终文本 + 是否走了「输入转写」兜底
+    /// 最終文本 + 是否走了「輸入轉寫」兜底
     fn finish(self) -> (String, bool) {
         if self.result_text.trim().is_empty() && !self.input_transcript.is_empty() {
             (self.input_transcript, true)
@@ -192,36 +192,36 @@ impl OmniTranscript {
     }
 }
 
-/// 处理一条服务端事件之后该怎么走。
+/// 處理一條服務端事件之後該怎麼走。
 #[derive(Debug, PartialEq)]
 enum OmniStep {
     Continue,
-    /// 收到 response.done，本轮正常结束
+    /// 收到 response.done，本輪正常結束
     Completed,
-    /// 服务端自己报了错
+    /// 服務端自己報了錯
     Failed { code: String, message: String },
 }
 
-/// 收响应的过程是怎么结束的。
+/// 收響應的過程是怎麼結束的。
 ///
-/// 这个区分是本次修复的核心：空文本到底算「用户真没说话」还是「协议没跑完」，
-/// 全看是不是收到过 `response.done`。原来三条退出路径（流结束 / 收到 Close 帧 /
-/// response.done）一律返回 `Ok("")`，于是**任何**协议层失败都显示成「未检测到有效声音」，
-/// 把用户引去查麦克风。用户报的「长录音转录失败提示无有效声音」就是这个形态。
+/// 這個區分是本次修復的核心：空文本到底算「使用者真沒說話」還是「協議沒跑完」，
+/// 全看是不是收到過 `response.done`。原來三條退出路徑（流結束 / 收到 Close 幀 /
+/// response.done）一律返回 `Ok("")`，於是**任何**協議層失敗都顯示成「未檢測到有效聲音」，
+/// 把使用者引去查麥克風。使用者報的「長錄音轉錄失敗提示無有效聲音」就是這個形態。
 enum OmniEnd {
     Completed,
-    /// 服务端关了连接，带上 close 帧里的说明
+    /// 服務端關了連線，帶上 close 幀裡的說明
     Closed(String),
-    /// 流直接没了，连 close 帧都没有
+    /// 流直接沒了，連 close 幀都沒有
     StreamEnded,
 }
 
 impl OmniEnd {
-    /// 一个字都没拿到时：`None` = 可以当成一次空转写（用户真没说话）；
-    /// `Some(stage)` = 必须报错，stage 是写进日志和错误信封的阶段名。
+    /// 一個字都沒拿到時：`None` = 可以當成一次空轉寫（使用者真沒說話）；
+    /// `Some(stage)` = 必須報錯，stage 是寫進日誌和錯誤信封的階段名。
     ///
-    /// 判据只有一条：**收到过 response.done 吗**。没收到就说明这轮对话没跑完，
-    /// 空文本不是结论、是症状。
+    /// 判據只有一條：**收到過 response.done 嗎**。沒收到就說明這輪對話沒跑完，
+    /// 空文本不是結論、是症狀。
     fn empty_failure_stage(&self) -> Option<&'static str> {
         match self {
             OmniEnd::Completed => None,
@@ -231,10 +231,10 @@ impl OmniEnd {
     }
 }
 
-/// 把一条服务端事件并进累积结果。
+/// 把一條服務端事件並進累積結果。
 ///
-/// 抽成独立函数是因为它要在**两处**跑：发送音频期间的边发边读，和发完之后的主循环。
-/// 顺带也就能测了 —— 这个 provider 之前一条测试都没有。
+/// 抽成獨立函式是因為它要在**兩處**跑：傳送音訊期間的邊發邊讀，和發完之後的主迴圈。
+/// 順帶也就能測了 —— 這個 provider 之前一條測試都沒有。
 fn apply_omni_event(event: &serde_json::Value, acc: &mut OmniTranscript) -> OmniStep {
     let event_type = event.get("type").and_then(|t| t.as_str()).unwrap_or("");
     match event_type {
@@ -249,7 +249,7 @@ fn apply_omni_event(event: &serde_json::Value, acc: &mut OmniTranscript) -> Omni
             }
         }
         "response.text.done" | "response.audio_transcript.done" => {
-            // done 带的是全量，优先用它 —— 比把 delta 拼起来更不容易缺字
+            // done 帶的是全量，優先用它 —— 比把 delta 拼起來更不容易缺字
             for key in ["text", "transcript"] {
                 if let Some(text) = event.get(key).and_then(|t| t.as_str()) {
                     if !text.is_empty() {
@@ -283,11 +283,11 @@ fn close_frame_reason(frame: Option<tungstenite::protocol::CloseFrame>) -> Strin
         .unwrap_or_else(|| "no close frame details".to_string())
 }
 
-/// 收尾：把累积结果变成这次调用的返回值。
+/// 收尾：把累積結果變成這次呼叫的返回值。
 ///
-/// 单独抽出来有两个原因：① 早退路径和正常路径必须用同一套判断，不能各写一遍；
-/// ② 这样才测得到 —— 本次修复的行为差别全在这个函数里（空结果到底算失败还是算
-/// 「用户真没说话」）。
+/// 單獨抽出來有兩個原因：① 早退路徑和正常路徑必須用同一套判斷，不能各寫一遍；
+/// ② 這樣才測得到 —— 本次修復的行為差別全在這個函式里（空結果到底算失敗還是算
+/// 「使用者真沒說話」）。
 fn finish_omni(
     acc: OmniTranscript,
     end: OmniEnd,
@@ -318,7 +318,7 @@ fn finish_omni(
     if !final_text.trim().is_empty() {
         diag::ok(SCOPE, elapsed_ms, final_text.chars().count());
         if used_input_transcript {
-            // 模型没给回答、只给了输入转写。结果可用，但说明 instructions 可能没生效
+            // 模型沒給回答、只給了輸入轉寫。結果可用，但說明 instructions 可能沒生效
             diag::log(
                 SCOPE,
                 "used_input_transcript",
@@ -353,7 +353,7 @@ pub async fn transcribe(
 
     let model = get_model(config);
     let mut instructions = get_instructions(config);
-    // 热词上下文偏置：追加到 system instructions
+    // 熱詞上下文偏置：追加到 system instructions
     if let Some(ctx) = super::asr_qwen::build_hotword_context_text(hotwords) {
         instructions.push_str("\n\n请特别注意以下专业术语/词汇的识别：");
         instructions.push_str(&ctx);
@@ -383,8 +383,8 @@ pub async fn transcribe(
 
     match run_attempt(&session, Pacing::NORMAL).await {
         Ok(result) => Ok(result),
-        // 只重试一次，而且只为「上行超速」这一种原因。重试不再突发，99 秒录音约多等 2 秒 ——
-        // 比让用户整段重录强得多。重试也失败就如实报出来，不再兜圈子。
+        // 只重試一次，而且只為「上行超速」這一種原因。重試不再突發，99 秒錄音約多等 2 秒 ——
+        // 比讓使用者整段重錄強得多。重試也失敗就如實報出來，不再兜圈子。
         Err(first) if first.retryable => {
             diag::log(
                 SCOPE,
@@ -402,18 +402,18 @@ pub async fn transcribe(
     }
 }
 
-/// 一次转写里各次尝试共用的东西。
+/// 一次轉寫裡各次嘗試共用的東西。
 struct OmniSession<'a> {
     api_key: &'a str,
     model: &'a str,
     instructions: &'a str,
     pcm: &'a [u8],
     audio_sec: f64,
-    /// 第一次尝试开始的时刻。重试时不重置，返回的 elapsed 是用户实际等的总时长。
+    /// 第一次嘗試開始的時刻。重試時不重置，返回的 elapsed 是使用者實際等的總時長。
     start: Instant,
 }
 
-/// 建一次连接、发完音频、收完结果。
+/// 建一次連線、發完音訊、收完結果。
 async fn run_attempt(session: &OmniSession<'_>, pacing: Pacing) -> Result<AsrResult, AttemptError> {
     let OmniSession {
         api_key,
@@ -425,7 +425,7 @@ async fn run_attempt(session: &OmniSession<'_>, pacing: Pacing) -> Result<AsrRes
     } = *session;
     let url = ws_url(model);
 
-    // 构建 WebSocket 请求。每次尝试都要新建：http::Request 不能 clone。
+    // 構建 WebSocket 請求。每次嘗試都要新建：http::Request 不能 clone。
     let request = tungstenite::http::Request::builder()
         .uri(&url)
         .header("Authorization", format!("Bearer {}", api_key))
@@ -444,22 +444,22 @@ async fn run_attempt(session: &OmniSession<'_>, pacing: Pacing) -> Result<AsrRes
     // 等待 session.created
     wait_for_event(&mut ws, "session.created", SCOPE).await?;
 
-    // 发送 session.update — 仅输出文本，禁用 VAD（Manual 模式）
+    // 傳送 session.update — 僅輸出文本，停用 VAD（Manual 模式）
     //
-    // ⚠️ `audio.output.voice` 看着是多余的：我们 `modalities` 只要 text，压根不要
-    // 合成语音。**但它是 qwen3.8-omni-flash-realtime 能用的前提，别当冗余清掉。**
+    // ⚠️ `audio.output.voice` 看著是多餘的：我們 `modalities` 只要 text，壓根不要
+    // 合成語音。**但它是 qwen3.8-omni-flash-realtime 能用的前提，別當冗餘清掉。**
     //
-    // 实测（2026-09-23，dev-scripts/probe_qwen38_omni_voice.py）：不带这个字段时，
+    // 實測（2026-09-23，dev-scripts/probe_qwen38_omni_voice.py）：不帶這個欄位時，
     // 3.8 在 `response.create` 那一步回 `<400> InternalError.Algo.InvalidParameter:
-    // Voice 'Chelsie' is not supported.` —— 服务端拿了一个 3.5 时代的默认音色去校验，
-    // 即使这一轮不会产出音频。3.8 把默认音色换成了 Tina，并把字段挪到
-    // `session.audio.output.voice`（官方文档称它优先于兼容字段 `session.voice`）。
+    // Voice 'Chelsie' is not supported.` —— 服務端拿了一個 3.5 時代的預設音色去校驗，
+    // 即使這一輪不會產出音訊。3.8 把預設音色換成了 Tina，並把欄位挪到
+    // `session.audio.output.voice`（官方文件稱它優先於相容欄位 `session.voice`）。
     //
-    // 为什么不按模型分支：实测 3.5 plus/flash 带上这个字段同样正常，所以**一份会话
-    // 形状通吃三代**。按模型拆两套 session 会多出一条只在某一代上跑过的代码路径。
+    // 為什麼不按模型分支：實測 3.5 plus/flash 帶上這個欄位同樣正常，所以**一份會話
+    // 形狀通吃三代**。按模型拆兩套 session 會多出一條只在某一代上跑過的程式碼路徑。
     //
-    // 排查提示：错误信息只提音色、不提模型，容易被当成「账号没开通音色」或
-    // 「模型不可用」。真正的判据是 `response.create` 之后立刻来一个 error 事件。
+    // 排查提示：錯誤資訊只提音色、不提模型，容易被當成「賬號沒開通音色」或
+    // 「模型不可用」。真正的判據是 `response.create` 之後立刻來一個 error 事件。
     let session_update = serde_json::json!({
         "type": "session.update",
         "session": {
@@ -479,18 +479,18 @@ async fn run_attempt(session: &OmniSession<'_>, pacing: Pacing) -> Result<AsrRes
     // 等待 session.updated
     wait_for_event(&mut ws, "session.updated", SCOPE).await?;
 
-    // 发送音频数据（PCM 16kHz 16bit mono，分块发送）
+    // 傳送音訊資料（PCM 16kHz 16bit mono，分塊傳送）
     // Qwen Omni 接受原始 PCM，不需要 WAV 头
     // 但如果采样率不是 16kHz，需要注意
     let chunk_size = 3200; // 100ms @ 16kHz 16bit mono
     let total_chunks = pcm.len().div_ceil(chunk_size);
     let mut acc = OmniTranscript::default();
-    // 发送途中就收到了 response.done。按协议不该发生（turn_detection=null 时只有
-    // response.create 能触发响应），但真发生了必须停下来 —— 继续发完再 commit 会开第二轮，
-    // 而主接收循环等不到新的 response.done，只能挂满 60 秒超时。
+    // 傳送途中就收到了 response.done。按協議不該發生（turn_detection=null 時只有
+    // response.create 能觸發響應），但真發生了必須停下來 —— 繼續發完再 commit 會開第二輪，
+    // 而主接收迴圈等不到新的 response.done，只能掛滿 60 秒超時。
     let mut completed_while_sending = false;
-    // 限速记账。按线上字节（序列化后的 JSON 文本长度）算，不按 PCM 字节：服务端量的是
-    // 收到的流量，base64 + JSON 让每包从 3200 字节涨到约 4.33KB。WS 帧头每包十几字节，忽略。
+    // 限速記賬。按線上位元組（序列化後的 JSON 文本長度）算，不按 PCM 位元組：服務端量的是
+    // 收到的流量，base64 + JSON 讓每包從 3200 位元組漲到約 4.33KB。WS 幀頭每包十幾位元組，忽略。
     let send_start = Instant::now();
     let mut wire_sent: u64 = 0;
     let mut waits: u32 = 0;
@@ -514,7 +514,7 @@ async fn run_attempt(session: &OmniSession<'_>, pacing: Pacing) -> Result<AsrRes
         }
         ws.send(tungstenite::Message::Text(frame.into()))
             .await
-            // 带上第几包：长音频中途被切断和第一包就发不出去，成因完全不同
+            // 帶上第幾包：長音訊中途被切斷和第一包就發不出去，成因完全不同
             .map_err(|e| AttemptError {
                 error: diag::fail(
                     SCOPE,
@@ -527,23 +527,23 @@ async fn run_attempt(session: &OmniSession<'_>, pacing: Pacing) -> Result<AsrRes
                         e
                     ),
                 ),
-                // TCP 先被重置时读不到 close 帧，原因不会写在错误里。已经发过了突发额度
-                // 还断，最可能就是同一件事 —— 值得用纯限速再试一次。
+                // TCP 先被重置時讀不到 close 幀，原因不會寫在錯誤裡。已經發過了突發額度
+                // 還斷，最可能就是同一件事 —— 值得用純限速再試一次。
                 retryable: wire_sent > pacing.burst_bytes,
             })?;
         wire_sent += frame_len;
 
-        // ── 边发边读。**不能只发不收。** ──
+        // ── 邊發邊讀。**不能只發不收。** ──
         //
-        // 这份实现原来是「把全部音频发完，再开始读 socket」，而仓库里另外五个流式
-        // provider（豆包 / Gemini Live / OpenAI realtime / 千问 audio3x / 千问 realtime）
-        // 都是 split 之后并发读的。只发不读有两个后果：
-        //   ① tungstenite 只在**读到** Ping 时才排一个 Pong，一路不读就等于不回心跳；
-        //   ② 服务端在发送期间报的 error 事件我们全错过。随后连接被关、下一次 send
-        //      失败，日志里只剩一句「第 N 包发不出去」，服务端给的真实原因丢了。
-        // 5 分钟录音是 3000 条 append、约 13MB JSON，这段时间不短。
+        // 這份實現原來是「把全部音訊發完，再開始讀 socket」，而倉庫裡另外五個流式
+        // provider（豆包 / Gemini Live / OpenAI realtime / 千問 audio3x / 千問 realtime）
+        // 都是 split 之後併發讀的。只發不讀有兩個後果：
+        //   ① tungstenite 只在**讀到** Ping 時才排一個 Pong，一路不讀就等於不迴心跳；
+        //   ② 服務端在傳送期間報的 error 事件我們全錯過。隨後連線被關、下一次 send
+        //      失敗，日誌裡只剩一句「第 N 包發不出去」，服務端給的真實原因丟了。
+        // 5 分鐘錄音是 3000 條 append、約 13MB JSON，這段時間不短。
         //
-        // now_or_never 只轮询一次、拿不到就走，不拖慢发送节奏。
+        // now_or_never 只輪詢一次、拿不到就走，不拖慢傳送節奏。
         loop {
             let polled = ws.next().now_or_never().flatten();
             let Some(message) = polled else { break };
@@ -604,8 +604,8 @@ async fn run_attempt(session: &OmniSession<'_>, pacing: Pacing) -> Result<AsrRes
         }
     }
 
-    // 这一行是「限速真的生效了」的证据：排查时先看它在不在、mode 是哪个、waits 是不是 >0。
-    // 没有这一行就说明跑的不是这份代码，别再去怀疑速率或额度。
+    // 這一行是「限速真的生效了」的證據：排查時先看它在不在、mode 是哪個、waits 是不是 >0。
+    // 沒有這一行就說明跑的不是這份程式碼，別再去懷疑速率或額度。
     diag::log(
         SCOPE,
         "pacing",
@@ -622,7 +622,7 @@ async fn run_attempt(session: &OmniSession<'_>, pacing: Pacing) -> Result<AsrRes
         ),
     );
 
-    // 发送途中这一轮就结束了：手里已经有结果，绝不能再 commit（那会开第二轮）。
+    // 傳送途中這一輪就結束了：手裡已經有結果，絕不能再 commit（那會開第二輪）。
     if completed_while_sending {
         let _ = ws.close(None).await;
         let elapsed_ms = start.elapsed().as_millis() as u64;
@@ -637,7 +637,7 @@ async fn run_attempt(session: &OmniSession<'_>, pacing: Pacing) -> Result<AsrRes
         )?);
     }
 
-    // 提交音频并请求响应
+    // 提交音訊並請求響應
     let commit = serde_json::json!({ "type": "input_audio_buffer.commit" });
     ws.send(tungstenite::Message::Text(commit.to_string().into()))
         .await
@@ -652,7 +652,7 @@ async fn run_attempt(session: &OmniSession<'_>, pacing: Pacing) -> Result<AsrRes
 
     diag::log(SCOPE, "audio_sent", &format!("chunks={}", total_chunks));
 
-    // 收集响应文本。`acc` 在发送阶段就已经开始收了（见上面「边发边读」）。
+    // 收集響應文本。`acc` 在傳送階段就已經開始收了（見上面「邊發邊讀」）。
     let timeout = tokio::time::Duration::from_secs(60);
     let end;
 
@@ -676,7 +676,7 @@ async fn run_attempt(session: &OmniSession<'_>, pacing: Pacing) -> Result<AsrRes
                 break;
             }
             Ok(Some(Err(e))) => {
-                // 连接错误（包括对方关闭后仍发消息）。已经拿到文本就当成功收尾。
+                // 連線錯誤（包括對方關閉後仍發訊息）。已經拿到文本就當成功收尾。
                 if !acc.is_empty() {
                     diag::log(
                         SCOPE,
@@ -731,11 +731,11 @@ async fn run_attempt(session: &OmniSession<'_>, pacing: Pacing) -> Result<AsrRes
         audio_sec, elapsed_ms, model, total_chunks
     );
 
-    // 空结果算失败还是算「真没说话」，判断全在 finish_omni 里（那里有长注释）。
+    // 空結果算失敗還是算「真沒說話」，判斷全在 finish_omni 裡（那裡有長註釋）。
     //
-    // 长音频被掐断的原因已用真实接口查清：上行超速（见文件头「上行限速」）。
-    // 限速没压住时 close 帧可能在 commit 之后才读到，于是从这里以 closed_before_response
-    // 报出来 —— 错误原文里带着 1007 的 reason，`AttemptError::from` 会把它判成可重试。
+    // 長音訊被掐斷的原因已用真實介面查清：上行超速（見檔案頭「上行限速」）。
+    // 限速沒壓住時 close 幀可能在 commit 之後才讀到，於是從這裡以 closed_before_response
+    // 報出來 —— 錯誤原文裡帶著 1007 的 reason，`AttemptError::from` 會把它判成可重試。
     Ok(finish_omni(acc, end, elapsed_ms, &context)?)
 }
 
@@ -836,7 +836,7 @@ pub async fn test_connection(config: &AsrProviderConfig) -> TestResult {
 
     match tokio_tungstenite::connect_async(request).await {
         Ok((mut ws, _)) => {
-            // 尝试等待 session.created
+            // 嘗試等待 session.created
             let result = wait_for_event(&mut ws, "session.created", "qwen/omni-test").await;
             let _ = ws.close(None).await;
             let elapsed_ms = start.elapsed().as_millis() as u64;
@@ -891,7 +891,7 @@ mod tests {
             json!({ "type": "response.text.done", "text": "语音输入法测试成功。" }),
             json!({ "type": "response.done" }),
         ]);
-        // done 带全量，优先用它 —— 拼 delta 更容易缺字
+        // done 帶全量，優先用它 —— 拼 delta 更容易缺字
         assert_eq!(acc.result_text, "语音输入法测试成功。");
         assert_eq!(steps.last(), Some(&OmniStep::Completed));
     }
@@ -905,7 +905,7 @@ mod tests {
         assert_eq!(acc.result_text, "abcdef");
     }
 
-    /// 空 done 不能把已经攒好的 delta 清掉。
+    /// 空 done 不能把已經攢好的 delta 清掉。
     #[test]
     fn an_empty_done_payload_keeps_the_accumulated_deltas() {
         let (acc, _) = feed(&[
@@ -915,7 +915,7 @@ mod tests {
         assert_eq!(acc.result_text, "有内容");
     }
 
-    /// 模型没回答、只有服务端对输入音频的转写时走兜底。
+    /// 模型沒回答、只有服務端對輸入音訊的轉寫時走兜底。
     #[test]
     fn falls_back_to_the_input_transcription_when_the_model_says_nothing() {
         let (acc, _) = feed(&[json!({
@@ -954,7 +954,7 @@ mod tests {
         );
     }
 
-    /// 报错事件缺字段时也不能 panic —— 报错路径本来就是最没人测的那条。
+    /// 報錯事件缺欄位時也不能 panic —— 報錯路徑本來就是最沒人測的那條。
     #[test]
     fn a_bare_error_event_still_produces_a_failure() {
         let (_, steps) = feed(&[json!({ "type": "error" })]);
@@ -975,8 +975,8 @@ mod tests {
         assert!(steps.iter().all(|s| *s == OmniStep::Continue));
     }
 
-    /// 只有空白字符不算有内容 —— 否则「协议没跑完」会被当成一次成功的空转写，
-    /// 又回到「显示未检测到有效声音」那个坑里。
+    /// 只有空白字元不算有內容 —— 否則「協議沒跑完」會被當成一次成功的空轉寫，
+    /// 又回到「顯示未檢測到有效聲音」那個坑裡。
     #[test]
     fn whitespace_only_text_counts_as_empty() {
         let (acc, _) = feed(&[json!({ "type": "response.text.done", "text": "   \n  " })]);
@@ -995,10 +995,10 @@ mod empty_ending_tests {
         }
     }
 
-    /// 空文本 + 服务端掐断 ⇒ 必须是 Err。
+    /// 空文本 + 服務端掐斷 ⇒ 必須是 Err。
     ///
-    /// 这条是本次修复的核心断言。改回 `Ok("")` 它就红 —— 而 `Ok("")` 正是用户看到
-    /// 「长录音失败提示无有效声音」的原因（前端拿到空文本只会显示那一句）。
+    /// 這條是本次修復的核心斷言。改回 `Ok("")` 它就紅 —— 而 `Ok("")` 正是使用者看到
+    /// 「長錄音失敗提示無有效聲音」的原因（前端拿到空文本只會顯示那一句）。
     #[test]
     fn an_aborted_conversation_with_no_text_is_an_error() {
         let err = finish_omni(
@@ -1016,7 +1016,7 @@ mod empty_ending_tests {
         assert!(finish_omni(OmniTranscript::default(), OmniEnd::StreamEnded, 1, "ctx").is_err());
     }
 
-    /// 对话正常走完但确实没有文本 —— 这才是「用户没说话」，要返回空文本让前端提示。
+    /// 對話正常走完但確實沒有文本 —— 這才是「使用者沒說話」，要返回空文本讓前端提示。
     #[test]
     fn a_completed_conversation_with_no_text_stays_a_successful_empty_result() {
         let result = finish_omni(OmniTranscript::default(), OmniEnd::Completed, 1, "ctx")
@@ -1024,7 +1024,7 @@ mod empty_ending_tests {
         assert_eq!(result.text, "");
     }
 
-    /// 已经拿到文本时，连接怎么断的都不影响 —— 保留原来的宽容。
+    /// 已經拿到文本時，連線怎麼斷的都不影響 —— 保留原來的寬容。
     #[test]
     fn text_already_received_survives_an_abrupt_close() {
         let result = finish_omni(
@@ -1037,13 +1037,13 @@ mod empty_ending_tests {
         assert_eq!(result.text, "已经识别出来的内容");
     }
 
-    /// 这三条就是本次修复的全部行为差别。
+    /// 這三條就是本次修復的全部行為差別。
     ///
-    /// 用户报的是「千问 Omni 长录音转录失败，提示无有效声音」。原来三条退出路径
-    /// 一律返回 `Ok("")`，前端只能显示「未检测到有效声音」，把人引去查麦克风 ——
-    /// 真实原因（服务端掐断连接）在界面上完全看不到。
+    /// 使用者報的是「千問 Omni 長錄音轉錄失敗，提示無有效聲音」。原來三條退出路徑
+    /// 一律返回 `Ok("")`，前端只能顯示「未檢測到有效聲音」，把人引去查麥克風 ——
+    /// 真實原因（服務端掐斷連線）在介面上完全看不到。
     ///
-    /// ⚠️ 若把这三条改成同一个结果，就等于把那个 bug 装回去了。
+    /// ⚠️ 若把這三條改成同一個結果，就等於把那個 bug 裝回去了。
     #[test]
     fn only_a_completed_conversation_may_report_an_empty_transcript() {
         assert_eq!(
@@ -1068,7 +1068,7 @@ mod empty_ending_tests {
 mod pacing_tests {
     use super::*;
 
-    /// 一包 100ms 音频在线上的真实大小（base64 + JSON），和发送循环里算的是同一个东西。
+    /// 一包 100ms 音訊線上上的真實大小（base64 + JSON），和傳送迴圈裡算的是同一個東西。
     fn wire_len_of_one_chunk() -> u64 {
         let audio_b64 = base64::engine::general_purpose::STANDARD.encode([0u8; 3200]);
         serde_json::json!({ "type": "input_audio_buffer.append", "audio": audio_b64 })
@@ -1076,7 +1076,7 @@ mod pacing_tests {
             .len() as u64
     }
 
-    /// 按发送循环的算法走一遍，返回最后一包的截止时刻（不真睡）。
+    /// 按傳送迴圈的演算法走一遍，返回最後一包的截止時刻（不真睡）。
     fn last_due(seconds: u64, pacing: Pacing) -> Option<Duration> {
         let frame = wire_len_of_one_chunk();
         let mut sent = 0;
@@ -1096,15 +1096,15 @@ mod pacing_tests {
 
     #[test]
     fn after_the_burst_the_deadline_follows_the_rate() {
-        // 超出突发额度整整 2MB = 按 2MB/s 要在第 1 秒发出
+        // 超出突發額度整整 2MB = 按 2MB/s 要在第 1 秒發出
         assert_eq!(
             pacing_due(PACING_BURST_BYTES, PACING_RATE_BYTES_PER_SEC, Pacing::NORMAL),
             Some(Duration::from_secs(1))
         );
     }
 
-    /// 截止时刻是相对发送起点的绝对偏移：只取决于已发字节，跟上一次醒得早还是晚无关。
-    /// 这是「醒晚了不累积」的前提 —— 改成返回增量间隔，这条就红。
+    /// 截止時刻是相對傳送起點的絕對偏移：只取決於已發位元組，跟上一次醒得早還是晚無關。
+    /// 這是「醒晚了不累積」的前提 —— 改成返回增量間隔，這條就紅。
     #[test]
     fn deadlines_are_absolute_offsets_that_grow_linearly() {
         let rate = PACING_RATE_BYTES_PER_SEC;
@@ -1124,7 +1124,7 @@ mod pacing_tests {
         assert_eq!(Pacing::NORMAL.mode(), "burst");
     }
 
-    /// 选这组参数的理由：55 秒以内一点不等；用户报的 99 秒只多 1 秒左右。
+    /// 選這組引數的理由：55 秒以內一點不等；使用者報的 99 秒只多 1 秒左右。
     #[test]
     fn short_recordings_never_wait_and_99_seconds_waits_about_one_second() {
         assert_eq!(last_due(55, Pacing::NORMAL), None);
@@ -1136,12 +1136,12 @@ mod pacing_tests {
         );
     }
 
-    /// 平均速率必须低于服务端的 2560KB/s，否则限速等于没加。
+    /// 平均速率必須低於服務端的 2560KB/s，否則限速等於沒加。
     #[test]
     fn the_paced_rate_stays_under_the_server_limit() {
         const SERVER_LIMIT: u64 = 2560 * 1024;
         assert!(PACING_RATE_BYTES_PER_SEC * 10 <= SERVER_LIMIT * 8, "至少留 20% 余量");
-        // 突发额度要低于实测每次都能过的 2.6MB
+        // 突發額度要低於實測每次都能過的 2.6MB
         assert!(PACING_BURST_BYTES < 2_600_000);
     }
 
@@ -1169,14 +1169,14 @@ mod pacing_tests {
         assert!(!stop.retryable);
     }
 
-    /// 真实接口验证，默认不跑（要密钥、要花钱）。
+    /// 真實介面驗證，預設不跑（要金鑰、要花錢）。
     ///
     ///     $env:SAYIT_QWEN_KEY=...   $env:SAYIT_LONG_WAV=<16k mono s16 wav>
-    ///     $env:SAYIT_LONG_SECONDS=99   （可选）$env:SAYIT_QWEN_MODEL=...
+    ///     $env:SAYIT_LONG_SECONDS=99   （可選）$env:SAYIT_QWEN_MODEL=...
     ///     cargo test --bins live_long_audio -- --ignored --nocapture
     ///
-    /// 判据不止「成功」：还要去 sayit.log 看这次的 `pacing mode=burst ... waits=` 那一行，
-    /// 确认是限速让它成功的，而不是别的原因。
+    /// 判據不止「成功」：還要去 sayit.log 看這次的 `pacing mode=burst ... waits=` 那一行，
+    /// 確認是限速讓它成功的，而不是別的原因。
     #[tokio::test(flavor = "current_thread")]
     #[ignore]
     async fn live_long_audio_against_the_real_endpoint() {

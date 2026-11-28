@@ -35,8 +35,8 @@ pub struct ExportFile {
     pub content: String,
 }
 
-/// 导出命令会把前端给的内容写到前端给的路径上。内容和位置都由前端决定，
-/// 这里至少把扩展名钉死，免得被拿来往开机启动目录之类的地方写 .bat / .exe。
+/// 匯出命令會把前端給的內容寫到前端給的路徑上。內容和位置都由前端決定，
+/// 這裡至少把副檔名釘死，免得被拿來往開機啟動目錄之類的地方寫 .bat / .exe。
 fn check_export_extension(path: &std::path::Path, allowed: &[&str]) -> Result<(), String> {
     if crate::path_guard::has_extension(path, allowed) {
         Ok(())
@@ -201,7 +201,7 @@ pub fn save_export_bundle(payload: ExportBundlePayload, storage: tauri::State<'_
     Ok(Some(clean))
 }
 
-/// 完整导出：JSON 文件 + 音频目录，带进度事件
+/// 完整匯出：JSON 檔案 + 音訊目錄，帶進度事件
 #[derive(Deserialize)]
 pub struct FullExportPayload {
     #[serde(rename = "defaultPath")]
@@ -240,7 +240,7 @@ pub async fn save_full_export(
         let mut zip = zip::ZipWriter::new(file);
         let mut current = 0usize;
 
-        // 写入 JSON 文件
+        // 寫入 JSON 檔案
         for (name, content) in &json_files {
             current += 1;
             let _ = app_handle.emit("export-progress", ExportProgress {
@@ -249,7 +249,7 @@ pub async fn save_full_export(
             super::archive::write_deflated_entry(&mut zip, name, content.as_bytes())?;
         }
 
-        // 写入音频文件
+        // 寫入音訊檔案
         for audio_path in &audio_files {
             current += 1;
             let fname = audio_path.file_name()

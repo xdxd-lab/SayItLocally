@@ -1,4 +1,4 @@
-// 服务器模式配置 — 服务地址 + 连接状态
+// 伺服器模式配置 — 服務地址 + 連線狀態
 
 import { useEffect, useState } from 'react'
 import { Info } from 'lucide-react'
@@ -44,7 +44,7 @@ export default function ServerSection() {
     setSavedBaseUrl(current)
     setDefaultBaseUrl(getDefaultBackendBaseUrl())
     void getSetting('server.language', 'auto').then((v) => setAsrLanguage(String(v || 'auto')))
-    // 切走路由时把"有未保存改动"复位，别把脏状态留给下一次进入
+    // 切走路由時把"有未儲存改動"復位，別把髒狀態留給下一次進入
     return () => setEngineDraftDirty(false)
   }, [])
 
@@ -59,15 +59,15 @@ export default function ServerSection() {
     setEngineDraftDirty(normalize(value) !== normalize(savedBaseUrl))
   }
 
-  /** 探一次 /healthz。成功返回后端上报的 ASR/LLM 开关，失败抛出原始异常。 */
+  /** 探一次 /healthz。成功返回後端上報的 ASR/LLM 開關，失敗丟擲原始異常。 */
   async function probeHealth(url: string): Promise<{ asr?: boolean; llm?: boolean }> {
     const response = await fetch(`${url}/healthz`, { cache: 'no-store' })
     if (!response.ok) throw new Error(`HTTP ${response.status}`)
     return await response.json() as { asr?: boolean; llm?: boolean }
   }
 
-  /** 把 /healthz 的 asr/llm 布尔量翻译成人话。原来直接显示「ASR=on，LLM=off」，
-   *  那是把后端的 JSON 字段原样贴给用户。 */
+  /** 把 /healthz 的 asr/llm 布林量翻譯成人話。原來直接顯示「ASR=on，LLM=off」，
+   *  那是把後端的 JSON 欄位原樣貼給使用者。 */
   function describeHealth(payload: { asr?: boolean; llm?: boolean }, prefix: string): ServiceResult {
     if (payload.asr === false) {
       return {
@@ -85,11 +85,11 @@ export default function ServerSection() {
   }
 
   /**
-   * 保存并测试。
+   * 儲存並測試。
    *
-   * 这里原来是两个同权重的按钮：「测试连接」只测不存（用输入框里的值），「保存」存了再测。
-   * 用户点前者看到「连接成功」，合理地以为配置生效了——它没有。两个动作合并成一个之后，
-   * 界面上就不再存在"测试通过但没保存"这种状态。
+   * 這裡原來是兩個同權重的按鈕：「測試連線」只測不存（用輸入框裡的值），「儲存」存了再測。
+   * 使用者點前者看到「連線成功」，合理地以為配置生效了——它沒有。兩個動作合併成一個之後，
+   * 介面上就不再存在"測試透過但沒儲存"這種狀態。
    */
   async function handleSaveAndTest() {
     if (busy) return
@@ -115,13 +115,13 @@ export default function ServerSection() {
       setBackendBaseUrl(next)
       setSavedBaseUrl(next)
       setEngineDraftDirty(false)
-      // 地址已变更：无论下方健康检查成功与否，都按新地址强制重连，
-      // 让左下角连接状态反映新配置（改成错误地址后应显示未连接，而非仍旧"已连接"）
+      // 地址已變更：無論下方健康檢查成功與否，都按新地址強制重連，
+      // 讓左下角連線狀態反映新配置（改成錯誤地址後應顯示未連線，而非仍舊"已連線"）
       reconnectProvider()
-      // 更新检查跟随这个地址，所以换了地址就要重新查一次（见 getUpdateBaseUrl）。
-      // 必须先丢弃已下载的包：ensureDownloaded 只按版本号判断"已经在盘上了"，
-      // 版本号相同不代表来自同一台服务器，留着会让"指到测试服务器验一遍"
-      // 实际装的还是上一个来源那个包。
+      // 更新檢查跟隨這個地址，所以換了地址就要重新查一次（見 getUpdateBaseUrl）。
+      // 必須先丟棄已下載的包：ensureDownloaded 只按版本號判斷"已經在盤上了"，
+      // 版本號相同不代表來自同一台伺服器，留著會讓"指到測試伺服器驗一遍"
+      // 實際裝的還是上一個來源那個包。
       await discardPendingForChannelSwitch()
       void checkForUpdateNow()
     } catch (error) {
@@ -145,7 +145,7 @@ export default function ServerSection() {
     }
   }
 
-  /** 恢复到内置默认地址并立刻重连，省得用户自己回忆默认值是什么 */
+  /** 恢復到內建預設地址並立刻重連，省得使用者自己回憶預設值是什麼 */
   async function handleResetDefault() {
     if (busy) return
     setBusy(true)
@@ -192,7 +192,7 @@ export default function ServerSection() {
               <label htmlFor="server-base-url" className="text-sm text-muted-foreground">
                 {t('server.title')}
               </label>
-              {/* 输入框内容只活在 local state 里，切页就没了。原来这件事完全无提示，
+              {/* 輸入框內容只活在 local state 裡，切頁就沒了。原來這件事完全無提示，
                   用户会以为改完就生效了。 */}
               {isDirty && (
                 <span className="rounded-full bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning-strong">
@@ -200,7 +200,7 @@ export default function ServerSection() {
                 </span>
               )}
             </div>
-            {/* flex-wrap：800×600 最小窗口下侧栏占掉 192px，输入框 + 按钮挤在一行会溢出 */}
+            {/* flex-wrap：800×600 最小視窗下側欄佔掉 192px，輸入框 + 按鈕擠在一行會溢位 */}
             <div className="flex flex-wrap items-center gap-2">
               <input
                 id="server-base-url"
@@ -223,7 +223,7 @@ export default function ServerSection() {
             </div>
           </div>
 
-          {/* 这里原来在失败提示里再挂一个「恢复默认地址（https://…）」按钮：
+          {/* 這裡原來在失敗提示裡再掛一個「恢復預設地址（https://…）」按鈕：
               一是把整条 URL 塞进按钮文字，全应用没有第二处这么写；
               二是它和输入框旁边那个「恢复默认」完全同义——而后者在地址被改过时一直都在，
               正好覆盖会出现这条失败提示的全部情况。留一个就够。 */}

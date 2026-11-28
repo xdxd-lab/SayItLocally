@@ -16,7 +16,7 @@ const BUILTIN_APP_NAME_KEYS: Record<string, TranslationKey> = {
   kiro: 'builtinApp.kiro',
   vscode: 'builtinApp.vscode',
   cursor: 'builtinApp.cursor',
-  // mac 上这条规则对应系统自带的「文本编辑」（见 personalization/defaults.ts 的 MAC_RULE_OVERRIDES）
+  // mac 上這條規則對應系統自帶的「文本編輯」（見 personalization/defaults.ts 的 MAC_RULE_OVERRIDES）
   notepad: IS_MAC ? 'builtinApp.notepadMac' : 'builtinApp.notepad',
   codex: 'builtinApp.codex',
   weixin: 'builtinApp.weixin',
@@ -85,25 +85,25 @@ const HISTORY_FAILURE_KEYS: Record<HistoryFailReasonCode, TranslationKey> = {
   connection_lost: 'recorder.connectionLost',
 }
 
-/** 内置模式名由稳定 id 翻译；用户自建名称永远原样显示。 */
+/** 內建模式名由穩定 id 翻譯；使用者自建名稱永遠原樣顯示。 */
 export function promptPresetDisplayName(preset: Pick<PromptPreset, 'id' | 'name' | 'builtin'>): string {
   const key = preset.builtin ? BUILTIN_PRESET_NAME_KEYS[preset.id] : undefined
   return key ? t(key) : preset.name
 }
 
-/** 内置应用规则名由稳定 id 翻译；用户自建名称永远原样显示。 */
+/** 內建應用規則名由穩定 id 翻譯；使用者自建名稱永遠原樣顯示。 */
 export function appPromptRuleDisplayName(rule: Pick<AppPromptRule, 'id' | 'appId' | 'name' | 'builtin'>): string {
   const key = rule.builtin ? BUILTIN_APP_NAME_KEYS[rule.appId || rule.id] : undefined
   return key ? t(key) : rule.name
 }
 
-/** 历史统计只保存了 appId/appName，已知内置 appId 仍可按当前界面语言显示。 */
+/** 歷史統計只儲存了 appId/appName，已知內建 appId 仍可按當前介面語言顯示。 */
 export function recordedAppDisplayName(appId: string | undefined, fallback: string): string {
   const key = appId ? BUILTIN_APP_NAME_KEYS[appId] : undefined
   return key ? t(key) : fallback
 }
 
-/** 历史记录同时保存 preset id/name；用 id 可让旧记录也跟随当前界面语言。 */
+/** 歷史記錄同時儲存 preset id/name；用 id 可讓舊記錄也跟隨當前介面語言。 */
 export function recordedPromptPresetDisplayName(presetId: string | undefined, fallback: string): string {
   const key = presetId ? BUILTIN_PRESET_NAME_KEYS[presetId] : undefined
   return key ? t(key) : fallback
@@ -116,7 +116,7 @@ interface LocalModelDisplaySource {
   languages_label?: string
 }
 
-/** Rust catalog 保留稳定 id；展示文案在渲染时取值，切换界面语言不会冻结。 */
+/** Rust catalog 保留穩定 id；展示文案在渲染時取值，切換介面語言不會凍結。 */
 export function localModelDisplayName(model: LocalModelDisplaySource): string {
   const key = LOCAL_MODEL_KEYS[model.id]?.name
   return key ? t(key) : model.name
@@ -132,7 +132,7 @@ export function localModelDisplayLanguages(model: LocalModelDisplaySource): stri
   return key ? t(key) : model.languages_label || ''
 }
 
-/** 新记录按稳定 code 翻译；老记录没有 code 时保留当时写入的原文。 */
+/** 新記錄按穩定 code 翻譯；老記錄沒有 code 時保留當時寫入的原文。 */
 export function historyFailureReasonDisplay(record: {
   failReasonCode?: HistoryFailReasonCode
   failReason?: string

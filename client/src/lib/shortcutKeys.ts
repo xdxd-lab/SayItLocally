@@ -1,11 +1,11 @@
 /**
- * 快捷键定义与 PTT 物理组合键工具。
+ * 快捷鍵定義與 PTT 物理組合鍵工具。
  *
- * PTT 设置保存 DOM `KeyboardEvent.code`，旧单键保持 `ShiftRight` 等原格式，
- * 组合键按固定顺序保存为 `ControlLeft+MetaLeft`、`ControlLeft+KeyK`。
+ * PTT 設定儲存 DOM `KeyboardEvent.code`，舊單鍵保持 `ShiftRight` 等原格式，
+ * 組合鍵按固定順序儲存為 `ControlLeft+MetaLeft`、`ControlLeft+KeyK`。
  *
- * ⚠️ Rust 端 `client/src-tauri/src/keyboard/mod.rs` 的按键表无法直接引用 TS；
- * 新增或修改 PTT code 时必须同步 Rust 映射。
+ * ⚠️ Rust 端 `client/src-tauri/src/keyboard/mod.rs` 的按鍵表無法直接引用 TS；
+ * 新增或修改 PTT code 時必須同步 Rust 對映。
  */
 
 import { t, type TranslationKey } from '@/i18n'
@@ -14,42 +14,42 @@ import { IS_MAC } from '@/lib/platform'
 export interface SingleKeyDef {
   /** 存入设置、也等于 DOM KeyboardEvent.code */
   setting: string
-  /** Windows 虚拟键码（供 webview 回退补发事件用） */
+  /** Windows 虛擬鍵碼（供 webview 回退補發事件用） */
   vk: number
-  /** 中文显示名 */
+  /** 中文顯示名 */
   label: string
 }
 
-// i18n-allow-start: Windows VK 源标签；展示层由 getSingleKeyDisplay 翻译覆盖
+// i18n-allow-start: Windows VK 源標籤；展示層由 getSingleKeyDisplay 翻譯覆蓋
 const ALL_SINGLE_KEYS: SingleKeyDef[] = [
-  // 修饰键（左右分开）
+  // 修飾鍵（左右分開）
   { setting: 'AltLeft', vk: 0xa4, label: '左 Alt' },
   { setting: 'AltRight', vk: 0xa5, label: '右 Alt' },
   { setting: 'ControlLeft', vk: 0xa2, label: '左 Ctrl' },
   { setting: 'ControlRight', vk: 0xa3, label: '右 Ctrl' },
   { setting: 'ShiftLeft', vk: 0xa0, label: '左 Shift' },
   { setting: 'ShiftRight', vk: 0xa1, label: '右 Shift' },
-  // 常见低冲突键
+  // 常見低衝突鍵
   { setting: 'CapsLock', vk: 0x14, label: 'Caps Lock' },
   { setting: 'Space', vk: 0x20, label: '空格' },
   { setting: 'ContextMenu', vk: 0x5d, label: '菜单键' },
   { setting: 'Pause', vk: 0x13, label: 'Pause' },
   { setting: 'ScrollLock', vk: 0x91, label: 'ScrollLock' },
   { setting: 'Insert', vk: 0x2d, label: 'Insert' },
-  // 鼠标侧键（原始 XBUTTON，由 Rust 低级鼠标钩子处理）
+  // 滑鼠側鍵（原始 XBUTTON，由 Rust 低階滑鼠鉤子處理）
   { setting: 'XButton1', vk: 0x05, label: '鼠标侧键1（后退）' },
   { setting: 'XButton2', vk: 0x06, label: '鼠标侧键2（前进）' },
-  // 鼠标中键（VK_MBUTTON，由 Rust 低级鼠标钩子处理）
+  // 滑鼠中鍵（VK_MBUTTON，由 Rust 低階滑鼠鉤子處理）
   { setting: 'MButton', vk: 0x04, label: '鼠标中键' },
-  // 浏览器后退/前进键（罗技等改键鼠标常把侧键映射成这个，由键盘钩子处理）
+  // 瀏覽器後退/前進鍵（羅技等改鍵滑鼠常把側鍵對映成這個，由鍵盤鉤子處理）
   { setting: 'BrowserBack', vk: 0xa6, label: '鼠标侧键（后退键）' },
   { setting: 'BrowserForward', vk: 0xa7, label: '鼠标侧键（前进键）' },
-  // 功能键 F1–F24（VK 0x70–0x87 连续）。
+  // 功能鍵 F1–F24（VK 0x70–0x87 連續）。
   //
-  // F13–F24 在 Windows 里是正式的虚拟键、键盘布局里也有真实 scan code，但没有任何
-  // 量产键盘把它做成物理键 —— 所以它们几乎不可能和别的程序的快捷键撞，正好适合
-  // 可编程键盘、自制 HID 语音设备这类「专用触发键」的场景。
-  // Rust 侧的幻影过滤对这一段开了例外，见 keyboard/mod.rs 的 is_injection_exempt_vk。
+  // F13–F24 在 Windows 裡是正式的虛擬鍵、鍵盤佈局裡也有真實 scan code，但沒有任何
+  // 量產鍵盤把它做成物理鍵 —— 所以它們幾乎不可能和別的程式的快捷鍵撞，正好適合
+  // 可程式設計鍵盤、自制 HID 語音裝置這類「專用觸發鍵」的場景。
+  // Rust 側的幻影過濾對這一段開了例外，見 keyboard/mod.rs 的 is_injection_exempt_vk。
   ...Array.from({ length: 24 }, (_, index) => ({
     setting: `F${index + 1}`,
     vk: 0x70 + index,
@@ -58,12 +58,12 @@ const ALL_SINGLE_KEYS: SingleKeyDef[] = [
 ]
 
 /**
- * Mac 键盘上不存在、或在 mac 上不能当热键的单键。
+ * Mac 鍵盤上不存在、或在 mac 上不能當熱鍵的單鍵。
  *
- * - ContextMenu / Pause / ScrollLock / BrowserBack / BrowserForward：Mac 键盘没有
- *   （PC 键盘接到 Mac 上时 PrintScreen/ScrollLock/Pause 会被系统报成 F13–F15）。
- * - F21–F24：macOS 没有对应的虚拟键码。
- * - CapsLock：mac 上只报「切换」不报「松开」，中文用户还常用它切换输入法。
+ * - ContextMenu / Pause / ScrollLock / BrowserBack / BrowserForward：Mac 鍵盤沒有
+ *   （PC 鍵盤接到 Mac 上時 PrintScreen/ScrollLock/Pause 會被系統報成 F13–F15）。
+ * - F21–F24：macOS 沒有對應的虛擬鍵碼。
+ * - CapsLock：mac 上只報「切換」不報「鬆開」，中文使用者還常用它切換輸入法。
  */
 const MAC_UNAVAILABLE_SINGLE_KEYS = new Set([
   'ContextMenu', 'Pause', 'ScrollLock', 'BrowserBack', 'BrowserForward', 'CapsLock',
@@ -71,8 +71,8 @@ const MAC_UNAVAILABLE_SINGLE_KEYS = new Set([
 ])
 
 /**
- * 只在 mac 上可以单独当热键的键（Rust 侧见 keyboard/mod.rs 的 PLATFORM_EXTRA_SINGLE_KEYS）：
- * 单独的 ⌘（右 ⌘ 是 mac 免提的默认键；Windows 上单按 Win 会弹开始菜单，所以不允许）、Fn / 🌐。
+ * 只在 mac 上可以單獨當熱鍵的鍵（Rust 側見 keyboard/mod.rs 的 PLATFORM_EXTRA_SINGLE_KEYS）：
+ * 單獨的 ⌘（右 ⌘ 是 mac 擴音的預設鍵；Windows 上單按 Win 會彈開始選單，所以不允許）、Fn / 🌐。
  */
 const MAC_EXTRA_SINGLE_KEYS: SingleKeyDef[] = [
   { setting: 'MetaLeft', vk: 0x5b, label: 'Left ⌘' },
@@ -85,7 +85,7 @@ export const SINGLE_KEYS: SingleKeyDef[] = IS_MAC
   : ALL_SINGLE_KEYS
 // i18n-allow-end
 
-/** setting → 虚拟键码（旧单键与免提回退使用） */
+/** setting → 虛擬鍵碼（舊單鍵與擴音回退使用） */
 export const SETTING_TO_VK: Record<string, number> = Object.fromEntries(
   SINGLE_KEYS.map((key) => [key.setting, key.vk]),
 )
@@ -94,7 +94,7 @@ const SINGLE_KEY_DISPLAY: Record<string, string> = Object.fromEntries(
   SINGLE_KEYS.map((key) => [key.setting, key.label]),
 )
 
-/** PTT 修饰键固定排序；左右位置会保留。 */
+/** PTT 修飾鍵固定排序；左右位置會保留。 */
 export const PTT_MODIFIER_CODES = [
   'ControlLeft',
   'ControlRight',
@@ -110,29 +110,29 @@ const PTT_MODIFIER_SET = new Set<string>(PTT_MODIFIER_CODES)
 const PTT_MOUSE_CODES = new Set(['XButton1', 'XButton2', 'MButton'])
 
 /**
- * 不允许出现在「按住说话」里的按键。
+ * 不允許出現在「按住說話」裡的按鍵。
  *
- * Shift 与 Windows 的辅助功能快捷方式直接冲突，而冲突的触发条件恰好就是 PTT 的
+ * Shift 與 Windows 的輔助功能快捷方式直接衝突，而衝突的觸發條件恰好就是 PTT 的
  * 使用方式：
- *   · 长按右 Shift 约 8 秒 → 筛选键。它一旦弹出，我们收不到那次「松开」，
- *     录音不会随手指抬起而结束（这是之前只给警告、用户仍然踩到的那个问题）。
- *   · 连按 Shift 五次 → 粘滞键。短句口述本来就是一串快速的按下松开。
- * PTT 必须被按住数秒、还经常被连续短按，两条正好全中。
+ *   · 長按右 Shift 約 8 秒 → 篩選鍵。它一旦彈出，我們收不到那次「鬆開」，
+ *     錄音不會隨手指抬起而結束（這是之前只給警告、使用者仍然踩到的那個問題）。
+ *   · 連按 Shift 五次 → 粘滯鍵。短句口述本來就是一串快速的按下鬆開。
+ * PTT 必須被按住數秒、還經常被連續短按，兩條正好全中。
  *
- * 所以 Shift 不做成"可以选但给个警告"——警告只能让用户在出问题之后回来读一遍，
- * 挡不住任何人。左右都禁：单键和组合成员都算，`Ctrl+右Shift` 一样会触发筛选键。
+ * 所以 Shift 不做成"可以選但給個警告"——警告只能讓使用者在出問題之後回來讀一遍，
+ * 擋不住任何人。左右都禁：單鍵和組合成員都算，`Ctrl+右Shift` 一樣會觸發篩選鍵。
  *
- * **只约束 PTT。** 免提、预设切换那类"按一下"的快捷键（走 accelerator 那条校验）
- * 照旧可以用 Shift —— 它们不长按也不连按，两个触发条件都碰不到。
+ * **只約束 PTT。** 擴音、預設切換那類"按一下"的快捷鍵（走 accelerator 那條校驗）
+ * 照舊可以用 Shift —— 它們不長按也不連按，兩個觸發條件都碰不到。
  */
 const PTT_FORBIDDEN_CODES = new Set(['ShiftLeft', 'ShiftRight'])
 
-/** 这个按键能不能用于「按住说话」。 */
+/** 這個按鍵能不能用於「按住說話」。 */
 export function isPTTForbiddenCode(code: string): boolean {
   return PTT_FORBIDDEN_CODES.has(code)
 }
 
-// i18n-allow-start: Windows VK 源标签；展示层由 getSingleKeyDisplay 翻译覆盖
+// i18n-allow-start: Windows VK 源標籤；展示層由 getSingleKeyDisplay 翻譯覆蓋
 const PTT_EXTRA_KEY_DEFS: SingleKeyDef[] = [
   { setting: 'MetaLeft', vk: 0x5b, label: '左 Win' },
   { setting: 'MetaRight', vk: 0x5c, label: '右 Win' },
@@ -162,7 +162,7 @@ const PTT_EXTRA_KEY_DEFS: SingleKeyDef[] = [
 ]
 // i18n-allow-end
 
-/** PTT 成员 code → Windows 虚拟键码。 */
+/** PTT 成員 code → Windows 虛擬鍵碼。 */
 export const PTT_CODE_TO_VK: Record<string, number> = {
   ...SETTING_TO_VK,
   ...Object.fromEntries(PTT_EXTRA_KEY_DEFS.map((key) => [key.setting, key.vk])),
@@ -173,12 +173,12 @@ const PTT_CODE_DISPLAY: Record<string, string> = {
   ...Object.fromEntries(PTT_EXTRA_KEY_DEFS.map((key) => [key.setting, key.label])),
 }
 
-/** 是否为受支持的旧单键设置。 */
+/** 是否為受支援的舊單鍵設定。 */
 export function isSingleKeySetting(setting: string): boolean {
   return setting in SETTING_TO_VK
 }
 
-/** 若 DOM code 对应一个受支持的旧单键，返回其 setting（= code）。 */
+/** 若 DOM code 對應一個受支援的舊單鍵，返回其 setting（= code）。 */
 export function resolveSingleKeyShortcut(code: string): string | undefined {
   return isSingleKeySetting(code) ? code : undefined
 }
@@ -189,15 +189,15 @@ export function settingToCode(setting: string): string {
 }
 
 /**
- * 需要翻译的键名。
+ * 需要翻譯的鍵名。
  *
- * 只列**含自然语言**的那些：`左 Alt` 在英文里是 `Left Alt`，`空格` 是 `Space`。
- * `F1`、`Tab`、`Esc`、`Caps Lock`、字母数字、方向键这些本来就是语言中立的，
- * 继续用上面表里的 `label`，不进 locale 文件 —— 翻译一份和原文一样的东西，
- * 只会多一处将来会不同步的地方。
+ * 只列**含自然語言**的那些：`左 Alt` 在英文裡是 `Left Alt`，`空格` 是 `Space`。
+ * `F1`、`Tab`、`Esc`、`Caps Lock`、字母數字、方向鍵這些本來就是語言中立的，
+ * 繼續用上面表裡的 `label`，不進 locale 檔案 —— 翻譯一份和原文一樣的東西，
+ * 只會多一處將來會不同步的地方。
  *
- * ⚠️ 这里刻意**不改** `SINGLE_KEYS` 的 `label` 字段：那张表还同时供 `vk` 映射用，
- * 动它的形状会牵连 webview 回退补发按键的逻辑。这里只加一层展示期的覆盖。
+ * ⚠️ 這裡刻意**不改** `SINGLE_KEYS` 的 `label` 欄位：那張表還同時供 `vk` 對映用，
+ * 動它的形狀會牽連 webview 回退補發按鍵的邏輯。這裡只加一層展示期的覆蓋。
  */
 const TRANSLATED_KEY_NAMES: Record<string, TranslationKey> = {
   AltLeft: 'keyName.AltLeft',
@@ -217,7 +217,7 @@ const TRANSLATED_KEY_NAMES: Record<string, TranslationKey> = {
   BrowserForward: 'keyName.BrowserForward',
 }
 
-/** mac 上修饰键的显示名（⌥ Option、⌘ Command…），覆盖上面的 Windows 名称。 */
+/** mac 上修飾鍵的顯示名（⌥ Option、⌘ Command…），覆蓋上面的 Windows 名稱。 */
 const MAC_TRANSLATED_KEY_NAMES: Record<string, TranslationKey> = {
   AltLeft: 'keyName.mac.AltLeft',
   AltRight: 'keyName.mac.AltRight',
@@ -234,14 +234,14 @@ function translatedKeyName(code: string): TranslationKey | undefined {
   return (IS_MAC ? MAC_TRANSLATED_KEY_NAMES[code] : undefined) ?? TRANSLATED_KEY_NAMES[code]
 }
 
-/** 单键显示名（未知原样返回）。 */
+/** 單鍵顯示名（未知原樣返回）。 */
 export function getSingleKeyDisplay(value: string): string {
   const key = translatedKeyName(value)
   if (key) return t(key)
   return SINGLE_KEY_DISPLAY[value] || value
 }
 
-/** Tauri accelerator 的显示名，用于逐个渲染键帽（mac 用 ⌘⌥⌃⇧ 符号）。 */
+/** Tauri accelerator 的顯示名，用於逐個渲染鍵帽（mac 用 ⌘⌥⌃⇧ 符號）。 */
 export function displayAccelerator(accelerator: string): string[] {
   const displayNames: Record<string, string> = IS_MAC
     ? {
@@ -257,7 +257,7 @@ export function displayAccelerator(accelerator: string): string[] {
       Shift: '⇧',
       Space: 'Space',
       Return: '↩',
-      // mac 按键位录制的主键名（见 macAcceleratorMainKey），显示成 mac 菜单里的写法
+      // mac 按鍵位錄製的主鍵名（見 macAcceleratorMainKey），顯示成 mac 選單裡的寫法
       Enter: '↩',
       Escape: '⎋',
       Tab: '⇥',
@@ -294,7 +294,7 @@ export function displayAccelerator(accelerator: string): string[] {
     .map((part) => displayNames[part] || part)
 }
 
-/** 单键或 accelerator 的统一显示标签。 */
+/** 單鍵或 accelerator 的統一顯示標籤。 */
 export function displayShortcut(shortcut: string): string[] {
   return isSingleKeySetting(shortcut)
     ? [getSingleKeyDisplay(shortcut)]
@@ -302,14 +302,14 @@ export function displayShortcut(shortcut: string): string[] {
 }
 
 /**
- * 按键事件 → Tauri accelerator。只有「修饰键 + 主键」才成型，单按修饰键返回 null。
+ * 按鍵事件 → Tauri accelerator。只有「修飾鍵 + 主鍵」才成型，單按修飾鍵返回 null。
  *
- * 免提与预设切换存的就是这种格式（见 defaults.ts 的 shortcutHandsFree）。
+ * 擴音與預設切換存的就是這種格式（見 defaults.ts 的 shortcutHandsFree）。
  */
 export function eventToAccelerator(event: KeyboardEvent): string | null {
   const parts: string[] = []
   if (IS_MAC) {
-    // mac 上 ⌘ 与 ⌃ 是两个键：⌘ 存成 CommandOrControl（在 mac 上就是 ⌘），⌃ 单独存 Control
+    // mac 上 ⌘ 與 ⌃ 是兩個鍵：⌘ 存成 CommandOrControl（在 mac 上就是 ⌘），⌃ 單獨存 Control
     if (event.metaKey) parts.push('CommandOrControl')
     if (event.ctrlKey) parts.push('Control')
   } else if (event.ctrlKey || event.metaKey) {
@@ -321,7 +321,7 @@ export function eventToAccelerator(event: KeyboardEvent): string | null {
   const key = event.key
   if (['Control', 'Alt', 'Shift', 'Meta'].includes(key)) return null
 
-  // mac：主键按键位取名（⌥ / ⇧ 会改掉 event.key，见 macAcceleratorMainKey）
+  // mac：主鍵按鍵位取名（⌥ / ⇧ 會改掉 event.key，見 macAcceleratorMainKey）
   if (IS_MAC) {
     const mainKey = macAcceleratorMainKey(event.code)
     if (!mainKey) return null
@@ -348,22 +348,22 @@ export function eventToAccelerator(event: KeyboardEvent): string | null {
 }
 
 /**
- * 一次 keydown 该被录成什么：单键 DOM code、accelerator，或 null（还不成型）。
+ * 一次 keydown 該被錄成什麼：單鍵 DOM code、accelerator，或 null（還不成型）。
  *
- * **这个判断必须只有一份。** 向导里曾经自己写过一份「只认单键白名单」的版本，
- * 于是按 Ctrl+D 时 Ctrl 的 keydown 先到、`ControlLeft` 恰好在白名单里 ——
- * 免提键被静默存成「左 Ctrl」，D 根本没轮到，而用户看到的是"组合键不支持"。
+ * **這個判斷必須只有一份。** 嚮導裡曾經自己寫過一份「只認單鍵白名單」的版本，
+ * 於是按 Ctrl+D 時 Ctrl 的 keydown 先到、`ControlLeft` 恰好在白名單裡 ——
+ * 擴音鍵被靜默存成「左 Ctrl」，D 根本沒輪到，而使用者看到的是"組合鍵不支援"。
  *
- * 判定顺序是**先组合、后单键**，不能反过来：`Space`、`Insert`、`F1`–`F24` 同时
- * 出现在单键白名单里，先判单键会把 `Ctrl+Space`、`Ctrl+F1` 也吃成单键。
- * 反过来是安全的 —— 纯修饰键（右 Alt）在 eventToAccelerator 里返回 null，
- * 自然落到单键分支。
+ * 判定順序是**先組合、後單鍵**，不能反過來：`Space`、`Insert`、`F1`–`F24` 同時
+ * 出現在單鍵白名單裡，先判單鍵會把 `Ctrl+Space`、`Ctrl+F1` 也吃成單鍵。
+ * 反過來是安全的 —— 純修飾鍵（右 Alt）在 eventToAccelerator 裡返回 null，
+ * 自然落到單鍵分支。
  *
- * 调用方在 keydown 里持续更新候选、在 keyup 时提交最后那个候选，**null 表示
- * 「这次按键还没凑成东西」，要保留上一个候选**，不能覆盖成空 —— 否则先按 Ctrl+D
- * 再松手的过程中，任何一次不成型的中间事件都会把已经录到的组合键抹掉。
+ * 呼叫方在 keydown 裡持續更新候選、在 keyup 時提交最後那個候選，**null 表示
+ * 「這次按鍵還沒湊成東西」，要保留上一個候選**，不能覆蓋成空 —— 否則先按 Ctrl+D
+ * 再鬆手的過程中，任何一次不成型的中間事件都會把已經錄到的組合鍵抹掉。
  *
- * comboOnly 用于「必须是组合键」的设置（预设切换）：单键一律不成型。
+ * comboOnly 用於「必須是組合鍵」的設定（預設切換）：單鍵一律不成型。
  */
 export function keyEventToShortcutCandidate(
   event: KeyboardEvent,
@@ -375,13 +375,13 @@ export function keyEventToShortcutCandidate(
   return resolveSingleKeyShortcut(event.code) ?? null
 }
 
-/** 拆分 PTT 设置；不在这里静默丢弃未知成员，交给校验器给出明确错误。 */
+/** 拆分 PTT 設定；不在這裡靜默丟棄未知成員，交給校驗器給出明確錯誤。 */
 export function parsePTTShortcut(setting: string): string[] {
   if (!setting.trim()) return []
   return setting.split('+').map((part) => part.trim()).filter(Boolean)
 }
 
-/** 将 PTT 成员按 Ctrl、Win、Alt、Shift、普通键顺序规范化。 */
+/** 將 PTT 成員按 Ctrl、Win、Alt、Shift、普通鍵順序規範化。 */
 export function canonicalizePTTShortcut(settingOrCodes: string | Iterable<string>): string {
   const codes = typeof settingOrCodes === 'string'
     ? parsePTTShortcut(settingOrCodes)
@@ -397,7 +397,7 @@ export function canonicalizePTTShortcut(settingOrCodes: string | Iterable<string
   }).join('+')
 }
 
-/** PTT 设置的按键标签，用于逐个渲染键帽。 */
+/** PTT 設定的按鍵標籤，用於逐個渲染鍵帽。 */
 export function displayPTTShortcut(setting: string): string[] {
   return parsePTTShortcut(canonicalizePTTShortcut(setting)).map((code) => {
     const key = translatedKeyName(code)
@@ -414,18 +414,18 @@ export function pttShortcutHasModifier(setting: string): boolean {
 }
 
 /**
- * 已保存的按住说话配置需要提醒用户的地方。
+ * 已儲存的按住說話配置需要提醒使用者的地方。
  *
- * 目前只有一种：老用户在 Shift 还能选的时候绑上了它。
+ * 目前只有一種：老使用者在 Shift 還能選的時候綁上了它。
  *
- * 为什么不在升级时自动改掉：那是在用户不知情的情况下换掉他的说话键，比留着更糟。
- * 也不在这里直接停掉它——那等于升级后按住说话突然没反应，而用户未必会想到来设置页。
- * 所以旧绑定继续生效，只是在设置里常驻一行提示让他换。新绑定由
- * getPTTShortcutValidationError 硬拦。
+ * 為什麼不在升級時自動改掉：那是在使用者不知情的情況下換掉他的說話鍵，比留著更糟。
+ * 也不在這裡直接停掉它——那等於升級後按住說話突然沒反應，而使用者未必會想到來設定頁。
+ * 所以舊繫結繼續生效，只是在設定裡常駐一行提示讓他換。新繫結由
+ * getPTTShortcutValidationError 硬攔。
  */
 export function getPTTShortcutWarning(setting: string): string | null {
   return parsePTTShortcut(canonicalizePTTShortcut(setting)).some(isPTTForbiddenCode)
-    // mac 上只可能来自导入的 Windows 配置
+    // mac 上只可能來自匯入的 Windows 配置
     ? t(IS_MAC ? 'shortcut.warning.shiftNoLongerSupportedMac' : 'shortcut.warning.shiftNoLongerSupported')
     : null
 }
@@ -450,14 +450,14 @@ function normalizedAcceleratorParts(accelerator: string): string[] {
 }
 
 /**
- * 通用 accelerator 的 Windows 保留组合校验。
+ * 通用 accelerator 的 Windows 保留組合校驗。
  *
- * PTT 使用物理 code，有自己的完整校验；免提与预设切换使用 Tauri accelerator，
- * 也必须在试注册前挡住系统安全界面、窗口切换等无法可靠覆盖的组合。
+ * PTT 使用物理 code，有自己的完整校驗；擴音與預設切換使用 Tauri accelerator，
+ * 也必須在試註冊前擋住系統安全介面、視窗切換等無法可靠覆蓋的組合。
  */
 export function getAcceleratorShortcutValidationError(accelerator: string): string | null {
-  // mac：单键和鼠标键由我们自己的事件监听处理，不走系统快捷键注册，下面那些组合键规则管不到它们。
-  // 以前漏了这一句，单独一个右 ⌥、F5、鼠标侧键也被报「需要带上 ⌘ 或 ⌃」。
+  // mac：單鍵和滑鼠鍵由我們自己的事件監聽處理，不走系統快捷鍵註冊，下面那些組合鍵規則管不到它們。
+  // 以前漏了這一句，單獨一個右 ⌥、F5、滑鼠側鍵也被報「需要帶上 ⌘ 或 ⌃」。
   if (IS_MAC) return isSingleKeySetting(accelerator) ? null : getMacAcceleratorValidationError(accelerator)
   const parts = normalizedAcceleratorParts(accelerator)
   const has = (key: string) => parts.includes(key)
@@ -480,12 +480,12 @@ export function getAcceleratorShortcutValidationError(accelerator: string): stri
 }
 
 /**
- * macOS 的 accelerator 校验（免提组合、AI 开关、润色模式切换）。
+ * macOS 的 accelerator 校驗（擴音組合、AI 開關、潤色模式切換）。
  *
- * - 带 ⌘ 或 ⌃ 的组合注册成系统快捷键；修饰键只有 ⌥ / ⇧ 的组合（macOS 15 起系统快捷键不触发）
+ * - 帶 ⌘ 或 ⌃ 的組合註冊成系統快捷鍵；修飾鍵只有 ⌥ / ⇧ 的組合（macOS 15 起系統快捷鍵不觸發）
  *   由 Rust 的 event tap 接管（keyboard/macos.rs 的 TAP_COMBOS），两类都能用。
- * - ⌘Space（聚焦搜索）、⌃Space（切换输入法）、⌘Tab、⌘Q、⌘⇧3/4/5（截屏）被系统或所有程序占用。
- * - 一个修饰键 + 会打出字符或有编辑含义的键，是各程序自己的快捷键或用来输入特殊字符（⌥E、⌥2）。
+ * - ⌘Space（聚焦搜尋）、⌃Space（切換輸入法）、⌘Tab、⌘Q、⌘⇧3/4/5（截圖）被系統或所有程式佔用。
+ * - 一個修飾鍵 + 會打出字元或有編輯含義的鍵，是各程式自己的快捷鍵或用來輸入特殊字元（⌥E、⌥2）。
  */
 function getMacAcceleratorValidationError(accelerator: string): string | null {
   const aliases: Record<string, string> = {
@@ -516,9 +516,9 @@ function getMacAcceleratorValidationError(accelerator: string): string | null {
   if (has('Meta') && has('Alt') && mainKey === 'Escape') {
     return t('shortcut.error.reservedMac')
   }
-  // 一个修饰键 + 字母 / 数字 / 符号 / 空格 / 方向键（⌘W 关窗口、⌘C 复制、⌃A 行首、⌥E 打重音符号、
-  // ⇧Space 打空格……）是各个程序和系统自己的快捷键，或用来输入字符。注册成全局快捷键后，
-  // 这些键在所有程序里都会失灵。
+  // 一個修飾鍵 + 字母 / 數字 / 符號 / 空格 / 方向鍵（⌘W 關視窗、⌘C 複製、⌃A 行首、⌥E 打重音符號、
+  // ⇧Space 打空格……）是各個程式和系統自己的快捷鍵，或用來輸入字元。註冊成全域性快捷鍵後，
+  // 這些鍵在所有程式裡都會失靈。
   const modifierCount = ['Meta', 'Control', 'Alt', 'Shift'].filter(has).length
   if (modifierCount === 1 && mainKey && isMacCharacterOrEditingKey(mainKey)) {
     return t('shortcut.error.macSingleModifierReserved')
@@ -526,13 +526,13 @@ function getMacAcceleratorValidationError(accelerator: string): string | null {
   return null
 }
 
-/** 和一个修饰键组合时都有系统或文字编辑含义的非字符键（accelerator 里的写法） */
+/** 和一個修飾鍵組合時都有系統或文字編輯含義的非字元鍵（accelerator 裡的寫法） */
 const MAC_EDITING_KEYS = new Set([
   'Up', 'Down', 'Left', 'Right', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
   'Return', 'Enter', 'Escape', 'Tab', 'Backspace', 'Delete', 'Home', 'End', 'PageUp', 'PageDown',
 ])
 
-/** 会打出字符的键里，accelerator 不用单个字符而用名字写的那些（mac 按键位录制，见 macAcceleratorMainKey） */
+/** 會打出字元的鍵裡，accelerator 不用單個字元而用名字寫的那些（mac 按鍵位錄製，見 macAcceleratorMainKey） */
 const MAC_NAMED_CHARACTER_KEYS = new Set([
   'Space', 'Comma', 'Period', 'Slash', 'Semicolon', 'Quote', 'BracketLeft', 'BracketRight',
   'Backslash', 'Backquote', 'Minus', 'Equal',
@@ -546,12 +546,12 @@ function isMacCharacterOrEditingKey(mainKey: string): boolean {
 }
 
 /**
- * mac 录组合键时的主键：按物理键位（event.code）取名，不看 event.key。
+ * mac 錄組合鍵時的主鍵：按物理鍵位（event.code）取名，不看 event.key。
  *
- * ⌥ 会改变 event.key（⌥⇧D 得到「Î」，⌥1 得到「¡」），⇧ 会把数字变成符号（⇧1 → 「!」），
- * 非美式键盘上字母的位置也不同；这些都会录成 Rust 端（global-hotkey）解析不了的组合。
- * 系统快捷键和 event tap 本来就按键位匹配，所以这里也按键位取名，写法用 global-hotkey 认得的。
- * 返回 null 表示这个键不能当组合键的主键。
+ * ⌥ 會改變 event.key（⌥⇧D 得到「Î」，⌥1 得到「¡」），⇧ 會把數字變成符號（⇧1 → 「!」），
+ * 非美式鍵盤上字母的位置也不同；這些都會錄成 Rust 端（global-hotkey）解析不了的組合。
+ * 系統快捷鍵和 event tap 本來就按鍵位匹配，所以這裡也按鍵位取名，寫法用 global-hotkey 認得的。
+ * 返回 null 表示這個鍵不能當組合鍵的主鍵。
  */
 function macAcceleratorMainKey(code: string): string | null {
   if (/^Key[A-Z]$/.test(code)) return code.slice(3)
@@ -574,18 +574,18 @@ function macAcceleratorMainKey(code: string): string | null {
 
 export interface PTTValidationOptions {
   /**
-   * 是否放行「历史上曾经能选、现在已禁用」的按键（目前只有 Shift）。
+   * 是否放行「歷史上曾經能選、現在已停用」的按鍵（目前只有 Shift）。
    *
-   * 读取**已保存的配置**时必须传 true。否则老用户的 Shift 绑定会被判成非法，
-   * 而几个调用点碰到非法值的做法是回落到默认键 —— 用户一个设置都没改，
-   * 说话键却自己变了，这比让他继续用 Shift 更糟。
+   * 讀取**已儲存的配置**時必須傳 true。否則老使用者的 Shift 繫結會被判成非法，
+   * 而幾個呼叫點碰到非法值的做法是回落到預設鍵 —— 使用者一個設定都沒改，
+   * 說話鍵卻自己變了，這比讓他繼續用 Shift 更糟。
    *
-   * 校验**用户新输入**时保持 false（默认），这样 Shift 绑不上去。
+   * 校驗**使用者新輸入**時保持 false（預設），這樣 Shift 綁不上去。
    */
   allowLegacyReservedKeys?: boolean
 }
 
-/** 返回本地化的错误提示；null 表示可保存。 */
+/** 返回本地化的錯誤提示；null 表示可儲存。 */
 export function getPTTShortcutValidationError(
   setting: string,
   options: PTTValidationOptions = {},
@@ -600,14 +600,14 @@ export function getPTTShortcutValidationError(
   const unsupported = codes.find((code) => !(code in PTT_CODE_TO_VK))
   if (unsupported) return t('shortcut.error.unsupportedKey', { key: unsupported })
 
-  // 排在单键/组合的分支之前：Shift 无论单独用还是当组合成员都不行
+  // 排在單鍵/組合的分支之前：Shift 無論單獨用還是當組合成員都不行
   if (!options.allowLegacyReservedKeys && codes.some(isPTTForbiddenCode)) {
     return t(IS_MAC ? 'shortcut.error.shiftReservedMac' : 'shortcut.error.shiftReserved')
   }
 
   if (codes.length === 1) {
     const code = codes[0]
-    // mac 上单独的 ⌘ 没有系统动作，可以当按住说话键（Windows 上单按 Win 会弹开始菜单）
+    // mac 上單獨的 ⌘ 沒有系統動作，可以當按住說話鍵（Windows 上單按 Win 會彈開始選單）
     if (!IS_MAC && (code === 'MetaLeft' || code === 'MetaRight')) {
       return t('shortcut.error.metaAlone')
     }
@@ -638,7 +638,7 @@ export function getPTTShortcutValidationError(
   const hasFamily = (prefix: string) => modifiers.some((code) => code.startsWith(prefix))
   const mainKey = mainKeys[0]
   if (IS_MAC) {
-    // 按住说话走 event tap，不受 Carbon 快捷键的 ⌥ 限制；只挡系统占用的组合
+    // 按住說話走 event tap，不受 Carbon 快捷鍵的 ⌥ 限制；只擋系統佔用的組合
     if ((hasFamily('Meta') || hasFamily('Control')) && mainKey === 'Space') {
       return t('shortcut.error.reservedMac')
     }
@@ -650,7 +650,7 @@ export function getPTTShortcutValidationError(
   if (hasFamily('Control') && hasFamily('Alt') && mainKey === 'Delete') {
     return t('shortcut.error.reservedCtrlAltDel')
   }
-  // 带主键的 Win 组合由 Windows Shell 保留；Ctrl + Win 这类纯修饰键组合仍可用。
+  // 帶主鍵的 Win 組合由 Windows Shell 保留；Ctrl + Win 這類純修飾鍵組合仍可用。
   if (hasFamily('Meta') && mainKey) {
     return t('shortcut.error.reservedWindows')
   }
@@ -685,8 +685,8 @@ function pttMainCodeToAccelerator(code: string): string {
 }
 
 /**
- * 将可由 Tauri accelerator 表示的 PTT 组合转换为 accelerator。
- * 纯修饰组合以及同时包含 Ctrl 和 Win 的组合没有无损表示，返回 undefined。
+ * 將可由 Tauri accelerator 表示的 PTT 組合轉換為 accelerator。
+ * 純修飾組合以及同時包含 Ctrl 和 Win 的組合沒有無損表示，返回 undefined。
  */
 export function pttShortcutToAccelerator(setting: string): string | undefined {
   if (!isValidPTTShortcut(setting)) return undefined
@@ -699,7 +699,7 @@ export function pttShortcutToAccelerator(setting: string): string | undefined {
   if (hasControl && hasMeta) return undefined
 
   const parts: string[] = []
-  // 现有免提录制将 Windows 的 Ctrl/Meta 都保存为 CommandOrControl。
+  // 現有擴音錄製將 Windows 的 Ctrl/Meta 都儲存為 CommandOrControl。
   if (hasControl || hasMeta) parts.push('CommandOrControl')
   if (codes.some((code) => code.startsWith('Alt'))) parts.push('Alt')
   if (codes.some((code) => code.startsWith('Shift'))) parts.push('Shift')
@@ -726,14 +726,14 @@ function normalizeAccelerator(accelerator: string): string {
     .join('+')
 }
 
-/** 比较 PTT 物理组合与免提/预设 accelerator 是否会触发同一组合。 */
+/** 比較 PTT 物理組合與擴音/預設 accelerator 是否會觸發同一組合。 */
 export function pttShortcutConflictsWithAccelerator(
   pttSetting: string,
   otherShortcut: string,
 ): boolean {
   if (!pttSetting || !otherShortcut) return false
   const pttCodes = parsePTTShortcut(canonicalizePTTShortcut(pttSetting))
-  // 免提单键若同时是 PTT 组合成员，会被原生 hook 的“PTT 优先”规则完全遮蔽。
+  // 擴音單鍵若同時是 PTT 組合成員，會被原生 hook 的“PTT 優先”規則完全遮蔽。
   if (isSingleKeySetting(otherShortcut) && pttCodes.includes(otherShortcut)) return true
   if (canonicalizePTTShortcut(pttSetting) === canonicalizePTTShortcut(otherShortcut)) return true
   const accelerator = pttShortcutToAccelerator(pttSetting)

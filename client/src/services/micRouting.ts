@@ -1,25 +1,25 @@
-// 「跟随系统默认」时该打开哪个麦克风。
+// 「跟隨系統預設」時該開啟哪個麥克風。
 //
-// 起因（2026-11-07 本机日志）：耳麦拔掉后 Windows 把默认录音设备换成了
-// `CABLE Output (VB-Audio Virtual Cable)`，SayIt 照着跟过去，录到的全是 0，
-// 只弹了一句「未检测到声音」。用户没改过任何设置，从他的角度就是"它自己选到了虚拟声卡"。
+// 起因（2026-11-07 本機日誌）：耳麥拔掉後 Windows 把預設錄音裝置換成了
+// `CABLE Output (VB-Audio Virtual Cable)`，SayIt 照著跟過去，錄到的全是 0，
+// 只彈了一句「未檢測到聲音」。使用者沒改過任何設定，從他的角度就是"它自己選到了虛擬音效卡"。
 //
-// 规则：
-//  - 用户在下拉里**明确选了**某个设备 → 原样使用，哪怕它是虚拟设备（有人就是要从
-//    虚拟声卡录：Voicemeeter、NVIDIA Broadcast 之类的处理链）。
-//  - 跟随系统默认、而系统默认是**虚拟设备** → 改用一个真实麦克风：
-//    上次真正录到过人声的那个 → 系统「默认通信设备」（如果是真实的）→ 第一个真实麦克风。
-//  - 找不到任何真实麦克风、或者对不上号 → 维持原样跟随系统默认，不猜。
+// 規則：
+//  - 使用者在下拉里**明確選了**某個裝置 → 原樣使用，哪怕它是虛擬裝置（有人就是要從
+//    虛擬音效卡錄：Voicemeeter、NVIDIA Broadcast 之類的處理鏈）。
+//  - 跟隨系統預設、而系統預設是**虛擬裝置** → 改用一個真實麥克風：
+//    上次真正錄到過人聲的那個 → 系統「預設通訊裝置」（如果是真實的）→ 第一個真實麥克風。
+//  - 找不到任何真實麥克風、或者對不上號 → 維持原樣跟隨系統預設，不猜。
 //
-// 「是不是虚拟设备」由原生层判断，**不按名字**，所以不需要为每个虚拟声卡产品维护名单：
-// Windows 看设备挂在哪条总线上（audio_mute.rs 的 is_virtual_enumerator），
-// macOS 看 CoreAudio 报的连接类型（is_virtual_transport，BlackHole 之类报 `virt`）。
+// 「是不是虛擬裝置」由原生層判斷，**不按名字**，所以不需要為每個虛擬音效卡產品維護名單：
+// Windows 看裝置掛在哪條匯流排上（audio_mute.rs 的 is_virtual_enumerator），
+// macOS 看 CoreAudio 報的連線型別（is_virtual_transport，BlackHole 之類報 `virt`）。
 
 import { invoke } from '@tauri-apps/api/core'
 import { isPseudoInputDevice, realInputEndpoints, stripUsbIds, type MicEndpoint } from './audio'
 import { getSetting, setSetting } from './store'
 
-/** 原生层 list_capture_endpoints 的一项。 */
+/** 原生層 list_capture_endpoints 的一項。 */
 export interface CaptureEndpoint {
   name: string
   enumerator: string
@@ -29,40 +29,40 @@ export interface CaptureEndpoint {
 }
 
 export type MicPlanReason =
-  /** 用户明确选了设备 */
+  /** 使用者明確選了裝置 */
   | 'explicit'
-  /** 跟随系统默认，且默认是真实设备（或无从判断） */
+  /** 跟隨系統預設，且預設是真實裝置（或無從判斷） */
   | 'default'
-  /** 系统默认是虚拟设备，已改用真实麦克风 */
+  /** 系統預設是虛擬裝置，已改用真實麥克風 */
   | 'virtual_avoided'
-  /** 系统默认是虚拟设备，但没有可用的真实麦克风 */
+  /** 系統預設是虛擬裝置，但沒有可用的真實麥克風 */
   | 'virtual_no_alternative'
-  /** 系统默认是虚拟设备，但网页侧的设备名是空的，对不上号（录音开流后会再判一次） */
+  /** 系統預設是虛擬裝置，但網頁側的裝置名是空的，對不上號（錄音開流後會再判一次） */
   | 'unmapped'
 
 export interface MicPlan {
-  /** 交给 getUserMedia 的 deviceId；空串 = 跟随系统默认 */
+  /** 交給 getUserMedia 的 deviceId；空串 = 跟隨系統預設 */
   deviceId: string
   reason: MicPlanReason
-  /** 被跳过的虚拟设备名（reason = virtual_avoided / virtual_no_alternative / unmapped 时有值） */
+  /** 被跳過的虛擬裝置名（reason = virtual_avoided / virtual_no_alternative / unmapped 時有值） */
   avoidedName: string
-  /** 实际改用的麦克风名（reason = virtual_avoided 时有值） */
+  /** 實際改用的麥克風名（reason = virtual_avoided 時有值） */
   chosenName: string
 }
 
-/** 记住「上次真正录到人声的真实麦克风」。存的是规范化后的名字，不是 deviceId：
- *  Chromium 的 deviceId 按 origin 加盐，清 WebView 缓存就全变号，名字更稳。 */
+/** 記住「上次真正錄到人聲的真實麥克風」。存的是規範化後的名字，不是 deviceId：
+ *  Chromium 的 deviceId 按 origin 加鹽，清 WebView 快取就全變號，名字更穩。 */
 const LAST_GOOD_MIC_KEY = 'micLastGoodDevice'
 
 /**
- * 把网页侧的 label 与原生侧的端点友好名对到一起的键。
- * Chromium 会给 USB 设备名后面加 `(047f:c053)`，Windows 的友好名里没有，所以先剥掉。
+ * 把網頁側的 label 與原生側的端點友好名對到一起的鍵。
+ * Chromium 會給 USB 裝置名後面加 `(047f:c053)`，Windows 的友好名裡沒有，所以先剝掉。
  */
 export function endpointKey(label: string): string {
   return stripUsbIds(label).replace(/\s+/g, ' ').trim().toLocaleLowerCase()
 }
 
-/** 某个网页侧设备名对应的原生端点是不是虚拟设备。对不上或同名里有真有假 → null（不下结论）。 */
+/** 某個網頁側裝置名對應的原生端點是不是虛擬裝置。對不上或同名裡有真有假 → null（不下結論）。 */
 export function isVirtualLabel(label: string, endpoints: CaptureEndpoint[]): boolean | null {
   const key = endpointKey(label)
   if (!key) return null
@@ -82,7 +82,7 @@ function asEndpointList(raw: unknown): CaptureEndpoint[] {
   ))
 }
 
-/** 纯函数：给定两侧的设备清单，决定打开哪个。 */
+/** 純函式：給定兩側的裝置清單，決定開啟哪個。 */
 export function planMicDevice(input: {
   selectedMicId: string
   webDevices: MicEndpoint[]
@@ -151,14 +151,14 @@ async function snapshotWebInputs(): Promise<MicEndpoint[]> {
 }
 
 /**
- * 录音启动前调用。系统默认是真实设备时只多一次原生调用（几毫秒），不枚举网页设备。
- * 任何一步失败都退回「跟随系统默认」，不让这一层挡住录音。
+ * 錄音啟動前呼叫。系統預設是真實裝置時只多一次原生呼叫（幾毫秒），不列舉網頁裝置。
+ * 任何一步失敗都退回「跟隨系統預設」，不讓這一層擋住錄音。
  */
 export async function resolveMicPlan(
   selectedMicId: string,
   options: { endpoints?: CaptureEndpoint[]; webDevices?: MicEndpoint[] } = {},
 ): Promise<{ plan: MicPlan; endpoints: CaptureEndpoint[] }> {
-  // 明确选了设备时也要端点清单：录音没声音时要靠它判断「是不是选了个虚拟声卡」。
+  // 明確選了裝置時也要端點清單：錄音沒聲音時要靠它判斷「是不是選了個虛擬音效卡」。
   const endpoints = options.endpoints ?? await listCaptureEndpoints()
   if (selectedMicId.trim() && !isPseudoInputDevice(selectedMicId)) {
     return { plan: planMicDevice({ selectedMicId, webDevices: [], endpoints, lastGoodKey: '' }), endpoints }
@@ -178,7 +178,7 @@ export async function resolveMicPlan(
 
 let lastGoodCache: string | null = null
 
-/** 一次录音里确认听到了人声、且用的是真实麦克风时调用。名字没变就不写库。 */
+/** 一次錄音裡確認聽到了人聲、且用的是真實麥克風時呼叫。名字沒變就不寫庫。 */
 export async function rememberWorkingMic(label: string): Promise<void> {
   const key = endpointKey(label)
   if (!key) return

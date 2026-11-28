@@ -25,10 +25,10 @@ vi.mock('@/i18n', () => ({
   t: (key: string) => key,
 }))
 
-// 与 overlayListeningPayload.test.ts 同样的理由：不要用顶层 await import()。
+// 與 overlayListeningPayload.test.ts 同樣的理由：不要用頂層 await import()。
 import { OverlayService } from '../OverlayService'
 
-/** Rust 侧 CARD_HOTKEY_TTL_MS = 20s，前端续期间隔 8s。 */
+/** Rust 側 CARD_HOTKEY_TTL_MS = 20s，前端續期間隔 8s。 */
 const KEEPALIVE_MS = 8000
 const NATIVE_TTL_MS = 20000
 
@@ -44,7 +44,7 @@ function escapeModes(): string[] {
   return mocks.setEscapeActionMode.mock.calls.map(([mode]) => String(mode))
 }
 
-/** 取最后一次调用的 payload。刻意不用 `.at(-1)` —— 本仓库的 lib 目标是 ES2020。 */
+/** 取最後一次呼叫的 payload。刻意不用 `.at(-1)` —— 本倉庫的 lib 目標是 ES2020。 */
 function lastPayload(fn: { mock: { calls: unknown[][] } }): Record<string, unknown> | undefined {
   const calls = fn.mock.calls
   if (calls.length === 0) return undefined
@@ -66,13 +66,13 @@ describe('悬浮窗卡片的生命周期', () => {
   })
 
   /**
-   * 这条钉的是 issue #71 的核心改动，**没有任何时长上限**。
+   * 這條釘的是 issue #71 的核心改動，**沒有任何時長上限**。
    *
-   * 旧行为是 10 秒自动隐藏，等于把"文本还没交付"当成"通知已读"：用户去够鼠标的
-   * 时间里卡片就没了，而那段文字此刻既不在输入框、也不在剪贴板（不可编辑那条路
-   * 刻意不提前改写剪贴板），关了历史的用户更是连别处都找不回来。
+   * 舊行為是 10 秒自動隱藏，等於把"文本還沒交付"當成"通知已讀"：使用者去夠滑鼠的
+   * 時間裡卡片就沒了，而那段文字此刻既不在輸入框、也不在剪貼簿（不可編輯那條路
+   * 刻意不提前改寫剪貼簿），關了歷史的使用者更是連別處都找不回來。
    *
-   * 所以断言取半小时 —— 任何"到时自动隐藏"的实现都过不了这条。中间一次都不许 hide。
+   * 所以斷言取半小時 —— 任何"到時自動隱藏"的實現都過不了這條。中間一次都不許 hide。
    */
   it('结果卡永不自动消失', () => {
     const service = newService()
@@ -83,10 +83,10 @@ describe('悬浮窗卡片的生命周期', () => {
   })
 
   /**
-   * 失败卡没有要交付的内容，看过就没用了，所以它**可以**自动收起。
+   * 失敗卡沒有要交付的內容，看過就沒用了，所以它**可以**自動收起。
    *
-   * 5 秒而不是原先的 60 秒：录音已经在历史记录里、原因也在日志里，错过这张卡不丢东西。
-   * 60 秒实测的结果是用户手动去关它 —— 那等于把一条通知做成了待办事项。
+   * 5 秒而不是原先的 60 秒：錄音已經在歷史記錄裡、原因也在日誌裡，錯過這張卡不丟東西。
+   * 60 秒實測的結果是使用者手動去關它 —— 那等於把一條通知做成了待辦事項。
    */
   it('失败卡 5 秒后自动收起', () => {
     const service = newService()
@@ -99,11 +99,11 @@ describe('悬浮窗卡片的生命周期', () => {
   })
 
   /**
-   * 「识别没出文字」一律走 toast，**不许建卡片**。
+   * 「識別沒出文字」一律走 toast，**不許建卡片**。
    *
-   * 断言钉的是机制不是结果：只断言"没有 hideOverlay"或"最终隐藏了"在旧实现上也会绿
-   * （旧实现是卡片，60 秒后照样隐藏）。这里要求 presentOverlay 收到的 state 是 toast、
-   * 并且整个过程没有注册过任何全局按键接管 —— 卡片一定会注册 Esc。
+   * 斷言釘的是機制不是結果：只斷言"沒有 hideOverlay"或"最終隱藏了"在舊實現上也會綠
+   * （舊實現是卡片，60 秒後照樣隱藏）。這裡要求 presentOverlay 收到的 state 是 toast、
+   * 並且整個過程沒有註冊過任何全域性按鍵接管 —— 卡片一定會註冊 Esc。
    */
   it('识别没出文字时只弹 toast，不建卡片、不接管按键', () => {
     for (const reason of ['silent', 'no_text'] as const) {
@@ -117,18 +117,18 @@ describe('悬浮窗卡片的生命周期', () => {
         .map((call) => (call[0] as { state?: string } | undefined)?.state)
       expect(states).toEqual(['toast'])
       expect(states).not.toContain('failure')
-      // 'off' 是解除接管，不算接管；出现 dismiss_fallback 就说明建了卡片。
+      // 'off' 是解除接管，不算接管；出現 dismiss_fallback 就說明建了卡片。
       const modes = mocks.setEscapeActionMode.mock.calls.map((call) => call[0])
       expect(modes.every((mode) => mode === 'off')).toBe(true)
     }
   })
 
   /**
-   * 卡片既然不自动消失，正常生命周期就只能靠续期证明"我还在"。
+   * 卡片既然不自動消失，正常生命週期就只能靠續期證明"我還在"。
    *
-   * 断言的是**机制**而不是结果：Rust 侧那个 TTL 是异常兜底，只断言"按键还能用"
-   * 在没有续期的实现上也会全绿（TTL 内本来就能用）。这里要求在超过 TTL 的时刻
-   * 之后仍有新的注册调用发出去。
+   * 斷言的是**機制**而不是結果：Rust 側那個 TTL 是異常兜底，只斷言"按鍵還能用"
+   * 在沒有續期的實現上也會全綠（TTL 內本來就能用）。這裡要求在超過 TTL 的時刻
+   * 之後仍有新的註冊呼叫發出去。
    */
   it('卡片可见期间会持续续期，续期间隔小于原生 TTL', () => {
     const service = newService()
@@ -143,7 +143,7 @@ describe('悬浮窗卡片的生命周期', () => {
     const renewals = hotkeyCalls().length - initialHotkeys
     expect(renewals).toBeGreaterThanOrEqual(Math.floor(NATIVE_TTL_MS / KEEPALIVE_MS))
     expect(escapeModes().length).toBeGreaterThan(initialEscapes)
-    // 续期必须沿用同一张卡片的 token，否则原生侧会把它当成新卡片、重新抓前台窗口。
+    // 續期必須沿用同一張卡片的 token，否則原生側會把它當成新卡片、重新抓前台視窗。
     for (const [actions, token] of hotkeyCalls()) {
       expect(actions).toEqual(['copy'])
       expect(token).toBe(7)
@@ -158,7 +158,7 @@ describe('悬浮窗卡片的生命周期', () => {
 
     mocks.setCardHotkeys.mockClear()
     mocks.setEscapeActionMode.mockClear()
-    // 失败卡没有文本可交付，注册 Ctrl+C 只会白抢用户的复制键。
+    // 失敗卡沒有文本可交付，註冊 Ctrl+C 只會白搶使用者的複製鍵。
     service.showFailure({ title: 'recorder.recognitionFailedTitle', recovery: 'unknown', token: 8 })
     expect(hotkeyCalls().every(([actions]) => actions.length === 0)).toBe(true)
     expect(escapeModes()).toContain('dismiss_fallback')
@@ -170,7 +170,7 @@ describe('悬浮窗卡片的生命周期', () => {
     expect(hotkeyCalls().every(([actions]) => actions.length === 0)).toBe(true)
   })
 
-  /** PTT Lab 的预览卡片没有 Orchestrator 代次，绝不能开启无人消费的全局按键接管。 */
+  /** PTT Lab 的預覽卡片沒有 Orchestrator 代次，絕不能開啟無人消費的全域性按鍵接管。 */
   it('token=0 的预览卡片不接管任何按键', () => {
     const service = newService()
     service.showFallback('预览文本', 'not_editable', 0)
@@ -178,19 +178,19 @@ describe('悬浮窗卡片的生命周期', () => {
     expect(hotkeyCalls().every(([actions]) => actions.length === 0)).toBe(true)
     expect(escapeModes().every((mode) => mode === 'off')).toBe(true)
 
-    // 也不该留下一个续期定时器。
+    // 也不該留下一個續期定時器。
     mocks.setCardHotkeys.mockClear()
     vi.advanceTimersByTime(NATIVE_TTL_MS * 2)
     expect(mocks.setCardHotkeys).not.toHaveBeenCalled()
   })
 
   /**
-   * 验收项「复制过程中开始新录音」的机制侧：新录音会把悬浮窗切到 waiting，
-   * 那一刻卡片的按键接管必须当场解除。
+   * 驗收項「複製過程中開始新錄音」的機制側：新錄音會把懸浮窗切到 waiting，
+   * 那一刻卡片的按鍵接管必須當場解除。
    *
-   * 不解除的症状很隐蔽：续期定时器每 8 秒把 Esc 重新设成 dismiss_fallback，
-   * 把新录音刚设好的 cancel_recording 覆盖掉 —— 用户在录音中按 Esc，取消的是
-   * 一张已经不存在的卡片。
+   * 不解除的症狀很隱蔽：續期定時器每 8 秒把 Esc 重新設成 dismiss_fallback，
+   * 把新錄音剛設好的 cancel_recording 覆蓋掉 —— 使用者在錄音中按 Esc，取消的是
+   * 一張已經不存在的卡片。
    */
   it('开始新一轮显示会解除上一张卡片的按键接管', () => {
     const service = newService()
@@ -202,7 +202,7 @@ describe('悬浮窗卡片的生命周期', () => {
 
     expect(hotkeyCalls()).toContainEqual([[], 0])
 
-    // 关键：续期定时器必须已经停掉，不能再覆盖新状态的 Esc 模式。
+    // 關鍵：續期定時器必須已經停掉，不能再覆蓋新狀態的 Esc 模式。
     mocks.setEscapeActionMode.mockClear()
     service.startListeningTicker(9)
     mocks.setEscapeActionMode.mockClear()
@@ -224,14 +224,14 @@ describe('悬浮窗卡片的生命周期', () => {
   })
 
   /**
-   * 回归钉：悬浮窗自己收起卡片之后，主窗必须停掉续期。
+   * 迴歸釘：懸浮窗自己收起卡片之後，主窗必須停掉續期。
    *
-   * 悬浮窗只是渲染端，卡片的生命周期归这边管。它 hideOverlay() 之后如果不回报，
-   * 8 秒后续期定时器又把 Esc / Ctrl+C 注册回来 —— 卡片早就没了，用户的按键却还
-   * 被接管着，而且原生侧会重新抓一次**当前**前台窗口（可能已经是别的程序）。
+   * 懸浮窗只是渲染端，卡片的生命週期歸這邊管。它 hideOverlay() 之後如果不回報，
+   * 8 秒後續期定時器又把 Esc / Ctrl+C 註冊回來 —— 卡片早就沒了，使用者的按鍵卻還
+   * 被接管著，而且原生側會重新抓一次**當前**前台視窗（可能已經是別的程式）。
    *
-   * 断言方式是"此后不再出现任何非空的注册"，而不是"解除被调用过一次" ——
-   * 后者在有 bug 的实现上也会全绿（它确实调过一次，只是随后又注册回来了）。
+   * 斷言方式是"此後不再出現任何非空的註冊"，而不是"解除被呼叫過一次" ——
+   * 後者在有 bug 的實現上也會全綠（它確實調過一次，只是隨後又註冊回來了）。
    */
   it('悬浮窗收起卡片后不再续期', () => {
     const service = newService()
@@ -246,7 +246,7 @@ describe('悬浮窗卡片的生命周期', () => {
     expect(escapeModes().every((mode) => mode === 'off')).toBe(true)
   })
 
-  /** 上一张卡片的关闭回报迟到时，不能把现在这张的按键接管一起撤掉。 */
+  /** 上一張卡片的關閉回報遲到時，不能把現在這張的按鍵接管一起撤掉。 */
   it('关闭回报只认当前卡片', () => {
     const service = newService()
     service.showFallback('第一段', 'not_editable', 7)
@@ -256,14 +256,14 @@ describe('悬浮窗卡片的生命周期', () => {
     service.noteCardDismissed(7)
 
     expect(mocks.setCardHotkeys).not.toHaveBeenCalled()
-    // 第二张卡片照常续期。
+    // 第二張卡片照常續期。
     vi.advanceTimersByTime(KEEPALIVE_MS + 100)
     expect(hotkeyCalls()).toContainEqual([['copy'], 9])
   })
 
   /**
-   * 失败卡上那句"可在历史记录里重新识别"必须由实际存档结果决定，所以分两步下发：
-   * 先 present（此刻还不知道存没存下来），存档有结论后再 update。
+   * 失敗卡上那句"可在歷史記錄裡重新識別"必須由實際存檔結果決定，所以分兩步下發：
+   * 先 present（此刻還不知道存沒存下來），存檔有結論後再 update。
    */
   it('恢复结论是随后补发的，且只认当前卡片的 token', () => {
     const service = newService()
@@ -279,23 +279,23 @@ describe('悬浮窗卡片的生命周期', () => {
       failureRecovery: 'history',
     })
 
-    // 上一张卡片的存档结论迟到时不能改写现在这张。
+    // 上一張卡片的存檔結論遲到時不能改寫現在這張。
     mocks.updateOverlay.mockClear()
     service.updateFailureRecovery('history', 7)
     expect(mocks.updateOverlay).not.toHaveBeenCalled()
   })
 
   /**
-   * 补发恢复结论时必须**重新带上标题和原因**。
+   * 補發恢復結論時必須**重新帶上標題和原因**。
    *
-   * 原生侧的 update 是整份替换 `latest_overlay_payload`，不是合并。只发
-   * `{ state, failureRecovery }` 的话，那份"最近状态"底稿会变成一份没有标题的残缺
-   * payload，而界面此刻完全正常（渲染端是合并语义）—— 残缺只在有人重放底稿时暴露：
-   * overlay 重挂后 `overlay_ready` 会重放它。实测 2026-09-23 的现场就是这个：
-   * 卡片显示成「出错了」+「录音已保存」，标题落到兜底文案，原因整行消失。
+   * 原生側的 update 是整份替換 `latest_overlay_payload`，不是合併。只發
+   * `{ state, failureRecovery }` 的話，那份"最近狀態"底稿會變成一份沒有標題的殘缺
+   * payload，而介面此刻完全正常（渲染端是合併語義）—— 殘缺只在有人重放底稿時暴露：
+   * overlay 重掛後 `overlay_ready` 會重放它。實測 2026-09-23 的現場就是這個：
+   * 卡片顯示成「出錯了」+「錄音已儲存」，標題落到兜底文案，原因整行消失。
    *
-   * 所以这条断言钉的是**下发的字段**，不是界面效果：只断言"界面正常"在出 bug 的版本上
-   * 也是绿的。
+   * 所以這條斷言釘的是**下發的欄位**，不是介面效果：只斷言"介面正常"在出 bug 的版本上
+   * 也是綠的。
    */
   it('补发恢复结论时重新带上标题与原因，不留下残缺的最近状态', () => {
     const service = newService()
@@ -320,7 +320,7 @@ describe('悬浮窗卡片的生命周期', () => {
     service.showFailure({ title: 'recorder.recognitionFailedTitle', detail: '余额不足', recovery: 'none', token: 8 })
     service.hide()
 
-    // 新一张卡自带标题；关键是 hide 之后旧标题不许残留。
+    // 新一張卡自帶標題；關鍵是 hide 之後舊標題不許殘留。
     mocks.presentOverlay.mockClear()
     service.showFailure({ title: 'recorder.processingTimeoutTitle', recovery: 'none', token: 9 })
     expect(lastPayload(mocks.presentOverlay)).toMatchObject({
@@ -329,7 +329,7 @@ describe('悬浮窗卡片的生命周期', () => {
     })
   })
 
-  /** 宽限期提示是胶囊形态的 thinking 变体，Esc 的语义是"放弃等待"而不是"关卡片"。 */
+  /** 寬限期提示是膠囊形態的 thinking 變體，Esc 的語義是"放棄等待"而不是"關卡片"。 */
   it('宽限期等待用独立的 Esc 语义', () => {
     const service = newService()
     service.showAwaitingLateResult(15, 11)
@@ -339,7 +339,7 @@ describe('悬浮窗卡片的生命周期', () => {
       thinkingNote: 'late',
     })
     expect(escapeModes()).toContain('abandon_late_result')
-    // 这一步没有卡片按钮，不该接管 Ctrl+C。
+    // 這一步沒有卡片按鈕，不該接管 Ctrl+C。
     expect(hotkeyCalls().every(([actions]) => actions.length === 0)).toBe(true)
   })
 })

@@ -88,7 +88,7 @@ export default function UserStatsSection({ userStats }: { userStats: UserStats }
 
   const rangeStats = useMemo(() => computeRangeStats(filteredRecords), [filteredRecords])
 
-  // 全部模式用原始 userStats（包含 domainWords 等），其他范围用聚合数据
+  // 全部模式用原始 userStats（包含 domainWords 等），其他範圍用聚合資料
   const displayStats = range === 'all' ? {
     totalWords: userStats.totalWords,
     totalSessions: userStats.totalSessions,

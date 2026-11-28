@@ -1,19 +1,19 @@
-// 文本后处理 — 不依赖 AI 的客户端文本规范化
+// 文本後處理 — 不依賴 AI 的客戶端文本規範化
 //
-// 提供三类可开关的处理：
-//   1. 数字规范化（A 档，尽力而为）：百分之 / 小数点 / 分之 / 含位值词的结构化整数
-//   2. 去除句末标点
-//   3. 标点符号替换为空格
+// 提供三類可開關的處理：
+//   1. 數字規範化（A 檔，盡力而為）：百分之 / 小數點 / 分之 / 含位值詞的結構化整數
+//   2. 去除句末標點
+//   3. 標點符號替換為空格
 //
-// 处理顺序在 applyTextTransforms 中固定：数字规范化 → 用户替换规则 → 去句末标点 → 标点转空格。
-// 数字规范化必须在标点处理之前（小数点依赖「点」，标点转空格会吃掉标点）。
+// 處理順序在 applyTextTransforms 中固定：數字規範化 → 使用者替換規則 → 去句末標點 → 標點轉空格。
+// 數字規範化必須在標點處理之前（小數點依賴「點」，標點轉空格會吃掉標點）。
 
 import { getSetting, setSetting } from './store'
 import { applyTextReplacements } from './textReplacement'
 import { segmentAsrText } from './textSegmenter'
 
-// ── 中文数字字符表 ──
-// i18n-allow-start: 中文数字解析算法的输入与输出标记
+// ── 中文數字字元表 ──
+// i18n-allow-start: 中文數字解析演算法的輸入與輸出標記
 const CN_DIGITS: Record<string, number> = {
   '零': 0, '〇': 0, '一': 1, '二': 2, '两': 2, '三': 3, '四': 4,
   '五': 5, '六': 6, '七': 7, '八': 8, '九': 9, '幺': 1,
@@ -21,30 +21,30 @@ const CN_DIGITS: Record<string, number> = {
 const CN_SMALL_UNITS: Record<string, number> = { '十': 10, '百': 100, '千': 1000 }
 const CN_BIG_UNITS: Record<string, number> = { '万': 10000, '亿': 100000000 }
 
-/** 所有中文数字字符（含单位） */
+/** 所有中文數字字元（含單位） */
 const NUM_CHARS = '零〇一二两三四五六七八九十百千万亿幺'
-/** 纯数字字符（不含单位），用于小数部分逐位读取 */
+/** 純數字字元（不含單位），用於小數部分逐位讀取 */
 const DIGIT_CHARS = '零〇一二两三四五六七八九幺'
-/** 位值单位字符 */
+/** 位值單位字元 */
 const UNIT_CHARS = '十百千万亿'
 
 /**
- * 连续单位词构成的固定词/成语黑名单：这些通过了「长度≥2 且含单位」的过滤，
- * 但语义上不是数字，需排除。多数含单位的成语（千方百计、十全十美等）因为
- * 单位与非数字字符交替出现、拆分后单位单独成段（长度<2）已被自动跳过，
- * 这里只列举「多个单位/数字连续」的高频误伤词。可按需扩充。
+ * 連續單位詞構成的固定詞/成語黑名單：這些透過了「長度≥2 且含單位」的過濾，
+ * 但語義上不是數字，需排除。多數含單位的成語（千方百計、十全十美等）因為
+ * 單位與非數字字元交替出現、拆分後單位單獨成段（長度<2）已被自動跳過，
+ * 這裡只列舉「多個單位/數字連續」的高頻誤傷詞。可按需擴充。
  */
 const INTEGER_BLACKLIST = new Set([
   '千万', '万一', '万万', '千千万万', '亿万', '万千', '十万八千',
 ])
 
-/** 解析一段中文整数为数值；无法解析返回 null。支持口语省略（三千二=3200、一万五=15000）。 */
+/** 解析一段中文整數為數值；無法解析返回 null。支援口語省略（三千二=3200、一萬五=15000）。 */
 function parseChineseInteger(s: string): number | null {
   if (!s) return null
   let total = 0
   let section = 0
   let number = 0
-  let lastUnit = 0 // 最近一次使用的单位量级（大小单位皆计）
+  let lastUnit = 0 // 最近一次使用的單位量級（大小單位皆計）
   let sawZero = false
   let hadAny = false
 
@@ -55,7 +55,7 @@ function parseChineseInteger(s: string): number | null {
       hadAny = true
     } else if (ch in CN_SMALL_UNITS) {
       const unit = CN_SMALL_UNITS[ch]
-      if (number === 0) number = 1 // 「十五」→ 十 隐含 1
+      if (number === 0) number = 1 // 「十五」→ 十 隱含 1
       section += number * unit
       number = 0
       lastUnit = unit
@@ -75,7 +75,7 @@ function parseChineseInteger(s: string): number | null {
   }
 
   if (!hadAny) return null
-  // 口语省略的末位数字：无「零」时按下一量级缩放（三千二=3200、一万五=15000、两百五=250）
+  // 口語省略的末位數字：無「零」時按下一量級縮放（三千二=3200、一萬五=15000、兩百五=250）
   if (number !== 0 && lastUnit >= 10 && !sawZero) {
     section += number * (lastUnit / 10)
     number = 0
@@ -83,7 +83,7 @@ function parseChineseInteger(s: string): number | null {
   return total + section + number
 }
 
-/** 解析可能带小数点的中文数字表达为字符串；失败返回 null。 */
+/** 解析可能帶小數點的中文數字表達為字串；失敗返回 null。 */
 function parseNumberExpr(s: string): string | null {
   const dotIdx = s.indexOf('点')
   if (dotIdx === -1) {
@@ -108,21 +108,21 @@ function containsUnit(s: string): boolean {
   return false
 }
 
-/** 若替换处紧跟在英文字母之后，前面补一个空格（如 GPT五点四 → GPT 5.4）。 */
+/** 若替換處緊跟在英文字母之後，前面補一個空格（如 GPT五點四 → GPT 5.4）。 */
 function maybeSpace(str: string, offset: number, replacement: string): string {
   const prev = offset > 0 ? str[offset - 1] : ''
   return /[A-Za-z]/.test(prev) ? ' ' + replacement : replacement
 }
 
 /**
- * 中文数字 → 阿拉伯数字（A 档：有明确信号才转，尽力而为）。
- * 覆盖：百分之 / 小数点（数字点数字）/ 分之 / 含位值词的结构化整数。
- * 刻意不转「孤立单字数字」和「无位值词的逐位串」（如 一二三、三三零六），
- * 避免误伤成语、口语与号码。复杂/歧义场景建议开 AI 整理。
+ * 中文數字 → 阿拉伯數字（A 檔：有明確訊號才轉，盡力而為）。
+ * 覆蓋：百分之 / 小數點（數字點數字）/ 分之 / 含位值詞的結構化整數。
+ * 刻意不轉「孤立單字數字」和「無位值詞的逐位串」（如 一二三、三三零六），
+ * 避免誤傷成語、口語與號碼。複雜/歧義場景建議開 AI 整理。
  */
 export function convertChineseNumbers(text: string): string {
   if (!text) return text
-  // [自訂] SC-67：辨識輸出已轉成台灣正體。下面的規則以簡體字（点两万亿钟时）撰寫，
+  // [自訂] SC-67：辨識輸出已轉成台灣正體。下面的規則以簡體字（點兩萬億鍾時）撰寫，
   // 正體輸入先對應成簡體再套規則，產出的標記（如「9点半」）再換回正體。
   // 逐句判斷（與 Rust 端相同）：含假名（日文）或本來就含這些簡體字的句子維持原行為，不做對應。
   // 不以半形「.」切句，避免切開小數。
@@ -165,21 +165,21 @@ function convertChineseNumbersCore(text: string): string {
     },
   )
 
-  // 2.5 时间表达：必须在小数规则之前处理，避免「点」被当成小数点。
-  //     时/分数字转阿拉伯，保留「点/分/半」标记（如 九点三十二分 → 9点32分）。
+  // 2.5 時間表達：必須在小數規則之前處理，避免「點」被當成小數點。
+  //     時/分數字轉阿拉伯，保留「點/分/半」標記（如 九點三十二分 → 9點32分）。
   const TIME_HOUR = '零一二两三四五六七八九十'
   const TIME_MIN = '零一二两三四五六七八九十'
   const DIGITS_NO_TEN = '零一二两三四五六七八九'
 
-  // 合法小时：单字数字，或含「十」的复合（十 / 十二 / 二十三…），范围 0–24。
-  // 借「含十」排除「一二三」这类逐位串（parseChineseInteger 对它们会给出误导性结果）。
+  // 合法小時：單字數字，或含「十」的複合（十 / 十二 / 二十三…），範圍 0–24。
+  // 借「含十」排除「一二三」這類逐位串（parseChineseInteger 對它們會給出誤導性結果）。
   const validHour = (s: string): number | null => {
     if (s.length > 1 && !s.includes('十')) return null
     const h = parseChineseInteger(s)
     return h === null || h < 0 || h > 24 ? null : h
   }
 
-  // 2.5a 时间：X点半 / X点Y分 / X点[含十的分钟]（九点半→9点半、九点三十二分→9点32分、九点三十→9点30）
+  // 2.5a 時間：X點半 / X點Y分 / X點[含十的分鐘]（九點半→9點半、九點三十二分→9點32分、九點三十→9點30）
   result = result.replace(
     new RegExp(
       `([${TIME_HOUR}]+)点(半|[${TIME_MIN}]+分(?!之)|[${DIGITS_NO_TEN}]*十[${DIGITS_NO_TEN}]*)`,
@@ -199,16 +199,16 @@ function convertChineseNumbersCore(text: string): string {
     },
   )
 
-  // 2.5b 整点：X点（后面不跟数字/点）→ 9点（如 上午九点 → 上午9点）。
-  //      「点」后跟数字的（三点一四）留给小数规则，避免误伤。
+  // 2.5b 整點：X點（後面不跟數字/點）→ 9點（如 上午九點 → 上午9點）。
+  //      「點」後跟數字的（三點一四）留給小數規則，避免誤傷。
   //
-  //      收紧：裸整点必须有明确「时间信号」才转，否则保留中文。目的是不把口语里
-  //      表「a little bit」的「一点」误当成「1 点钟」——如「调宽一点」「有一点」
-  //      「快一点」。时间信号（满足其一即转）：
-  //        ① 前面紧邻时段词（上午 / 下午 / 晚上 …）；
-  //        ② 后面紧跟「钟」（一点钟）；
-  //        ③ 小时是含「十」的两位（十点 / 十二点，几乎只作时间用）。
-  //      无信号时宁可不转，交给 AI 整理处理歧义场景（与整体「尽力而为」取向一致）。
+  //      收緊：裸整點必須有明確「時間訊號」才轉，否則保留中文。目的是不把口語裡
+  //      表「a little bit」的「一點」誤當成「1 點鐘」——如「調寬一點」「有一點」
+  //      「快一點」。時間訊號（滿足其一即轉）：
+  //        ① 前面緊鄰時段詞（上午 / 下午 / 晚上 …）；
+  //        ② 後面緊跟「鍾」（一點鐘）；
+  //        ③ 小時是含「十」的兩位（十點 / 十二點，幾乎只作時間用）。
+  //      無訊號時寧可不轉，交給 AI 整理處理歧義場景（與整體「盡力而為」取向一致）。
   const TIME_OF_DAY_PREFIX = /(凌晨|清晨|早晨|早上|上午|中午|下午|傍晚|晚上|夜里|夜裡|半夜|今早|今晚|明早|明晚|昨晚)$/
   result = result.replace(
     new RegExp(`([${TIME_HOUR}]+)点(?![${DIGIT_CHARS}点])`, 'g'),
@@ -223,13 +223,13 @@ function convertChineseNumbersCore(text: string): string {
     },
   )
 
-  // 3. 小数 / 多段点分数字：数字点数字(点数字)* → N.N 或 N.N.N
-  //    单段是普通小数（三点一四 → 3.14）；多段是版本号等（零点一点零 → 0.1.0），每段逐位读。
+  // 3. 小數 / 多段點分數字：數字點數字(點數字)* → N.N 或 N.N.N
+  //    單段是普通小數（三點一四 → 3.14）；多段是版本號等（零點一點零 → 0.1.0），每段逐位讀。
   result = result.replace(
     new RegExp(`([${NUM_CHARS}]+)((?:点[${DIGIT_CHARS}]+)+)`, 'g'),
     (m: string, intp: string, rest: string, offset: number, str: string) => {
-      // 护栏：小数尾数若紧跟位值词/时间词（说明被截断，或其实是时间/量词），不转，保留中文。
-      // 例：九点三十（无「分」）→ 匹配到「九点三」，其后是「十」→ 跳过，宁留中文也不产出 9.3十。
+      // 護欄：小數尾數若緊跟位值詞/時間詞（說明被截斷，或其實是時間/量詞），不轉，保留中文。
+      // 例：九點三十（無「分」）→ 匹配到「九點三」，其後是「十」→ 跳過，寧留中文也不產出 9.3十。
       const after = str[offset + m.length] || ''
       if (after && '十百千万亿分时点刻秒'.includes(after)) return m
       const intVal = parseChineseInteger(intp)
@@ -245,7 +245,7 @@ function convertChineseNumbersCore(text: string): string {
     },
   )
 
-  // 4. 结构化整数：长度≥2、含位值词、非黑名单
+  // 4. 結構化整數：長度≥2、含位值詞、非黑名單
   result = result.replace(
     new RegExp(`[${NUM_CHARS}]+`, 'g'),
     (m: string, offset: number, str: string) => {
@@ -260,14 +260,14 @@ function convertChineseNumbersCore(text: string): string {
 // i18n-allow-end
 
 /**
- * 还原被 ASR 拆开加空格的「无空格热词」（如豆包把热词 "SayIt" 识别成 "Say It"）。
+ * 還原被 ASR 拆開加空格的「無空格熱詞」（如豆包把熱詞 "SayIt" 識別成 "Say It"）。
  *
- * 仅处理不含空格、纯 ASCII 字母/数字的热词（中文不会被加空格）。对每个热词构造
- * 大小写敏感、字符间允许空白、两端带词边界的正则；命中后若与热词不同（即确实被
- * 拆开过）就合并还原成热词原形。
+ * 僅處理不含空格、純 ASCII 字母/數字的熱詞（中文不會被加空格）。對每個熱詞構造
+ * 大小寫敏感、字元間允許空白、兩端帶詞邊界的正則；命中後若與熱詞不同（即確實被
+ * 拆開過）就合併還原成熱詞原形。
  *
- * 大小写敏感 + 词边界是为了避免误伤：普通小写短语（如句子里的 "say it"）不会被
- * 改成 "SayIt"，"Say Item" 也不会被错并成 "SayItem"。
+ * 大小寫敏感 + 詞邊界是為了避免誤傷：普通小寫短語（如句子裡的 "say it"）不會被
+ * 改成 "SayIt"，"Say Item" 也不會被錯併成 "SayItem"。
  */
 export function restoreHotwordSpacing(text: string, hotwords: string[]): string {
   if (!text || !hotwords || hotwords.length === 0) return text
@@ -275,19 +275,19 @@ export function restoreHotwordSpacing(text: string, hotwords: string[]): string 
     .map((w) => w.trim())
     .filter((w) => w.length >= 2 && /^[A-Za-z0-9]+$/.test(w) && /[A-Za-z]/.test(w))
   if (targets.length === 0) return text
-  // 长词优先，避免短词先命中影响更长的热词
+  // 長詞優先，避免短詞先命中影響更長的熱詞
   targets.sort((a, b) => b.length - a.length)
   let result = text
   for (const hw of targets) {
     const inner = hw.split('').join('\\s*')
-    // 大小写不敏感匹配（豆包可能把 "SayIt" 识别成 "Say it"，尾字母小写），
-    // 但要求首字符大小写与热词一致，避免把普通小写短语（如 "say it"）误并成热词。
+    // 大小寫不敏感匹配（豆包可能把 "SayIt" 識別成 "Say it"，尾字母小寫），
+    // 但要求首字元大小寫與熱詞一致，避免把普通小寫短語（如 "say it"）誤併成熱詞。
     const re = new RegExp(`\\b${inner}\\b`, 'gi')
     result = result.replace(re, (m) => {
       if (m === hw) return m
-      // 连写命中（无内部空格，如 "typeless"/"sayit"）→ 直接还原成热词原样（含大小写）。
-      // 带空格命中（如 "Say it"）→ 仅当首字母大小写一致才还原，避免把普通句子里的
-      // 小写短语（如 "say it"）误并成热词。
+      // 連寫命中（無內部空格，如 "typeless"/"sayit"）→ 直接還原成熱詞原樣（含大小寫）。
+      // 帶空格命中（如 "Say it"）→ 僅當首字母大小寫一致才還原，避免把普通句子裡的
+      // 小寫短語（如 "say it"）誤併成熱詞。
       if (/\s/.test(m) && m[0] !== hw[0]) return m
       return hw
     })
@@ -295,17 +295,17 @@ export function restoreHotwordSpacing(text: string, hotwords: string[]): string 
   return result
 }
 
-// ── 中文标点宽度规范化 ──
+// ── 中文標點寬度規範化 ──
 
 /**
- * 半角 → 全角的对应表。
+ * 半形 → 全形的對應表。
  *
- * **刻意不含句号 `.`**：它的歧义代价太高。小数（3.14）、版本号（v1.2）、域名
- * （example.com）、文件名里全是半角句点，一旦误转就是破坏内容；而实测
- * whisper-large-v3-turbo 的中文句号本来就输出全角 `。`，不需要我们兜。
- * 宁可漏一个也不能错改一个。
+ * **刻意不含句號 `.`**：它的歧義代價太高。小數（3.14）、版本號（v1.2）、域名
+ * （example.com）、檔名裡全是半形句點，一旦誤轉就是破壞內容；而實測
+ * whisper-large-v3-turbo 的中文句號本來就輸出全形 `。`，不需要我們兜。
+ * 寧可漏一個也不能錯改一個。
  */
-// i18n-allow-start: 标点符号本身就是这个函数处理的数据
+// i18n-allow-start: 標點符號本身就是這個函式處理的資料
 const HALF_TO_FULL_WIDTH: Record<string, string> = {
   ',': '，',
   '?': '？',
@@ -314,32 +314,32 @@ const HALF_TO_FULL_WIDTH: Record<string, string> = {
   ':': '：',
 }
 
-/** 汉字区间。与 check-i18n.mjs 用的 CJK 判定保持一致。 */
+/** 漢字區間。與 check-i18n.mjs 用的 CJK 判定保持一致。 */
 const CJK_CHAR = /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/
 // i18n-allow-end
 
 /**
- * 把紧跟在汉字后面的半角标点转成全角。
+ * 把緊跟在漢字後面的半形標點轉成全形。
  *
- * 为什么需要：Whisper（Groq 的 whisper-large-v3-turbo）转写中文时**混用两种宽度** ——
- * 句号给全角 `。`，逗号和问号给半角 `,` `?`。实测四种 prompt 加不给 prompt 输出
- * 一字不差，所以这是模型自身行为，靠请求参数改不动，只能在文本层归一。
+ * 為什麼需要：Whisper（Groq 的 whisper-large-v3-turbo）轉寫中文時**混用兩種寬度** ——
+ * 句號給全形 `。`，逗號和問號給半形 `,` `?`。實測四種 prompt 加不給 prompt 輸出
+ * 一字不差，所以這是模型自身行為，靠請求引數改不動，只能在文本層歸一。
  *
- * 判据只有一条：**前一个字符是汉字**。这一条把所有危险场景挡在外面 ——
- *   · `3,000` / `3.14`：前一个字符是数字，不动
+ * 判據只有一條：**前一個字元是漢字**。這一條把所有危險場景擋在外面 ——
+ *   · `3,000` / `3.14`：前一個字元是數字，不動
  *   · `Hello, world`：前一个字符是字母，不动
  *   · `example.com` / `v1.2`：同上，且句号根本不在表里
  *   · `中文A,B`：逗号前是 `A`，不动
- * 而 `今天不错,我们走吧` 里两个逗号前面都是汉字，转成全角。
+ * 而 `今天不錯,我們走吧` 裡兩個逗號前面都是漢字，轉成全形。
  *
- * 已知缺口（刻意保留）：标点夹在「数字/字母」和汉字之间时不转，例如
- * `一共100,很便宜` 里那个逗号会留半角。想覆盖它就必须放宽到「后一个字符是汉字」，
- * 而那会连 `比例3:2中文`、`3,000元` 一起改掉。少一个全角逗号只是观感问题，
- * 改坏数字是内容损坏 —— 宁可漏改。
+ * 已知缺口（刻意保留）：標點夾在「數字/字母」和漢字之間時不轉，例如
+ * `一共100,很便宜` 裡那個逗號會留半形。想覆蓋它就必須放寬到「後一個字元是漢字」，
+ * 而那會連 `比例3:2中文`、`3,000元` 一起改掉。少一個全形逗號只是觀感問題，
+ * 改壞數字是內容損壞 —— 寧可漏改。
  *
- * 中文供应商（豆包 / 千问 / MiMo）本来就输出全角，纯英文文本里没有汉字，
- * 所以对它们这个函数是彻底的空操作 —— 这也是它不需要做成开关的原因：
- * 它不是排版偏好，是把一种明确的错误宽度纠正过来。
+ * 中文供應商（豆包 / 千問 / MiMo）本來就輸出全形，純英文文本里沒有漢字，
+ * 所以對它們這個函式是徹底的空操作 —— 這也是它不需要做成開關的原因：
+ * 它不是排版偏好，是把一種明確的錯誤寬度糾正過來。
  */
 export function normalizeChinesePunctuation(text: string): string {
   if (!text) return text
@@ -347,24 +347,24 @@ export function normalizeChinesePunctuation(text: string): string {
   for (let i = 0; i < text.length; i++) {
     const ch = text[i]
     const full = HALF_TO_FULL_WIDTH[ch]
-    // 回看用的是原文的前一个字符：转换不会改变「是不是汉字」，所以不必看已产出的结果
+    // 回看用的是原文的前一個字元：轉換不會改變「是不是漢字」，所以不必看已產出的結果
     result += full && CJK_CHAR.test(text[i - 1] ?? '') ? full : ch
   }
   return result
 }
 
-/** 去除每行末尾的标点符号（及尾随空白）。 */
+/** 去除每行末尾的標點符號（及尾隨空白）。 */
 export function stripTrailingPunctuation(text: string): string {
   if (!text) return text
   return text
     .split('\n')
-    .map((line) => line.replace(/[。．.，,、；;：:！!？?…⋯～~—－\s]+$/u, '')) // i18n-allow: 中文标点数据
+    .map((line) => line.replace(/[。．.，,、；;：:！!？?…⋯～~—－\s]+$/u, '')) // i18n-allow: 中文標點資料
     .join('\n')
 }
 
 /**
- * 将所有标点符号替换为空格，并折叠多余空格（保留换行）。
- * 保留数字间的小数点（3.14）、百分号（15%）和斜杠（2/5），避免破坏数字规范化的产物。
+ * 將所有標點符號替換為空格，並摺疊多餘空格（保留換行）。
+ * 保留數字間的小數點（3.14）、百分號（15%）和斜槓（2/5），避免破壞數字規範化的產物。
  */
 export function replacePunctuationWithSpace(text: string): string {
   if (!text) return text
@@ -379,29 +379,29 @@ export function replacePunctuationWithSpace(text: string): string {
 // ── 设置持久化 ──
 
 export interface TextPostProcessOptions {
-  /** 智能分段（仅在关闭 AI 整理的极速模式下生效），默认开启 */
+  /** 智慧分段（僅在關閉 AI 整理的極速模式下生效），預設開啟 */
   autoSegment: boolean
-  /** 数字规范化 */
+  /** 數字規範化 */
   normalizeNumbers: boolean
-  /** 去除句末标点 */
+  /** 去除句末標點 */
   stripTrailingPunctuation: boolean
-  /** 标点符号替换为空格 */
+  /** 標點符號替換為空格 */
   punctuationToSpace: boolean
 }
 
 /**
- * 每一项在「开启 AI 整理」时是否仍然执行。
+ * 每一項在「開啟 AI 整理」時是否仍然執行。
  *
- * 这是**唯一的事实来源**：`applyTextTransforms` 的门控和界面的置灰都读它。
- * 以前生效条件只写在 applyTextTransforms 里，界面完全不知道，于是开着 AI 时
- * 四个开关照样亮着可点、点了什么都不发生 —— 用户会认为功能坏了，然后去提一个
- * 我们已经实现过的需求（这就是加这张表的起因）。两边读同一份才不会再骗人。
+ * 這是**唯一的事實來源**：`applyTextTransforms` 的門控和介面的置灰都讀它。
+ * 以前生效條件只寫在 applyTextTransforms 裡，介面完全不知道，於是開著 AI 時
+ * 四個開關照樣亮著可點、點了什麼都不發生 —— 使用者會認為功能壞了，然後去提一個
+ * 我們已經實現過的需求（這就是加這張表的起因）。兩邊讀同一份才不會再騙人。
  *
- * 目前四项都是 false，与改动前的行为完全一致。若将来决定让「去除句末标点」
- * 「标点替换为空格」穿透 AI（理由：它们是减法，不是和 AI 争抢的另一种排版，
- * 用户说不要标点就是不要，跟标点是 ASR 还是 AI 加的无关 —— 和
- * applyTextReplacements 不受门控是同一个道理），只需把这里改成 true，
- * 界面的置灰范围会自动跟着变。
+ * 目前四項都是 false，與改動前的行為完全一致。若將來決定讓「去除句末標點」
+ * 「標點替換為空格」穿透 AI（理由：它們是減法，不是和 AI 爭搶的另一種排版，
+ * 使用者說不要標點就是不要，跟標點是 ASR 還是 AI 加的無關 —— 和
+ * applyTextReplacements 不受門控是同一個道理），只需把這裡改成 true，
+ * 介面的置灰範圍會自動跟著變。
  */
 export const APPLIES_WITH_AI: Record<keyof TextPostProcessOptions, boolean> = {
   autoSegment: false,
@@ -430,26 +430,26 @@ export async function saveTextPostProcessOptions(opts: TextPostProcessOptions): 
 
 export interface ApplyTransformsOptions {
   /**
-   * 这段文本是不是**未经 AI 整理的纯 ASR 结果**。
+   * 這段文本是不是**未經 AI 整理的純 ASR 結果**。
    *
-   * 「格式规范」（智能分段 / 数字规范化 / 去句末标点 / 标点转空格）是我们在没有 AI 时
-   * 兜底做的排版。一旦 AI 整理介入，格式就该由 AI 的规则统一负责——两边都做会打架
-   * （比如 AI 已经排好版，我们又去掉了它的句末句号）。所以这几项默认只在 rawAsr 时生效，
-   * 逐项的例外由 APPLIES_WITH_AI 声明（界面置灰读同一张表）。
+   * 「格式規範」（智慧分段 / 數字規範化 / 去句末標點 / 標點轉空格）是我們在沒有 AI 時
+   * 兜底做的排版。一旦 AI 整理介入，格式就該由 AI 的規則統一負責——兩邊都做會打架
+   * （比如 AI 已經排好版，我們又去掉了它的句末句號）。所以這幾項預設只在 rawAsr 時生效，
+   * 逐項的例外由 APPLIES_WITH_AI 宣告（介面置灰讀同一張表）。
    *
-   * 文本替换不受此开关影响，任何时候都执行：它是用户点名要替换的固定词
-   * （改公司名、术语纠正等），和"谁来排版"无关，AI 也未必会照做。
+   * 文本替換不受此開關影響，任何時候都執行：它是使用者點名要替換的固定詞
+   * （改公司名、術語糾正等），和"誰來排版"無關，AI 也未必會照做。
    *
-   * 默认 true：调用方没说明时按纯 ASR 处理（更安全，不会漏掉该做的规范化）。
+   * 預設 true：呼叫方沒說明時按純 ASR 處理（更安全，不會漏掉該做的規範化）。
    */
   rawAsr?: boolean
 }
 
 /**
- * 统一入口。顺序：中文标点宽度归一 → 智能分段 → 数字规范化 → 用户替换规则
- * → 去句末标点 → 标点转空格。
- * 其中除「用户替换规则」外都属于「格式规范」，默认仅在 rawAsr（无 AI 整理）时执行；
- * 逐项的例外见 APPLIES_WITH_AI。
+ * 統一入口。順序：中文標點寬度歸一 → 智慧分段 → 數字規範化 → 使用者替換規則
+ * → 去句末標點 → 標點轉空格。
+ * 其中除「使用者替換規則」外都屬於「格式規範」，預設僅在 rawAsr（無 AI 整理）時執行；
+ * 逐項的例外見 APPLIES_WITH_AI。
  */
 export async function applyTextTransforms(
   text: string,
@@ -457,16 +457,16 @@ export async function applyTextTransforms(
 ): Promise<string> {
   if (!text) return text
   const opts = await getTextPostProcessOptions()
-  // AI 整理过的文本，格式交给 AI；我们只保留文本替换。
+  // AI 整理過的文本，格式交給 AI；我們只保留文本替換。
   const ownFormat = options.rawAsr ?? true
-  // 生效判据收在这里，逐项查 APPLIES_WITH_AI —— 界面置灰读的是同一张表，
-  // 所以"界面说生效"和"实际执行"不可能再走偏。
+  // 生效判據收在這裡，逐項查 APPLIES_WITH_AI —— 介面置灰讀的是同一張表，
+  // 所以"介面說生效"和"實際執行"不可能再走偏。
   const active = (key: keyof TextPostProcessOptions) =>
     opts[key] && (ownFormat || APPLIES_WITH_AI[key])
   let result = text
-  // 排在最前面：后面几步都在读标点做判断（分段找句末、去句末标点），
-  // 让它们看到统一宽度的输入，比让每一步各自兼容两种宽度可靠。
-  // 没有对应开关：它纠正的是一种明确的错误宽度，不是可选的排版偏好。
+  // 排在最前面：後面幾步都在讀標點做判斷（分段找句末、去句末標點），
+  // 讓它們看到統一寬度的輸入，比讓每一步各自相容兩種寬度可靠。
+  // 沒有對應開關：它糾正的是一種明確的錯誤寬度，不是可選的排版偏好。
   if (ownFormat) result = normalizeChinesePunctuation(result)
   if (active('autoSegment')) result = segmentAsrText(result)
   if (active('normalizeNumbers')) result = convertChineseNumbers(result)

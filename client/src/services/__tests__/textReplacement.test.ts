@@ -40,7 +40,7 @@ describe('applyReplacements', () => {
       rule('A', 'B'),
       rule('B', 'C'),
     ]
-    // A → B → C（链式替换）
+    // A → B → C（鏈式替換）
     expect(applyReplacements('A', rules)).toBe('C')
   })
 
@@ -104,11 +104,11 @@ describe('applyReplacements 的顺序语义', () => {
   const rule = (id: string, from: string, to: string) => ({ id, from, to, enabled: true })
 
   it('顺序即执行顺序：前一条的结果会参与后一条的匹配（级联）', () => {
-    // A: 甲 → 乙，B: 乙 → 丙。A 在前时会一路级联成"丙"
+    // A: 甲 → 乙，B: 乙 → 丙。A 在前時會一路級聯成"丙"
     const cascade = applyReplacements('甲', [rule('a', '甲', '乙'), rule('b', '乙', '丙')])
     expect(cascade).toBe('丙')
 
-    // 换成 B 在前，"乙 → 丙"先跑（此时还没有"乙"），结果停在"乙"
+    // 換成 B 在前，"乙 → 丙"先跑（此時還沒有"乙"），結果停在"乙"
     const noCascade = applyReplacements('甲', [rule('b', '乙', '丙'), rule('a', '甲', '乙')])
     expect(noCascade).toBe('乙')
   })

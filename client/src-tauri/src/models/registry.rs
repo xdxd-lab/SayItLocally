@@ -206,7 +206,7 @@ pub fn list_available_models() -> Vec<ModelInfo> {
     catalog::get_available_models()
 }
 
-/// 列出已下载的本地模型
+/// 列出已下載的本地模型
 /// [自訂] SC-62：每次開錄都會查，原本是同步命令在主執行緒逐一 stat；改在阻塞執行緒池執行。
 /// 已下載清單不快取（下載、刪除、匯入都會改變），每次照實查檔案。
 #[tauri::command]
@@ -248,7 +248,7 @@ fn downloaded_models() -> Vec<LocalModelInfo> {
     result
 }
 
-/// 下载模型
+/// 下載模型
 #[tauri::command]
 pub async fn download_model(
     app: AppHandle,
@@ -289,7 +289,7 @@ pub async fn download_model(
         .await?;
     }
 
-    // 写入 meta.json
+    // 寫入 meta.json
     let meta = serde_json::json!({
         "id": model.id,
         "name": model.name,
@@ -304,7 +304,7 @@ pub async fn download_model(
     Ok(())
 }
 
-/// 删除已下载的模型
+/// 刪除已下載的模型
 #[tauri::command]
 pub fn delete_model(model_id: String) -> Result<(), String> {
     let model_path = downloader::checked_model_dir(&model_id)?;
@@ -317,7 +317,7 @@ pub fn delete_model(model_id: String) -> Result<(), String> {
     Ok(())
 }
 
-/// 打开模型存储目录
+/// 開啟模型儲存目錄
 #[tauri::command]
 pub fn open_models_folder() -> Result<String, String> {
     let dir = downloader::models_dir();
@@ -338,18 +338,18 @@ pub fn open_models_folder() -> Result<String, String> {
     Ok(path)
 }
 
-/// 模型存储位置信息（供设置页展示）
+/// 模型儲存位置資訊（供設定頁展示）
 #[derive(Debug, Clone, Serialize)]
 pub struct ModelsDirInfo {
-    /// 当前生效的模型根目录
+    /// 當前生效的模型根目錄
     pub current: String,
-    /// 默认模型根目录
+    /// 預設模型根目錄
     pub default_dir: String,
-    /// 当前是否为用户自定义（非默认）
+    /// 當前是否為使用者自定義（非預設）
     pub is_custom: bool,
 }
 
-/// 查询当前模型存储位置
+/// 查詢當前模型儲存位置
 #[tauri::command]
 pub fn get_models_dir() -> ModelsDirInfo {
     let current = downloader::models_dir();
@@ -653,7 +653,7 @@ pub async fn set_models_dir(
     .map_err(|error| error_protocol::encode("model_dir_save", error.to_string()))?
 }
 
-/// 打开指定模型的存储目录（不存在则创建）
+/// 開啟指定模型的儲存目錄（不存在則建立）
 #[tauri::command]
 pub fn open_model_folder(model_id: String) -> Result<String, String> {
     let dir = downloader::checked_model_dir(&model_id)?;

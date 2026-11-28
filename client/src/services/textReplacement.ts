@@ -1,4 +1,4 @@
-// 文本替换服务 — 对 ASR 识别结果做客户端侧的文本替换
+// 文本替換服務 — 對 ASR 識別結果做客戶端側的文本替換
 
 import { invoke } from '@tauri-apps/api/core'
 import { getSetting, setSetting } from './store'
@@ -12,8 +12,8 @@ export interface TextReplacementRule {
 
 const STORAGE_KEY = 'textReplacements'
 
-/** 内置默认文本替换规则（新用户首次使用时填充） */
-// i18n-allow-start: 中文 ASR 默认替换数据，不是界面文案
+/** 內建預設文本替換規則（新使用者首次使用時填充） */
+// i18n-allow-start: 中文 ASR 預設替換資料，不是介面文案
 export const BUILTIN_REPLACEMENTS: TextReplacementRule[] = [
   // [自訂] SC-67：辨識輸出已轉成台灣正體，內建規則跟著用正體寫法。
   { id: 'builtin_1', from: '安卓說話', to: '按住說話', enabled: true },
@@ -25,7 +25,7 @@ export const BUILTIN_REPLACEMENTS: TextReplacementRule[] = [
 
 export async function getTextReplacements(): Promise<TextReplacementRule[]> {
   const rules = await getSetting<TextReplacementRule[]>(STORAGE_KEY, [])
-  // 新用户没有任何规则时，返回内置默认
+  // 新使用者沒有任何規則時，返回內建預設
   if (!rules || rules.length === 0) {
     return BUILTIN_REPLACEMENTS.map((r) => ({ ...r }))
   }
@@ -53,19 +53,19 @@ export async function toTaiwanReplacementTargets(texts: string[]): Promise<strin
   return texts
 }
 
-/** 批量文本解析出的规则草稿（尚未分配 id/enabled） */
+/** 批次文本解析出的規則草稿（尚未分配 id/enabled） */
 export interface ParsedReplacement {
   from: string
   to: string
 }
 
 /**
- * 解析批量输入文本为替换规则草稿。
- * - 每行一条规则；空行忽略。
- * - 分隔符支持：制表符（从表格粘贴）、`=>`、`->`、中文逗号「，」、英文逗号「,」。
- *   取整行中最靠前出现的分隔符切分：分隔符前为「原文」，其后（含其余分隔符）为「替换为」。
- * - 无分隔符的行：整行作为「原文」，替换为留空（即删除该文本）。
- * - 原文为空的行忽略。
+ * 解析批次輸入文本為替換規則草稿。
+ * - 每行一條規則；空行忽略。
+ * - 分隔符支援：製表符（從表格貼上）、`=>`、`->`、中文逗號「，」、英文逗號「,」。
+ *   取整行中最靠前出現的分隔符切分：分隔符前為「原文」，其後（含其餘分隔符）為「替換為」。
+ * - 無分隔符的行：整行作為「原文」，替換為留空（即刪除該文本）。
+ * - 原文為空的行忽略。
  */
 export function parseBatchReplacements(input: string): ParsedReplacement[] {
   const separators = ['\t', '=>', '->', '，', ','] // i18n-allow: 中文批量输入分隔符
@@ -99,7 +99,7 @@ export function parseBatchReplacements(input: string): ParsedReplacement[] {
   return result
 }
 
-/** 对文本应用所有启用的替换规则 */
+/** 對文本應用所有啟用的替換規則 */
 export function applyReplacements(text: string, rules: TextReplacementRule[]): string {
   let result = text
   for (const rule of rules) {
@@ -110,7 +110,7 @@ export function applyReplacements(text: string, rules: TextReplacementRule[]): s
   return result
 }
 
-/** 加载规则并应用替换（便捷方法） */
+/** 載入規則並應用替換（便捷方法） */
 export async function applyTextReplacements(text: string): Promise<string> {
   if (!text) return text
   const rules = await getTextReplacements()

@@ -1,5 +1,5 @@
-// 「上下文感知」卡片：读光标附近的文字让 AI 衔接语气，选中文字时按口述要求改写选区。
-// 原来在设置弹窗的通用页里；它只在 AI 整理开着时生效，所以放在 AI 整理页、跟着那个开关变灰。
+// 「上下文感知」卡片：讀游標附近的文字讓 AI 銜接語氣，選中文字時按口述要求改寫選區。
+// 原來在設定彈窗的通用頁裡；它只在 AI 整理開著時生效，所以放在 AI 整理頁、跟著那個開關變灰。
 
 import { useEffect, useState } from 'react'
 import { Info, Pencil, RotateCcw } from 'lucide-react'
@@ -27,7 +27,7 @@ export default function ContextAwareSection() {
   const [savedPrompt, setSavedPrompt] = useState(CONTEXT_SELECTION_EDIT_PROMPT)
   const [promptDraft, setPromptDraft] = useState(CONTEXT_SELECTION_EDIT_PROMPT)
   const [promptSaving, setPromptSaving] = useState(false)
-  // 读回已保存值前先隐藏开关、不放动画，避免「默认值→已保存值」闪一下（pitfalls 11）
+  // 讀回已儲存值前先隱藏開關、不放動畫，避免「預設值→已儲存值」閃一下（pitfalls 11）
   const [ready, setReady] = useState(false)
   const [animate, setAnimate] = useState(false)
 
@@ -131,7 +131,7 @@ export default function ContextAwareSection() {
                 {t('settings.contextAware.editPrompt')}
               </button>
             </div>
-            {/* AI 整理关着时录音器根本不读文本框（见 RecorderOrchestrator 的 includeTextContext），
+            {/* AI 整理關著時錄音器根本不讀文本框（見 RecorderOrchestrator 的 includeTextContext），
                 所以开关画成关闭 + 禁用，不显示一个"开着却不生效"的状态；保存的值不动，AI 整理打开后照旧。 */}
             <Switch
               checked={enabled && aiEnabled}
@@ -142,7 +142,7 @@ export default function ContextAwareSection() {
               hidden={!ready}
             />
           </div>
-          {/* 只有开关真正生效时才给选模型：关着时录音器不读选区，这个选择不会被用到。
+          {/* 只有開關真正生效時才給選模型：關著時錄音器不讀選區，這個選擇不會被用到。
               ready 之前也不渲染，免得读回已保存值前先闪出一行再消失。 */}
           {ready && enabled && aiEnabled && <ContextSelectionModelSetting />}
         </CardContent>

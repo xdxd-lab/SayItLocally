@@ -1,16 +1,16 @@
-// 豆包流式语音识别 2.0 — 边录边发的会话管理
-// start 时建连，send 实时发送音频，finish 发最后一包等结果
+// 豆包流式語音識別 2.0 — 邊錄邊發的會話管理
+// start 時建連，send 即時傳送音訊，finish 發最後一包等結果
 //
 // 两种模式：
-//  - 普通模式（realtime=false）：bigmodel_nostream 端点，准确率更高（默认）。
-//  - 实时显示模式（realtime=true）：bigmodel(_async) 双向流式端点，边说边返回中间结果，
-//    通过 `asr-partial` 事件上抛给前端做悬浮窗实时上屏。
+//  - 普通模式（realtime=false）：bigmodel_nostream 端點，準確率更高（預設）。
+//  - 即時顯示模式（realtime=true）：bigmodel(_async) 雙向流式端點，邊說邊返回中間結果，
+//    透過 `asr-partial` 事件上拋給前端做懸浮窗即時上屏。
 //
-// **两种模式都必须边发边读**（官方文档：两个端点都是「每输入一个包返回一个包」）。
-// 以前普通模式录音期间一帧都不读，2026-10-27 实测 120 秒录音服务端回了 605 帧、4.76 MB，
-// 全堆在接收缓冲里；用户网络上某个环节缓冲一满就被流控卡死，服务端 5 秒收不到包就结束会话
-// （45000081 等包超时），客户端要到松键才发现（诊断包 61c93385，>90 秒录音 4/10 失败）。
-// 所以普通模式也拆成写半边 + 后台 reader，只是不 emit。见 .kiro/decisions.md「豆包长录音失败」。
+// **兩種模式都必須邊發邊讀**（官方文件：兩個端點都是「每輸入一個包返回一個包」）。
+// 以前普通模式錄音期間一幀都不讀，2026-10-27 實測 120 秒錄音服務端回了 605 幀、4.76 MB，
+// 全堆在接收緩衝裡；使用者網路上某個環節緩衝一滿就被流控卡死，服務端 5 秒收不到包就結束會話
+// （45000081 等包超時），客戶端要到松鍵才發現（診斷包 61c93385，>90 秒錄音 4/10 失敗）。
+// 所以普通模式也拆成寫半邊 + 後台 reader，只是不 emit。見 .kiro/decisions.md「豆包長錄音失敗」。
 
 use super::diag;
 use super::doubao_auth::{self, DoubaoAuth};
@@ -26,18 +26,18 @@ use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use tokio_tungstenite::tungstenite;
 
-// 流式输入模式（非实时，准确率更高）
+// 流式輸入模式（非即時，準確率更高）
 const WS_URL_NOSTREAM: &str = "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_nostream";
-// 双向流式模式（实时，边说边出字）
+// 雙向流式模式（即時，邊說邊出字）
 const WS_URL_STREAM: &str = "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel";
-// 双向流式优化版（官方更推荐，时延更优，只在结果变化时返回新包）
+// 雙向流式最佳化版（官方更推薦，時延更優，只在結果變化時返回新包）
 const WS_URL_STREAM_ASYNC: &str = "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_async";
-// 豆包 Seed-ASR 2.0 资源 ID：小时版(包时) / 并发版(按量)。
-// 双向流式端点对资源授权更严格，不同账号可能只开通了其中之一，实时连接时依次尝试。
+// 豆包 Seed-ASR 2.0 資源 ID：小時版(包時) / 併發版(按量)。
+// 雙向流式端點對資源授權更嚴格，不同賬號可能只開通了其中之一，即時連線時依次嘗試。
 const RESOURCE_ID_DURATION: &str = "volc.seedasr.sauc.duration";
 const RESOURCE_ID_CONCURRENT: &str = "volc.seedasr.sauc.concurrent";
 
-/// 发完最后一包后等最终结果的上限。nostream 实测松键后 0.6~1.3 秒出全文。
+/// 發完最後一包後等最終結果的上限。nostream 實測松鍵後 0.6~1.3 秒出全文。
 const FINISH_TIMEOUT: Duration = Duration::from_secs(15);
 
 type WsStream = tokio_tungstenite::WebSocketStream<
@@ -45,7 +45,7 @@ type WsStream = tokio_tungstenite::WebSocketStream<
 >;
 type WsSink = SplitSink<WsStream, tungstenite::Message>;
 
-/// 会话的发送端（写半边）。读半边交给后台 reader。
+/// 會話的傳送端（寫半邊）。讀半邊交給後台 reader。
 static SINK: once_cell::sync::Lazy<Arc<Mutex<Option<WsSink>>>> =
     once_cell::sync::Lazy::new(|| Arc::new(Mutex::new(None)));
 
@@ -53,7 +53,7 @@ static SINK: once_cell::sync::Lazy<Arc<Mutex<Option<WsSink>>>> =
 static READER: once_cell::sync::Lazy<Arc<Mutex<Option<JoinHandle<()>>>>> =
     once_cell::sync::Lazy::new(|| Arc::new(Mutex::new(None)));
 
-/// 会话共享状态：累计文本 / 是否结束 / 错误。
+/// 會話共享狀態：累計文本 / 是否結束 / 錯誤。
 #[derive(Default)]
 struct SessionState {
     text: String,
@@ -64,10 +64,10 @@ struct SessionState {
 static STATE: once_cell::sync::Lazy<Arc<Mutex<SessionState>>> =
     once_cell::sync::Lazy::new(|| Arc::new(Mutex::new(SessionState::default())));
 
-/// 当前是否有会话。
+/// 當前是否有會話。
 static ACTIVE: AtomicBool = AtomicBool::new(false);
 
-// ── 发送节奏记账：排查「服务端等包超时」时要知道是不是我们自己停发了 ──
+// ── 傳送節奏記賬：排查「服務端等包超時」時要知道是不是我們自己停發了 ──
 static OPENED_AT_MS: AtomicU64 = AtomicU64::new(0);
 static LAST_SEND_MS: AtomicU64 = AtomicU64::new(0);
 static MAX_SEND_GAP_MS: AtomicU64 = AtomicU64::new(0);
@@ -120,8 +120,8 @@ fn build_client_request_json(
     });
     if let Some(words) = hotwords {
         if let Some(ctx) = doubao_protocol::build_hotword_context(words) {
-            // 热词须放在 request.corpus.context（非 request.context），否则流式接口不生效。
-            // 注意：双向流式模式 context 上限约 100 tokens，超出会被服务端截断。
+            // 熱詞須放在 request.corpus.context（非 request.context），否則流式介面不生效。
+            // 注意：雙向流式模式 context 上限約 100 tokens，超出會被服務端截斷。
             request_params["corpus"] = serde_json::json!({ "context": ctx });
         }
     }
@@ -148,7 +148,7 @@ fn build_handshake_request(
         .uri(url)
         .header("Host", "openspeech.bytedance.com")
         .header("X-Api-Resource-Id", resource_id)
-        // 双向流式端点(bigmodel)要求带 X-Api-Request-Id，否则网关直接 400（nostream 不带也能过）
+        // 雙向流式端點(bigmodel)要求帶 X-Api-Request-Id，否則閘道器直接 400（nostream 不帶也能過）
         .header("X-Api-Request-Id", uuid::Uuid::new_v4().to_string())
         .header("X-Api-Connect-Id", uuid::Uuid::new_v4().to_string())
         .header(
@@ -158,7 +158,7 @@ fn build_handshake_request(
         .header("Sec-WebSocket-Version", "13")
         .header("Connection", "Upgrade")
         .header("Upgrade", "websocket");
-    // 鉴权头按控制台代次不同：新版只有 X-Api-Key，旧版是 App Key + Access Key
+    // 鑑權頭按控制台代次不同：新版只有 X-Api-Key，舊版是 App Key + Access Key
     for (name, value) in auth.headers() {
         builder = builder.header(name, value);
     }
@@ -167,7 +167,7 @@ fn build_handshake_request(
         .map_err(|e| format!("Failed to build request: {}", e))
 }
 
-/// 把 WebSocket 握手错误展开成可读字符串；HTTP 错误会带上状态码和响应体，方便定位 400 的真实原因。
+/// 把 WebSocket 握手錯誤展開成可讀字串；HTTP 錯誤會帶上狀態碼和響應體，方便定位 400 的真實原因。
 fn describe_ws_error(err: &tungstenite::Error) -> String {
     match err {
         tungstenite::Error::Http(resp) => {
@@ -184,10 +184,10 @@ fn describe_ws_error(err: &tungstenite::Error) -> String {
     }
 }
 
-/// 打开豆包流式 ASR 会话：建立 WebSocket 连接并发送 client request
+/// 開啟豆包流式 ASR 會話：建立 WebSocket 連線併傳送 client request
 ///
-/// hotwords：热词列表，会通过 request.corpus.context 字段直传给服务端（流式输入模式最多 5000 词）
-/// realtime：是否开启实时显示（双向流式 + 中间结果上抛）
+/// hotwords：熱詞列表，會透過 request.corpus.context 欄位直傳給服務端（流式輸入模式最多 5000 詞）
+/// realtime：是否開啟即時顯示（雙向流式 + 中間結果上拋）
 #[tauri::command]
 pub async fn doubao_stream_open(
     app: AppHandle,
@@ -198,7 +198,7 @@ pub async fn doubao_stream_open(
 ) -> Result<(), String> {
     let realtime = realtime.unwrap_or(false);
 
-    // 关闭遗留会话
+    // 關閉遺留會話
     cleanup_session().await;
 
     let auth = DoubaoAuth::from_config(&config);
@@ -212,8 +212,8 @@ pub async fn doubao_stream_open(
     }
     let uid = auth.uid().to_string();
 
-    // 实时：按顺序尝试多个「端点 × 资源」组合，优先推荐的 async 端点 + 用户手里的 duration 资源。
-    // 非实时：沿用一直可用的 nostream，同样在小时版/并发版之间兜底。
+    // 即時：按順序嘗試多個「端點 × 資源」組合，優先推薦的 async 端點 + 使用者手裡的 duration 資源。
+    // 非即時：沿用一直可用的 nostream，同樣在小時版/併發版之間兜底。
     let candidates: &[(&str, &str)] = if realtime {
         &[
             (WS_URL_STREAM_ASYNC, RESOURCE_ID_DURATION),
@@ -268,7 +268,7 @@ pub async fn doubao_stream_open(
         .await
         .map_err(|e| diag::fail("doubao/realtime", "send_request", format!("Failed to send request: {}", e)))?;
 
-    // 等待服务端确认（第一包 server response）
+    // 等待服務端確認（第一包 server response）
     if let Some(msg) = ws.next().await {
         let msg = msg.map_err(|e| diag::fail("doubao/realtime", "recv_ack", format!("Failed to receive acknowledgement: {}", e)))?;
         if let tungstenite::Message::Binary(data) = msg {
@@ -280,7 +280,7 @@ pub async fn doubao_stream_open(
         }
     }
 
-    // 拆成读写两半：写半边留给 send/finish，读半边交给后台 reader 一直读。
+    // 拆成讀寫兩半：寫半邊留給 send/finish，讀半邊交給後台 reader 一直讀。
     let (sink, stream) = ws.split();
     *STATE.lock().await = SessionState::default();
     *SINK.lock().await = Some(sink);
@@ -296,10 +296,10 @@ pub async fn doubao_stream_open(
     Ok(())
 }
 
-/// 后台 reader：持续读取服务端回包，更新累计文本；实时模式下上抛中间结果。
+/// 後台 reader：持續讀取服務端回包，更新累計文本；即時模式下上拋中間結果。
 ///
-/// 连接在收到最后一包结果**之前**断开，一律记成错误（以前记成正常结束，finish 会带着
-/// 半截文本甚至空文本返回成功）。前端拿到错误后会用手里的完整音频再识别一次。
+/// 連線在收到最後一包結果**之前**斷開，一律記成錯誤（以前記成正常結束，finish 會帶著
+/// 半截文本甚至空文本返回成功）。前端拿到錯誤後會用手裡的完整音訊再識別一次。
 async fn run_reader(
     mut stream: SplitStream<WsStream>,
     app: AppHandle,
@@ -316,13 +316,13 @@ async fn run_reader(
                 frame_count += 1;
                 let resp = match doubao_protocol::parse_server_response(&data) {
                     Ok(r) => r,
-                    Err(_) => continue, // 忽略无法解析的帧，等下一包
+                    Err(_) => continue, // 忽略無法解析的幀，等下一包
                 };
 
                 if resp.is_error {
-                    // 「last packet has been received already」属于良性收尾竞争：
-                    // 服务端已经因为收到过负包/VAD 自动收尾而结束，此时应当用已累计文本正常收尾，
-                    // 而不是把整条识别判为失败。
+                    // 「last packet has been received already」屬於良性收尾競爭：
+                    // 服務端已經因為收到過負包/VAD 自動收尾而結束，此時應當用已累計文本正常收尾，
+                    // 而不是把整條識別判為失敗。
                     if resp.payload.contains("last packet has been received")
                         || resp.payload.contains("last package has been received")
                     {
@@ -382,8 +382,8 @@ async fn run_reader(
     if !ended_cleanly && abnormal.is_none() {
         abnormal = Some("connection ended before the final result".to_string());
     }
-    // 这一行是「谁先断的、断在什么时候」的唯一证据：session_ms 是建连到此刻的时长，
-    // since_last_send_ms 大说明是我们自己停发了，小说明是服务端 / 网络掐的。
+    // 這一行是「誰先斷的、斷在什麼時候」的唯一證據：session_ms 是建連到此刻的時長，
+    // since_last_send_ms 大說明是我們自己停發了，小說明是服務端 / 網路掐的。
     crate::commands::system::write_log_line(&format!(
         "[RUST] [doubao_stream] reader stopped clean={} frames={} emits={} {}{}",
         ended_cleanly,
@@ -399,7 +399,7 @@ async fn run_reader(
     s.finished = true;
 }
 
-/// 清理会话资源（关闭发送端、中止 reader、重置状态）。
+/// 清理會話資源（關閉傳送端、中止 reader、重置狀態）。
 async fn cleanup_session() {
     ACTIVE.store(false, Ordering::SeqCst);
     if let Some(mut sink) = SINK.lock().await.take() {
@@ -411,7 +411,7 @@ async fn cleanup_session() {
     *STATE.lock().await = SessionState::default();
 }
 
-/// 发送一个音频包（非最后一包）
+/// 傳送一個音訊包（非最後一包）
 #[tauri::command]
 pub async fn doubao_stream_send(pcm_b64: String) -> Result<(), String> {
     let pcm = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &pcm_b64)
@@ -428,10 +428,10 @@ pub async fn doubao_stream_send(pcm_b64: String) -> Result<(), String> {
     Ok(())
 }
 
-/// 发送最后一包并等待最终识别结果
+/// 傳送最後一包並等待最終識別結果
 ///
-/// 失败（服务端报错、连接提前断开、超时）一律返回 Err，**不返回半截文本**：前端手里有完整
-/// 录音，会改走一次性上传重新识别。以前超时会把已累计的文本当成功结果返回，用户拿到的是
+/// 失敗（服務端報錯、連線提前斷開、超時）一律返回 Err，**不返回半截文本**：前端手裡有完整
+/// 錄音，會改走一次性上傳重新識別。以前超時會把已累計的文本當成功結果返回，使用者拿到的是
 /// 被截掉后半段的文字，而且不会有任何提示。
 #[tauri::command]
 pub async fn doubao_stream_finish() -> Result<String, String> {
@@ -443,13 +443,13 @@ pub async fn doubao_stream_finish() -> Result<String, String> {
         send_stats()
     ));
 
-    // 若 reader 已经自然收尾（VAD/服务端已结束），就不要再发负包，避免重复末包报错。
+    // 若 reader 已經自然收尾（VAD/服務端已結束），就不要再發負包，避免重複末包報錯。
     let already_finished = { STATE.lock().await.finished };
     if !already_finished {
         let mut sink = SINK.lock().await;
         if let Some(s) = sink.as_mut() {
             let frame = doubao_protocol::build_audio_request(&[], true);
-            // 发送失败不在这里判死：连接若已断开，reader 会记下原因，下面统一返回。
+            // 傳送失敗不在這裡判死：連線若已斷開，reader 會記下原因，下面統一返回。
             if let Err(e) = s.send(tungstenite::Message::Binary(frame.into())).await {
                 crate::commands::system::write_log_line(&format!(
                     "[RUST] [doubao_stream] finish send last-packet err={}",
@@ -489,7 +489,7 @@ pub async fn doubao_stream_finish() -> Result<String, String> {
     ))
 }
 
-/// 关闭会话（异常中断时调用）
+/// 關閉會話（異常中斷時呼叫）
 #[tauri::command]
 pub async fn doubao_stream_close() -> Result<(), String> {
     cleanup_session().await;

@@ -9,9 +9,9 @@ use std::time::Duration;
 pub(crate) mod recovery;
 pub(crate) use recovery::StorageRecovery;
 
-/// 新库的种子值。JSON 字面量用不了常量，快捷键几项与 crate::defaults 的对账在 defaults.rs 的测试里。
+/// 新庫的種子值。JSON 字面量用不了常量，快捷鍵幾項與 crate::defaults 的對賬在 defaults.rs 的測試裡。
 pub(crate) const DEFAULT_SETTINGS: &[(&str, &str)] = &[
-    // 两个快捷键默认值按平台不同（mac 没有右 Ctrl），字面量来自 defaults.rs 的宏。
+    // 兩個快捷鍵預設值按平台不同（mac 沒有右 Ctrl），字面量來自 defaults.rs 的宏。
     ("shortcutPTT", concat!("\"", crate::default_shortcut_ptt!(), "\"")),
     ("shortcutPTTCombo", r#""Alt+Q""#),
     ("shortcutHandsFree", concat!("\"", crate::default_shortcut_hands_free!(), "\"")),
@@ -405,11 +405,11 @@ impl Storage {
         db.query_row(&sql, params_ref.as_slice(), |row| row.get(0)).unwrap_or(0)
     }
 
-    /// 新记录排在最前面。
+    /// 新記錄排在最前面。
     ///
-    /// list_order 只用来排序（ORDER BY list_order ASC），不要求从 0 开始连续，所以新记录
-    /// 取「当前最小值 - 1」即可，走索引。原来是先把全表每行 +1 再插 0，记录越多每次口述
-    /// 保存越慢（几千条时每次都是几千行的写入）。插入和统计放进同一个事务，不再三次各自提交。
+    /// list_order 只用來排序（ORDER BY list_order ASC），不要求從 0 開始連續，所以新記錄
+    /// 取「當前最小值 - 1」即可，走索引。原來是先把全表每行 +1 再插 0，記錄越多每次口述
+    /// 儲存越慢（幾千條時每次都是幾千行的寫入）。插入和統計放進同一個事務，不再三次各自提交。
     pub fn history_add(&self, record: &Value) -> SqlResult<()> {
         let mut db = self.conn();
         let tx = db.transaction()?;
@@ -507,7 +507,7 @@ impl Storage {
         let char_count = obj.get("charCount").and_then(|v| v.as_i64()).unwrap_or(0);
         let duration_sec = obj.get("durationSec").and_then(|v| v.as_f64()).unwrap_or(0.0);
 
-        // 后面的记录整体前移一位不是必须的（排序允许有空位），保留是为了和旧数据的形态一致。
+        // 後面的記錄整體前移一位不是必須的（排序允許有空位），保留是為了和舊資料的形態一致。
         db.execute("DELETE FROM history_records WHERE id = ?1", params![id])?;
         db.execute("UPDATE history_records SET list_order = list_order - 1 WHERE list_order > ?1", params![list_order])?;
 
@@ -949,7 +949,7 @@ fn parse_stats(json: &Option<String>) -> (f64, i64) {
     }
 }
 
-// ─── 备份 / 恢复辅助（导入导出用）───
+// ─── 備份 / 恢復輔助（匯入匯出用）───
 
 /// [自訂] S35／S36：排除清單比對。一般項目整個 key 相同才算；結尾為 `*` 的項目做前綴比對
 /// （例如 `cloudAi.*` 會排除 `cloudAi.apiKey`、`cloudAi.profiles`、`cloudAi.deepseek.apiKey`）。
@@ -1062,7 +1062,7 @@ impl Storage {
         Ok(result)
     }
 
-    /// 原子应用一组配置：设置 key 与可选集合要么全部成功，要么全部回滚。
+    /// 原子應用一組配置：設定 key 與可選集合要麼全部成功，要麼全部回滾。
     pub fn apply_config_transaction(
         &self,
         app_settings: &serde_json::Map<String, Value>,
@@ -1256,8 +1256,8 @@ mod history_order_tests {
             .collect()
     }
 
-    /// 新记录排最前，删掉中间一条后顺序不乱，再加一条仍排最前；统计跟着增减。
-    /// 也覆盖「旧库里 list_order 从 0 开始连续」和「新写法取最小值 - 1」混用的情况。
+    /// 新記錄排最前，刪掉中間一條後順序不亂，再加一條仍排最前；統計跟著增減。
+    /// 也覆蓋「舊庫裡 list_order 從 0 開始連續」和「新寫法取最小值 - 1」混用的情況。
     #[test]
     fn newest_first_survives_add_delete_and_old_rows() {
         let dir = std::env::temp_dir().join(format!("sayit-history-order-{}", uuid::Uuid::new_v4()));

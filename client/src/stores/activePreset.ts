@@ -1,10 +1,10 @@
-// 当前润色模式（active preset）的全局响应式状态。
-// 让 AI 整理设置页高亮、标题栏状态等多处共享同一状态：
-// 无论是页面点击切换，还是全局快捷键切换，都能实时同步刷新。
-// 采用 useSyncExternalStore 模式（与 aiEnabled 一致，无外部依赖）。
+// 當前潤色模式（active preset）的全域性響應式狀態。
+// 讓 AI 整理設定頁高亮、標題欄狀態等多處共享同一狀態：
+// 無論是頁面點選切換，還是全域性快捷鍵切換，都能即時同步重新整理。
+// 採用 useSyncExternalStore 模式（與 aiEnabled 一致，無外部依賴）。
 //
-// 注意：此 store 只依赖 services/store，不依赖 services/recorder，避免循环引用。
-// 录音器缓存的刷新由调用方（页面/orchestrator）各自负责。
+// 注意：此 store 只依賴 services/store，不依賴 services/recorder，避免迴圈引用。
+// 錄音器快取的重新整理由呼叫方（頁面/orchestrator）各自負責。
 
 import { getActivePresetId, getPromptPresets } from '@/services/store'
 
@@ -33,7 +33,7 @@ async function resolve(id: string): Promise<ActivePresetState> {
   }
 }
 
-/** 应用启动时调用，读取初始激活预设 */
+/** 應用啟動時呼叫，讀取初始啟用預設 */
 export async function initActivePreset(): Promise<void> {
   if (initialized) return
   initialized = true
@@ -51,7 +51,7 @@ export function subscribeActivePreset(listener: Listener): () => void {
   return () => listeners.delete(listener)
 }
 
-/** 用已知的 id/name 立即更新（无 IPC，供快捷键切换即时刷新 UI） */
+/** 用已知的 id/name 立即更新（無 IPC，供快捷鍵切換即時重新整理 UI） */
 export function setActivePresetKnown(id: string, name: string): void {
   if (id !== current.id || name !== current.name) {
     current = { id, name }
@@ -59,7 +59,7 @@ export function setActivePresetKnown(id: string, name: string): void {
   }
 }
 
-/** 重新从持久化状态读取当前预设（切换、改名后调用），有变化才通知订阅者 */
+/** 重新從持久化狀態讀取當前預設（切換、改名後呼叫），有變化才通知訂閱者 */
 export async function refreshActivePreset(): Promise<void> {
   const id = await getActivePresetId()
   const next = await resolve(id)

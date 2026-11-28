@@ -1,8 +1,8 @@
 //! macOS 系统 C 接口声明：CoreFoundation / CoreGraphics / Accessibility / Carbon / CoreAudio。
 //!
-//! 只声明 SayIt 用得到的那一小撮。这些都是十几年没变过签名的稳定 C API，
-//! 直接声明比再拉一套绑定 crate 更可控（Windows 侧 `windows 0.58` 与 `windows-core 0.61`
-//! 两套类型不能混用的坑，这里不想再踩一遍）。AppKit / Foundation 的 Objective-C 对象
+//! 只宣告 SayIt 用得到的那一小撮。這些都是十幾年沒變過簽名的穩定 C API，
+//! 直接宣告比再拉一套繫結 crate 更可控（Windows 側 `windows 0.58` 與 `windows-core 0.61`
+//! 兩套型別不能混用的坑，這裡不想再踩一遍）。AppKit / Foundation 的 Objective-C 物件
 //! 走 objc2（见 appkit.rs）。
 #![allow(non_upper_case_globals, non_camel_case_types, non_snake_case, dead_code)]
 
@@ -41,7 +41,7 @@ pub struct CFRange {
     pub length: CFIndex,
 }
 
-/// 不透明结构：只取地址传给 CFDictionaryCreate。
+/// 不透明結構：只取地址傳給 CFDictionaryCreate。
 #[repr(C)]
 pub struct CFDictionaryKeyCallBacks {
     _opaque: [u8; 0],
@@ -152,7 +152,7 @@ pub const kCGEventOtherMouseDown: CGEventType = 25;
 pub const kCGEventOtherMouseUp: CGEventType = 26;
 pub const kCGEventTapDisabledByTimeout: CGEventType = 0xFFFF_FFFE;
 pub const kCGEventTapDisabledByUserInput: CGEventType = 0xFFFF_FFFF;
-/// `kCGAnyInputEventType`：任意输入事件（给「最后一次输入距今多久」用）。
+/// `kCGAnyInputEventType`：任意輸入事件（給「最後一次輸入距今多久」用）。
 pub const kCGAnyInputEventType: CGEventType = 0xFFFF_FFFF;
 
 pub const kCGMouseEventButtonNumber: CGEventField = 3;
@@ -172,7 +172,7 @@ pub const kCGEventFlagMaskAlternate: CGEventFlags = 0x0008_0000;
 pub const kCGEventFlagMaskCommand: CGEventFlags = 0x0010_0000;
 pub const kCGEventFlagMaskSecondaryFn: CGEventFlags = 0x0080_0000;
 
-// IOKit 的「设备相关」修饰位（NX_DEVICE*KEYMASK）：区分左右侧修饰键。
+// IOKit 的「裝置相關」修飾位（NX_DEVICE*KEYMASK）：區分左右側修飾鍵。
 pub const NX_DEVICELCTLKEYMASK: CGEventFlags = 0x0000_0001;
 pub const NX_DEVICELSHIFTKEYMASK: CGEventFlags = 0x0000_0002;
 pub const NX_DEVICERSHIFTKEYMASK: CGEventFlags = 0x0000_0004;
@@ -278,14 +278,14 @@ extern "C" {
     pub fn AXUIElementGetTypeID() -> CFTypeID;
 }
 
-// ─── Carbon（键盘布局、安全输入）───
+// ─── Carbon（鍵盤佈局、安全輸入）───
 
 pub type TISInputSourceRef = *mut c_void;
 pub type OSStatus = i32;
 
 /// UCKeyTranslate 的 keyAction：kUCKeyActionDisplay。
 pub const kUCKeyActionDisplay: u16 = 3;
-/// UCKeyTranslate 的选项：kUCKeyTranslateNoDeadKeysMask。
+/// UCKeyTranslate 的選項：kUCKeyTranslateNoDeadKeysMask。
 pub const kUCKeyTranslateNoDeadKeysMask: u32 = 1;
 
 #[link(name = "Carbon", kind = "framework")]
@@ -326,7 +326,7 @@ pub struct AudioObjectPropertyAddress {
     pub mElement: AudioObjectPropertyElement,
 }
 
-/// 四字符码，例如 `fourcc(b"dOut")`。
+/// 四字元碼，例如 `fourcc(b"dOut")`。
 pub const fn fourcc(code: &[u8; 4]) -> u32 {
     ((code[0] as u32) << 24) | ((code[1] as u32) << 16) | ((code[2] as u32) << 8) | (code[3] as u32)
 }

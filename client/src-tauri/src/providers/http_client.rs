@@ -1,26 +1,26 @@
 // 所有 provider 共用的 HTTP 客户端。
 //
-// 为什么一定要带 User-Agent：**reqwest 默认一个 UA 都不发**，而 nginx / WAF 类网关
-// 普遍把「无 UA」当爬虫拦掉。实测 https://test-ai-api.nwcdcloud.cn/v1（LiteLLM 网关）：
-// 同一个地址 + 密钥 + 模型，带 UA 返回 200，去掉 UA 头一律 403 并回一段 nginx 的 HTML
-// 错误页 —— 请求在网关就被拒了，鉴权根本没执行。我们自己的 ALB 上有同一条规则
-// （见 pitfalls 第 1 条）。这类 403 的响应里一个字都不提 UA，所以只会被归成
-// 「地区不可用 / 模型没开通」，用户换密钥、换模型都修不掉。
+// 為什麼一定要帶 User-Agent：**reqwest 預設一個 UA 都不發**，而 nginx / WAF 類閘道器
+// 普遍把「無 UA」當爬蟲攔掉。實測 https://test-ai-api.nwcdcloud.cn/v1（LiteLLM 閘道器）：
+// 同一個地址 + 金鑰 + 模型，帶 UA 返回 200，去掉 UA 頭一律 403 並回一段 nginx 的 HTML
+// 錯誤頁 —— 請求在閘道器就被拒了，鑑權根本沒執行。我們自己的 ALB 上有同一條規則
+// （見 pitfalls 第 1 條）。這類 403 的響應裡一個字都不提 UA，所以只會被歸成
+// 「地區不可用 / 模型沒開通」，使用者換金鑰、換模型都修不掉。
 //
-// 因此：provider 里**不要再写 `reqwest::Client::new()`**，一律用这里的单例。
-// 附带好处是连接池和 TLS 会话得以复用，不必每次调用重建一个客户端。
+// 因此：provider 裡**不要再寫 `reqwest::Client::new()`**，一律用這裡的單例。
+// 附帶好處是連線池和 TLS 會話得以複用，不必每次呼叫重建一個客戶端。
 pub const USER_AGENT: &str = concat!("SayIt/", env!("CARGO_PKG_VERSION"));
 
 static SHARED: once_cell::sync::Lazy<reqwest::Client> = once_cell::sync::Lazy::new(|| {
     reqwest::Client::builder()
         .user_agent(USER_AGENT)
         .build()
-        // 构建失败只可能是 TLS 后端初始化不了，此时退回默认客户端也不会更糟，
-        // 至少不要让整个转写功能因为拿不到客户端而不可用。
+        // 構建失敗只可能是 TLS 後端初始化不了，此時退回預設客戶端也不會更糟，
+        // 至少不要讓整個轉寫功能因為拿不到客戶端而不可用。
         .unwrap_or_else(|_| reqwest::Client::new())
 });
 
-/// 带 User-Agent 的共享客户端。超时仍按各调用点的 `.timeout()` 单独设置。
+/// 帶 User-Agent 的共享客戶端。超時仍按各呼叫點的 `.timeout()` 單獨設定。
 pub fn shared() -> &'static reqwest::Client {
     &SHARED
 }

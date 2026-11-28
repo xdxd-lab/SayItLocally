@@ -21,7 +21,7 @@ function fixture() {
   const tick = async (time: number) => {
     vi.setSystemTime(time)
     controller.tick()
-    // 排空发布链与错误处理。
+    // 排空釋出鏈與錯誤處理。
     for (let i = 0; i < 6; i++) await Promise.resolve()
   }
   return {

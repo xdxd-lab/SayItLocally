@@ -8,8 +8,8 @@ import {
 } from '../textPostProcess'
 
 describe('normalizeChinesePunctuation', () => {
-  // Whisper（Groq 的 whisper-large-v3-turbo）转写中文时混用两种宽度：句号给全角，
-  // 逗号和问号给半角。实测改 prompt 无效，只能在文本层归一。
+  // Whisper（Groq 的 whisper-large-v3-turbo）轉寫中文時混用兩種寬度：句號給全形，
+  // 逗號和問號給半形。實測改 prompt 無效，只能在文本層歸一。
   it('汉字后面的半角标点转成全角', () => {
     expect(normalizeChinesePunctuation('今天天气不错,我们出去走走吧,顺便买点东西。你觉得怎么样?'))
       .toBe('今天天气不错，我们出去走走吧，顺便买点东西。你觉得怎么样？')
@@ -17,15 +17,15 @@ describe('normalizeChinesePunctuation', () => {
     expect(normalizeChinesePunctuation('注意:两点;三点')).toBe('注意：两点；三点')
   })
 
-  // 下面这几条是这个函数存在的全部风险所在：判据写松一点就会破坏内容。
+  // 下面這幾條是這個函式存在的全部風險所在：判據寫松一點就會破壞內容。
   it('数字里的逗号与小数点绝不动', () => {
     expect(normalizeChinesePunctuation('一共 3,000 元')).toBe('一共 3,000 元')
     expect(normalizeChinesePunctuation('圆周率是 3.14')).toBe('圆周率是 3.14')
   })
 
-  // 已知缺口，且是刻意留的：标点夹在「数字/字母」和汉字之间时不转。
-  // 想覆盖 `100,很便宜` 就必然会把 `3:2中文`、`3,000元` 这类也一起改掉，
-  // 而少一个全角逗号只是观感问题，改坏数字是内容损坏。宁可漏改。
+  // 已知缺口，且是刻意留的：標點夾在「數字/字母」和漢字之間時不轉。
+  // 想覆蓋 `100,很便宜` 就必然會把 `3:2中文`、`3,000元` 這類也一起改掉，
+  // 而少一個全形逗號只是觀感問題，改壞數字是內容損壞。寧可漏改。
   it('前一个字符不是汉字时一律不动，即便后面是中文', () => {
     expect(normalizeChinesePunctuation('版本 v1.2,已发布')).toBe('版本 v1.2,已发布')
     expect(normalizeChinesePunctuation('比例 3:2中文')).toBe('比例 3:2中文')
@@ -39,7 +39,7 @@ describe('normalizeChinesePunctuation', () => {
 
   it('网址与句号一律不动（句号不在转换表里）', () => {
     expect(normalizeChinesePunctuation('访问 example.com 就行')).toBe('访问 example.com 就行')
-    // 半角句号即便紧跟汉字也保持原样：小数/域名/文件名的代价高于收益
+    // 半形句號即便緊跟漢字也保持原樣：小數/域名/檔名的代價高於收益
     expect(normalizeChinesePunctuation('好的.')).toBe('好的.')
   })
 
@@ -172,7 +172,7 @@ describe('convertChineseNumbers', () => {
     expect(convertChineseNumbers('再快一点')).toBe('再快一点')
     expect(convertChineseNumbers('声音大一点')).toBe('声音大一点')
     expect(convertChineseNumbers('一点点小事')).toBe('一点点小事')
-    // 无时段词的裸整点也保守不转（宁可不转，交给 AI 整理）
+    // 無時段詞的裸整點也保守不轉（寧可不轉，交給 AI 整理）
     expect(convertChineseNumbers('九点开会')).toBe('九点开会')
   })
 

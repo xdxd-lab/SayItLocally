@@ -4,10 +4,10 @@ import { useT } from '@/i18n/useT'
 import { IS_MAC } from '@/lib/platform'
 
 /**
- * 这里曾经还有一个「自动检测更新」开关。撤掉了：更新现在是必走的 ——
- * 后台静默下载，用户点左下角图标、或下次关闭应用时装上。
- * 底层设置项 autoCheckUpdate 仍然被读取（见 features/update/autoUpdate.ts），
- * 只是不再暴露给用户，留作更新链路自身出故障时的远程止血开关。
+ * 這裡曾經還有一個「自動檢測更新」開關。撤掉了：更新現在是必走的 ——
+ * 後台靜默下載，使用者點左下角圖示、或下次關閉應用時裝上。
+ * 底層設定項 autoCheckUpdate 仍然被讀取（見 features/update/autoUpdate.ts），
+ * 只是不再暴露給使用者，留作更新鏈路自身出故障時的遠端止血開關。
  */
 export default function AppSection({
   autoLaunch,
@@ -27,7 +27,7 @@ export default function AppSection({
         <h2 className="mb-4 text-lg font-semibold">{t('settings.app.title')}</h2>
         <div className="flex items-center justify-between">
           <div>
-            {/* mac 上叫「登录时打开」，没有「开机」这个说法 */}
+            {/* mac 上叫「登入時開啟」，沒有「開機」這個說法 */}
             <p className="text-sm font-medium">{t(IS_MAC ? 'settings.app.autoLaunchMac' : 'settings.app.autoLaunch')}</p>
             <p className="text-xs text-muted-foreground">{t(IS_MAC ? 'settings.app.autoLaunchDescMac' : 'settings.app.autoLaunchDesc')}</p>
           </div>

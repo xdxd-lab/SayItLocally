@@ -1,4 +1,4 @@
-// 豆包流式 ASR 二进制 WebSocket 帧编解码
+// 豆包流式 ASR 二進位制 WebSocket 幀編解碼
 
 use flate2::write::GzEncoder;
 use flate2::read::GzDecoder;
@@ -32,7 +32,7 @@ fn gzip_decompress(data: &[u8]) -> Result<Vec<u8>, String> {
     Ok(result)
 }
 
-/// 构建 full client request 帧（JSON 参数，Gzip 压缩）
+/// 構建 full client request 幀（JSON 引數，Gzip 壓縮）
 pub fn build_full_client_request(json_payload: &str) -> Vec<u8> {
     let compressed = gzip_compress(json_payload.as_bytes());
     let payload_size = compressed.len() as u32;
@@ -53,7 +53,7 @@ pub fn build_full_client_request(json_payload: &str) -> Vec<u8> {
     frame
 }
 
-/// 构建 audio only request 帧（原始音频，Gzip 压缩）
+/// 構建 audio only request 幀（原始音訊，Gzip 壓縮）
 pub fn build_audio_request(audio_data: &[u8], is_last: bool) -> Vec<u8> {
     let compressed = gzip_compress(audio_data);
     let payload_size = compressed.len() as u32;
@@ -69,7 +69,7 @@ pub fn build_audio_request(audio_data: &[u8], is_last: bool) -> Vec<u8> {
     frame
 }
 
-/// 解析服务端响应帧
+/// 解析服務端響應幀
 pub struct ServerResponse {
     pub is_last: bool,
     pub payload: String,
@@ -112,8 +112,8 @@ pub fn parse_server_response(data: &[u8]) -> Result<ServerResponse, String> {
         return Err(format!("Unknown message type: 0x{:02X}", msg_type));
     }
 
-    // 根据 flags 判断是否有 sequence 字段
-    // flags bit0 = 1 表示 header 后 4 字节为 sequence number
+    // 根據 flags 判斷是否有 sequence 欄位
+    // flags bit0 = 1 表示 header 後 4 位元組為 sequence number
     let has_sequence = (flags & 0x01) != 0;
     let header_len: usize = if has_sequence { 12 } else { 8 }; // 4 header + (4 seq) + 4 payload_size
 
@@ -159,12 +159,12 @@ pub fn parse_server_response(data: &[u8]) -> Result<ServerResponse, String> {
     })
 }
 
-/// 构建热词 context 字符串（火山引擎 request.corpus.context 字段）
+/// 構建熱詞 context 字串（火山引擎 request.corpus.context 欄位）
 ///
-/// 热词直传，优先级高于自学习平台词表。context 须嵌在 request.corpus 下，
-/// 放到 request 顶层不生效。双向流式约 100 tokens，流式输入(nostream)支持最多 5000 个词。
-/// 返回值是序列化后的 JSON 字符串（context 字段类型为 string，不是嵌套对象）。
-/// 形如：{"hotwords":[{"word":"热词1"},{"word":"热词2"}]}
+/// 熱詞直傳，優先順序高於自學習平台詞表。context 須嵌在 request.corpus 下，
+/// 放到 request 頂層不生效。雙向流式約 100 tokens，流式輸入(nostream)支援最多 5000 個詞。
+/// 返回值是序列化後的 JSON 字串（context 欄位型別為 string，不是巢狀物件）。
+/// 形如：{"hotwords":[{"word":"熱詞1"},{"word":"熱詞2"}]}
 pub fn build_hotword_context(hotwords: &[String]) -> Option<String> {
     let mut seen = std::collections::HashSet::new();
     let words: Vec<serde_json::Value> = hotwords

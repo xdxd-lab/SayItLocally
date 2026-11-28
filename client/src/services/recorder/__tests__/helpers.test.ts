@@ -22,10 +22,10 @@ describe('hasSilenceEvidence', () => {
   }
 
   /**
-   * 回归钉：判据取「且」不取「或」。
+   * 迴歸釘：判據取「且」不取「或」。
    *
-   * 取或的版本会把这条判成"确实没声音"，于是界面告诉用户去检查麦克风，而真正的
-   * 失败原因（额度耗尽、服务端提前断开、热词回显被判空）被藏了起来。
+   * 取或的版本會把這條判成"確實沒聲音"，於是介面告訴使用者去檢查麥克風，而真正的
+   * 失敗原因（額度耗盡、服務端提前斷開、熱詞回顯被判空）被藏了起來。
    */
   it('说了一句话再长时间沉默，不算没声音', () => {
     expect(hasSilenceEvidence(stats(0.4, 996, 1000))).toBe(false)
@@ -49,8 +49,8 @@ describe('hasSilenceEvidence', () => {
 })
 
 describe('judgeOsMicMute', () => {
-  // 回归：Plantronics Blackwire 5220 停在 GetMute=true 但音频照常流动，
-  // 直接采信系统标志会导致每次按热键都先误报一次「麦克风已被静音」。
+  // 迴歸：Plantronics Blackwire 5220 停在 GetMute=true 但音訊照常流動，
+  // 直接採信系統標誌會導致每次按熱鍵都先誤報一次「麥克風已被靜音」。
   it('音频在流动时立刻丢弃系统的静音标志', () => {
     expect(judgeOsMicMute(0, 'voiced', 1600)).toEqual({ verdict: 'dismissed' })
     expect(judgeOsMicMute(0, 'low', 1600)).toEqual({ verdict: 'dismissed' })
@@ -170,9 +170,9 @@ describe('computeProcessingTimeoutMs', () => {
   })
 
   it('local 长录音按时长放宽：5 分钟录音不会在识别跑完前超时', () => {
-    // 原来本地最多等 45 s，而 5 分钟的录音实测要 55 s 左右
+    // 原來本地最多等 45 s，而 5 分鐘的錄音實測要 55 s 左右
     expect(computeProcessingTimeoutMs(300, 'local')).toBeGreaterThanOrEqual(120000)
-    expect(computeProcessingTimeoutMs(60, 'local')).toBe(45000) // 中等长度维持原值
+    expect(computeProcessingTimeoutMs(60, 'local')).toBe(45000) // 中等長度維持原值
     expect(computeProcessingTimeoutMs(3000, 'local')).toBeLessThanOrEqual(180000)
   })
 

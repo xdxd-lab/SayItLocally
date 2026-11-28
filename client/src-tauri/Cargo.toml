@@ -8,8 +8,8 @@ edition = "2021"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-# macos-private-api：macOS 上透明窗口（悬浮窗、更新通知）必须开；在 Windows 上不起作用。
-# 与 tauri.conf.json 的 app.macOSPrivateApi 必须同时开关（tauri-build 会对账）。
+# macos-private-api：macOS 上透明視窗（懸浮窗、更新通知）必須開；在 Windows 上不起作用。
+# 與 tauri.conf.json 的 app.macOSPrivateApi 必須同時開關（tauri-build 會對賬）。
 tauri = { version = "2", features = ["tray-icon", "image-png", "image-ico", "macos-private-api"] }
 tauri-plugin-shell = "2"
 tauri-plugin-dialog = "2"
@@ -28,8 +28,8 @@ dirs = "5"
 hostname = "0.4"
 whoami = "1"
 base64 = "0.22"
-# 校验更新安装包的 SHA-512（manifest 里给的是 Base64 编码）。安装包下载后会在临时
-# 目录里等到用户点更新，驻留时间可能很长，装之前必须确认它还是我们下载的那一个。
+# 校驗更新安裝包的 SHA-512（manifest 裡給的是 Base64 編碼）。安裝包下載後會在臨時
+# 目錄裡等到使用者點更新，駐留時間可能很長，裝之前必須確認它還是我們下載的那一個。
 sha2 = "0.10.8"
 reqwest = { version = "0.12", features = ["json", "stream", "multipart"] }
 regex = "1"
@@ -40,42 +40,42 @@ tokio-tungstenite = { version = "0.24", features = ["native-tls"] }
 once_cell = "1"
 flate2 = "1"
 tokio = { version = "1", features = ["rt", "macros", "time", "fs"] }
-# WebDAV 备份包要流式 PUT 上去：含音频的包能有几个 GB，整包读进 Vec<u8> 会直接把
-# 内存打满。ReaderStream 把文件转成 reqwest 能吃的 Stream，配 reqwest 的 stream feature。
+# WebDAV 備份包要流式 PUT 上去：含音訊的包能有幾個 GB，整包讀進 Vec<u8> 會直接把
+# 記憶體打滿。ReaderStream 把檔案轉成 reqwest 能吃的 Stream，配 reqwest 的 stream feature。
 tokio-util = { version = "0.7", features = ["io"] }
 silero-vad-crs = { version = "=0.4.0", features = ["auto"] }
 
-# GGUF / ggml 本地 ASR 引擎（transcribe.cpp 的官方 Rust 绑定，MIT）。
-# 计算后端按平台在下面的 target 段里选：Cargo 会合并同一依赖在所有生效段里的 features，
-# 写在通用 [dependencies] 里的 vulkan 会连 macOS 一起打开（mac 上没有 Vulkan SDK）。
+# GGUF / ggml 本地 ASR 引擎（transcribe.cpp 的官方 Rust 繫結，MIT）。
+# 計算後端按平台在下面的 target 段裡選：Cargo 會合並同一依賴在所有生效段裡的 features，
+# 寫在通用 [dependencies] 裡的 vulkan 會連 macOS 一起開啟（mac 上沒有 Vulkan SDK）。
 #
 # Windows：
-# dynamic-backends：各计算后端编成可 dlopen 的模块（隐含 shared，libtranscribe
-# 本身也是 DLL），运行时按 CPU 指令集挑最优的 ggml-cpu-* 模块。
-# vulkan：一个 API 覆盖 NVIDIA / AMD / Intel / 核显，没有就自动回落 CPU。
-#   构建需要 Vulkan SDK（编 SPIR-V shader）：装完要新开终端，VULKAN_SDK 不会进已运行的 shell。
-# 不带 CUDA：官方 CUDA 包 226 MB，Vulkan 已覆盖同样的硬件。
-# 注意：首次构建会用 CMake 从源码编整棵 C++ 树（约 20 分钟），之后走缓存。
+# dynamic-backends：各計算後端編成可 dlopen 的模組（隱含 shared，libtranscribe
+# 本身也是 DLL），執行時按 CPU 指令集挑最優的 ggml-cpu-* 模組。
+# vulkan：一個 API 覆蓋 NVIDIA / AMD / Intel / 核顯，沒有就自動回落 CPU。
+#   構建需要 Vulkan SDK（編 SPIR-V shader）：裝完要新開終端，VULKAN_SDK 不會進已執行的 shell。
+# 不帶 CUDA：官方 CUDA 包 226 MB，Vulkan 已覆蓋同樣的硬體。
+# 注意：首次構建會用 CMake 從原始碼編整棵 C++ 樹（約 20 分鐘），之後走快取。
 [target.'cfg(windows)'.dependencies.transcribe-cpp]
 version = "0.1.3"
 default-features = false
 features = ["dynamic-backends", "vulkan"]
 
-# macOS：metal + 静态链接。不开 dynamic-backends，就不会产出要随包分发、逐个签名的
-# dylib，build.rs 的暂存步骤也自然跳过（拿不到 DEP_TRANSCRIBE_CPP_RUNTIME_DIR）。
+# macOS：metal + 靜態連結。不開 dynamic-backends，就不會產出要隨包分發、逐個簽名的
+# dylib，build.rs 的暫存步驟也自然跳過（拿不到 DEP_TRANSCRIBE_CPP_RUNTIME_DIR）。
 [target.'cfg(target_os = "macos")'.dependencies.transcribe-cpp]
 version = "0.1.3"
 default-features = false
 features = ["metal"]
 
-# 其它平台（Linux 等）只编 CPU 后端，保证能编过；目前不发布。
+# 其它平台（Linux 等）只編 CPU 後端，保證能編過；目前不釋出。
 [target.'cfg(not(any(windows, target_os = "macos")))'.dependencies.transcribe-cpp]
 version = "0.1.3"
 default-features = false
 
 # macOS 系统集成：AppKit / Foundation 走 objc2（与 tauri/tao 用的是同一套版本，
 # 类型可以互通）；CoreGraphics / CoreFoundation / Accessibility / CoreAudio / Carbon
-# 这些稳定的 C 接口直接在 src/platform/macos/ffi.rs 里声明，不再引入第二套绑定。
+# 這些穩定的 C 介面直接在 src/platform/macos/ffi.rs 裡宣告，不再引入第二套繫結。
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
 objc2-foundation = "0.3"
@@ -89,7 +89,7 @@ windows = { version = "0.58", features = [
   "Win32_UI_Input_KeyboardAndMouse",
   "Win32_UI_Accessibility",
   "Win32_System_Threading",
-  # GetProcessMemoryInfo：报告本地模型加载后的真实内存占用（诊断页 + 调优实测）
+  # GetProcessMemoryInfo：報告本地模型載入後的真實記憶體佔用（診斷頁 + 調優實測）
   "Win32_System_ProcessStatus",
   "Win32_System_DataExchange",
   "Win32_System_Memory",
@@ -103,14 +103,14 @@ windows = { version = "0.58", features = [
   "Win32_Media_Audio",
   "Win32_Media_Audio_Endpoints",
 ] }
-# 与 tauri/wry 内部同版本，用于挂 WebView2 的 PermissionRequested 处理器（把麦克风置为持久授权）
+# 與 tauri/wry 內部同版本，用於掛 WebView2 的 PermissionRequested 處理器（把麥克風置為持久授權）
 webview2-com = "0.39"
-# webview2-com 0.39 用的 COM 基础类型（Interface::cast、PWSTR）。上面的 windows 0.58 是另一套类型，
-# 不能混用；挂 ServerCertificateErrorDetected 时要把 ICoreWebView2 cast 成 ICoreWebView2_14。
+# webview2-com 0.39 用的 COM 基礎型別（Interface::cast、PWSTR）。上面的 windows 0.58 是另一套型別，
+# 不能混用；掛 ServerCertificateErrorDetected 時要把 ICoreWebView2 cast 成 ICoreWebView2_14。
 windows-core = "0.62"
 
-# Release 体积/性能优化。panic 保持 unwind：Tauri 与 catch_unwind 依赖它，
-# 换成 abort 会让引擎 panic 直接杀进程。
+# Release 體積/效能最佳化。panic 保持 unwind：Tauri 與 catch_unwind 依賴它，
+# 換成 abort 會讓引擎 panic 直接殺程序。
 [profile.release]
 lto = true
 codegen-units = 1

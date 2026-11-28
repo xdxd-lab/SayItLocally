@@ -1,18 +1,18 @@
-//! macOS 全局热键：CGEventTap。
+//! macOS 全域性熱鍵：CGEventTap。
 //!
-//! 与 Windows 的 `low_level_keyboard_proc` / `low_level_mouse_proc` 一一对应：
-//! 事件入口把 macOS 键码翻译成同一套内部键 ID（Windows VK），之后的 PTT 代次、
-//! 组合键位图、Esc / 卡片快捷键闸门、看门狗全部复用 mod.rs 里的实现。
+//! 與 Windows 的 `low_level_keyboard_proc` / `low_level_mouse_proc` 一一對應：
+//! 事件入口把 macOS 鍵碼翻譯成同一套內部鍵 ID（Windows VK），之後的 PTT 代次、
+//! 組合鍵點陣圖、Esc / 卡片快捷鍵閘門、看門狗全部複用 mod.rs 裡的實現。
 //!
 //! 与 Windows 不同的几处：
-//! - **修饰键永远放行**。macOS 的修饰状态在 HID 层维护，吞掉 flagsChanged 并不能让后续
-//!   按键失去该修饰位，反而让前台程序看到「没按下就有修饰位」的错乱状态；macOS 也没有
-//!   「单击 Alt 激活菜单栏」的问题，所以不需要 Windows 那套吞 Alt keyup 的处理。
-//! - **不会被系统静默摘除**：回调超时或用户输入保护时系统会投递
+//! - **修飾鍵永遠放行**。macOS 的修飾狀態在 HID 層維護，吞掉 flagsChanged 並不能讓後續
+//!   按鍵失去該修飾位，反而讓前台程式看到「沒按下就有修飾位」的錯亂狀態；macOS 也沒有
+//!   「單擊 Alt 啟用選單欄」的問題，所以不需要 Windows 那套吞 Alt keyup 的處理。
+//! - **不會被系統靜默摘除**：回撥超時或使用者輸入保護時系統會投遞
 //!   `kCGEventTapDisabledBy*`，收到后立刻重新启用（另有看门狗兜底）。
-//! - **需要「辅助功能」授权**才能建出能吞键的 tap。没授权时每 2 秒重试一次，
-//!   用户在系统设置里勾选后不用重启 SayIt。
-//! - 自己注入的事件（插字用的 ⌘V）带 `kCGEventSourceUserData` 标记，回调里直接放行。
+//! - **需要「輔助功能」授權**才能建出能吞鍵的 tap。沒授權時每 2 秒重試一次，
+//!   使用者在系統設定裡勾選後不用重啟 SayIt。
+//! - 自己注入的事件（插字用的 ⌘V）帶 `kCGEventSourceUserData` 標記，回撥裡直接放行。
 
 #![allow(non_upper_case_globals)]
 
@@ -21,25 +21,25 @@ use crate::platform::macos::ffi::*;
 use crate::platform::macos::keycodes;
 use std::sync::atomic::AtomicUsize;
 
-/// 我们自己 post 的事件在 `kCGEventSourceUserData` 里写这个值（"SAYI"）。
+/// 我們自己 post 的事件在 `kCGEventSourceUserData` 裡寫這個值（"SAYI"）。
 pub(crate) const SAYIT_EVENT_MARKER: i64 = 0x5341_5949;
 
-/// 当前 tap 的 CFMachPortRef（0 = 没装上）。
+/// 當前 tap 的 CFMachPortRef（0 = 沒裝上）。
 static TAP_PORT: AtomicUsize = AtomicUsize::new(0);
-/// tap 线程的 CFRunLoopRef（0 = 线程没在跑）。
+/// tap 執行緒的 CFRunLoopRef（0 = 執行緒沒在跑）。
 static TAP_RUN_LOOP: AtomicUsize = AtomicUsize::new(0);
-/// 请求 tap 线程退出。
+/// 請求 tap 執行緒退出。
 static TAP_STOP_REQUESTED: AtomicBool = AtomicBool::new(false);
-/// tap 被系统停用后由回调重新启用的次数（写进诊断日志）。
+/// tap 被系統停用後由回撥重新啟用的次數（寫進診斷日誌）。
 static TAP_REENABLED_IN_CALLBACK: AtomicU64 = AtomicU64::new(0);
 
-/// event tap 是否已装上且处于启用状态（给权限/诊断页用）。
+/// event tap 是否已裝上且處於啟用狀態（給許可權/診斷頁用）。
 pub fn tap_active() -> bool {
     let port = TAP_PORT.load(Ordering::SeqCst) as CFMachPortRef;
     !port.is_null() && unsafe { CGEventTapIsEnabled(port) }
 }
 
-/// 看门狗兜底：tap 存在但被停用时重新启用。返回是否做了重启用。
+/// 看門狗兜底：tap 存在但被停用時重新啟用。返回是否做了重啟用。
 pub fn reenable_tap_if_disabled() -> bool {
     let port = TAP_PORT.load(Ordering::SeqCst) as CFMachPortRef;
     if port.is_null() {
@@ -54,7 +54,7 @@ pub fn reenable_tap_if_disabled() -> bool {
     true
 }
 
-/// 让 tap 线程退出（stop() 调用；线程会自己卸载 tap 并完成收尾）。
+/// 讓 tap 執行緒退出（stop() 呼叫；執行緒會自己解除安裝 tap 並完成收尾）。
 pub fn request_tap_thread_stop() {
     TAP_STOP_REQUESTED.store(true, Ordering::SeqCst);
     let run_loop = TAP_RUN_LOOP.load(Ordering::SeqCst) as CFRunLoopRef;
@@ -82,8 +82,8 @@ unsafe fn create_tap() -> CFMachPortRef {
     )
 }
 
-/// tap 线程主体。结构与 Windows 的 hook_thread 相同：action 队列 → dispatcher 线程，
-/// 成员看门狗，退出时按 FIFO 排入配对的 up 和 Shutdown。
+/// tap 執行緒主體。結構與 Windows 的 hook_thread 相同：action 佇列 → dispatcher 執行緒，
+/// 成員看門狗，退出時按 FIFO 排入配對的 up 和 Shutdown。
 pub(super) fn hook_thread(state: Arc<HookSharedState>, tx: std::sync::mpsc::Sender<u32>) {
     log::info!(
         "macOS event tap thread starting, ptt_setting={} vk_codes={:?}",
@@ -101,10 +101,10 @@ pub(super) fn hook_thread(state: Arc<HookSharedState>, tx: std::sync::mpsc::Send
     TAP_STOP_REQUESTED.store(false, Ordering::SeqCst);
     let run_loop = unsafe { CFRunLoopGetCurrent() };
     TAP_RUN_LOOP.store(run_loop as usize, Ordering::SeqCst);
-    // mac 上没有 Windows 那样的线程消息 id，用 1 占位，告诉 start() 线程已经起来了。
+    // mac 上沒有 Windows 那樣的執行緒訊息 id，用 1 佔位，告訴 start() 執行緒已經起來了。
     let _ = tx.send(1);
 
-    // 等授权：没有「辅助功能」授权时 CGEventTapCreate 返回 NULL。
+    // 等授權：沒有「輔助功能」授權時 CGEventTapCreate 返回 NULL。
     let mut waiting_logged = false;
     let port = loop {
         if TAP_STOP_REQUESTED.load(Ordering::SeqCst) {
@@ -155,7 +155,7 @@ pub(super) fn hook_thread(state: Arc<HookSharedState>, tx: std::sync::mpsc::Send
     }
     TAP_RUN_LOOP.store(0, Ordering::SeqCst);
 
-    // 收尾与 Windows 相同：先等成员看门狗退出，再用回调同一个 sender 排入配对 up 和 Shutdown。
+    // 收尾與 Windows 相同：先等成員看門狗退出，再用回撥同一個 sender 排入配對 up 和 Shutdown。
     state.ptt_hook_alive.store(false, Ordering::SeqCst);
     if let Some(handle) = member_watchdog {
         if handle.join().is_err() {
@@ -176,15 +176,15 @@ pub(super) fn hook_thread(state: Arc<HookSharedState>, tx: std::sync::mpsc::Send
     }
 }
 
-// ─── 物理按键状态（给看门狗、WebView 回退用）───
+// ─── 物理按鍵狀態（給看門狗、WebView 回退用）───
 
-/// 这个内部键此刻是否按着。修饰键看修饰标志（区分左右），普通键看键状态，
-/// 鼠标键看按钮状态（mac 上能查到，Windows 上查不到）。
+/// 這個內部鍵此刻是否按著。修飾鍵看修飾標誌（區分左右），普通鍵看鍵狀態，
+/// 滑鼠鍵看按鈕狀態（mac 上能查到，Windows 上查不到）。
 ///
-/// HID 状态表只记真实硬件；远程控制（向日葵等）和自动化工具用 CGEventPost 注入的按键
-/// 只记在会话状态表里。只看 HID 的话，远程按住右 ⌥ 说话时看门狗约 2 秒后就会判成
-/// 「已松开」把录音掐断。两张表都看：本机键盘两者一致；Windows 的 GetAsyncKeyState
-/// 本来也包含注入的按键。
+/// HID 狀態表只記真實硬體；遠端控制（向日葵等）和自動化工具用 CGEventPost 注入的按鍵
+/// 只記在會話狀態表裡。只看 HID 的話，遠端按住右 ⌥ 說話時看門狗約 2 秒後就會判成
+/// 「已鬆開」把錄音掐斷。兩張表都看：本機鍵盤兩者一致；Windows 的 GetAsyncKeyState
+/// 本來也包含注入的按鍵。
 pub(super) unsafe fn is_physically_down(vk: u32) -> bool {
     is_down_in(kCGEventSourceStateHIDSystemState, vk)
         || is_down_in(kCGEventSourceStateCombinedSessionState, vk)
@@ -204,12 +204,12 @@ unsafe fn is_down_in(state: CGEventSourceStateID, vk: u32) -> bool {
     }
 }
 
-/// 单键热键按下时是否带着额外修饰键（带了就整条放行，对应 Windows 的 single_key_blocked_by_modifiers）。
+/// 單鍵熱鍵按下時是否帶著額外修飾鍵（帶了就整條放行，對應 Windows 的 single_key_blocked_by_modifiers）。
 fn single_key_blocked_by_modifiers(vk: u32, flags: CGEventFlags) -> bool {
     single_key_requires_bare_press(vk) && flags & keycodes::BLOCKING_MODIFIER_MASK != 0
 }
 
-/// 这一刻是不是**只有** ⌘ 的 ⌘C（卡片「复制」快捷键）。⌘⇧C、⌘⌥C 等都不算。
+/// 這一刻是不是**只有** ⌘ 的 ⌘C（卡片「複製」快捷鍵）。⌘⇧C、⌘⌥C 等都不算。
 fn only_command_is_down(flags: CGEventFlags) -> bool {
     flags & kCGEventFlagMaskCommand != 0
         && flags & (kCGEventFlagMaskShift | kCGEventFlagMaskControl | kCGEventFlagMaskAlternate) == 0
@@ -233,7 +233,7 @@ fn queue_release(state: &HookSharedState, vk: u32, reason: &'static str) {
     });
 }
 
-/// PTT 成员按下：记账，凑齐整个组合时开始一次新的 PTT 代次。
+/// PTT 成員按下：記賬，湊齊整個組合時開始一次新的 PTT 代次。
 fn press_member(state: &HookSharedState, member_index: usize, vk: u32) {
     let member_bit = 1_u64 << member_index;
     state.ptt_last_down_ms[member_index].store(now_ms(), Ordering::SeqCst);
@@ -255,17 +255,17 @@ fn press_member(state: &HookSharedState, member_index: usize, vk: u32) {
     }
 }
 
-// ─── 系统快捷键接不住的组合键 ───
+// ─── 系統快捷鍵接不住的組合鍵 ───
 //
-// 免提、AI 整理开关、润色模式切换的组合键平时走系统的 RegisterEventHotKey
-// （tauri-plugin-global-shortcut，见 commands/shortcuts.rs）：「安全输入」期间（密码框等）
-// 它照样有效，event tap 却收不到按键，所以能交给系统的都交给系统。
+// 擴音、AI 整理開關、潤色模式切換的組合鍵平時走系統的 RegisterEventHotKey
+// （tauri-plugin-global-shortcut，見 commands/shortcuts.rs）：「安全輸入」期間（密碼框等）
+// 它照樣有效，event tap 卻收不到按鍵，所以能交給系統的都交給系統。
 //
-// 但从 macOS 15 起，修饰键只有 ⌥、只有 ⇧ 或只有 ⌥⇧ 的组合注册「成功」却永远不触发。
-// Windows 上 Alt 组合很常见，从 Windows 导入的配置也会带过来。这一类改由 event tap 匹配：
-// 命中就吞掉主键的按下、自动重复和抬起（修饰键照常放行），再发出和系统快捷键相同的事件。
+// 但從 macOS 15 起，修飾鍵只有 ⌥、只有 ⇧ 或只有 ⌥⇧ 的組合註冊「成功」卻永遠不觸發。
+// Windows 上 Alt 組合很常見，從 Windows 匯入的配置也會帶過來。這一類改由 event tap 匹配：
+// 命中就吞掉主鍵的按下、自動重複和抬起（修飾鍵照常放行），再發出和系統快捷鍵相同的事件。
 
-/// 组合键触发的动作，与 commands/shortcuts.rs 里系统快捷键发出的事件一一对应。
+/// 組合鍵觸發的動作，與 commands/shortcuts.rs 裡系統快捷鍵發出的事件一一對應。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum TapComboAction {
     HandsFree,
@@ -275,25 +275,25 @@ pub(crate) enum TapComboAction {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct TapCombo {
-    /// 必须按着、而且只能按着的修饰键（⌘ ⌃ ⌥ ⇧ 的 kCGEventFlagMask* 组合）
+    /// 必須按著、而且只能按著的修飾鍵（⌘ ⌃ ⌥ ⇧ 的 kCGEventFlagMask* 組合）
     modifiers: CGEventFlags,
-    /// 主键（内部键 ID，沿用 Windows VK）
+    /// 主鍵（內部鍵 ID，沿用 Windows VK）
     vk: u32,
     action: TapComboAction,
 }
 
 static TAP_COMBOS: std::sync::Mutex<Vec<TapCombo>> = std::sync::Mutex::new(Vec::new());
-/// 正被吞掉的组合键主键（0 = 没有）。它的自动重复和抬起也要吞掉，不能漏给前台程序。
+/// 正被吞掉的組合鍵主鍵（0 = 沒有）。它的自動重複和抬起也要吞掉，不能漏給前台程式。
 static TAP_COMBO_HELD_VK: AtomicU32 = AtomicU32::new(0);
 
-/// 组合键比对的修饰键：只看这四个，Caps Lock、Fn、小键盘这些标志不看。
+/// 組合鍵比對的修飾鍵：只看這四個，Caps Lock、Fn、小鍵盤這些標誌不看。
 const COMBO_MODIFIER_MASK: CGEventFlags =
     kCGEventFlagMaskCommand | kCGEventFlagMaskControl | kCGEventFlagMaskAlternate | kCGEventFlagMaskShift;
 
-/// 把 accelerator（如 `Alt+Shift+D`）换成交给 event tap 的组合键。
+/// 把 accelerator（如 `Alt+Shift+D`）換成交給 event tap 的組合鍵。
 ///
-/// 只接系统快捷键在 macOS 15 上接不住的那一类：修饰键只有 ⌥ / ⇧。带 ⌘ 或 ⌃ 的、解析不了的、
-/// 主键在 Mac 键盘上没有的，返回 None，照旧交给系统快捷键。
+/// 只接系統快捷鍵在 macOS 15 上接不住的那一類：修飾鍵只有 ⌥ / ⇧。帶 ⌘ 或 ⌃ 的、解析不了的、
+/// 主鍵在 Mac 鍵盤上沒有的，返回 None，照舊交給系統快捷鍵。
 pub(crate) fn tap_combo_for_accelerator(accelerator: &str, action: TapComboAction) -> Option<TapCombo> {
     use tauri_plugin_global_shortcut::{Modifiers, Shortcut};
     let shortcut: Shortcut = accelerator.parse().ok()?;
@@ -315,8 +315,8 @@ pub(crate) fn tap_combo_for_accelerator(accelerator: &str, action: TapComboActio
     Some(TapCombo { modifiers, vk, action })
 }
 
-/// 组合键主键（DOM code 写法，如 `KeyD`、`F5`、`Comma`）→ 内部 VK。
-/// 字母、数字、F 键、方向键等沿用按住说话的映射，再补上标点和小键盘。
+/// 組合鍵主鍵（DOM code 寫法，如 `KeyD`、`F5`、`Comma`）→ 內部 VK。
+/// 字母、數字、F 鍵、方向鍵等沿用按住說話的對映，再補上標點和小鍵盤。
 fn vk_for_combo_key(code: &str) -> Option<u32> {
     if let Some(vk) = vk_for_ptt_code(code) {
         return Some(vk);
@@ -349,7 +349,7 @@ fn vk_for_combo_key(code: &str) -> Option<u32> {
     Some(vk)
 }
 
-/// 换一套交给 event tap 的组合键（每次重新注册全局快捷键时调用，空表 = 不接任何组合）。
+/// 換一套交給 event tap 的組合鍵（每次重新註冊全域性快捷鍵時呼叫，空表 = 不接任何組合）。
 pub(crate) fn set_tap_combos(combos: Vec<TapCombo>) {
     if let Ok(mut current) = TAP_COMBOS.lock() {
         *current = combos;
@@ -357,7 +357,7 @@ pub(crate) fn set_tap_combos(combos: Vec<TapCombo>) {
     TAP_COMBO_HELD_VK.store(0, Ordering::SeqCst);
 }
 
-/// 主键按下时，修饰键必须和登记的完全一致：多按了 ⌘ 或少按了 ⇧ 都不算。
+/// 主鍵按下時，修飾鍵必須和登記的完全一致：多按了 ⌘ 或少按了 ⇧ 都不算。
 fn match_tap_combo(combos: &[TapCombo], vk: u32, flags: CGEventFlags) -> Option<TapComboAction> {
     let pressed = flags & COMBO_MODIFIER_MASK;
     combos
@@ -366,7 +366,7 @@ fn match_tap_combo(combos: &[TapCombo], vk: u32, flags: CGEventFlags) -> Option<
         .map(|combo| combo.action.clone())
 }
 
-/// 一次非修饰键事件是不是登记的组合键。返回 true = 吞掉。
+/// 一次非修飾鍵事件是不是登記的組合鍵。返回 true = 吞掉。
 fn handle_tap_combo(vk: u32, is_kdown: bool, is_kup: bool, flags: CGEventFlags) -> bool {
     if is_kup {
         return TAP_COMBO_HELD_VK
@@ -381,8 +381,8 @@ fn handle_tap_combo(vk: u32, is_kdown: bool, is_kup: bool, flags: CGEventFlags) 
         _ => None,
     };
     let Some(action) = action else {
-        // 同一个键这次不带组合的修饰键：说明错过了上次的抬起（比如 tap 刚好被系统停用），
-        // 把「按住中」清掉，免得这个键接下来的正常按键被当成自动重复吞掉
+        // 同一個鍵這次不帶組合的修飾鍵：說明錯過了上次的抬起（比如 tap 剛好被系統停用），
+        // 把「按住中」清掉，免得這個鍵接下來的正常按鍵被當成自動重複吞掉
         let _ = TAP_COMBO_HELD_VK.compare_exchange(vk, 0, Ordering::SeqCst, Ordering::SeqCst);
         return false;
     };
@@ -398,7 +398,7 @@ fn handle_tap_combo(vk: u32, is_kdown: bool, is_kup: bool, flags: CGEventFlags) 
     true
 }
 
-// ─── 回调 ───
+// ─── 回撥 ───
 
 unsafe extern "C" fn tap_callback(
     _proxy: CGEventTapProxy,
@@ -430,7 +430,7 @@ unsafe extern "C" fn tap_callback(
     if event.is_null() {
         return event;
     }
-    // 自己 post 的事件（插字的 ⌘V）不是用户按键
+    // 自己 post 的事件（插字的 ⌘V）不是使用者按鍵
     if CGEventGetIntegerValueField(event, kCGEventSourceUserData) == SAYIT_EVENT_MARKER {
         return event;
     }
@@ -451,11 +451,11 @@ unsafe fn handle_key_event(event_type: CGEventType, event: CGEventRef) -> bool {
     let keycode = CGEventGetIntegerValueField(event, kCGKeyboardEventKeycode) as CGKeyCode;
     let flags = CGEventGetFlags(event);
     if event_type == kCGEventFlagsChanged {
-        // Caps Lock 和未知修饰键不在表里：直接放行
+        // Caps Lock 和未知修飾鍵不在表裡：直接放行
         let Some(vk) = keycodes::modifier_vk_for_keycode(keycode) else { return false };
         let down = keycodes::modifier_is_down(keycode, flags);
         process_key(vk, down, !down, true, flags);
-        // 修饰键永远放行（见文件头）
+        // 修飾鍵永遠放行（見檔案頭）
         false
     } else {
         let Some(vk) = keycodes::vk_for_keycode(keycode) else { return false };
@@ -463,10 +463,10 @@ unsafe fn handle_key_event(event_type: CGEventType, event: CGEventRef) -> bool {
     }
 }
 
-/// 一个已归一化的按键事件。返回 true = 吞掉。逻辑与 Windows 的 `low_level_keyboard_proc`
-/// 逐段对应（顺序也一样：录制捕获 → Esc → 卡片 ⌘C → PTT / 免提 / AI 开关）。
+/// 一個已歸一化的按鍵事件。返回 true = 吞掉。邏輯與 Windows 的 `low_level_keyboard_proc`
+/// 逐段對應（順序也一樣：錄製捕獲 → Esc → 卡片 ⌘C → PTT / 擴音 / AI 開關）。
 fn process_key(vk: u32, is_kdown: bool, is_kup: bool, is_modifier: bool, flags: CGEventFlags) -> bool {
-    // ── 设置页录制快捷键：先结束仍活动的 PTT，然后一律放行给 webview 去绑定 ──
+    // ── 設定頁錄製快捷鍵：先結束仍活動的 PTT，然後一律放行給 webview 去繫結 ──
     if SHORTCUT_CAPTURE.load(Ordering::SeqCst) {
         HOOK_STATE.with(|s| {
             if let Some(state) = s.borrow().as_ref() {
@@ -477,7 +477,7 @@ fn process_key(vk: u32, is_kdown: bool, is_kup: bool, is_modifier: bool, flags: 
                 state.hf_key_down.store(false, Ordering::SeqCst);
             }
         });
-        // WebKit 不给 Fn 发 DOM 事件，由这里回报（复用 mouse-shortcut-captured 通道）
+        // WebKit 不給 Fn 發 DOM 事件，由這裡回報（複用 mouse-shortcut-captured 通道）
         if vk == keycodes::VK_FN && is_kdown {
             SHORTCUT_CAPTURE.store(false, Ordering::SeqCst);
             send_action(HookAction::MouseCaptured { vk });
@@ -485,7 +485,7 @@ fn process_key(vk: u32, is_kdown: bool, is_kup: bool, is_modifier: bool, flags: 
         return false;
     }
 
-    // ── 悬浮窗不聚焦：录音中/处理中/结果卡的 Esc 在这里全局捕获 ──
+    // ── 懸浮窗不聚焦：錄音中/處理中/結果卡的 Esc 在這裡全域性捕獲 ──
     const VK_ESCAPE: u32 = 0x1B;
     if vk == VK_ESCAPE {
         if is_kdown {
@@ -505,7 +505,7 @@ fn process_key(vk: u32, is_kdown: bool, is_kup: bool, is_modifier: bool, flags: 
         }
     }
 
-    // ── 结果卡的 ⌘C（Windows 是 Ctrl+C）：只在卡片可见、且前台还是弹卡时那个程序时接管 ──
+    // ── 結果卡的 ⌘C（Windows 是 Ctrl+C）：只在卡片可見、且前台還是彈卡時那個程式時接管 ──
     const VK_C: u32 = 0x43;
     if vk == VK_C {
         if is_kdown {
@@ -524,7 +524,7 @@ fn process_key(vk: u32, is_kdown: bool, is_kup: bool, is_modifier: bool, flags: 
         }
     }
 
-    // ── 系统快捷键接不住、交给 event tap 的组合键（只带 ⌥ / ⇧，见 TAP_COMBOS）──
+    // ── 系統快捷鍵接不住、交給 event tap 的組合鍵（只帶 ⌥ / ⇧，見 TAP_COMBOS）──
     if !is_modifier && handle_tap_combo(vk, is_kdown, is_kup, flags) {
         return true;
     }
@@ -542,7 +542,7 @@ fn process_key(vk: u32, is_kdown: bool, is_kup: bool, is_modifier: bool, flags: 
             && !is_ptt_key
             && !is_hf_key;
 
-        // 单键热键必须裸按才算命中（只看 keydown；keyup 一律照常处理，否则会停不下来）
+        // 單鍵熱鍵必須裸按才算命中（只看 keydown；keyup 一律照常處理，否則會停不下來）
         let modifiers_block_down = single_key_blocked_by_modifiers(vk, flags);
 
         let should_log_hotkey_down = is_kdown
@@ -627,14 +627,14 @@ fn process_key(vk: u32, is_kdown: bool, is_kup: bool, is_modifier: bool, flags: 
     consumed && !is_modifier
 }
 
-/// 鼠标中键 / 侧键。逻辑与 Windows 的 `low_level_mouse_proc` 对应。
+/// 滑鼠中鍵 / 側鍵。邏輯與 Windows 的 `low_level_mouse_proc` 對應。
 unsafe fn handle_mouse_event(event_type: CGEventType, event: CGEventRef) -> bool {
     let button = CGEventGetIntegerValueField(event, kCGMouseEventButtonNumber);
     let Some(vk) = keycodes::vk_for_mouse_button(button) else { return false };
     let is_down = event_type == kCGEventOtherMouseDown;
     let is_up = event_type == kCGEventOtherMouseUp;
 
-    // 录制捕获：吞掉并回报，避免 webview 把侧键当「后退」导航
+    // 錄製捕獲：吞掉並回報，避免 webview 把側鍵當「後退」導航
     if SHORTCUT_CAPTURE.load(Ordering::SeqCst) {
         if is_down {
             SHORTCUT_CAPTURE.store(false, Ordering::SeqCst);
@@ -695,7 +695,7 @@ unsafe fn handle_mouse_event(event_type: CGEventType, event: CGEventRef) -> bool
     consumed
 }
 
-/// 当前 macOS 的「最后一次输入距今多少毫秒」（对应 GetLastInputInfo）。
+/// 當前 macOS 的「最後一次輸入距今多少毫秒」（對應 GetLastInputInfo）。
 #[allow(dead_code)]
 pub(super) fn last_input_age_ms() -> Option<i64> {
     let secs = unsafe { CGEventSourceSecondsSinceLastEventType(kCGEventSourceStateHIDSystemState, kCGAnyInputEventType) };
@@ -708,11 +708,11 @@ mod tests {
 
     #[test]
     fn bare_press_blocks_main_keys_with_modifiers_but_not_modifier_hotkeys() {
-        // F5 带 ⌥：放行
+        // F5 帶 ⌥：放行
         assert!(single_key_blocked_by_modifiers(0x74, kCGEventFlagMaskAlternate));
-        // F5 只带 Fn 位（功能键自带）：不算修饰
+        // F5 只帶 Fn 位（功能鍵自帶）：不算修飾
         assert!(!single_key_blocked_by_modifiers(0x74, kCGEventFlagMaskSecondaryFn));
-        // 右 ⌥ 本身是热键：不套裸按规则
+        // 右 ⌥ 本身是熱鍵：不套裸按規則
         assert!(!single_key_blocked_by_modifiers(0xA5, kCGEventFlagMaskAlternate));
     }
 
@@ -747,7 +747,7 @@ mod tests {
         for accel in ["Control+Alt+D", "CommandOrControl+Shift+D", "Command+Alt+K", "Control+F5"] {
             assert!(tap_combo_for_accelerator(accel, TapComboAction::HandsFree).is_none(), "{accel}");
         }
-        // 解析不了的、Mac 键盘上没有的、根本不是组合键的：也交回系统快捷键那边处理
+        // 解析不了的、Mac 鍵盤上沒有的、根本不是組合鍵的：也交回系統快捷鍵那邊處理
         for accel in ["Alt+Shift+Return", "Alt+F24", "Alt+", "D", "Alt+Shift+Î"] {
             assert!(tap_combo_for_accelerator(accel, TapComboAction::HandsFree).is_none(), "{accel}");
         }
@@ -758,12 +758,12 @@ mod tests {
         let combos = vec![tap_combo_for_accelerator("Alt+Shift+D", TapComboAction::HandsFree).unwrap()];
         let opt_shift = kCGEventFlagMaskAlternate | kCGEventFlagMaskShift;
         assert_eq!(match_tap_combo(&combos, 0x44, opt_shift), Some(TapComboAction::HandsFree));
-        // Caps Lock、Fn 这些标志不影响
+        // Caps Lock、Fn 這些標誌不影響
         assert_eq!(
             match_tap_combo(&combos, 0x44, opt_shift | kCGEventFlagMaskAlphaShift | kCGEventFlagMaskSecondaryFn),
             Some(TapComboAction::HandsFree)
         );
-        // 多按了 ⌘、少按了 ⇧、换了主键，都不算
+        // 多按了 ⌘、少按了 ⇧、換了主鍵，都不算
         assert_eq!(match_tap_combo(&combos, 0x44, opt_shift | kCGEventFlagMaskCommand), None);
         assert_eq!(match_tap_combo(&combos, 0x44, kCGEventFlagMaskAlternate), None);
         assert_eq!(match_tap_combo(&combos, 0x45, opt_shift), None);
@@ -782,13 +782,13 @@ mod tests {
         assert!(handle_tap_combo(0x44, true, false, opt_shift)); // 按下：触发并吞掉
         assert!(handle_tap_combo(0x44, true, false, opt_shift)); // 自动重复：吞掉，不再触发
         assert!(handle_tap_combo(0x44, false, true, opt_shift)); // 抬起：吞掉
-        assert!(!handle_tap_combo(0x44, true, false, 0)); // 单按 D：照常打字
+        assert!(!handle_tap_combo(0x44, true, false, 0)); // 單按 D：照常打字
         assert!(!handle_tap_combo(0x44, false, true, 0));
-        assert!(!handle_tap_combo(0x45, true, false, opt_shift)); // ⌥⇧E 没登记
-        assert!(handle_tap_combo(0x32, true, false, opt_shift)); // ⌥⇧2 → 切换润色模式
-        assert!(handle_tap_combo(0x32, false, true, 0)); // 先松修饰键再松 2：抬起照样吞掉
+        assert!(!handle_tap_combo(0x45, true, false, opt_shift)); // ⌥⇧E 沒登記
+        assert!(handle_tap_combo(0x32, true, false, opt_shift)); // ⌥⇧2 → 切換潤色模式
+        assert!(handle_tap_combo(0x32, false, true, 0)); // 先松修飾鍵再松 2：抬起照樣吞掉
 
-        // 错过了抬起：同一个键不带修饰键再按，就不算「按住中」了
+        // 錯過了抬起：同一個鍵不帶修飾鍵再按，就不算「按住中」了
         assert!(handle_tap_combo(0x44, true, false, opt_shift));
         assert!(!handle_tap_combo(0x44, true, false, 0));
         assert!(!handle_tap_combo(0x44, false, true, 0));

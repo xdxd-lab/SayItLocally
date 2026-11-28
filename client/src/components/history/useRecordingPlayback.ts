@@ -3,14 +3,14 @@ import { loadAudioAsObjectUrl } from '@/services/audioFileService'
 import { protectPlayingRecording, releasePlayingRecording, renewPlayingRecording } from '@/services/bridge'
 
 /**
- * 历史录音的播放状态。
+ * 歷史錄音的播放狀態。
  *
- * 这段逻辑原来内联在 HistoryRecordList 的 HistoryItem 里，因为「纠正识别」面板
- * 也要放一个一模一样的播放器才抽出来。抽的时候行为一个字没改 —— 下面那些
- * 看起来多余的写法都有来由，别顺手"简化"。
+ * 這段邏輯原來內聯在 HistoryRecordList 的 HistoryItem 裡，因為「糾正識別」面板
+ * 也要放一個一模一樣的播放器才抽出來。抽的時候行為一個字沒改 —— 下面那些
+ * 看起來多餘的寫法都有來由，別順手"簡化"。
  *
- * 同一时刻只允许播放一条录音：播新的先暂停旧的，只 pause、不重置进度，
- * 所以之后可以从原位置续播；被暂停那条会触发它自己的 onpause，按钮状态随之复位。
+ * 同一時刻只允許播放一條錄音：播新的先暫停舊的，只 pause、不重置進度，
+ * 所以之後可以從原位置續播；被暫停那條會觸發它自己的 onpause，按鈕狀態隨之復位。
  */
 let activeHistoryAudio: HTMLAudioElement | null = null
 function claimHistoryPlayback(audio: HTMLAudioElement) {
@@ -33,7 +33,7 @@ export function formatElapsed(value: number): string {
 export interface RecordingPlayback {
   playing: boolean
   loading: boolean
-  /** 元数据已就绪（能拿到总时长），进度条才有意义 */
+  /** 後設資料已就緒（能拿到總時長），進度條才有意義 */
   ready: boolean
   currentTime: number
   duration: number
@@ -46,10 +46,10 @@ export interface RecordingPlayback {
 }
 
 /**
- * @param initialDurationSec 先用历史记录里存的时长把总长显示出来。
- *   真实时长要等 `onloadedmetadata`，而那要先把整份 WAV 读出来（五分钟录音约 13MB 的
- *   base64），只为显示"总共多长"不值得。没有它的话，用户点播放之前看到的是
- *   `00:00 / 00:00`，像坏了。元数据到了会覆盖成精确值。
+ * @param initialDurationSec 先用歷史記錄裡存的時長把總長顯示出來。
+ *   真即時長要等 `onloadedmetadata`，而那要先把整份 WAV 讀出來（五分鐘錄音約 13MB 的
+ *   base64），只為顯示"總共多長"不值得。沒有它的話，使用者點播放之前看到的是
+ *   `00:00 / 00:00`，像壞了。後設資料到了會覆蓋成精確值。
  */
 export function useRecordingPlayback(audioFilePath?: string, initialDurationSec = 0): RecordingPlayback {
   const [playing, setPlaying] = useState(false)
@@ -79,7 +79,7 @@ export function useRecordingPlayback(audioFilePath?: string, initialDurationSec 
     return () => clearInterval(timer)
   }, [playing])
 
-  // 卸载时收摊：不 revoke 会攒一堆 blob URL
+  // 解除安裝時收攤：不 revoke 會攢一堆 blob URL
   useEffect(() => {
     return () => {
       releaseLease()
@@ -96,7 +96,7 @@ export function useRecordingPlayback(audioFilePath?: string, initialDurationSec 
     }
   }, [releaseLease])
 
-  // 用 requestAnimationFrame 推进度，比 timeupdate 平滑
+  // 用 requestAnimationFrame 推進度，比 timeupdate 平滑
   useEffect(() => {
     function tick() {
       if (audioRef.current) {
@@ -128,7 +128,7 @@ export function useRecordingPlayback(audioFilePath?: string, initialDurationSec 
     try {
       await lease
       if (leaseRef.current !== lease) return
-      // 已经加载过：续播
+      // 已經載入過：續播
       if (audioRef.current && audioUrlRef.current) {
         audioRef.current.playbackRate = playbackRate
         await audioRef.current.play()
@@ -151,8 +151,8 @@ export function useRecordingPlayback(audioFilePath?: string, initialDurationSec 
         setDuration(audio.duration)
         setReady(true)
       }
-      // 原生 timeupdate 兜底：远程桌面 / 窗口失焦时 requestAnimationFrame 会被降频甚至暂停，
-      // 导致进度条卡住。timeupdate 是媒体事件，不受 rAF 节流影响，保证进度稳定推进。
+      // 原生 timeupdate 兜底：遠端桌面 / 視窗失焦時 requestAnimationFrame 會被降頻甚至暫停，
+      // 導致進度條卡住。timeupdate 是媒體事件，不受 rAF 節流影響，保證進度穩定推進。
       audio.ontimeupdate = () => setCurrentTime(audio.currentTime)
       audio.onended = () => {
         releaseLease()

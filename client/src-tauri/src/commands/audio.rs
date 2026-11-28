@@ -66,7 +66,7 @@ fn audio_dir() -> PathBuf {
     super::app_data_dir().join("audio")
 }
 
-/// id 会拼进文件名，带 `..\` 就能写到录音目录外面去。
+/// id 會拼進檔名，帶 `..\` 就能寫到錄音目錄外面去。
 fn check_record_id(id: &str) -> Result<(), String> {
     if crate::path_guard::is_record_id(id) {
         Ok(())
@@ -75,8 +75,8 @@ fn check_record_id(id: &str) -> Result<(), String> {
     }
 }
 
-/// 读、删、判存在只认录音目录里的 .wav。历史记录里的路径会被导入的备份改写，
-/// 不能当成可信输入（见 backup.rs 的 rewrite_audio_path）。
+/// 讀、刪、判存在只認錄音目錄裡的 .wav。歷史記錄裡的路徑會被匯入的備份改寫，
+/// 不能當成可信輸入（見 backup.rs 的 rewrite_audio_path）。
 fn audio_file_in_dir(file_path: &str) -> Option<PathBuf> {
     let path = PathBuf::from(file_path);
     if !crate::path_guard::has_extension(&path, &["wav"]) {
@@ -101,8 +101,8 @@ pub async fn save_audio_file(id: String, wav_base64: String) -> Result<String, S
     }).await.map_err(|e| e.to_string())?
 }
 
-/// 接收 PCM Int16 LE 原始数据（base64），在 Rust 侧编码 WAV header 并写入文件。
-/// 避免前端拼 WAV + base64 编码的开销。
+/// 接收 PCM Int16 LE 原始資料（base64），在 Rust 側編碼 WAV header 並寫入檔案。
+/// 避免前端拼 WAV + base64 編碼的開銷。
 #[tauri::command]
 pub async fn save_pcm_as_wav(id: String, pcm_base64: String, sample_rate: Option<u32>, app: tauri::AppHandle) -> Result<String, String> {
     use tauri::Manager;
@@ -119,7 +119,7 @@ pub struct SavePcmMeta {
     sample_rate: Option<u32>,
 }
 
-/// 同 save_pcm_as_wav，但 PCM 以原始字节发过来（见 ipc_body）。录完每次都走这里。
+/// 同 save_pcm_as_wav，但 PCM 以原始位元組發過來（見 ipc_body）。錄完每次都走這裡。
 #[tauri::command]
 pub async fn save_pcm_as_wav_raw(request: tauri::ipc::Request<'_>, app: tauri::AppHandle) -> Result<String, String> {
     use tauri::Manager;
@@ -168,17 +168,17 @@ fn write_pcm_wav(id: &str, pcm: &[u8], sample_rate: Option<u32>, storage: &crate
     Ok(path.to_string_lossy().to_string())
 }
 
-/// 录音文件还在不在。
+/// 錄音檔案還在不在。
 ///
-/// 单独一个命令而不是复用 `read_audio_file`：后者会把整份 WAV 读出来再 base64
-/// （五分钟录音约 13MB 的字符串），只为判断"文件存不存在"的话代价太大 ——
-/// 历史列表里每条记录都要判一次。
+/// 單獨一個命令而不是複用 `read_audio_file`：後者會把整份 WAV 讀出來再 base64
+/// （五分鐘錄音約 13MB 的字串），只為判斷"檔案存不存在"的話代價太大 ——
+/// 歷史列表裡每條記錄都要判一次。
 #[tauri::command]
 pub fn audio_file_exists(file_path: String) -> bool {
     audio_file_in_dir(&file_path).is_some()
 }
 
-/// 目录外的路径按"文件不在"处理，与原来文件缺失时的表现一致，界面显示"录音已不存在"。
+/// 目錄外的路徑按"檔案不在"處理，與原來檔案缺失時的表現一致，介面顯示"錄音已不存在"。
 #[tauri::command]
 pub async fn read_audio_file(file_path: String) -> Result<Option<String>, String> {
     tokio::task::spawn_blocking(move || {
@@ -191,9 +191,9 @@ pub async fn read_audio_file(file_path: String) -> Result<Option<String>, String
     }).await.map_err(|e| e.to_string())?
 }
 
-/// 同 read_audio_file，但直接返回字节（前端拿到 ArrayBuffer），不转 base64。
-/// 五分钟录音转 base64 是 13 MB 的字符串，前端还要再解一遍；点播放、重新识别、提交纠错都走这里。
-/// 文件不在 / 不在录音目录里时返回空字节。
+/// 同 read_audio_file，但直接返回位元組（前端拿到 ArrayBuffer），不轉 base64。
+/// 五分鐘錄音轉 base64 是 13 MB 的字串，前端還要再解一遍；點播放、重新識別、提交糾錯都走這裡。
+/// 檔案不在 / 不在錄音目錄裡時返回空位元組。
 #[tauri::command]
 pub async fn read_audio_file_bytes(file_path: String) -> Result<tauri::ipc::Response, String> {
     tokio::task::spawn_blocking(move || {
@@ -206,7 +206,7 @@ pub async fn read_audio_file_bytes(file_path: String) -> Result<tauri::ipc::Resp
     }).await.map_err(|e| e.to_string())?
 }
 
-/// 把一条录音复制到「下载」文件夹。原来是前端读成 base64、再整份发回 Rust 写文件。
+/// 把一條錄音複製到「下載」資料夾。原來是前端讀成 base64、再整份發回 Rust 寫檔案。
 #[tauri::command]
 pub async fn save_recording_to_downloads(file_path: String, filename: String) -> Result<String, String> {
     tokio::task::spawn_blocking(move || {
@@ -224,7 +224,7 @@ pub async fn save_recording_to_downloads(file_path: String, filename: String) ->
     }).await.map_err(|e| e.to_string())?
 }
 
-/// 目录外的路径静默忽略：删除是清理动作，删不到别人的文件就是正确结果。
+/// 目錄外的路徑靜默忽略：刪除是清理動作，刪不到別人的檔案就是正確結果。
 #[tauri::command]
 pub async fn delete_audio_file(file_path: String) -> Result<(), String> {
     // [自訂] S71：個別刪除也等備份或讀取完成，避免打包中途少了錄音。

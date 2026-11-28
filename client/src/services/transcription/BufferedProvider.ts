@@ -1,7 +1,7 @@
 /**
- * 缓冲式 Provider 基类
- * CloudAPIProvider 和 LocalProvider 共享的 PCM 缓冲、合并、生命周期逻辑。
- * 子类只需实现 onConnect() 和 processAudio()。
+ * 緩衝式 Provider 基類
+ * CloudAPIProvider 和 LocalProvider 共享的 PCM 緩衝、合併、生命週期邏輯。
+ * 子類只需實現 onConnect() 和 processAudio()。
  */
 
 import { addRuntimeEvent } from '../debugLog'
@@ -24,11 +24,11 @@ export abstract class BufferedProvider implements TranscriptionProvider {
   protected activeRunId = 0
 
   /**
-   * 子类可覆盖，用于连接时的额外初始化（如预加载模型）。
+   * 子類可覆蓋，用於連線時的額外初始化（如預載入模型）。
    *
-   * **返回 false 表示"连上了但用不了"**，此时 isReady() 会是 false，
-   * RecorderOrchestrator 那道前置拦截就会挡住录音并给出提示。
-   * 返回 void / true 视为就绪（CloudAPIProvider 等不关心的子类无需改动）。
+   * **返回 false 表示"連上了但用不了"**，此時 isReady() 會是 false，
+   * RecorderOrchestrator 那道前置攔截就會擋住錄音並給出提示。
+   * 返回 void / true 視為就緒（CloudAPIProvider 等不關心的子類無需改動）。
    */
   protected async onConnect(_callbacks: TranscriptionCallbacks): Promise<void | boolean> { }
 
@@ -36,8 +36,8 @@ export abstract class BufferedProvider implements TranscriptionProvider {
     this.callbacks = callbacks
     this.ready = true
     callbacks.onStateChange?.('connected')
-    // 以前这里只是 await，子类无从否决 —— 于是本地模式把模型全删了 isReady() 仍为 true，
-    // 按快捷键照样开录、录完才在识别阶段报错（而设置页写着"按下快捷键不会有反应"）。
+    // 以前這裡只是 await，子類無從否決 —— 於是本地模式把模型全刪了 isReady() 仍為 true，
+    // 按快捷鍵照樣開錄、錄完才在識別階段報錯（而設定頁寫著"按下快捷鍵不會有反應"）。
     const usable = await this.onConnect(callbacks)
     if (usable === false) {
       this.ready = false
@@ -87,12 +87,12 @@ export abstract class BufferedProvider implements TranscriptionProvider {
     return this.ready
   }
 
-  // ─── 子类实现 ───
+  // ─── 子類實現 ───
 
   /**
-   * 处理合并后的音频数据。
-   * @param pcm 16 kHz Int16 LE 的原始 PCM 字节（直接走二进制 IPC，不转 base64）
-   * @param durationSec 音频时长（秒）
+   * 處理合併後的音訊資料。
+   * @param pcm 16 kHz Int16 LE 的原始 PCM 位元組（直接走二進位制 IPC，不轉 base64）
+   * @param durationSec 音訊時長（秒）
    */
   protected abstract processAudio(pcm: Uint8Array, durationSec: number, runId: number): Promise<void>
 
@@ -100,7 +100,7 @@ export abstract class BufferedProvider implements TranscriptionProvider {
     return runId !== 0 && this.activeRunId === runId
   }
 
-  // ─── 内部逻辑 ───
+  // ─── 內部邏輯 ───
 
   private async runProcessAudio(runId: number): Promise<void> {
     try {

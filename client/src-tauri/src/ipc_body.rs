@@ -1,13 +1,13 @@
-//! 二进制 IPC 请求体：`[4 字节小端 JSON 长度][JSON 参数][原始字节]`。
+//! 二進位制 IPC 請求體：`[4 位元組小端 JSON 長度][JSON 引數][原始位元組]`。
 //!
-//! 音频原来在网页里先转 base64、再塞进 JSON 发过来。网页里那个转码是逐字节拼字符串，
-//! 2 分钟录音要约 0.4 秒、5 分钟约 0.7 秒，而且跑在主窗主线程上（2026-10 实测），
-//! 本地 / 云 API 模式录完还要转两次（存档一次、识别一次）。改成直接发原始字节后，
-//! 这一段几乎为零。参数里可能有中文热词、几 KB 长，放请求头不合适，所以和音频拼在同一个请求体里。
+//! 音訊原來在網頁裡先轉 base64、再塞進 JSON 發過來。網頁裡那個轉碼是逐位元組拼字串，
+//! 2 分鐘錄音要約 0.4 秒、5 分鐘約 0.7 秒，而且跑在主窗主執行緒上（2026-10 實測），
+//! 本地 / 雲 API 模式錄完還要轉兩次（存檔一次、識別一次）。改成直接發原始位元組後，
+//! 這一段幾乎為零。引數裡可能有中文熱詞、幾 KB 長，放請求頭不合適，所以和音訊拼在同一個請求體裡。
 
 use serde::de::DeserializeOwned;
 
-/// 从 Tauri 的原始请求体里拆出参数和载荷。
+/// 從 Tauri 的原始請求體裡拆出引數和載荷。
 pub fn split_framed<T: DeserializeOwned>(request: &tauri::ipc::Request<'_>) -> Result<(T, Vec<u8>), String> {
     let tauri::ipc::InvokeBody::Raw(body) = request.body() else {
         return Err("Expected a binary request body".to_string());
@@ -60,7 +60,7 @@ mod tests {
     fn rejects_truncated_or_lying_headers() {
         assert!(split_framed_bytes::<Value>(&[1, 0]).is_err());
         let mut body = frame(&json!({}), &[]);
-        body[0] = 200; // 声称 JSON 有 200 字节
+        body[0] = 200; // 聲稱 JSON 有 200 位元組
         assert!(split_framed_bytes::<Value>(&body).is_err());
     }
 }

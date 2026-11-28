@@ -6,7 +6,7 @@ interface TooltipProps {
   children: ReactNode
   className?: string
   forceVisible?: boolean
-  /** 'dark'（默认，短标签）| 'light'（浅色卡片，适合较长说明文字） */
+  /** 'dark'（預設，短標籤）| 'light'（淺色卡片，適合較長說明文字） */
   variant?: 'dark' | 'light'
 }
 
@@ -40,7 +40,7 @@ export function Tooltip({ content, children, className, forceVisible, variant = 
   const onLeave = useCallback(() => setHovered(false), [])
   const onDown = useCallback(() => setHovered(false), [])
 
-  // 安全兜底：如果鼠标已经离开但状态没更新，定时检查
+  // 安全兜底：如果滑鼠已經離開但狀態沒更新，定時檢查
   useLayoutEffect(() => {
     if (!hovered || !triggerRef.current) return
     const check = setInterval(() => {

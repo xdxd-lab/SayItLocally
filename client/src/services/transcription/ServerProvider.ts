@@ -1,4 +1,4 @@
-// 服务器模式 Provider：服务器负责 ASR，AI 可由服务器或客户端自定义供应商完成。
+// 伺服器模式 Provider：伺服器負責 ASR，AI 可由伺服器或客戶端自定義供應商完成。
 
 import { getSetting } from '../store'
 import { addRuntimeEvent } from '../debugLog'
@@ -25,12 +25,12 @@ import type {
 } from './types'
 
 /**
- * 攒够这么多字节才发一个 WebSocket 包：16 kHz、16 bit 单声道下正好 200 ms。
+ * 攢夠這麼多位元組才發一個 WebSocket 包：16 kHz、16 bit 單聲道下正好 200 ms。
  *
- * 采集端每 8 ms 左右给一帧（AudioWorklet 一个渲染块），原来收到就发，每秒 125 个
- * 256 字节的小包，回落路径更碎（每秒约 375 个 85 字节）。服务端松键之前只是把音频攒着，
- * 没有流式结果，所以合批不影响识别结果和速度；云 API 模式一直就是 200 ms 一批。
- * 松键时剩下的不足 200 ms 一定在 stop 之前发掉（见 flushAudio）。
+ * 採集端每 8 ms 左右給一幀（AudioWorklet 一個渲染塊），原來收到就發，每秒 125 個
+ * 256 位元組的小包，回落路徑更碎（每秒約 375 個 85 位元組）。服務端松鍵之前只是把音訊攢著，
+ * 沒有流式結果，所以合批不影響識別結果和速度；雲 API 模式一直就是 200 ms 一批。
+ * 松鍵時剩下的不足 200 ms 一定在 stop 之前發掉（見 flushAudio）。
  */
 const SEND_BATCH_BYTES = 6400
 
@@ -44,7 +44,7 @@ export class ServerProvider implements TranscriptionProvider {
   private customAiReady = false
   private customFinalPending = false
   private serverDonePending = false
-  /** 松键时随 stop 传入的本次策略；与线上那个 disable_ai 布尔同出一源。 */
+  /** 松鍵時隨 stop 傳入的本次策略；與線上那個 disable_ai 布林同出一源。 */
   private activePolicy: AiPolicy | undefined
   private activeConnectionId: string | undefined
   private pendingAudio: ArrayBuffer[] = []
@@ -69,11 +69,11 @@ export class ServerProvider implements TranscriptionProvider {
     await ws.connect({
       onStateChange: (state) => {
         callbacks.onStateChange?.(state)
-        // 连接在一次录音进行中掉了：必须当场报出去。
+        // 連線在一次錄音進行中掉了：必須當場報出去。
         //
-        // 以前这里只是转发状态、没人处理，于是录音继续跑（音频被 sendAudio 静静丢掉），
-        // 停止时 sendStop 也发不出去，录音器照旧进入 45 秒超时等待 —— 用户看着悬浮条转
-        // 一分钟，最后什么提示都没有。实测 2026-09-07 两段长录音都是这么没的。
+        // 以前這裡只是轉發狀態、沒人處理，於是錄音繼續跑（音訊被 sendAudio 靜靜丟掉），
+        // 停止時 sendStop 也發不出去，錄音器照舊進入 45 秒超時等待 —— 使用者看著懸浮條轉
+        // 一分鐘，最後什麼提示都沒有。實測 2026-09-07 兩段長錄音都是這麼沒的。
         if (state !== 'disconnected' && state !== 'error') return
         const runId = this.activeRunId
         if (runId === 0) return
@@ -85,13 +85,13 @@ export class ServerProvider implements TranscriptionProvider {
         callbacks.onError?.(MID_SESSION_DISCONNECT_ERROR)
       },
       onReady: (data) => {
-        // 留着服务端连接标识：ai.outcome 带上它，才能把客户端日志和服务器日志
-        // （每行有 cid=/sid=）直接对起来，不必再靠时间戳手工对齐。
+        // 留著服務端連線標識：ai.outcome 帶上它，才能把客戶端日誌和伺服器日誌
+        // （每行有 cid=/sid=）直接對起來，不必再靠時間戳手工對齊。
         this.activeConnectionId = data.connectionId
         callbacks.onReady?.({
           connectionId: data.connectionId,
           asr: data.asr,
-          // 自定义 AI 在本机执行；服务端 llm=false 不应把整条模式标成不可用。
+          // 自定義 AI 在本機執行；服務端 llm=false 不應把整條模式標成不可用。
           llm: this.aiSource === 'custom' ? this.customAiReady : data.llm,
         })
       },
@@ -102,7 +102,7 @@ export class ServerProvider implements TranscriptionProvider {
           text: result.text,
           asrMs: result.asrMs,
           durationSec: result.durationSec,
-          // 空识别不会执行任何 AI；它会在录音器的专用空结果分支先于 final 落库。
+          // 空識別不會執行任何 AI；它會在錄音器的專用空結果分支先於 final 落庫。
           aiSource: isEmpty ? 'none' : undefined,
           aiStatus: isEmpty ? 'skipped' : undefined,
         })
@@ -116,9 +116,9 @@ export class ServerProvider implements TranscriptionProvider {
           return
         }
 
-        // 服务器内置 AI 路线。此前这里按 `llmMs > 0` 反推成功失败 —— 服务端异常时
-        // 返回原文 + 0ms，于是"调用失败"被误记成"不可用"，两者在界面和日志里长得一样。
-        // 现在用服务端回传的证据判断（error / provider），耗时只作辅助。
+        // 伺服器內建 AI 路線。此前這裡按 `llmMs > 0` 反推成功失敗 —— 服務端異常時
+        // 返回原文 + 0ms，於是"呼叫失敗"被誤記成"不可用"，兩者在介面和日誌里長得一樣。
+        // 現在用服務端回傳的證據判斷（error / provider），耗時只作輔助。
         const policy = this.resolvePolicy(result.durationSec)
         const outcome = resolveAndLogAiOutcome(this.outcomeContext(), policy, {
           asrTextEmpty: !result.asrText.trim(),
@@ -128,8 +128,8 @@ export class ServerProvider implements TranscriptionProvider {
         })
         callbacks.onFinal?.({
           asrText: result.asrText,
-          // 仍原样转发服务端的 llm_text：跳过/失败时服务端本来就回原文，而选区编辑的
-          // 安全回退由录音器按 contextApplied 处理。这里改写它会动到那条路径。
+          // 仍原樣轉發服務端的 llm_text：跳過/失敗時服務端本來就回原文，而選區編輯的
+          // 安全回退由錄音器按 contextApplied 處理。這裡改寫它會動到那條路徑。
           llmText: result.llmText,
           asrMs: result.asrMs,
           llmMs: result.llmMs,
@@ -146,7 +146,7 @@ export class ServerProvider implements TranscriptionProvider {
         const runId = this.activeRunId
         if (runId === 0) return
         if (this.customFinalPending) {
-          // 服务端 final 后会立刻发 done；客户端 AI 尚未完成时必须暂存，避免录音器先收尾。
+          // 服務端 final 後會立刻發 done；客戶端 AI 尚未完成時必須暫存，避免錄音器先收尾。
           this.serverDonePending = true
           return
         }
@@ -162,7 +162,7 @@ export class ServerProvider implements TranscriptionProvider {
   }
 
   start(opts: StartOptions): boolean {
-    // 选区模型只覆盖本次录音；普通录音沿用开始时冻结的来源或当前运行时设置。
+    // 選區模型只覆蓋本次錄音；普通錄音沿用開始時凍結的來源或當前執行時設定。
     this.aiSource = opts.aiConfig?.selectionAiOverride
       ? 'custom'
       : opts.aiConfig?.serverAiSource ?? getRuntimeServerAiSource()
@@ -179,7 +179,7 @@ export class ServerProvider implements TranscriptionProvider {
     const wireOptions = this.aiSource === 'custom'
       ? {
         ...opts,
-        // 自定义 AI 由本机调用：服务端只做 ASR，也不需要收到 Prompt 或编辑器正文。
+        // 自定義 AI 由本機呼叫：服務端只做 ASR，也不需要收到 Prompt 或編輯器正文。
         disableAi: true,
         selectionAiConfig: undefined,
         systemPrompt: undefined,
@@ -227,17 +227,17 @@ export class ServerProvider implements TranscriptionProvider {
   }
 
   stop(opts?: StopOptions): boolean {
-    // 留住完整策略，别再把它压成 activeStartOpts.disableAi —— 那样一来"路由是自配"
-    // 和"低于门槛"就都变成同一个布尔，结束时再也分不出这次为什么没整理。
+    // 留住完整策略，別再把它壓成 activeStartOpts.disableAi —— 那樣一來"路由是自配"
+    // 和"低於門檻"就都變成同一個布林，結束時再也分不出這次為什麼沒整理。
     if (opts?.aiPolicy) this.activePolicy = opts.aiPolicy
-    // 尾巴必须先于 stop 发出：服务端收到 stop 就开始识别，之后到的音频不算数。
+    // 尾巴必須先於 stop 發出：服務端收到 stop 就開始識別，之後到的音訊不算數。
     this.flushAudio()
     return ws.sendStop(this.aiSource === 'custom' ? { ...opts, disableAi: true } : opts)
   }
 
   /**
-   * 取本次策略。正常路径由 stop 传入；缺失时（理论上不该发生）用 start 冻结的配置
-   * 快照就地重算一份，仍然走同一个判据函数，绝不退回旧的布尔推断。
+   * 取本次策略。正常路徑由 stop 傳入；缺失時（理論上不該發生）用 start 凍結的配置
+   * 快照就地重算一份，仍然走同一個判據函式，絕不退回舊的布林推斷。
    */
   private resolvePolicy(durationSec: number): AiPolicy {
     if (this.activePolicy) return this.activePolicy
@@ -273,8 +273,8 @@ export class ServerProvider implements TranscriptionProvider {
 
   private async handleCustomFinal(runId: number, result: FinalResult): Promise<void> {
     const startOptions = this.activeStartOpts
-    // 自配路线：服务端的 final 只代表识别完成，整次整理还没结束，最终状态必须取
-    // 客户端润色的结果，不能被服务端的 llm_ms=0 覆盖。
+    // 自配路線：服務端的 final 只代表識別完成，整次整理還沒結束，最終狀態必須取
+    // 客戶端潤色的結果，不能被服務端的 llm_ms=0 覆蓋。
     const polished = await polishWithClientAi({
       asrText: result.asrText,
       startOptions,

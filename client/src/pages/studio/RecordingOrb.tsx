@@ -21,7 +21,7 @@ function formatElapsed(value: number) {
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
 }
 
-/** 生成有机 blob 路径（类似图片中的不规则圆形） */
+/** 生成有機 blob 路徑（類似圖片中的不規則圓形） */
 function blobPath(cx: number, cy: number, r: number, time: number, intensity: number): string {
   const points = 7
   const coords: [number, number][] = []
@@ -33,7 +33,7 @@ function blobPath(cx: number, cy: number, r: number, time: number, intensity: nu
     const radius = r * (1 + noise)
     coords.push([cx + Math.cos(angle) * radius, cy + Math.sin(angle) * radius])
   }
-  // 平滑闭合曲线
+  // 平滑閉合曲線
   let d = `M ${coords[0][0]} ${coords[0][1]}`
   for (let i = 0; i < coords.length; i++) {
     const curr = coords[i]
@@ -80,7 +80,7 @@ export default function RecordingOrb({
     const animate = (ts: number) => {
       if (lastTs) timeRef.current += (ts - lastTs) / 1000
       lastTs = ts
-      // 根据音量计算强度
+      // 根據音量計算強度
       const avgBar = bars.length > 0 ? bars.reduce((a, b) => a + b, 0) / bars.length : 3
       const intensity = Math.min(1, avgBar / 15)
 
@@ -96,13 +96,13 @@ export default function RecordingOrb({
     return () => cancelAnimationFrame(rafRef.current)
   }, [isRecording, bars])
 
-  // 柱状条参数
+  // 柱狀條引數
   const displayBars = isRecording && bars.length > 0 ? bars : []
   const barCount = Math.min(displayBars.length, 32)
 
   return (
     <div className="flex flex-col items-center">
-      {/* 录音按钮区域 */}
+      {/* 錄音按鈕區域 */}
       <button
         type="button"
         onClick={handleClick}
@@ -114,7 +114,7 @@ export default function RecordingOrb({
         )}
         aria-label={t(isRecording ? 'studio.stopRecording' : isBusy ? 'studio.processing' : 'studio.startRecording')}
       >
-        {/* Blob SVG 背景（录音中） */}
+        {/* Blob SVG 背景（錄音中） */}
         {isRecording && (
           <svg
             viewBox="0 0 240 240"
@@ -133,7 +133,7 @@ export default function RecordingOrb({
           </svg>
         )}
 
-        {/* 主圆形 */}
+        {/* 主圓形 */}
         <div className={cn(
           'absolute inset-0 rounded-full border-2 transition-all duration-300',
           isIdle && 'border-border bg-card shadow-sm group-hover:border-primary/40 group-hover:shadow-md',
@@ -152,7 +152,7 @@ export default function RecordingOrb({
 
             {isRecording && (
               <>
-                {/* 音频柱状条 */}
+                {/* 音訊柱狀條 */}
                 <div className="flex items-center justify-center gap-[2px]" style={{ height: 48 }}>
                   {Array.from({ length: barCount }, (_, i) => {
                     const h = Math.min(44, Math.max(3, displayBars[i] || 3))
@@ -169,7 +169,7 @@ export default function RecordingOrb({
                     )
                   })}
                 </div>
-                {/* 计时 */}
+                {/* 計時 */}
                 <div className="mt-2 text-lg font-semibold tabular-nums tracking-wider text-foreground">
                   {formatElapsed(elapsed)}
                 </div>

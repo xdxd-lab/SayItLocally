@@ -1,30 +1,30 @@
 import { useLayoutEffect, useRef, type RefObject } from 'react'
 
 /**
- * 胶囊在状态之间"变形"而不是硬切（录音 → 处理中 → 提示）。
+ * 膠囊在狀態之間"變形"而不是硬切（錄音 → 處理中 → 提示）。
  *
- * 以前胶囊宽度跟着内容瞬间跳变：波形条一收、换成"处理中"，整颗胶囊一帧之内
- * 缩掉三分之一，看着像换了个窗口。现在做两件事：
- *   1. 宽度从旧值弹簧过渡到新值（WAAPI 动 width）；
- *   2. 新内容从轻微模糊里浮出来（CSS 类 overlay-pill-content-enter）。
+ * 以前膠囊寬度跟著內容瞬間跳變：波形條一收、換成"處理中"，整顆膠囊一幀之內
+ * 縮掉三分之一，看著像換了個視窗。現在做兩件事：
+ *   1. 寬度從舊值彈簧過渡到新值（WAAPI 動 width）；
+ *   2. 新內容從輕微模糊裡浮出來（CSS 類 overlay-pill-content-enter）。
  *
- * 为什么直接动 width 而不是 transform/clip-path：胶囊是 overflow:hidden 的圆角
- * 容器，scaleX 会把圆角和文字一起压扁；clip-path 方案要让底色比胶囊更宽，就得把
- * overflow:hidden 挪走，而它正是"文字再长也不撑破圆角"的那道保护。这个元素只有
- * 几十个节点、独占一个窗口，逐帧布局的代价可以忽略。
+ * 為什麼直接動 width 而不是 transform/clip-path：膠囊是 overflow:hidden 的圓角
+ * 容器，scaleX 會把圓角和文字一起壓扁；clip-path 方案要讓底色比膠囊更寬，就得把
+ * overflow:hidden 挪走，而它正是"文字再長也不撐破圓角"的那道保護。這個元素只有
+ * 幾十個節點、獨佔一個視窗，逐幀佈局的代價可以忽略。
  *
- * 只在**同一次显示**之内变形：换了 presentationId 说明窗口刚被重新弹出，
- * 那时胶囊有自己的入场动画（overlay-pill-surface-enter），再叠一层宽度动画就乱了。
- * 录音的 waiting → listening 共用一个 key，它们之间的展开由 clip-path 负责
- * （见 index.css 的 overlay-pill-recording-*），这里不插手。
+ * 只在**同一次顯示**之內變形：換了 presentationId 說明視窗剛被重新彈出，
+ * 那時膠囊有自己的入場動畫（overlay-pill-surface-enter），再疊一層寬度動畫就亂了。
+ * 錄音的 waiting → listening 共用一個 key，它們之間的展開由 clip-path 負責
+ * （見 index.css 的 overlay-pill-recording-*），這裡不插手。
  */
 
-// 阻尼比 0.76 的弹簧采样（约 2.5% 过冲，500ms 内收敛）。生成方式：
+// 阻尼比 0.76 的彈簧取樣（約 2.5% 過沖，500ms 內收斂）。生成方式：
 // x(t) = 1 - e^(-ζωt)(cos(ω_d t) + ζω/ω_d · sin(ω_d t))，ω = 6/(ζ·0.5s)，取 31 个点。
 const SPRING_EASING =
   'linear(0, 0.03, 0.106, 0.207, 0.32, 0.434, 0.543, 0.642, 0.728, 0.802, 0.862, 0.91, 0.948, 0.976, 0.996, 1.01, 1.019, 1.023, 1.025, 1.025, 1.024, 1.021, 1.018, 1.015, 1.013, 1.01, 1.008, 1.006, 1.004, 1.003, 1)'
 const SPRING_DURATION_MS = 500
-// 不认识 linear() 的旧内核（WebView2 < 113、Safari < 17.2）退回同样快收敛、无过冲的曲线。
+// 不認識 linear() 的舊核心（WebView2 < 113、Safari < 17.2）退回同樣快收斂、無過沖的曲線。
 const FALLBACK_EASING = 'cubic-bezier(0.16, 1, 0.3, 1)'
 const FALLBACK_DURATION_MS = 360
 
@@ -44,17 +44,17 @@ function animateWidth(el: HTMLElement, from: number, to: number): Animation | nu
   try {
     return el.animate(keyframes, { duration: SPRING_DURATION_MS, easing: SPRING_EASING })
   } catch {
-    // linear() 不被支持时 animate 会直接抛 TypeError，而不是静默忽略。
+    // linear() 不被支援時 animate 會直接拋 TypeError，而不是靜默忽略。
     return el.animate(keyframes, { duration: FALLBACK_DURATION_MS, easing: FALLBACK_EASING })
   }
 }
 
 /**
- * @param morphKey 宽度该不该变形的标识：变了才弹。同一状态里的逐帧刷新（波形、计时）必须产出同一个 key。
- * @param contentKey 内容该不该重新入场的标识，默认等于 morphKey。两者分开是因为有的变化只该动宽度、
- *   不该把内容重挂一遍：「处理中」→「仍在等待结果」时进度条必须接着走，重挂会让它从零开始。
- * @returns animateContent —— 当前这份内容是否是变形换上来的（是则应播放内容入场）；
- *   enteredFrom —— 换上来时被替换掉的那份内容的 contentKey（用来决定要不要播"波形收成进度条"）。
+ * @param morphKey 寬度該不該變形的標識：變了才彈。同一狀態裡的逐幀重新整理（波形、計時）必須產出同一個 key。
+ * @param contentKey 內容該不該重新入場的標識，預設等於 morphKey。兩者分開是因為有的變化只該動寬度、
+ *   不該把內容重掛一遍：「處理中」→「仍在等待結果」時進度條必須接著走，重掛會讓它從零開始。
+ * @returns animateContent —— 當前這份內容是否是變形換上來的（是則應播放內容入場）；
+ *   enteredFrom —— 換上來時被替換掉的那份內容的 contentKey（用來決定要不要播"波形收成進度條"）。
  */
 export function usePillMorph(
   ref: RefObject<HTMLElement | null>,
@@ -67,13 +67,13 @@ export function usePillMorph(
     contentKey: null,
     presentationId,
   })
-  // 没在动画时的自然宽度。变形开始那一刻 DOM 已经换成新内容，旧宽度只能从这里拿。
+  // 沒在動畫時的自然寬度。變形開始那一刻 DOM 已經換成新內容，舊寬度只能從這裡拿。
   const settledWidthRef = useRef<number | null>(null)
   const animationRef = useRef<Animation | null>(null)
   const enteredRef = useRef<{ contentKey: string; from: string } | null>(null)
 
-  // 渲染期判定（refs 还是上一次提交的值）：contentKey 变了、且仍是同一次显示 → 这份新内容要入场。
-  // 结论按 key 记住，同一状态里后续的重渲染不会把入场类摘掉（摘掉会让动画中途跳到终点）。
+  // 渲染期判定（refs 還是上一次提交的值）：contentKey 變了、且仍是同一次顯示 → 這份新內容要入場。
+  // 結論按 key 記住，同一狀態裡後續的重渲染不會把入場類摘掉（摘掉會讓動畫中途跳到終點）。
   const committed = committedRef.current
   if (committed.presentationId !== presentationId) {
     enteredRef.current = null
@@ -90,9 +90,9 @@ export function usePillMorph(
       presentationId,
     }
 
-    // 打断：上一段还没弹完就又换了内容，从**当前画面上的宽度**接着弹，不跳回起点。
-    // 已经 finished 的不算在弹：onfinish 是异步派发的，ref 可能还没清，这时量到的
-    // 是新内容的自然宽度，会把这次变形误判成"宽度没变"。
+    // 打斷：上一段還沒彈完就又換了內容，從**當前畫面上的寬度**接著彈，不跳回起點。
+    // 已經 finished 的不算在彈：onfinish 是非同步派發的，ref 可能還沒清，這時量到的
+    // 是新內容的自然寬度，會把這次變形誤判成"寬度沒變"。
     let fromWidth = settledWidthRef.current
     if (animationRef.current) {
       if (el && isAnimating(animationRef.current)) fromWidth = el.getBoundingClientRect().width
@@ -116,9 +116,9 @@ export function usePillMorph(
       && !prefersReducedMotion()
     if (!shouldMorph || fromWidth === null) return
 
-    // 变宽时新内容比当前胶囊宽，早早显形会被 overflow:hidden 切掉两头（实测 120ms 时
-    // 「网络连接已断开」左右各缺半个字）。所以变宽让字等形状先走到九成多再出来；
-    // 变窄时字本来就装得下，跟默认的 50ms 走。改动画属性会实时作用到已开始的 CSS 动画上。
+    // 變寬時新內容比當前膠囊寬，早早顯形會被 overflow:hidden 切掉兩頭（實測 120ms 時
+    // 「網路連線已斷開」左右各缺半個字）。所以變寬讓字等形狀先走到九成多再出來；
+    // 變窄時字本來就裝得下，跟預設的 50ms 走。改動畫屬性會即時作用到已開始的 CSS 動畫上。
     if (toWidth > fromWidth) el.style.setProperty('--pill-content-delay', '150ms')
     const animation = animateWidth(el, fromWidth, toWidth)
     if (!animation) return
@@ -130,8 +130,8 @@ export function usePillMorph(
     animation.oncancel = clear
   }, [ref, morphKey, contentKey, presentationId])
 
-  // 同一状态里宽度也会变（低音量警告挤掉几根波形条、倒计时出现），所以每次提交都记一下
-  // 自然宽度。必须声明在上面那个 effect 之后：同一次提交里它后跑，不会先把旧宽度覆盖掉。
+  // 同一狀態裡寬度也會變（低音量警告擠掉幾根波形條、倒計時出現），所以每次提交都記一下
+  // 自然寬度。必須宣告在上面那個 effect 之後：同一次提交裡它後跑，不會先把舊寬度覆蓋掉。
   useLayoutEffect(() => {
     if (animationRef.current && isAnimating(animationRef.current)) return
     const el = ref.current

@@ -8,7 +8,7 @@ import { t } from '@/i18n'
 import type { AudioArchiveService } from './AudioArchiveService'
 import type { FailureRecovery } from './OverlayService'
 
-export /** buildHistoryMetadata 的产物：录音时的应用/窗口/Prompt 上下文。 */
+export /** buildHistoryMetadata 的產物：錄音時的應用/視窗/Prompt 上下文。 */
 type HistoryMetadata = Pick<
   HistoryRecord,
   | 'appId'
@@ -26,22 +26,22 @@ type HistoryMetadata = Pick<
 type HistoryArtifact = { runId: number; recordId: string; audioFilePath?: string }
 
 /**
- * 录音历史的写入与清理。从 RecorderOrchestrator 拆出（模块 6），行为不变。
+ * 錄音歷史的寫入與清理。從 RecorderOrchestrator 拆出（模組 6），行為不變。
  *
- * 成功（有文本）和失败（只有音频）两条路都写到这里；用户主动取消的代次在写入前后各验一次，
- * 取消了就把记录和音频一起删掉。
+ * 成功（有文本）和失敗（只有音訊）兩條路都寫到這裡；使用者主動取消的代次在寫入前後各驗一次，
+ * 取消了就把記錄和音訊一起刪掉。
  */
 export class HistoryWriter {
   /**
-   * 被用户**显式**取消的代次（Esc / 取消录音）。
+   * 被使用者**顯式**取消的代次（Esc / 取消錄音）。
    *
-   * 与「run 失效」不是一回事：用户在超时后立刻再按热键，新 run 会让旧 runId 失效，
-   * 但上一段录音的音频和历史必须留下。以前这两种情况共用 isRunCurrent 判据，于是
-   * 2026-09-07 实测丢掉了一整段 60 秒录音（超时兜底回调在 0.75 秒后被新录音判为失效，
-   * 直接 return，音频、记录、日志三样都没有）。
+   * 與「run 失效」不是一回事：使用者在超時後立刻再按熱鍵，新 run 會讓舊 runId 失效，
+   * 但上一段錄音的音訊和歷史必須留下。以前這兩種情況共用 isRunCurrent 判據，於是
+   * 2026-09-07 實測丟掉了一整段 60 秒錄音（超時兜底回撥在 0.75 秒後被新錄音判為失效，
+   * 直接 return，音訊、記錄、日誌三樣都沒有）。
    */
   private canceledRuns = new Set<number>()
-  /** 正在写入的那条记录：写到一半用户按了 Esc，取消路径要拿它去删。 */
+  /** 正在寫入的那條記錄：寫到一半使用者按了 Esc，取消路徑要拿它去刪。 */
   private pending: HistoryArtifact | null = null
 
   constructor(private readonly audioArchive: AudioArchiveService) {}
@@ -60,11 +60,11 @@ export class HistoryWriter {
     }
   }
 
-  /** 标记这一代是被用户主动取消的（只有 Esc / 取消录音走这里）。 */
+  /** 標記這一代是被使用者主動取消的（只有 Esc / 取消錄音走這裡）。 */
   markRunCanceled(runId: number) {
     if (runId === 0) return
     this.canceledRuns.add(runId)
-    // 长期运行下别无界增长；只保留最近若干代，足够覆盖仍在飞的异步收尾。
+    // 長期執行下別無界增長；只保留最近若干代，足夠覆蓋仍在飛的非同步收尾。
     if (this.canceledRuns.size > 64) {
       for (const id of this.canceledRuns) {
         if (this.canceledRuns.size <= 32) break
@@ -74,25 +74,25 @@ export class HistoryWriter {
   }
 
   /**
-   * 这一代的历史存档该不该丢弃。
+   * 這一代的歷史存檔該不該丟棄。
    *
-   * 判据是「用户是否主动取消」，**不是** isRunCurrent。用户在上一段还没收尾时又按了热键，
-   * 旧 run 会失效但他并没有要求丢掉上一段——那段音频是他刚说完的，必须留下。
+   * 判據是「使用者是否主動取消」，**不是** isRunCurrent。使用者在上一段還沒收尾時又按了熱鍵，
+   * 舊 run 會失效但他並沒有要求丟掉上一段——那段音訊是他剛說完的，必須留下。
    */
   isRunCanceled(runId: number) {
     return runId === 0 || this.canceledRuns.has(runId)
   }
 
   /**
-   * 把「有音频但没有可用文本」的一次录音写进历史，供回放与重新识别。
+   * 把「有音訊但沒有可用文本」的一次錄音寫進歷史，供回放與重新識別。
    *
-   * 空识别、供应商报错、处理超时、连接断开四条路共用它：音频已经在 audioArchive.begin 里
-   * 存好了，这里只负责补一条带明确原因的记录。
+   * 空識別、供應商報錯、處理超時、連線斷開四條路共用它：音訊已經在 audioArchive.begin 裡
+   * 存好了，這裡只負責補一條帶明確原因的記錄。
    *
-   * 返回**能不能恢复**，而不是"有没有写历史"：只有历史记录和音频文件都在，用户才真的
-   * 能去重新识别。界面上那句"可在历史记录重新识别"只能由这个返回值决定 —— 靠
-   * historyEnabled / audioRetentionEnabled 两个开关推断是不够的，写盘还会失败、
-   * 还会超时。许一个作废的承诺比什么都不说更糟。
+   * 返回**能不能恢復**，而不是"有沒有寫歷史"：只有歷史記錄和音訊檔案都在，使用者才真的
+   * 能去重新識別。介面上那句"可在歷史記錄重新識別"只能由這個返回值決定 —— 靠
+   * historyEnabled / audioRetentionEnabled 兩個開關推斷是不夠的，寫盤還會失敗、
+   * 還會超時。許一個作廢的承諾比什麼都不說更糟。
    */
   async writeFailedRun(params: {
     runId: number
@@ -137,7 +137,7 @@ export class HistoryWriter {
         aiStatus: params.aiStatus,
         audioFilePath: artifact.audioFilePath,
       })
-      // 写入后再验一次：取消可能发生在 addHistory 期间。
+      // 寫入後再驗一次：取消可能發生在 addHistory 期間。
       if (this.isRunCanceled(runId)) {
         await this.discard(artifact)
         return 'none'
@@ -150,11 +150,11 @@ export class HistoryWriter {
         audioSec: params.audioDurationSec,
         failReasonCode: params.failReasonCode,
       })
-      // 没有音频文件就没法重新识别（历史页的重试按钮同样以 audioFilePath 为条件）。
+      // 沒有音訊檔案就沒法重新識別（歷史頁的重試按鈕同樣以 audioFilePath 為條件）。
       //
-      // 三分而不是两分：落盘还在继续时（pendingLate）返回 'unknown'，界面什么都不说。
-      // 说成 'none'（"这次没有留下录音"）是**错的** —— 那条路稍后大概率会成功并把
-      // 路径补进历史，而用户已经被告知录音没了。
+      // 三分而不是兩分：落盤還在繼續時（pendingLate）返回 'unknown'，介面什麼都不說。
+      // 說成 'none'（"這次沒有留下錄音"）是**錯的** —— 那條路稍後大機率會成功並把
+      // 路徑補進歷史，而使用者已經被告知錄音沒了。
       if (artifact.audioFilePath) return 'history'
       return artifact.pendingLate ? 'unknown' : 'none'
     } catch (error) {
@@ -185,10 +185,10 @@ export class HistoryWriter {
   }
 
   /**
-   * 有结果的那一次写历史（processFinalResult 里那一段原样搬来）。
+   * 有結果的那一次寫歷史（processFinalResult 裡那一段原樣搬來）。
    *
-   * aborted=true 表示这一代已经失效或被用户取消，调用方应当直接收手（原来这里是 return）。
-   * 写入抛异常时不算 aborted：原来的 catch 之后照样往下走去插字，artifact 保持原值。
+   * aborted=true 表示這一代已經失效或被使用者取消，呼叫方應當直接收手（原來這裡是 return）。
+   * 寫入拋異常時不算 aborted：原來的 catch 之後照樣往下走去插字，artifact 保持原值。
    */
   async writeFinalRun(params: {
     runId: number
@@ -197,7 +197,7 @@ export class HistoryWriter {
     selectionNotApplied: boolean
     audioDurationSec: number
     wallTimeSec: number
-    /** 原来在几次 await 之后才读工作模式，这里保持同一时刻取值。 */
+    /** 原來在幾次 await 之後才讀工作模式，這裡保持同一時刻取值。 */
     mode: () => WorkMode
     isRunCurrent: () => boolean
     metadata: () => HistoryMetadata
@@ -213,7 +213,7 @@ export class HistoryWriter {
       const historyEnabled = await getSetting('historyEnabled', false)
       if (!params.isRunCurrent()) return { aborted: true }
       if (historyEnabled) {
-        // 音频在 stopRecording 时就开始写盘了；这里只等它落定，不再写第二份。
+        // 音訊在 stopRecording 時就開始寫盤了；這裡只等它落定，不再寫第二份。
         const archived = await this.audioArchive.take(runId)
         const recordId = archived?.recordId
           ?? (Date.now().toString(36) + Math.random().toString(36).slice(2, 6))
@@ -242,8 +242,8 @@ export class HistoryWriter {
           asrDurationSec: result.durationSec > 0 ? result.durationSec : undefined,
           charCount: hasText ? historyText.length : 0,
           isEmpty: !hasText,
-          // 区分「ASR 本来就没出字」和「ASR 出了字但后处理把它清空了」——
-          // 后者是我们自己的问题（替换规则/格式化），别让用户以为是没识别到
+          // 區分「ASR 本來就沒出字」和「ASR 出了字但後處理把它清空了」——
+          // 後者是我們自己的問題（替換規則/格式化），別讓使用者以為是沒識別到
           failReason: hasText
             ? undefined
             : result.asrText?.trim()
@@ -271,7 +271,7 @@ export class HistoryWriter {
     return { aborted: false, artifact: historyArtifact }
   }
 
-  /** 异步获取当前模式下的 ASR/AI 供应商信息 */
+  /** 非同步獲取當前模式下的 ASR/AI 供應商資訊 */
   async buildProviderMetadata(mode: WorkMode, finalResult?: FinalResult): Promise<{
     asrProvider?: string
     aiProvider?: string
@@ -304,11 +304,11 @@ export class HistoryWriter {
     }
     if (mode === 'cloud_api') {
       const asrProviderKey = await getSetting('cloudAsr.provider', '') as string
-      // 选定的模型要一起读：Groq / OpenAI 那几个服务同一个 id 下有多个模型，
-      // 只按 id 推会把历史记录写成该服务的默认模型，而不是这次真正用的那个。
+      // 選定的模型要一起讀：Groq / OpenAI 那幾個服務同一個 id 下有多個模型，
+      // 只按 id 推會把歷史記錄寫成該服務的預設模型，而不是這次真正用的那個。
       //
-      // 映射表以前在这里抄了第三份（lib/asrModels.ts、AsrTestSection 各一份），
-      // 加一个供应商就得改三处、漏一处只会静默显示错的模型名。现在只有一个出处。
+      // 對映表以前在這裡抄了第三份（lib/asrModels.ts、AsrTestSection 各一份），
+      // 加一個供應商就得改三處、漏一處只會靜默顯示錯的模型名。現在只有一個出處。
       const asrSelectedModel = await getSetting('cloudAsr.model', '') as string
       const asrProvider = asrProviderKey
         ? resolveAsrDisplayModel(asrProviderKey, asrSelectedModel)

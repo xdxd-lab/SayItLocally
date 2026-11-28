@@ -1,6 +1,6 @@
 // 本地模式 Provider
-// 音频在本地积攒，stop 时调用 Rust 侧本地 ASR 推理
-// ASR 完成后可选调用云端 AI 校对
+// 音訊在本地積攢，stop 時呼叫 Rust 側本地 ASR 推理
+// ASR 完成後可選呼叫雲端 AI 校對
 
 import { invoke } from '@tauri-apps/api/core'
 import * as bridge from '../bridge'
@@ -15,14 +15,14 @@ export class LocalProvider extends BufferedProvider {
   readonly mode = 'local' as const
 
   /**
-   * 本地模式的"就绪"= 选中的模型已完整下载到本地。
+   * 本地模式的"就緒"= 選中的模型已完整下載到本地。
    *
-   * 以前这里无论如何都报 `asr: true`（连预加载失败的 catch 里也报），于是模型被删光了
-   * 按快捷键照样开始录音，录完才在识别阶段报错 —— 而设置页明明写着"按下快捷键不会有
-   * 反应"，说到没做到。现在如实上报，未就绪由 RecorderOrchestrator 统一拦下并提示。
+   * 以前這裡無論如何都報 `asr: true`（連預載入失敗的 catch 裡也報），於是模型被刪光了
+   * 按快捷鍵照樣開始錄音，錄完才在識別階段報錯 —— 而設定頁明明寫著"按下快捷鍵不會有
+   * 反應"，說到沒做到。現在如實上報，未就緒由 RecorderOrchestrator 統一攔下並提示。
    *
-   * 判断口径与左下角引擎指示（stores/modeStatus）保持一致：都看 list_downloaded_models
-   * 里该模型是否 complete，避免同屏两处结论不同。
+   * 判斷口徑與左下角引擎指示（stores/modeStatus）保持一致：都看 list_downloaded_models
+   * 裡該模型是否 complete，避免同屏兩處結論不同。
    */
   protected async onConnect(callbacks: TranscriptionCallbacks): Promise<boolean> {
     const modelId = await getSetting('localAsr.modelId', 'sensevoice-small-gguf') as string
@@ -37,7 +37,7 @@ export class LocalProvider extends BufferedProvider {
       const models = await invoke<{ id: string; complete: boolean }[]>('list_downloaded_models')
       downloaded = models.some((m) => m.id === modelId && m.complete)
     } catch (err) {
-      // 读不到列表时不敢断言就绪：宁可拦下并提示，也别录完才失败
+      // 讀不到列表時不敢斷言就緒：寧可攔下並提示，也別錄完才失敗
       addRuntimeEvent('warn', 'local', 'Could not read local model list; provider is not ready', { error: String(err) })
       callbacks.onReady?.({ asr: false, llm: false })
       return false
@@ -49,8 +49,8 @@ export class LocalProvider extends BufferedProvider {
       return false
     }
 
-    // 已下载：预加载失败（如文件损坏、显卡后端异常）不代表不能用，
-    // 真正的失败会在识别阶段带着具体原因报出来，这里仍按就绪处理。
+    // 已下載：預載入失敗（如檔案損壞、顯示卡後端異常）不代表不能用，
+    // 真正的失敗會在識別階段帶著具體原因報出來，這裡仍按就緒處理。
     try {
       // [自訂] SC-62：互不依賴的設定一起送出（Rust 端仍依序處理）。
       const [accelerator, gpuDevice] = await Promise.all([
@@ -81,8 +81,8 @@ export class LocalProvider extends BufferedProvider {
         getSetting('localAsr.modelId', 'sensevoice-small-gguf'),
         getSetting('localAsr.language', 'auto'),
         getSetting('localAsr.accelerator', 'auto'),
-        // 必须跟着传：它是引擎缓存 key 的一部分，这里漏掉就会与预加载的那份不符，
-        // 每次口述都白付一次"卸旧 + 载新 + 预热"。
+        // 必須跟著傳：它是引擎快取 key 的一部分，這裡漏掉就會與預載入的那份不符，
+        // 每次口述都白付一次"卸舊 + 載新 + 預熱"。
         getSetting('localAsr.gpuDevice', ''),
       ])
       if (!this.isRunCurrent(runId)) return
@@ -108,8 +108,8 @@ export class LocalProvider extends BufferedProvider {
     if (!this.isRunCurrent(runId)) return
     this.callbacks.onASR?.({ text: asrText, asrMs, durationSec })
 
-    // 策略与结果判据与实时录音、其它两种模式共用同一份；时长用本地 PCM 实际秒数，
-    // 不四舍五入（"恰好等于门槛"这一档会判错）。
+    // 策略與結果判據與即時錄音、其它兩種模式共用同一份；時長用本地 PCM 實際秒數，
+    // 不四捨五入（"恰好等於門檻"這一檔會判錯）。
     const policy = policyFromSnapshot(startOpts?.aiConfig, 'local', durationSec)
     const outcomeContext: AiOutcomeContext = {
       operationId: startOpts?.operationId || `local-${runId}`,
@@ -118,7 +118,7 @@ export class LocalProvider extends BufferedProvider {
 
     if (!asrText.trim()) {
       if (!this.isRunCurrent(runId)) return
-      // 空识别也要有结论：以前这条路直接 return，日志里查不到"为什么没整理"。
+      // 空識別也要有結論：以前這條路直接 return，日誌裡查不到"為什麼沒整理"。
       const outcome = resolveAndLogAiOutcome(outcomeContext, policy, { asrTextEmpty: true })
       this.callbacks.onFinal?.({
         asrText: '',

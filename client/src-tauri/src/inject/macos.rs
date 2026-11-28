@@ -1,14 +1,14 @@
-//! macOS 文字插入：写 NSPasteboard → 模拟 ⌘V → 延时还原剪贴板。
+//! macOS 文字插入：寫 NSPasteboard → 模擬 ⌘V → 延時還原剪貼簿。
 //!
-//! 与 Windows 的对应关系：
-//! - Windows 先试 `WM_PASTE` 直发控件、再退 `SendInput` Ctrl+V；mac 没有跨进程直发粘贴消息的
-//!   通道，统一用 `CGEventPost` 发 ⌘V（终端里的 TUI 也能用：⌘V 由终端程序自己处理，
-//!   不需要 conhost 那条特殊路径）。
-//! - 剪贴板保护：插入前给剪贴板拍全类型快照，粘贴后 500 ms 若剪贴板仍是我们写的那份就还原。
-//!   「是否被改过」看 changeCount（对应 GetClipboardSequenceNumber）。
-//! - 剪贴板历史排除：写入时附带 `org.nspasteboard.TransientType`。
-//! - 没有「抢前台」：悬浮窗不激活，焦点一直在目标程序。插入前若前台程序已经不是录音开始时
-//!   那个（用户切走了），不硬往新窗口里插，交给兜底卡片。
+//! 與 Windows 的對應關係：
+//! - Windows 先試 `WM_PASTE` 直髮控制元件、再退 `SendInput` Ctrl+V；mac 沒有跨程序直髮貼上訊息的
+//!   通道，統一用 `CGEventPost` 發 ⌘V（終端裡的 TUI 也能用：⌘V 由終端程式自己處理，
+//!   不需要 conhost 那條特殊路徑）。
+//! - 剪貼簿保護：插入前給剪貼簿拍全型別快照，貼上後 500 ms 若剪貼簿仍是我們寫的那份就還原。
+//!   「是否被改過」看 changeCount（對應 GetClipboardSequenceNumber）。
+//! - 剪貼簿歷史排除：寫入時附帶 `org.nspasteboard.TransientType`。
+//! - 沒有「搶前台」：懸浮窗不啟用，焦點一直在目標程式。插入前若前台程式已經不是錄音開始時
+//!   那個（使用者切走了），不硬往新視窗裡插，交給兜底卡片。
 
 use super::InjectResult;
 use crate::commands::system::write_log_line;
@@ -17,15 +17,15 @@ use std::sync::atomic::{AtomicU16, AtomicU64, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-/// 每次粘贴递增。旧的还原线程看到新一代粘贴就放弃，避免覆盖新内容。
+/// 每次貼上遞增。舊的還原執行緒看到新一代貼上就放棄，避免覆蓋新內容。
 static PASTE_GENERATION: AtomicU64 = AtomicU64::new(0);
 // [自訂] L-80：焦點不符時立即還原，避免與前次貼上的延後還原互相覆蓋。
 static PASTE_TRANSACTION: Mutex<()> = Mutex::new(());
 
 const CLIPBOARD_SNAPSHOT_BUDGET: Duration = Duration::from_millis(150);
 const CLIPBOARD_SNAPSHOT_MAX_BYTES: usize = 64 * 1024 * 1024;
-/// 还原前等多久。比 Windows 的 400 ms 稍长：mac 上目标程序是在处理 ⌘V 事件时才去读剪贴板，
-/// Electron / 浏览器还是异步读，太早还原会让它读到旧内容。
+/// 還原前等多久。比 Windows 的 400 ms 稍長：mac 上目標程式是在處理 ⌘V 事件時才去讀剪貼簿，
+/// Electron / 瀏覽器還是非同步讀，太早還原會讓它讀到舊內容。
 const RESTORE_DELAY: Duration = Duration::from_millis(500);
 
 fn result(ok: bool, strategy: &str, reason: Option<&str>, detail: String) -> InjectResult {
@@ -45,8 +45,8 @@ pub fn cached_keycode_for_v() -> CGKeyCode {
     PASTE_KEYCODE.load(Ordering::Relaxed)
 }
 
-/// 当前键盘布局下打出「v」的那个键码。Dvorak 等布局里 ⌘V 不在 QWERTY 的 V 位置上。
-/// 中文输入法激活时取它底下的 ASCII 布局。找不到就用 ANSI V。
+/// 當前鍵盤佈局下打出「v」的那個鍵碼。Dvorak 等佈局裡 ⌘V 不在 QWERTY 的 V 位置上。
+/// 中文輸入法啟用時取它底下的 ASCII 佈局。找不到就用 ANSI V。
 pub fn keycode_for_v() -> CGKeyCode {
     unsafe {
         let source = TISCopyCurrentASCIICapableKeyboardLayoutInputSource();
@@ -121,7 +121,7 @@ fn guarded_paste<S, E, K>(
     PasteAttempt::Staged(staged, posted)
 }
 
-/// ⌘V 事件带 SayIt 标记，自己的 event tap 会放行、不当成用户按键。
+/// ⌘V 事件帶 SayIt 標記，自己的 event tap 會放行、不當成使用者按鍵。
 struct PasteEvents {
     down: CfOwned,
     up: CfOwned,
@@ -188,7 +188,7 @@ impl ClipboardBackup {
     }
 }
 
-/// 粘贴后延时还原剪贴板（在独立线程里，不拖慢插字）。
+/// 貼上後延時還原剪貼簿（在獨立執行緒裡，不拖慢插字）。
 fn schedule_restore(paste_id: u64, written_change_count: isize, backup: ClipboardBackup) {
     let scheduled_at = Instant::now();
     std::thread::spawn(move || {
@@ -202,7 +202,7 @@ fn schedule_restore(paste_id: u64, written_change_count: isize, backup: Clipboar
             ));
             return;
         }
-        // 用户或目标程序已经改写过剪贴板：不拿旧内容覆盖它
+        // 使用者或目標程式已經改寫過剪貼簿：不拿舊內容覆蓋它
         let change_count = appkit::pasteboard_change_count();
         if change_count != written_change_count {
             write_log_line(&format!(
@@ -236,7 +236,7 @@ fn inject_with_native_services(
 ) -> InjectResult {
     let _transaction = PASTE_TRANSACTION.lock().unwrap_or_else(|error| error.into_inner());
 
-    // 模拟按键需要「辅助功能」授权；没有授权时 CGEventPost 会被系统静默丢弃。
+    // 模擬按鍵需要「輔助功能」授權；沒有授權時 CGEventPost 會被系統靜默丟棄。
     if !ax::is_trusted() {
         write_log_line("[RUST] [inject] accessibility not granted");
         return result(false, "cmd_v", Some("accessibility_not_granted"), String::new());
@@ -335,15 +335,15 @@ pub fn inject_recording_text(text: &str, target_pid: i32, restore_clipboard: boo
     inject_with_native_services(text, ctx.pid as i32, restore_clipboard, focus_token, keycode)
 }
 
-/// 只写剪贴板（结果卡的「复制」、不可输入时的兜底）。复制是用户要的，正常进剪贴板历史。
+/// 只寫剪貼簿（結果卡的「複製」、不可輸入時的兜底）。複製是使用者要的，正常進剪貼簿歷史。
 /// [自訂] S33／S11：改為 transient（剪貼簿歷史 App 不記錄）＋只限本機（pasteboard_set_text 內處理）。
 pub fn copy_to_clipboard(text: &str) -> Result<(), String> {
     appkit::pasteboard_set_text(text, true).map(|_| ()).map_err(|error| error.detail.into())
 }
 
-// ─── 「这里能不能打字」的 mac 判据 ───
+// ─── 「這裡能不能打字」的 mac 判據 ───
 
-/// 明确不是输入区域的 AX 角色（按钮、菜单、列表……）。
+/// 明確不是輸入區域的 AX 角色（按鈕、選單、列表……）。
 fn is_definitely_not_editable(role: &str) -> bool {
     matches!(
         role,
@@ -373,19 +373,19 @@ fn is_definitely_not_editable(role: &str) -> bool {
     )
 }
 
-/// 按 Bundle ID / 可执行文件名放行的常用程序（对应 Windows 的进程名白名单）。
-/// Electron / Qt / 自绘界面的程序常常拿不到可用的 AX 信息，只能靠这一层。
+/// 按 Bundle ID / 執行檔名放行的常用程式（對應 Windows 的程序名白名單）。
+/// Electron / Qt / 自繪介面的程式常常拿不到可用的 AX 資訊，只能靠這一層。
 const EDITABLE_APP_TOKENS: &[&str] = &[
-    // 浏览器
+    // 瀏覽器
     "chrome", "safari", "firefox", "edgemac", "brave", "thebrowser", "opera", "vivaldi",
-    // 编辑器 / IDE
+    // 編輯器 / IDE
     "vscode", "todesktop", "cursor", "windsurf", "kiro", "jetbrains", "xcode", "sublime", "zed",
     "notion", "obsidian",
-    // 聊天 / 办公
+    // 聊天 / 辦公
     "xinwechat", "wechat", "tencent.qq", "wework", "lark", "feishu", "dingtalk", "slack",
     "teams", "telegram", "discord", "outlook", "microsoft.word", "microsoft.excel",
     "microsoft.powerpoint", "iwork", "apple.notes", "textedit",
-    // 终端
+    // 終端
     "apple.terminal", "iterm", "warp", "wezterm", "kitty", "ghostty", "alacritty",
 ];
 
@@ -395,8 +395,8 @@ fn is_allowlisted(bundle_id: &str, process_name: &str) -> bool {
         .any(|token| bundle_id.contains(token) || process_name.contains(token))
 }
 
-/// macOS 的可编辑判据。比 Windows 乐观：⌘V 打到不能输入的地方只会「嘟」一声，
-/// 而误判成不可编辑会让每一次口述都要从兜底卡片手动粘贴；只有拿到明确的否定信号才拒绝。
+/// macOS 的可編輯判據。比 Windows 樂觀：⌘V 打到不能輸入的地方只會「嘟」一聲，
+/// 而誤判成不可編輯會讓每一次口述都要從兜底卡片手動貼上；只有拿到明確的否定訊號才拒絕。
 pub fn editability_gate(ctx: &crate::context::AppContext) -> super::EditableGate {
     use super::EditableGate;
     let role = ctx.control_type.as_str();
@@ -404,7 +404,7 @@ pub fn editability_gate(ctx: &crate::context::AppContext) -> super::EditableGate
     let process = ctx.process_name.to_lowercase();
     let text_role = ax::is_text_role(role) || ctx.focus_class == "AXSecureTextField";
 
-    // Finder（含桌面）：只有重命名框、搜索框这类文本框才是输入目标（对应 explorer 桌面）
+    // Finder（含桌面）：只有重新命名框、搜尋框這類文本框才是輸入目標（對應 explorer 桌面）
     if bundle == "com.apple.finder" && !text_role {
         return EditableGate::ExplorerDesktopReject;
     }
@@ -417,7 +417,7 @@ pub fn editability_gate(ctx: &crate::context::AppContext) -> super::EditableGate
     if is_allowlisted(&bundle, &process) {
         return EditableGate::ProcessAllowlist;
     }
-    // 辅助功能没给出任何信息（未授权、程序不支持无障碍）：不当成否定
+    // 輔助功能沒給出任何資訊（未授權、程式不支援無障礙）：不當成否定
     if role.is_empty() {
         return EditableGate::AxOptimistic;
     }

@@ -1,14 +1,14 @@
 import type { AppPromptRule, UserStats } from './types'
 import { IS_MAC } from '@/lib/platform'
 
-// 这里的**数组顺序就是默认优先级**（自上而下先命中先生效，见 promptRouter）。
-// 用户可以在界面上拖动调整，调整后的顺序存进 appPromptRules；这份清单只决定
-// 「从没动过」时的初始顺序，以及后续版本新增的内置规则追加在哪。
+// 這裡的**陣列順序就是預設優先順序**（自上而下先命中先生效，見 promptRouter）。
+// 使用者可以在介面上拖動調整，調整後的順序存進 appPromptRules；這份清單隻決定
+// 「從沒動過」時的初始順序，以及後續版本新增的內建規則追加在哪。
 //
-// 内置规则一律只靠 processNames 判定（见 promptRouter.matchesAppPromptRule）。
-// 这里**不要**再加 windowTitleIncludes：标题是「包含即命中」，一个标题能同时命中
-// 多条规则 —— 曾导致在 Outlook 里写标题含「Teams」的邮件被 Teams 规则抢走。
-// 标题匹配只保留给「进程名区分不了」的场景（如网页版应用，进程都是浏览器）。
+// 內建規則一律只靠 processNames 判定（見 promptRouter.matchesAppPromptRule）。
+// 這裡**不要**再加 windowTitleIncludes：標題是「包含即命中」，一個標題能同時命中
+// 多條規則 —— 曾導致在 Outlook 裡寫標題含「Teams」的郵件被 Teams 規則搶走。
+// 標題匹配只保留給「程序名區分不了」的場景（如網頁版應用，程序都是瀏覽器）。
 
 const WINDOWS_BUILTIN_APP_RULES: AppPromptRule[] = [
   {
@@ -122,10 +122,10 @@ const WINDOWS_BUILTIN_APP_RULES: AppPromptRule[] = [
 ]
 
 /**
- * macOS 上内置规则的匹配目标：Bundle ID（promptRouter 拿「进程名」同时比 Bundle ID）。
- * mac 的可执行文件名不可靠（VS Code 的可执行文件叫 Electron），所以这里一律写 Bundle ID；
- * Codex 的 mac 版 Bundle ID 没核实过，先按可执行文件名匹配。
- * 两个平台各用各的列表，设置页里不会出现对方平台的标识。
+ * macOS 上內建規則的匹配目標：Bundle ID（promptRouter 拿「程序名」同時比 Bundle ID）。
+ * mac 的執行檔名不可靠（VS Code 的執行檔叫 Electron），所以這裡一律寫 Bundle ID；
+ * Codex 的 mac 版 Bundle ID 沒核實過，先按執行檔名匹配。
+ * 兩個平台各用各的列表，設定頁裡不會出現對方平台的標識。
  */
 const MAC_RULE_OVERRIDES: Record<string, Partial<AppPromptRule> & { processNames: string[] }> = {
   teams: { processNames: ['com.microsoft.teams2', 'com.microsoft.teams'] },
@@ -134,7 +134,7 @@ const MAC_RULE_OVERRIDES: Record<string, Partial<AppPromptRule> & { processNames
   codex: { processNames: ['codex'] },
   vscode: { processNames: ['com.microsoft.VSCode'] },
   cursor: { processNames: ['com.todesktop.230313mzl4w4u92'] },
-  // mac 上没有记事本，对应系统自带的「文本编辑」
+  // mac 上沒有記事本，對應系統自帶的「文本編輯」
   notepad: {
     name: 'TextEdit',
     promptAppend: '面向「文本编辑」，适合随手记录的纯文本。输出纯文本，不要使用 Markdown 标记或特殊格式符号。', // i18n-allow: 中文口述整理 Prompt

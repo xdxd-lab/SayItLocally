@@ -1,12 +1,12 @@
 /**
- * WebView 键盘回退 — 当 SayIt 自身窗口聚焦时，WH_KEYBOARD_LL 钩子不触发。
+ * WebView 鍵盤迴退 — 當 SayIt 自身視窗聚焦時，WH_KEYBOARD_LL 鉤子不觸發。
  *
- * 原因：WebView2 (Chromium) 在同进程内拦截键盘消息，导致 LL 钩子回调不被调用。
- * 解决：在前端 document 上监听 keydown/keyup，当 webview 聚焦时补发与 Rust 钩子
+ * 原因：WebView2 (Chromium) 在同程序內攔截鍵盤訊息，導致 LL 鉤子回撥不被呼叫。
+ * 解決：在前端 document 上監聽 keydown/keyup，當 webview 聚焦時補發與 Rust 鉤子
  * 相同的 Tauri 事件（ptt-down / ptt-up / ptt-lab-event）。
  *
- * 当外部窗口聚焦时，webview 不会收到键盘事件，所以不会重复触发。
- * 两个路径互斥：LL 钩子处理外部窗口，此模块处理 SayIt 自身窗口。
+ * 當外部視窗聚焦時，webview 不會收到鍵盤事件，所以不會重複觸發。
+ * 兩個路徑互斥：LL 鉤子處理外部視窗，此模組處理 SayIt 自身視窗。
  */
 
 import { emit } from '@tauri-apps/api/event'
@@ -41,9 +41,9 @@ let hfKeyDown = false
 let labKeyDown = false
 let labEnabled = false
 let started = false
-// 设置页正在录制快捷键：此时按键要交给录制框去绑定，不能再当成“用户按了热键”。
-// 不挂起的话，按到已绑定的键（如免提的右 Alt）会从这里 emit toggle-hands-free，
-// 于是弹出悬浮窗开始录音——而不是把这个键录进设置里。
+// 設定頁正在錄製快捷鍵：此時按鍵要交給錄製框去繫結，不能再當成“使用者按了熱鍵”。
+// 不掛起的話，按到已繫結的鍵（如擴音的右 Alt）會從這裡 emit toggle-hands-free，
+// 於是彈出懸浮窗開始錄音——而不是把這個鍵錄進設定裡。
 let captureActive = false
 
 function isModifierSetting(setting: string) {
@@ -60,8 +60,8 @@ function pttModifierFlags() {
 }
 
 /**
- * 旧单键仍按原行为吞 down。普通组合仅在主键首次按下时全部修饰成员已经按住，
- * 才吞主键并记住配对 up；K→Ctrl 顺序仍可开始 PTT，但 K 的 down/up 都放行。
+ * 舊單鍵仍按原行為吞 down。普通組合僅在主鍵首次按下時全部修飾成員已經按住，
+ * 才吞主鍵並記住配對 up；K→Ctrl 順序仍可開始 PTT，但 K 的 down/up 都放行。
  */
 function shouldConsumePTTDown(code: string, wasPressed: boolean) {
   if (pttCodes.length === 1) return true
@@ -95,8 +95,8 @@ function invalidatePTTStartCheck() {
 }
 
 /**
- * 当完整组合由修饰键最后按下时（K→Ctrl 或纯修饰组合），KeyboardEvent 无法证明
- * 之前成员仍真实按住，也无法区分左右同族修饰键；用 Rust/GetAsyncKeyState 做一次确认。
+ * 當完整組合由修飾鍵最後按下時（K→Ctrl 或純修飾組合），KeyboardEvent 無法證明
+ * 之前成員仍真實按住，也無法區分左右同族修飾鍵；用 Rust/GetAsyncKeyState 做一次確認。
  */
 async function confirmPhysicalPTTStart(triggerCode: string) {
   if (pttStartCheckPending) return
@@ -182,7 +182,7 @@ function handleKeyDown(event: KeyboardEvent) {
     return
   }
 
-  // 免提键（HF）：首个 keydown 立即触发；后续 repeat down 不重复切换。
+  // 擴音鍵（HF）：首個 keydown 立即觸發；後續 repeat down 不重複切換。
   if (hfCode && event.code === hfCode && !pttCodes.includes(hfCode)) {
     if (!hfKeyDown) {
       hfKeyDown = true
@@ -199,9 +199,9 @@ function handleKeyDown(event: KeyboardEvent) {
     return
   }
 
-  // PTT Lab 键（右 Ctrl）
+  // PTT Lab 鍵（右 Ctrl）
   if (labEnabled && event.code === PTT_LAB_CODE && !labKeyDown) {
-    // 如果右 Ctrl 是 PTT 的成员，不重复处理 lab。
+    // 如果右 Ctrl 是 PTT 的成員，不重複處理 lab。
     if (pttCodes.includes(PTT_LAB_CODE)) return
     labKeyDown = true
     event.preventDefault()
@@ -230,14 +230,14 @@ function handleKeyUp(event: KeyboardEvent) {
     return
   }
 
-  // 免提键：keyup 只重新布防，下一次物理按下才能再次切换。
+  // 擴音鍵：keyup 只重新佈防，下一次物理按下才能再次切換。
   if (hfCode && event.code === hfCode && hfKeyDown && !pttCodes.includes(hfCode)) {
     hfKeyDown = false
     if (isModifierSetting(hfSetting)) event.preventDefault()
     return
   }
 
-  // PTT Lab 键
+  // PTT Lab 鍵
   if (labEnabled && event.code === PTT_LAB_CODE && labKeyDown) {
     if (pttCodes.includes(PTT_LAB_CODE)) return
     labKeyDown = false
@@ -252,16 +252,16 @@ function handleKeyUp(event: KeyboardEvent) {
 }
 
 function handleWindowBlur() {
-  // 焦点转移后，keyup 可能送到别的窗口；立即释放，避免前端 fallback 留下活动录音。
+  // 焦點轉移後，keyup 可能送到別的視窗；立即釋放，避免前端 fallback 留下活動錄音。
   releasePTT('window_blur')
   hfKeyDown = false
   labKeyDown = false
 }
 
-/** 刷新 PTT 设置（设置页面改键后调用） */
+/** 重新整理 PTT 設定（設定頁面改鍵後呼叫） */
 export async function refreshPTTSetting() {
   try {
-    // 不传字面量兜底值：默认键只在 services/defaults.ts 里定义一处，getSetting 会去读它。
+    // 不傳字面量兜底值：預設鍵只在 services/defaults.ts 裡定義一處，getSetting 會去讀它。
     const setting = await getSetting<string>('shortcutPTT')
     const loadedSetting = String(setting ?? '')
     if (!loadedSetting) {
@@ -269,9 +269,9 @@ export async function refreshPTTSetting() {
       pttCodes = []
     } else {
       const canonical = canonicalizePTTShortcut(loadedSetting)
-      // allowLegacyReservedKeys：老用户存的可能是 Shift。那类绑定不再允许新设，
-      // 但已经存在的必须照原样监听 —— 判成非法就会走下面的回落，等于用户没改设置
-      // 却换了说话键，而且会开始响应一个他没绑过的键。
+      // allowLegacyReservedKeys：老使用者存的可能是 Shift。那類繫結不再允許新設，
+      // 但已經存在的必須照原樣監聽 —— 判成非法就會走下面的回落，等於使用者沒改設定
+      // 卻換了說話鍵，而且會開始響應一個他沒綁過的鍵。
       pttSetting = isValidPTTShortcut(canonical, { allowLegacyReservedKeys: true })
         ? canonical
         : getDefault<string>('shortcutPTT', '')
@@ -301,8 +301,8 @@ export async function refreshPTTSetting() {
 }
 
 /**
- * 挂起/恢复本回退监听（设置页开始/结束录制快捷键时调用）。
- * 进出时都清掉“按住”状态：录制期间被忽略的 keyup 不会留下卡住的按下标记。
+ * 掛起/恢復本回退監聽（設定頁開始/結束錄製快捷鍵時呼叫）。
+ * 進出時都清掉“按住”狀態：錄製期間被忽略的 keyup 不會留下卡住的按下標記。
  */
 export function setShortcutCaptureActive(active: boolean) {
   if (active) releasePTT('shortcut_capture')
@@ -318,10 +318,10 @@ export function setLabEnabled(enabled: boolean) {
   if (!enabled) labKeyDown = false
 }
 
-/** 启动 webview 键盘回退监听 */
+/** 啟動 webview 鍵盤迴退監聽 */
 export async function startWebviewKeyboardFallback() {
   if (started) return
-  // macOS 的 CGEventTap 在 SayIt 自己聚焦时也能收到按键（不像 WebView2 会吞掉低级钩子），
+  // macOS 的 CGEventTap 在 SayIt 自己聚焦時也能收到按鍵（不像 WebView2 會吞掉低階鉤子），
   // 再从 DOM 补发一遍就会重复触发 ptt-down / toggle-hands-free。
   if (IS_MAC) return
   started = true
@@ -334,7 +334,7 @@ export async function startWebviewKeyboardFallback() {
   console.log('[webview-kb] started, pttSetting:', pttSetting, 'codes:', pttCodes)
 }
 
-/** 停止监听 */
+/** 停止監聽 */
 export function stopWebviewKeyboardFallback() {
   if (!started) return
   started = false

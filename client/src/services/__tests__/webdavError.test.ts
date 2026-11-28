@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { describeWebDavError, webDavErrorDetail } from '../webdavBackup'
 
-// 真实出现过的原文（坚果云断网时的 MKCOL）
+// 真實出現過的原文（堅果雲斷網時的 MKCOL）
 const NETWORK = 'MKCOL failed: error sending request for url (https://dav.jianguoyun.com/dav)'
 
 describe('describeWebDavError', () => {

@@ -4,11 +4,11 @@ export const MAX_HOTWORDS = 1000
 export const BUILTIN_SET_WORDS_KEY = 'builtinSetWords'
 export const BUILTIN_SET_ACTIVE_KEY = 'builtinSetActive'
 /**
- * 用户自己往内置分类里加的词，按分类 key 存。
+ * 使用者自己往內建分類里加的詞，按分類 key 存。
  *
- * 为什么不直接写进 builtinSetWords：读那份时会按内置词表过滤（normalizeBuiltinSetWords），
- * 新版本从默认词表里删掉的词靠这一步从老用户那里清掉。用户加的词同样不在内置词表里，
- * 混在一起就分不清「该清掉的旧默认词」和「用户自己加的词」，要么清不掉、要么把用户的词吞掉。
+ * 為什麼不直接寫進 builtinSetWords：讀那份時會按內建詞表過濾（normalizeBuiltinSetWords），
+ * 新版本從預設詞表裡刪掉的詞靠這一步從老使用者那裡清掉。使用者加的詞同樣不在內建詞表裡，
+ * 混在一起就分不清「該清掉的舊預設詞」和「使用者自己加的詞」，要麼清不掉、要麼把使用者的詞吞掉。
  */
 export const BUILTIN_SET_EXTRA_WORDS_KEY = 'builtinSetExtraWords'
 export const CUSTOM_THEMES_KEY = 'customHotwordThemes'
@@ -25,7 +25,7 @@ export const BUILTIN_SETS: Record<string, { label: string; description: string; 
   ai: {
     get label() { return t('dict.aiSet') },
     get description() { return t('dict.aiSetDesc') },
-    // i18n-allow-start: 内置中文热词数据，不是界面文案
+    // i18n-allow-start: 內建中文熱詞資料，不是介面文案
     words: [
       'ChatGPT', 'GPT', 'OpenAI', 'Claude', 'DeepSeek', '豆包', 'Gemini',
       'LLM', 'Token', 'Prompt', 'Agent', 'Ollama', '千问', '大模型',
@@ -99,8 +99,8 @@ export function composeHotwords(
 }
 
 /**
- * 读内置分类的词。`extraValue` 是 BUILTIN_SET_EXTRA_WORDS_KEY 里存的用户自加词，
- * **凡是要拿内置分类实际词表的地方都要把它一起传进来**，否则用户加的词在那条路径上不生效。
+ * 讀內建分類的詞。`extraValue` 是 BUILTIN_SET_EXTRA_WORDS_KEY 裡存的使用者自加詞，
+ * **凡是要拿內建分類實際詞表的地方都要把它一起傳進來**，否則使用者加的詞在那條路徑上不生效。
  */
 export function normalizeBuiltinSetWords(value: unknown, extraValue?: unknown): Record<string, string[]> {
   const obj = value && typeof value === 'object' ? value as Record<string, unknown> : {}
@@ -113,7 +113,7 @@ export function normalizeBuiltinSetWords(value: unknown, extraValue?: unknown): 
     if (!Array.isArray(raw) && extra.length === 0) continue
 
     const allow = new Set(setDef.words)
-    // 没存过默认词时按全部默认词算（与热词页首次加载的兜底一致），不能只剩用户加的那几个
+    // 沒存過預設詞時按全部預設詞算（與熱詞頁首次載入的兜底一致），不能只剩使用者加的那幾個
     const base = Array.isArray(raw)
       ? uniqueWords(raw.map((v) => String(v))).filter((w) => allow.has(w))
       : uniqueWords(setDef.words)
@@ -137,7 +137,7 @@ export function normalizeBuiltinSetExtraWords(value: unknown): Record<string, st
   return result
 }
 
-/** 从内置分类的完整词表里拆出用户自加的词（不在内置词表里的就是），用于写回 BUILTIN_SET_EXTRA_WORDS_KEY。 */
+/** 從內建分類的完整詞表裡拆出使用者自加的詞（不在內建詞表裡的就是），用於寫回 BUILTIN_SET_EXTRA_WORDS_KEY。 */
 export function extractBuiltinSetExtraWords(wordsMap: Record<string, string[]>): Record<string, string[]> {
   const result: Record<string, string[]> = {}
   for (const [key, setDef] of Object.entries(BUILTIN_SETS)) {

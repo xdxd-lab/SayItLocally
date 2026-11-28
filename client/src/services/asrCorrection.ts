@@ -5,28 +5,28 @@ import { getSetting, setSetting, type HistoryRecord } from '@/services/store'
 import { normalizeForDiff } from '@/lib/asrDiff'
 
 /**
- * ASR 纠错反馈：用户主动把「这条识别错了，正确的是这样」连同当次录音提交给服务端。
+ * ASR 糾錯反饋：使用者主動把「這條識別錯了，正確的是這樣」連同當次錄音提交給服務端。
  *
- * 与「服务端静默录音」不是一回事：这里的每一次上传都由用户在历史记录里点出来，
- * 首次提交前还要过一次明确的同意确认。详见 .kiro/decisions.md。
+ * 與「服務端靜默錄音」不是一回事：這裡的每一次上傳都由使用者在歷史記錄裡點出來，
+ * 首次提交前還要過一次明確的同意確認。詳見 .kiro/decisions.md。
  *
  * 走 webview 的 fetch + FormData，不走 Rust：
- * 浏览器会自带 User-Agent，天然避开"reqwest 不带 UA 被 WAF 403"那个坑（pitfalls #1）。
+ * 瀏覽器會自帶 User-Agent，天然避開"reqwest 不帶 UA 被 WAF 403"那個坑（pitfalls #1）。
  */
 
-/** 同意文案的版本。文案实质变化时 +1，老用户会被要求重新确认。 */
+/** 同意文案的版本。文案實質變化時 +1，老使用者會被要求重新確認。 */
 export const ASR_CORRECTION_CONSENT_VERSION = '1'
 const CONSENT_SETTING_KEY = 'asrCorrectionConsentVersion'
 
 /**
- * 承诺给用户的撤回窗口（天），只用于文案。改这里要同时改后端的 WITHDRAW_DAYS。
+ * 承諾給使用者的撤回視窗（天），只用於文案。改這裡要同時改後端的 WITHDRAW_DAYS。
  *
- * 后端**没有**按这个天数拦撤回：承诺是"30 天内可以撤回"，那么放宽到永远可撤回
- * 永远不会违背承诺，而加一道硬期限只会多出一个"点了没反应"的失败分支。
+ * 後端**沒有**按這個天數攔撤回：承諾是"30 天內可以撤回"，那麼放寬到永遠可撤回
+ * 永遠不會違背承諾，而加一道硬期限只會多出一個"點了沒反應"的失敗分支。
  */
 export const ASR_CORRECTION_WITHDRAW_DAYS = 30
 
-/** 与后端 MAX_AUDIO_BYTES 一致：五分钟录音约 9.6MB，10 MiB 装得下。 */
+/** 與後端 MAX_AUDIO_BYTES 一致：五分鐘錄音約 9.6MB，10 MiB 裝得下。 */
 export const MAX_CORRECTION_AUDIO_BYTES = 10 * 1024 * 1024
 
 export type AsrCorrectionErrorCode =
@@ -37,7 +37,7 @@ export type AsrCorrectionErrorCode =
   | 'already_submitted'
   | 'storage_full'
   | 'network'
-  /** 这台后端没有这个接口（自建服务器版本较旧，或官方后端还没更新） */
+  /** 這台後端沒有這個介面（自建伺服器版本較舊，或官方後端還沒更新） */
   | 'not_supported'
   | 'server'
 
@@ -58,20 +58,20 @@ export async function grantAsrCorrectionConsent(): Promise<void> {
 }
 
 /**
- * 由历史记录 id 推出提交编号，而不是每次随机生成。
+ * 由歷史記錄 id 推出提交編號，而不是每次隨機生成。
  *
- * 这样重试（上一次请求超时但服务端其实收下了）用的是同一个编号，服务端按编号幂等，
- * 不会出现两条一样的样本；用户要撤回时也能凭本地记录算出同一个编号。
- * 形状必须匹配后端的 ^[A-Za-z0-9_-]{8,64}$。
+ * 這樣重試（上一次請求超時但服務端其實收下了）用的是同一個編號，服務端按編號冪等，
+ * 不會出現兩條一樣的樣本；使用者要撤回時也能憑本地記錄算出同一個編號。
+ * 形狀必須匹配後端的 ^[A-Za-z0-9_-]{8,64}$。
  */
 export function buildCorrectionId(recordId: string): string {
   const safe = (recordId || '').replace(/[^A-Za-z0-9_-]/g, '')
   return `c-${safe}`.padEnd(8, '0').slice(0, 64)
 }
 
-// 不写返回类型注解：显式写 `Uint8Array` 会退化成 Uint8Array<ArrayBufferLike>，
-// 而 BlobPart 只接受 Uint8Array<ArrayBuffer>，会在 new Blob 那行报类型错。
-// 让它从 new Uint8Array(length) 推断出来正好是对的。
+// 不寫返回型別註解：顯式寫 `Uint8Array` 會退化成 Uint8Array<ArrayBufferLike>，
+// 而 BlobPart 只接受 Uint8Array<ArrayBuffer>，會在 new Blob 那行報型別錯。
+// 讓它從 new Uint8Array(length) 推斷出來正好是對的。
 function messageForCode(code: AsrCorrectionErrorCode, status?: number): string {
   switch (code) {
     case 'audio_missing':
@@ -95,7 +95,7 @@ function messageForCode(code: AsrCorrectionErrorCode, status?: number): string {
   }
 }
 
-/** 后端 error code → 我们的分类。没列到的都归 server（界面上显示状态码，便于排查）。 */
+/** 後端 error code → 我們的分類。沒列到的都歸 server（介面上顯示狀態碼，便於排查）。 */
 function classifyServerError(error: string): AsrCorrectionErrorCode {
   if (error === 'rate_limited') return 'rate_limited'
   if (error === 'already_submitted') return 'already_submitted'
@@ -124,14 +124,14 @@ export async function submitAsrCorrection(
   if (!record.audioFilePath) {
     return { ok: false, code: 'audio_missing', message: messageForCode('audio_missing') }
   }
-  // 保留期到了之后 Rust 只删文件不清路径，所以这里必须按"读不到就是没有"处理
+  // 保留期到了之後 Rust 只刪檔案不清路徑，所以這裡必須按"讀不到就是沒有"處理
   const bytes = await bridge.readAudioFileBytes(record.audioFilePath).catch(() => null)
   if (!bytes) {
     return { ok: false, code: 'audio_missing', message: messageForCode('audio_missing') }
   }
 
   if (bytes.byteLength > MAX_CORRECTION_AUDIO_BYTES) {
-    // 本地先拦一次，别让用户传完 10MB 才看到失败
+    // 本地先攔一次，別讓使用者傳完 10MB 才看到失敗
     return { ok: false, code: 'audio_too_large', message: messageForCode('audio_too_large') }
   }
 
@@ -148,7 +148,7 @@ export async function submitAsrCorrection(
   form.append('app_version', clientInfo?.clientVersion || '')
   form.append('client_record_id', record.id)
   form.append('asr_provider', record.asrProvider || '')
-  // 热词是 ASR 错误最常见的成因之一，没有它样本无法判断成因（见 pitfalls 的热词幻觉）
+  // 熱詞是 ASR 錯誤最常見的成因之一，沒有它樣本無法判斷成因（見 pitfalls 的熱詞幻覺）
   form.append('hotwords', JSON.stringify(record.autoAppliedHotwords || []))
   form.append('consent_version', ASR_CORRECTION_CONSENT_VERSION)
 
@@ -174,7 +174,7 @@ export async function submitAsrCorrection(
     }
   }
 
-  // 「这条音频已经提交过」也算成功：本地标记成已提交，用户不会反复看到入口
+  // 「這條音訊已經提交過」也算成功：本地標記成已提交，使用者不會反覆看到入口
   const errorCode = String(body.error || '')
   if (response.status === 409 && errorCode === 'already_submitted') {
     return {
@@ -184,10 +184,10 @@ export async function submitAsrCorrection(
     }
   }
 
-  // 后端没有这个接口时不要报成"提交失败(405)"。两种真实情况都会走到这里：
-  // 用户把后端指到自建服务器而那边版本较旧；官方后端还没更新到带这个接口的版本。
-  // （SayIt 后端把静态站点挂在 "/" 上，所以路径不存在时拿到的是 404，方法不匹配是 405，
-  //   不是 FastAPI 的标准 405 —— 见 pitfalls #23。）
+  // 後端沒有這個介面時不要報成"提交失敗(405)"。兩種真實情況都會走到這裡：
+  // 使用者把後端指到自建伺服器而那邊版本較舊；官方後端還沒更新到帶這個介面的版本。
+  // （SayIt 後端把靜態站點掛在 "/" 上，所以路徑不存在時拿到的是 404，方法不匹配是 405，
+  //   不是 FastAPI 的標準 405 —— 見 pitfalls #23。）
   if (response.status === 404 || response.status === 405) {
     return { ok: false, code: 'not_supported', message: messageForCode('not_supported') }
   }
@@ -196,7 +196,7 @@ export async function submitAsrCorrection(
   return { ok: false, code, message: messageForCode(code, response.status) }
 }
 
-/** 撤回：服务端会删掉音频并清掉文本。失败返回 false，调用方保持"已提交"状态不变。 */
+/** 撤回：服務端會刪掉音訊並清掉文本。失敗返回 false，呼叫方保持"已提交"狀態不變。 */
 export async function withdrawAsrCorrection(correctionId: string): Promise<boolean> {
   if (ASR_CORRECTION_DISABLED) throw new Error('ASR correction withdraw is disabled in this build') // [自訂] S16：不送出裝置 ID
   const clientInfo = await bridge.getClientRuntimeInfo().catch(() => null)
@@ -209,7 +209,7 @@ export async function withdrawAsrCorrection(correctionId: string): Promise<boole
         body: JSON.stringify({ machine_id: clientInfo?.deviceId || 'unknown' }),
       },
     )
-    // 404 = 服务端已经没有这条了（保留期到了或已清理），对用户而言目的已达成
+    // 404 = 服務端已經沒有這條了（保留期到了或已清理），對使用者而言目的已達成
     return response.ok || response.status === 404
   } catch {
     return false

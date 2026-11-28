@@ -1,39 +1,39 @@
-// 千问 Qwen-Audio-ASR-Flash 流式语音识别 — 3.0 与 3.1 两代共用这一份
+// 千問 Qwen-Audio-ASR-Flash 流式語音識別 — 3.0 與 3.1 兩代共用這一份
 //
-// ⚠️ 协议与 asr_qwen_realtime.rs **不是同一套**，别指望改个模型名就能复用：
+// ⚠️ 協議與 asr_qwen_realtime.rs **不是同一套**，別指望改個模型名就能複用：
 //   · asr_qwen_realtime → `/api-ws/v1/realtime`，OpenAI-Realtime 风格事件
-//     （session.update / input_audio_buffer.append，音频 base64 塞进 JSON）；
-//   · 这一份            → `/api-ws/v1/inference`，DashScope 原生 duplex 指令
-//     （run-task → task-started → 裸二进制音频帧 → result-generated →
+//     （session.update / input_audio_buffer.append，音訊 base64 塞進 JSON）；
+//   · 這一份            → `/api-ws/v1/inference`，DashScope 原生 duplex 指令
+//     （run-task → task-started → 裸二進位制音訊幀 → result-generated →
 //      finish-task → task-finished）。
 //
-// 实测结论（`dev-scripts/probe_qwen_audio30_stream.py`，打的是真实接口）：
-//   · 通用域名 `dashscope.aliyuncs.com` 与业务空间专属域名都能用 —— 这个模型
-//     **不需要 WorkspaceId**（qwen3-asr-flash-realtime 才需要）。填了就走专属域名
-//     （阿里官方称更稳），没填照样工作，所以设置页不把它列为必填项。
-//   · `result-generated` 里 `sentence.text` 是**当前句的全量文本**，不是增量。
-//   · 开头十几条 `result-generated` 的 text 是空串（VAD 还没判出语音），必须丢掉，
-//     否则悬浮窗会先闪一下空字幕。
-//   · 每个 `sentence_end=true` 的句子自带句尾标点（中文「。」、英文 ". "），
-//     所以分句拼接**不加分隔符**；asr_qwen_realtime 那边补「，」是因为它的分句不带标点。
-//   · 音频不按实时节奏发也能用（10.84s 音频一次性推完，2.6s 出全文），
-//     所以一次性识别那条路不需要 sleep 假装实时。
+// 實測結論（`dev-scripts/probe_qwen_audio30_stream.py`，打的是真實介面）：
+//   · 通用域名 `dashscope.aliyuncs.com` 與業務空間專屬域名都能用 —— 這個模型
+//     **不需要 WorkspaceId**（qwen3-asr-flash-realtime 才需要）。填了就走專屬域名
+//     （阿里官方稱更穩），沒填照樣工作，所以設定頁不把它列為必填項。
+//   · `result-generated` 裡 `sentence.text` 是**當前句的全量文本**，不是增量。
+//   · 開頭十幾條 `result-generated` 的 text 是空串（VAD 還沒判出語音），必須丟掉，
+//     否則懸浮窗會先閃一下空字幕。
+//   · 每個 `sentence_end=true` 的句子自帶句尾標點（中文「。」、英文 ". "），
+//     所以分句拼接**不加分隔符**；asr_qwen_realtime 那邊補「，」是因為它的分句不帶標點。
+//   · 音訊不按即時節奏發也能用（10.84s 音訊一次性推完，2.6s 出全文），
+//     所以一次性識別那條路不需要 sleep 假裝即時。
 //
-// ## 3.1 为什么能直接复用这份实现（2026-09-23 实测）
+// ## 3.1 為什麼能直接複用這份實現（2026-09-23 實測）
 //
-// `dev-scripts/probe_qwen_31_stream_hotwords.py` 拿同一段音频、同一套 run-task
-// 打了 `qwen-audio-3.1-asr-flash-streaming`：转写结果与 3.0 逐字相同，中间结果
-// 同样是 3 条、首条同样在 1.64s，而且**接受我们发的 `parameters.vocabulary`**。
-// 那个字段是这里唯一的风险点 —— 被拒的话整条 run-task 会失败，于是配了热词的用户
-// 会**完全无法识别**，而不是"热词不生效"。
+// `dev-scripts/probe_qwen_31_stream_hotwords.py` 拿同一段音訊、同一套 run-task
+// 打了 `qwen-audio-3.1-asr-flash-streaming`：轉寫結果與 3.0 逐字相同，中間結果
+// 同樣是 3 條、首條同樣在 1.64s，而且**接受我們發的 `parameters.vocabulary`**。
+// 那個欄位是這裡唯一的風險點 —— 被拒的話整條 run-task 會失敗，於是配了熱詞的使用者
+// 會**完全無法識別**，而不是"熱詞不生效"。
 //
-// ⚠️ 同一次实测里，一个**编造的字段名也被照样接受**。所以"接受 vocabulary"只证明
-// run-task 不会被拒，**不证明热词真的参与了偏置**。对外口径仍是「配了有帮助、
-// 不保证命中」（capabilities.rs 的 Vocabulary 档），别升级成「3.1 支持热词」。
+// ⚠️ 同一次實測裡，一個**編造的欄位名也被照樣接受**。所以"接受 vocabulary"只證明
+// run-task 不會被拒，**不證明熱詞真的參與了偏置**。對外口徑仍是「配了有幫助、
+// 不保證命中」（capabilities.rs 的 Vocabulary 檔），別升級成「3.1 支援熱詞」。
 //
-// 官方文档另有一处两代不同：VAD 断句在 3.0 叫 `max_sentence_silence`、在 3.1 改成
-// `vad_model`。我们两个都不发（用服务端默认），所以这处差异碰不到 —— 真要加断句
-// 配置时必须按模型分开发，不能共用一个字段名。
+// 官方文件另有一處兩代不同：VAD 斷句在 3.0 叫 `max_sentence_silence`、在 3.1 改成
+// `vad_model`。我們兩個都不發（用服務端預設），所以這處差異碰不到 —— 真要加斷句
+// 配置時必須按模型分開發，不能共用一個欄位名。
 
 use super::diag;
 use super::types::{AsrProviderConfig, AsrResult, TestResult};
@@ -50,43 +50,43 @@ use tungstenite::client::IntoClientRequest;
 use tungstenite::http::header::{AUTHORIZATION, USER_AGENT};
 use tungstenite::http::HeaderValue;
 
-/// `extra.model` 缺失时用哪个。
+/// `extra.model` 缺失時用哪個。
 ///
-/// 刻意留在 3.0 而不是跟着前端默认升到 3.1：这个值只在异常路径上生效
-/// （前端每次都会把选中的模型放进 extra.model），而异常路径该落到**已知行为不变**
-/// 的那一代，不该顺手换成一个用户没选过的模型。
+/// 刻意留在 3.0 而不是跟著前端預設升到 3.1：這個值只在異常路徑上生效
+/// （前端每次都會把選中的模型放進 extra.model），而異常路徑該落到**已知行為不變**
+/// 的那一代，不該順手換成一個使用者沒選過的模型。
 const DEFAULT_MODEL: &str = "qwen-audio-3.0-asr-flash-streaming";
 
-/// 日志前缀。
+/// 日誌字首。
 ///
-/// 从 `qwen/audio30` 改成 `audio3x` 是因为同一份代码现在也跑 3.1 —— 旧名会让日志
-/// 出现 `[qwen/audio30] model=qwen-audio-3.1-...` 这种自相矛盾的行，排查时先要
-/// 怀疑一遍自己看错了。每条 connected 日志都带 `model=`，那才是判断跑了哪代的依据。
+/// 從 `qwen/audio30` 改成 `audio3x` 是因為同一份程式碼現在也跑 3.1 —— 舊名會讓日誌
+/// 出現 `[qwen/audio30] model=qwen-audio-3.1-...` 這種自相矛盾的行，排查時先要
+/// 懷疑一遍自己看錯了。每條 connected 日誌都帶 `model=`，那才是判斷跑了哪代的依據。
 const SCOPE: &str = "qwen/audio3x";
 const WS_PATH: &str = "/api-ws/v1/inference";
-/// 没配业务空间时的通用域名。实测与专属域名同样可用。
+/// 沒配業務空間時的通用域名。實測與專屬域名同樣可用。
 const GENERIC_HOST: &str = "dashscope.aliyuncs.com";
 
-/// 音频帧大小：16kHz 单声道 16-bit 下正好 100ms。
+/// 音訊幀大小：16kHz 單聲道 16-bit 下正好 100ms。
 ///
-/// 官方示例用的就是 3200 字节，probe 脚本也是按这个尺寸实测通过的 ——
-/// 一次性路径不改成"一大帧发完"是因为那个形状没验证过，而这个验证过。
+/// 官方示例用的就是 3200 位元組，probe 指令碼也是按這個尺寸實測透過的 ——
+/// 一次性路徑不改成"一大幀發完"是因為那個形狀沒驗證過，而這個驗證過。
 const FRAME_BYTES: usize = 3200;
 
-/// 即时热词权重。文档区间 [1,5]，越大越倾向输出该词；50 是「超级热词」
-/// （召回大幅提升但最多 50 个）。取 4 是要偏置效果又不想把普通词条推成超级热词。
+/// 即時熱詞權重。文件區間 [1,5]，越大越傾向輸出該詞；50 是「超級熱詞」
+/// （召回大幅提升但最多 50 個）。取 4 是要偏置效果又不想把普通詞條推成超級熱詞。
 const HOTWORD_WEIGHT: u32 = 4;
 
-/// 即时热词条数上限。文档只对「超级热词」明确了 50 的上限，普通热词没给数字；
-/// 这里自己设一个上限并记日志，避免词库很大时 run-task 被整条拒掉 ——
-/// 那会让识别**完全不可用**，而不是"热词少生效几个"。
+/// 即時熱詞條數上限。文件只對「超級熱詞」明確了 50 的上限，普通熱詞沒給數字；
+/// 這裡自己設一個上限並記日誌，避免詞庫很大時 run-task 被整條拒掉 ——
+/// 那會讓識別**完全不可用**，而不是"熱詞少生效幾個"。
 ///
-/// ⚠️ 这是**客户端自设**的，不是服务端限制。界面上要说"SayIt 最多发送 N 条"，
-/// 不能说成"千问协议只吃 N 条"（capabilities.rs 的 client_cap 就是为此区分的）。
+/// ⚠️ 這是**客戶端自設**的，不是服務端限制。介面上要說"SayIt 最多傳送 N 條"，
+/// 不能說成"千問協議只吃 N 條"（capabilities.rs 的 client_cap 就是為此區分的）。
 const HOTWORD_LIMIT: usize = 100;
 
-/// 给 `capabilities.rs` 的测试用，让那边的说明值和这里的请求参数钉在一起。
-/// 只在测试里存在：说明和请求参数刻意各留一份，理由见 capabilities.rs。
+/// 給 `capabilities.rs` 的測試用，讓那邊的說明值和這裡的請求引數釘在一起。
+/// 只在測試裡存在：說明和請求引數刻意各留一份，理由見 capabilities.rs。
 #[cfg(test)]
 pub fn hotword_limit_for_docs() -> usize {
     HOTWORD_LIMIT
@@ -97,7 +97,7 @@ type WsStream = tokio_tungstenite::WebSocketStream<
 >;
 type WsSink = SplitSink<WsStream, tungstenite::Message>;
 
-// ─────────────────────────── 协议编解码 ───────────────────────────
+// ─────────────────────────── 協議編解碼 ───────────────────────────
 
 fn ws_url(workspace: &str) -> String {
     let workspace = workspace.trim();
@@ -108,12 +108,12 @@ fn ws_url(workspace: &str) -> String {
     }
 }
 
-/// 这次要发的模型名，来自前端选中的那一项（`extra.model`）。
+/// 這次要發的模型名，來自前端選中的那一項（`extra.model`）。
 ///
-/// 不做白名单校验，与 asr_qwen_omni::get_model 一致：模型名只出现在 run-task 的
-/// payload 里、不进 URL，写错的后果是服务端回一条指名道姓的 task-failed
-/// （`InvalidParameter: ...`），比我们自己维护第二份清单更准 —— 那份清单一定会
-/// 比百炼的模型表旧。
+/// 不做白名單校驗，與 asr_qwen_omni::get_model 一致：模型名只出現在 run-task 的
+/// payload 裡、不進 URL，寫錯的後果是服務端回一條指名道姓的 task-failed
+/// （`InvalidParameter: ...`），比我們自己維護第二份清單更準 —— 那份清單一定會
+/// 比百鍊的模型表舊。
 fn get_model(config: &AsrProviderConfig) -> String {
     config
         .extra
@@ -125,10 +125,10 @@ fn get_model(config: &AsrProviderConfig) -> String {
         .to_string()
 }
 
-/// 热词 → `parameters.vocabulary`（`{词: 权重}`）。
+/// 熱詞 → `parameters.vocabulary`（`{詞: 權重}`）。
 ///
-/// 与 asr_qwen.rs 的做法不同：那边只能把热词拼成一段上下文文本，这个模型有专门的
-/// 即时热词字段，权重可控，也不存在「模型把整串热词当识别结果吐回来」的回显风险。
+/// 與 asr_qwen.rs 的做法不同：那邊只能把熱詞拼成一段上下文文本，這個模型有專門的
+/// 即時熱詞欄位，權重可控，也不存在「模型把整串熱詞當識別結果吐回來」的回顯風險。
 fn build_vocabulary(hotwords: &[String]) -> Option<(serde_json::Value, usize, usize)> {
     let mut seen = std::collections::HashSet::new();
     let words: Vec<&str> = hotwords
@@ -194,7 +194,7 @@ fn event_name(ev: &serde_json::Value) -> &str {
         .unwrap_or("")
 }
 
-/// task-failed 的原因。错误码和文案都在 header 里，不在 payload。
+/// task-failed 的原因。錯誤碼和文案都在 header 裡，不在 payload。
 fn task_failed_reason(ev: &serde_json::Value) -> String {
     let header = ev.get("header");
     let code = header
@@ -208,7 +208,7 @@ fn task_failed_reason(ev: &serde_json::Value) -> String {
     format!("{}: {}", code, diag::truncate(message, 200))
 }
 
-/// `payload.output.sentence` → (当前句文本, 是否已断句)
+/// `payload.output.sentence` → (當前句文本, 是否已斷句)
 fn sentence_of(ev: &serde_json::Value) -> Option<(&str, bool)> {
     let sentence = ev.get("payload")?.get("output")?.get("sentence")?;
     let text = sentence.get("text").and_then(|t| t.as_str()).unwrap_or("");
@@ -219,29 +219,29 @@ fn sentence_of(ev: &serde_json::Value) -> Option<(&str, bool)> {
     Some((text, ended))
 }
 
-/// 一次会话累积到的文本。committed = 已断句的句子，partial = 进行中的那一句。
+/// 一次會話累積到的文本。committed = 已斷句的句子，partial = 進行中的那一句。
 #[derive(Default)]
 struct Transcript {
     committed: String,
     partial: String,
     finished: bool,
     error: Option<String>,
-    /// 收到过多少条带文本的中间结果，只用于日志
+    /// 收到過多少條帶文本的中間結果，只用於日誌
     partial_events: usize,
 }
 
-/// 一条事件对累积状态做了什么，调用方据此决定要不要上抛 / 退出循环。
+/// 一條事件對累積狀態做了什麼，呼叫方據此決定要不要上拋 / 退出迴圈。
 enum Applied {
-    /// 与文本无关的事件（task-started、空文本的中间结果等）
+    /// 與文本無關的事件（task-started、空文本的中間結果等）
     Ignored,
-    /// 可显示文本变了
+    /// 可顯示文本變了
     Updated,
     Finished,
     Failed,
 }
 
 impl Transcript {
-    /// 实时展示用文本 = 已断句 + 进行中。分句自带标点，所以直接相接。
+    /// 即時展示用文本 = 已斷句 + 進行中。分句自帶標點，所以直接相接。
     fn display(&self) -> String {
         format!("{}{}", self.committed, self.partial)
     }
@@ -252,7 +252,7 @@ impl Transcript {
                 let Some((text, ended)) = sentence_of(ev) else {
                     return Applied::Ignored;
                 };
-                // 开头那十几条空文本的中间结果必须丢掉，否则悬浮窗先闪一下空字幕
+                // 開頭那十幾條空文本的中間結果必須丟掉，否則懸浮窗先閃一下空字幕
                 if text.is_empty() {
                     return Applied::Ignored;
                 }
@@ -260,7 +260,7 @@ impl Transcript {
                     self.committed.push_str(text);
                     self.partial.clear();
                 } else {
-                    // text 是当前句的全量文本（不是增量），直接覆盖
+                    // text 是當前句的全量文本（不是增量），直接覆蓋
                     self.partial.clear();
                     self.partial.push_str(text);
                 }
@@ -281,14 +281,14 @@ impl Transcript {
     }
 }
 
-// ─────────────────────────── 建连与开任务 ───────────────────────────
+// ─────────────────────────── 建連與開任務 ───────────────────────────
 
 struct Task {
     ws: WsStream,
     task_id: String,
 }
 
-/// 建连 → 发 run-task → 等 task-started。拿到 Task 才算可以发音频。
+/// 建連 → 發 run-task → 等 task-started。拿到 Task 才算可以發音訊。
 async fn start_task(
     config: &AsrProviderConfig,
     workspace: &str,
@@ -323,8 +323,8 @@ async fn start_task(
             )
         })?,
     );
-    // UA 不是这个端点的硬要求（实测不带也能连），但我们所有出网请求都带：
-    // 自有 ALB 与第三方 nginx 网关会按「无 UA」直接 403，且报错里绝不提 UA。
+    // UA 不是這個端點的硬要求（實測不帶也能連），但我們所有出網請求都帶：
+    // 自有 ALB 與第三方 nginx 閘道器會按「無 UA」直接 403，且報錯裡絕不提 UA。
     request.headers_mut().insert(
         USER_AGENT,
         HeaderValue::from_static(concat!("SayIt/", env!("CARGO_PKG_VERSION"))),
@@ -348,8 +348,8 @@ async fn start_task(
 
     let task_id = uuid::Uuid::new_v4().to_string();
     let model = get_model(config);
-    // model= 是判断「这次到底跑了哪一代」的唯一依据。3.0 和 3.1 共用这份代码、
-    // 共用 SCOPE，日志里除了这个字段没有别的地方能区分它们。
+    // model= 是判斷「這次到底跑了哪一代」的唯一依據。3.0 和 3.1 共用這份程式碼、
+    // 共用 SCOPE，日誌裡除了這個欄位沒有別的地方能區分它們。
     diag::log(
         SCOPE,
         "connected",
@@ -375,8 +375,8 @@ async fn start_task(
         )
     })?;
 
-    // 必须等到 task-started 才算就绪。额度耗尽 / 模型未开通时服务端回 task-failed
-    // 或直接关连接，都要在这里变成 Err，让上层回退到别的路径而不是空转。
+    // 必須等到 task-started 才算就緒。額度耗盡 / 模型未開通時服務端回 task-failed
+    // 或直接關連線，都要在這裡變成 Err，讓上層回退到別的路徑而不是空轉。
     let deadline = Duration::from_secs(15);
     let started = tokio::time::timeout(deadline, async {
         while let Some(msg) = ws.next().await {
@@ -439,7 +439,7 @@ async fn start_task(
     Ok(Task { ws, task_id })
 }
 
-/// 把 PCM 切成 100ms 的二进制帧发出去。
+/// 把 PCM 切成 100ms 的二進位制幀發出去。
 async fn send_frames<S>(sink: &mut S, pcm: &[u8], stage: &'static str) -> Result<(), String>
 where
     S: Sink<tungstenite::Message, Error = tungstenite::Error> + Unpin,
@@ -452,12 +452,12 @@ where
     Ok(())
 }
 
-// ─────────────────────────── 一次性识别 ───────────────────────────
+// ─────────────────────────── 一次性識別 ───────────────────────────
 
-/// 录完再发：整段 PCM 推完 → finish-task → 收全文。
+/// 錄完再發：整段 PCM 推完 → finish-task → 收全文。
 ///
-/// 设置页的「识别测试」和关掉实时字幕时的录音都走这里，而它们都不传业务空间 ID，
-/// 所以这条路必须能用通用域名 —— 已实测可用。
+/// 設定頁的「識別測試」和關掉即時字幕時的錄音都走這裡，而它們都不傳業務空間 ID，
+/// 所以這條路必須能用通用域名 —— 已實測可用。
 pub async fn transcribe(
     audio_pcm_b64: &str,
     sample_rate: u32,
@@ -518,7 +518,7 @@ pub async fn transcribe(
     })?;
 
     let mut transcript = Transcript::default();
-    // 上限按音频长度放宽：10.8s 音频实测 2.6s 收全，长音频线性长一些。
+    // 上限按音訊長度放寬：10.8s 音訊實測 2.6s 收全，長音訊線性長一些。
     let collect_budget = Duration::from_secs(20) + Duration::from_secs_f64(audio_sec.min(300.0));
     let closed_early = tokio::time::timeout(collect_budget, async {
         while let Some(msg) = ws.next().await {
@@ -545,8 +545,8 @@ pub async fn transcribe(
                         _ => {}
                     }
                 }
-                // 服务端提前关连接：协议没跑完，不能当成"识别到空文本"上报成功，
-                // 否则真实原因（额度、权限、协议错）会被显示成「未检测到有效声音」。
+                // 服務端提前關連線：協議沒跑完，不能當成"識別到空文本"上報成功，
+                // 否則真實原因（額度、許可權、協議錯）會被顯示成「未檢測到有效聲音」。
                 tungstenite::Message::Close(frame) => {
                     let reason = frame
                         .map(|f| f.reason.to_string())
@@ -595,8 +595,8 @@ pub async fn transcribe(
 
 pub async fn test_connection(config: &AsrProviderConfig) -> TestResult {
     let start = Instant::now();
-    // 只握手 + 开任务 + 立刻收尾：能开出任务就说明密钥、模型、地域都对得上。
-    // 不发音频（这个命令只回答"能不能连"，真实转写由设置页的识别测试负责）。
+    // 只握手 + 開任務 + 立刻收尾：能開出任務就說明金鑰、模型、地域都對得上。
+    // 不發音訊（這個命令只回答"能不能連"，真實轉寫由設定頁的識別測試負責）。
     let result = async {
         let workspace = config
             .extra
@@ -622,8 +622,8 @@ pub async fn test_connection(config: &AsrProviderConfig) -> TestResult {
             ok: true,
             message: format!("Connection successful ({}ms)", elapsed_ms),
             elapsed_ms,
-            // 报选中的那个模型，不是 DEFAULT_MODEL —— 两代共用这份实现，写死一个
-            // 名字会让「测试连接」对着 3.1 的配置显示 3.0。
+            // 報選中的那個模型，不是 DEFAULT_MODEL —— 兩代共用這份實現，寫死一個
+            // 名字會讓「測試連線」對著 3.1 的配置顯示 3.0。
             detail: format!("model: {}", get_model(config)),
         },
         Err(message) => TestResult {
@@ -635,7 +635,7 @@ pub async fn test_connection(config: &AsrProviderConfig) -> TestResult {
     }
 }
 
-// ─────────────────────────── 流式会话 ───────────────────────────
+// ─────────────────────────── 流式會話 ───────────────────────────
 
 static SINK: once_cell::sync::Lazy<Arc<Mutex<Option<WsSink>>>> =
     once_cell::sync::Lazy::new(|| Arc::new(Mutex::new(None)));
@@ -647,11 +647,11 @@ static TASK_ID: once_cell::sync::Lazy<Arc<Mutex<String>>> =
     once_cell::sync::Lazy::new(|| Arc::new(Mutex::new(String::new())));
 static ACTIVE: AtomicBool = AtomicBool::new(false);
 
-/// 打开流式会话。
+/// 開啟流式會話。
 ///
-/// 与 asr_qwen_realtime 不同，这里**不分「实时 / 普通」两条代码路径**：无论要不要
-/// 上抛中间结果，都必须有后台 reader 一直读。这个协议在发音频期间每 ~100ms 就推一条
-/// result-generated，没人读就会把连接堵死；realtime 只决定要不要 emit。
+/// 與 asr_qwen_realtime 不同，這裡**不分「即時 / 普通」兩條程式碼路徑**：無論要不要
+/// 上拋中間結果，都必須有後台 reader 一直讀。這個協議在發音訊期間每 ~100ms 就推一條
+/// result-generated，沒人讀就會把連線堵死；realtime 只決定要不要 emit。
 #[tauri::command]
 pub async fn qwen_audio_stream_open(
     app: AppHandle,
@@ -733,9 +733,9 @@ async fn run_reader(
     }
     let mut s = state.lock().await;
     s.finished = true;
-    // 协议没跑完就断了要记下来。否则 finish 只能返回一个空字符串，而空字符串会被
-    // 显示成「未检测到有效声音」，把用户引去查麦克风 —— 真实原因（额度、鉴权、
-    // 网络）就此消失。见 pitfalls 第 15 条。
+    // 協議沒跑完就斷了要記下來。否則 finish 只能返回一個空字串，而空字串會被
+    // 顯示成「未檢測到有效聲音」，把使用者引去查麥克風 —— 真實原因（額度、鑑權、
+    // 網路）就此消失。見 pitfalls 第 15 條。
     if !ended_cleanly && s.error.is_none() {
         s.error = Some(format!(
             "connection closed before task-finished: {}",
@@ -811,7 +811,7 @@ pub async fn qwen_audio_stream_finish() -> Result<String, String> {
                 "Session is not open".to_string(),
             )
         })?;
-        // 发送失败不致命：可能服务端已经收尾，继续读已累计的文本即可。
+        // 傳送失敗不致命：可能服務端已經收尾，繼續讀已累計的文本即可。
         if let Err(e) = s
             .send(tungstenite::Message::Text(
                 serde_json::to_string(&finish_task_payload(&task_id))
@@ -834,8 +834,8 @@ pub async fn qwen_audio_stream_finish() -> Result<String, String> {
                 let events = st.partial_events;
                 drop(st);
                 cleanup().await;
-                // 已经识别出文字就交回去，哪怕收尾时断了 —— 丢掉它等于让用户白说一遍。
-                // 但断连原因仍要留痕。
+                // 已經識別出文字就交回去，哪怕收尾時斷了 —— 丟掉它等於讓使用者白說一遍。
+                // 但斷連原因仍要留痕。
                 if !text.is_empty() {
                     if let Some(err) = &err {
                         diag::log(SCOPE, "finished_with_error", err);
@@ -862,7 +862,7 @@ pub async fn qwen_audio_stream_finish() -> Result<String, String> {
         tokio::time::sleep(Duration::from_millis(30)).await;
     }
 
-    // 超时也把已拿到的文本交回去：丢掉它等于让用户白说一遍。
+    // 超時也把已拿到的文本交回去：丟掉它等於讓使用者白說一遍。
     let text = STATE.lock().await.display().trim().to_string();
     diag::log(
         SCOPE,
@@ -883,7 +883,7 @@ pub async fn qwen_audio_stream_close() -> Result<(), String> {
 mod tests {
     use super::*;
 
-    /// 没配业务空间也要能工作：设置页的识别测试就不传它。
+    /// 沒配業務空間也要能工作：設定頁的識別測試就不傳它。
     #[test]
     fn ws_url_falls_back_to_the_generic_host() {
         assert_eq!(
@@ -912,15 +912,15 @@ mod tests {
         assert_eq!(payload["payload"]["model"], DEFAULT_MODEL);
         assert_eq!(payload["payload"]["parameters"]["format"], "pcm");
         assert_eq!(payload["payload"]["parameters"]["sample_rate"], 16000);
-        // input 是必填，没有上下文时也要是一个空对象
+        // input 是必填，沒有上下文時也要是一個空物件
         assert!(payload["payload"]["input"].is_object());
         assert!(payload["payload"]["parameters"].get("vocabulary").is_none());
     }
 
-    /// 选中的模型必须真的出现在 run-task 里。
+    /// 選中的模型必須真的出現在 run-task 裡。
     ///
-    /// 这条钉的是 3.1 上线时最容易出的那个错：前端把模型名放进 `extra.model`，
-    /// Rust 这边却还在用常量 —— 界面显示 3.1、实际跑 3.0，两边都不报错。
+    /// 這條釘的是 3.1 上線時最容易出的那個錯：前端把模型名放進 `extra.model`，
+    /// Rust 這邊卻還在用常量 —— 介面顯示 3.1、實際跑 3.0，兩邊都不報錯。
     #[test]
     fn the_selected_model_is_what_gets_sent() {
         let picked = "qwen-audio-3.1-asr-flash-streaming";
@@ -936,10 +936,10 @@ mod tests {
         assert_eq!(get_model(&config), picked);
     }
 
-    /// extra 里没有模型名时回落到 3.0，而不是空串。
+    /// extra 裡沒有模型名時回落到 3.0，而不是空串。
     ///
-    /// 空串会被服务端当成缺参数、回一条含义模糊的 InvalidParameter，
-    /// 看起来像凭据或地域出了问题。
+    /// 空串會被服務端當成缺引數、回一條含義模糊的 InvalidParameter，
+    /// 看起來像憑據或地域出了問題。
     #[test]
     fn a_missing_or_blank_model_falls_back_to_the_default() {
         let bare = AsrProviderConfig {
@@ -995,8 +995,8 @@ mod tests {
         })
     }
 
-    /// 实测形状：中间结果是**当前句的全量文本**，不是增量。
-    /// 按增量累加过一次就会得到「语音输入语音输入法语音输入法测试」这种叠字。
+    /// 實測形狀：中間結果是**當前句的全量文本**，不是增量。
+    /// 按增量累加過一次就會得到「語音輸入語音輸入法語音輸入法測試」這種疊字。
     #[test]
     fn partials_replace_rather_than_append() {
         let mut t = Transcript::default();
@@ -1005,7 +1005,7 @@ mod tests {
         assert_eq!(t.display(), "语音输入法测试");
     }
 
-    /// 开头那批空文本的中间结果不能产生一次「更新」，否则悬浮窗会先闪一下空字幕。
+    /// 開頭那批空文本的中間結果不能產生一次「更新」，否則懸浮窗會先閃一下空字幕。
     #[test]
     fn empty_partials_are_ignored() {
         let mut t = Transcript::default();
@@ -1014,7 +1014,7 @@ mod tests {
         assert_eq!(t.display(), "");
     }
 
-    /// 分句自带句尾标点，所以拼接不补分隔符。
+    /// 分句自帶句尾標點，所以拼接不補分隔符。
     #[test]
     fn finished_sentences_are_joined_without_a_separator() {
         let mut t = Transcript::default();
@@ -1047,7 +1047,7 @@ mod tests {
         );
     }
 
-    /// task-started 之类的事件不该被当成文本更新。
+    /// task-started 之類的事件不該被當成文本更新。
     #[test]
     fn unrelated_events_are_ignored() {
         let mut t = Transcript::default();

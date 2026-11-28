@@ -1,11 +1,11 @@
-//! macOS 虚拟键码（kVK_*，Carbon Events.h）与 SayIt 内部键 ID 的互转。
+//! macOS 虛擬鍵碼（kVK_*，Carbon Events.h）與 SayIt 內部鍵 ID 的互轉。
 //!
-//! 热键状态机（keyboard/mod.rs）和前端都以 **Windows 虚拟键码** 作为键的内部 ID
+//! 熱鍵狀態機（keyboard/mod.rs）和前端都以 **Windows 虛擬鍵碼** 作為鍵的內部 ID
 //! （`SINGLE_KEY_TABLE`、`PTTEvent.keycode`）。mac 上不另起一套 ID，而是在事件入口把
-//! macOS 键码翻译成同一套 VK，这样状态机、单测和前后端契约全部复用。
+//! macOS 鍵碼翻譯成同一套 VK，這樣狀態機、單測和前後端契約全部複用。
 //!
-//! Mac 键盘上不存在的键（ContextMenu / Pause / ScrollLock / BrowserBack / F21–F24 等）
-//! 这里没有映射，按了也不会命中；前端在 mac 上不展示这些键。
+//! Mac 鍵盤上不存在的鍵（ContextMenu / Pause / ScrollLock / BrowserBack / F21–F24 等）
+//! 這裡沒有對映，按了也不會命中；前端在 mac 上不展示這些鍵。
 
 use super::ffi::{
     CGEventFlags, CGKeyCode, kCGEventFlagMaskAlternate, kCGEventFlagMaskCommand, kCGEventFlagMaskControl,
@@ -14,7 +14,7 @@ use super::ffi::{
     NX_DEVICERCTLKEYMASK, NX_DEVICERSHIFTKEYMASK,
 };
 
-/// Fn / 🌐 键的内部 ID。Windows 没有对应的虚拟键，取保留值 0xFF；只有 mac 会产生它。
+/// Fn / 🌐 鍵的內部 ID。Windows 沒有對應的虛擬鍵，取保留值 0xFF；只有 mac 會產生它。
 pub const VK_FN: u32 = 0xFF;
 
 pub const KVK_ANSI_C: CGKeyCode = 0x08;
@@ -24,7 +24,7 @@ pub const KVK_COMMAND: CGKeyCode = 0x37;
 pub const KVK_FUNCTION: CGKeyCode = 0x3F;
 pub const KVK_CAPS_LOCK: CGKeyCode = 0x39;
 
-/// (Windows VK, macOS 键码)。修饰键单独放在 MODIFIERS 里。
+/// (Windows VK, macOS 鍵碼)。修飾鍵單獨放在 MODIFIERS 裡。
 const KEYS: &[(u32, CGKeyCode)] = &[
     // 字母（ANSI 物理位置）
     (0x41, 0x00), // A
@@ -53,7 +53,7 @@ const KEYS: &[(u32, CGKeyCode)] = &[
     (0x58, 0x07), // X
     (0x59, 0x10), // Y
     (0x5A, 0x06), // Z
-    // 数字行
+    // 數字行
     (0x30, 0x1D), // 0
     (0x31, 0x12), // 1
     (0x32, 0x13), // 2
@@ -64,7 +64,7 @@ const KEYS: &[(u32, CGKeyCode)] = &[
     (0x37, 0x1A), // 7
     (0x38, 0x1C), // 8
     (0x39, 0x19), // 9
-    // 功能键（F13–F20 有 kVK 码，F21–F24 没有）
+    // 功能鍵（F13–F20 有 kVK 碼，F21–F24 沒有）
     (0x70, 0x7A), // F1
     (0x71, 0x78), // F2
     (0x72, 0x63), // F3
@@ -92,7 +92,7 @@ const KEYS: &[(u32, CGKeyCode)] = &[
     (0x0D, 0x24), // Enter（Return）
     (0x08, 0x33), // Backspace（Mac 的 Delete）
     (0x2E, 0x75), // Delete（Mac 的 Forward Delete）
-    (0x2D, 0x72), // Insert（PC 键盘接 Mac 时报成 Help）
+    (0x2D, 0x72), // Insert（PC 鍵盤接 Mac 時報成 Help）
     (0x26, 0x7E), // ArrowUp
     (0x28, 0x7D), // ArrowDown
     (0x25, 0x7B), // ArrowLeft
@@ -101,7 +101,7 @@ const KEYS: &[(u32, CGKeyCode)] = &[
     (0x23, 0x77), // End
     (0x21, 0x74), // PageUp
     (0x22, 0x79), // PageDown
-    // 标点（ANSI 物理位置，对应 Windows 的 VK_OEM_*）：组合键的主键可能是它们
+    // 標點（ANSI 物理位置，對應 Windows 的 VK_OEM_*）：組合鍵的主鍵可能是它們
     (0xBA, 0x29), // ; Semicolon
     (0xBB, 0x18), // = Equal
     (0xBC, 0x2B), // , Comma
@@ -113,7 +113,7 @@ const KEYS: &[(u32, CGKeyCode)] = &[
     (0xDC, 0x2A), // \ Backslash
     (0xDD, 0x1E), // ] BracketRight
     (0xDE, 0x27), // ' Quote
-    // 数字小键盘（Enter 与主键盘的 Enter 在 Windows 上同一个 VK，不映射）
+    // 數字小鍵盤（Enter 與主鍵盤的 Enter 在 Windows 上同一個 VK，不對映）
     (0x60, 0x52), // Numpad0
     (0x61, 0x53), // Numpad1
     (0x62, 0x54), // Numpad2
@@ -131,10 +131,10 @@ const KEYS: &[(u32, CGKeyCode)] = &[
     (0x6F, 0x4B), // NumpadDivide
 ];
 
-/// 修饰键：(Windows VK, macOS 键码, 设备相关位, 同族的设备相关位, 族掩码)。
+/// 修飾鍵：(Windows VK, macOS 鍵碼, 裝置相關位, 同族的裝置相關位, 族掩碼)。
 ///
-/// flagsChanged 事件只告诉你「修饰状态变了」，要靠设备相关位判断是哪一侧、按下还是抬起。
-/// 少数虚拟键盘/驱动不填设备相关位，此时退回看族掩码（见 `modifier_is_down`）。
+/// flagsChanged 事件只告訴你「修飾狀態變了」，要靠裝置相關位判斷是哪一側、按下還是抬起。
+/// 少數虛擬鍵盤/驅動不填裝置相關位，此時退回看族掩碼（見 `modifier_is_down`）。
 const MODIFIERS: &[(u32, CGKeyCode, CGEventFlags, CGEventFlags, CGEventFlags)] = &[
     (0xA0, 0x38, NX_DEVICELSHIFTKEYMASK, NX_DEVICELSHIFTKEYMASK | NX_DEVICERSHIFTKEYMASK, kCGEventFlagMaskShift),
     (0xA1, 0x3C, NX_DEVICERSHIFTKEYMASK, NX_DEVICELSHIFTKEYMASK | NX_DEVICERSHIFTKEYMASK, kCGEventFlagMaskShift),
@@ -144,20 +144,20 @@ const MODIFIERS: &[(u32, CGKeyCode, CGEventFlags, CGEventFlags, CGEventFlags)] =
     (0xA5, 0x3D, NX_DEVICERALTKEYMASK, NX_DEVICELALTKEYMASK | NX_DEVICERALTKEYMASK, kCGEventFlagMaskAlternate),
     (0x5B, 0x37, NX_DEVICELCMDKEYMASK, NX_DEVICELCMDKEYMASK | NX_DEVICERCMDKEYMASK, kCGEventFlagMaskCommand),
     (0x5C, 0x36, NX_DEVICERCMDKEYMASK, NX_DEVICELCMDKEYMASK | NX_DEVICERCMDKEYMASK, kCGEventFlagMaskCommand),
-    // Fn 只有一个，没有设备相关位，直接看 SecondaryFn。
+    // Fn 只有一個，沒有裝置相關位，直接看 SecondaryFn。
     (VK_FN, KVK_FUNCTION, kCGEventFlagMaskSecondaryFn, kCGEventFlagMaskSecondaryFn, kCGEventFlagMaskSecondaryFn),
 ];
 
-/// 会让单键热键「不算裸按」的修饰键族（Fn 不算：方向键、F 键本身就带这个位）。
+/// 會讓單鍵熱鍵「不算裸按」的修飾鍵族（Fn 不算：方向鍵、F 鍵本身就帶這個位）。
 pub const BLOCKING_MODIFIER_MASK: CGEventFlags =
     kCGEventFlagMaskShift | kCGEventFlagMaskControl | kCGEventFlagMaskAlternate | kCGEventFlagMaskCommand;
 
-/// 普通键（keyDown/keyUp）的键码 → 内部 VK。
+/// 普通鍵（keyDown/keyUp）的鍵碼 → 內部 VK。
 pub fn vk_for_keycode(keycode: CGKeyCode) -> Option<u32> {
     KEYS.iter().find(|(_, kc)| *kc == keycode).map(|(vk, _)| *vk)
 }
 
-/// 内部 VK → 普通键键码。
+/// 內部 VK → 普通鍵鍵碼。
 pub fn keycode_for_vk(vk: u32) -> Option<CGKeyCode> {
     KEYS.iter()
         .find(|(v, _)| *v == vk)
@@ -165,8 +165,8 @@ pub fn keycode_for_vk(vk: u32) -> Option<CGKeyCode> {
         .or_else(|| modifier_keycode_for_vk(vk))
 }
 
-/// 修饰键（flagsChanged）的键码 → 内部 VK。Caps Lock 不在表里：mac 上它只报切换、不报松开，
-/// 中文用户还常用它切输入法，不支持当热键。
+/// 修飾鍵（flagsChanged）的鍵碼 → 內部 VK。Caps Lock 不在表裡：mac 上它只報切換、不報鬆開，
+/// 中文使用者還常用它切輸入法，不支援當熱鍵。
 pub fn modifier_vk_for_keycode(keycode: CGKeyCode) -> Option<u32> {
     MODIFIERS.iter().find(|m| m.1 == keycode).map(|m| m.0)
 }
@@ -179,7 +179,7 @@ pub fn is_modifier_vk(vk: u32) -> bool {
     MODIFIERS.iter().any(|m| m.0 == vk)
 }
 
-/// 根据修饰标志判断某个修饰键此刻是否按着。`keycode` 必须是修饰键键码。
+/// 根據修飾標誌判斷某個修飾鍵此刻是否按著。`keycode` 必須是修飾鍵鍵碼。
 pub fn modifier_is_down(keycode: CGKeyCode, flags: CGEventFlags) -> bool {
     let Some(&(_, _, device_bit, family_device_bits, family_mask)) = MODIFIERS.iter().find(|m| m.1 == keycode) else {
         return false;
@@ -187,16 +187,16 @@ pub fn modifier_is_down(keycode: CGKeyCode, flags: CGEventFlags) -> bool {
     if flags & device_bit != 0 {
         return true;
     }
-    // 没填设备相关位的键盘：只要同族一个设备位都没有、族掩码却在，就按「按着」算。
+    // 沒填裝置相關位的鍵盤：只要同族一個裝置位都沒有、族掩碼卻在，就按「按著」算。
     flags & family_device_bits == 0 && flags & family_mask != 0
 }
 
-/// 按内部 VK 判断修饰键是否按着（给看门狗查物理状态用）。
+/// 按內部 VK 判斷修飾鍵是否按著（給看門狗查物理狀態用）。
 pub fn modifier_vk_is_down(vk: u32, flags: CGEventFlags) -> Option<bool> {
     modifier_keycode_for_vk(vk).map(|kc| modifier_is_down(kc, flags))
 }
 
-/// 鼠标按钮号（kCGMouseEventButtonNumber）→ 内部 VK：2 中键、3 后退侧键、4 前进侧键。
+/// 滑鼠按鈕號（kCGMouseEventButtonNumber）→ 內部 VK：2 中鍵、3 後退側鍵、4 前進側鍵。
 pub fn vk_for_mouse_button(button: i64) -> Option<u32> {
     match button {
         2 => Some(0x04),
@@ -255,9 +255,9 @@ mod tests {
         let left_only = kCGEventFlagMaskAlternate | NX_DEVICELALTKEYMASK;
         assert!(modifier_is_down(0x3A, left_only));
         assert!(!modifier_is_down(0x3D, left_only));
-        // 两侧都松开
+        // 兩側都鬆開
         assert!(!modifier_is_down(0x3D, 0));
-        // 不填设备位的键盘：退回族掩码
+        // 不填裝置位的鍵盤：退回族掩碼
         assert!(modifier_is_down(0x3D, kCGEventFlagMaskAlternate));
         // Fn
         assert!(modifier_is_down(KVK_FUNCTION, kCGEventFlagMaskSecondaryFn));

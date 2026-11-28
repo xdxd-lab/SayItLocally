@@ -1,9 +1,9 @@
-//! 平台相关的系统集成。
+//! 平台相關的系統整合。
 //!
-//! Windows 的实现目前仍分散在 keyboard / inject / context / window 等模块里的
-//! `#[cfg(windows)]` 分支中（历史原因，暂不搬动，避免在无法编译 Windows 的环境里改动它）。
-//! macOS 的实现集中在 `macos` 子模块，各业务模块在自己的 `#[cfg(target_os = "macos")]`
-//! 分支里调用它。
+//! Windows 的實現目前仍分散在 keyboard / inject / context / window 等模組裡的
+//! `#[cfg(windows)]` 分支中（歷史原因，暫不搬動，避免在無法編譯 Windows 的環境裡改動它）。
+//! macOS 的實現集中在 `macos` 子模組，各業務模組在自己的 `#[cfg(target_os = "macos")]`
+//! 分支裡呼叫它。
 
 #[cfg(target_os = "macos")]
 pub mod macos;

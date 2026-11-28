@@ -25,9 +25,9 @@ export interface ClientAiPolishResult {
   aiStatus: AiExecutionStatus
   aiProvider?: string
   aiModel?: string
-  /** 跳过 / 失败的稳定原因码，供日志与历史共用。成功时为 undefined。 */
+  /** 跳過 / 失敗的穩定原因碼，供日誌與歷史共用。成功時為 undefined。 */
   aiReason?: string
-  /** 是否真的向 AI 发出过调用。用来交叉验证「跳过确实没调用」。 */
+  /** 是否真的向 AI 發出過呼叫。用來交叉驗證「跳過確實沒呼叫」。 */
   aiAttempted: boolean
 }
 
@@ -35,14 +35,14 @@ interface ClientAiPolishOptions {
   asrText: string
   startOptions?: Readonly<StartOptions>
   /**
-   * 本次策略。**必须由调用方算好传进来**，不在这里重算：
-   * 时长门槛、总开关、路由此前在五处各判一遍，结论已经漂移过。
+   * 本次策略。**必須由呼叫方算好傳進來**，不在這裡重算：
+   * 時長門檻、總開關、路由此前在五處各判一遍，結論已經漂移過。
    */
   policy: AiPolicy
-  /** 落 ai.outcome 用；同一个 operationId 只会写出一条。 */
+  /** 落 ai.outcome 用；同一個 operationId 只會寫出一條。 */
   outcomeContext: AiOutcomeContext
   logSource: string
-  /** 异步读设置和原生请求结束后都要验代；false 表示结果已经属于旧录音。 */
+  /** 非同步讀設定和原生請求結束後都要驗代；false 表示結果已經屬於舊錄音。 */
   isCurrent?: () => boolean
 }
 
@@ -57,10 +57,10 @@ async function loadClientAiConfig(): Promise<ClientAiConfig> {
 }
 
 /**
- * 档案是否可用。ollama 免密是唯一豁免。
+ * 檔案是否可用。ollama 免密是唯一豁免。
  *
- * 这条判据此前有三份：这里、History 的云 API 重跑（漏了 ollama 豁免，于是 ollama
- * 用户重跑时被静默判成配置不完整）、History 的本地重跑。收口成一处。
+ * 這條判據此前有三份：這裡、History 的雲 API 重跑（漏了 ollama 豁免，於是 ollama
+ * 使用者重跑時被靜默判成配置不完整）、History 的本地重跑。收口成一處。
  */
 export function isClientAiConfigComplete(config: ClientAiConfig): boolean {
   return Boolean(
@@ -71,8 +71,8 @@ export function isClientAiConfigComplete(config: ClientAiConfig): boolean {
 }
 
 function safeFallbackText(asrText: string, startOptions?: Readonly<StartOptions>): string {
-  // 选区编辑依赖 AI 理解口述命令。AI 没有真正完成时，回填原选区才是安全 no-op；
-  // 直接回填 ASR 会把“改成更正式”这种命令本身覆盖进正文。
+  // 選區編輯依賴 AI 理解口述命令。AI 沒有真正完成時，回填原選區才是安全 no-op；
+  // 直接回填 ASR 會把“改成更正式”這種命令本身覆蓋進正文。
   return startOptions?.textContext?.selectedText || asrText
 }
 
@@ -98,13 +98,13 @@ function toResult(
 }
 
 /**
- * 使用当前启用的客户端 AI 档案整理一段 ASR 文本。
+ * 使用當前啟用的客戶端 AI 檔案整理一段 ASR 文本。
  *
- * 服务器（自配来源）、云 API、本地三种识别来源共用这一处，避免 Ollama 免密、
- * 短语音门槛、选区编辑回退在三条链路里逐渐漂移。返回 null 表示录音代次已经失效。
+ * 伺服器（自配來源）、雲 API、本地三種識別來源共用這一處，避免 Ollama 免密、
+ * 短語音門檻、選區編輯回退在三條鏈路裡逐漸漂移。返回 null 表示錄音代次已經失效。
  *
- * 本函数只负责「执行 + 收集证据」，不自己判策略 —— 是否该调用由 policy 决定。
- * 结果里带齐 status/reason/attempted，调用方不要再靠耗时或文本相等反推。
+ * 本函式只負責「執行 + 收集證據」，不自己判策略 —— 是否該呼叫由 policy 決定。
+ * 結果裡帶齊 status/reason/attempted，呼叫方不要再靠耗時或文本相等反推。
  */
 export async function polishWithClientAi(
   options: ClientAiPolishOptions,
@@ -116,9 +116,9 @@ export async function polishWithClientAi(
     return toResult(policy, { asrTextEmpty: true }, options)
   }
 
-  // 策略不允许调用（总开关关闭 / 低于门槛 / 引擎自带整理）。这里原来是静默 return，
-  // 于是"AI 没生效"在日志里一个字都没有 —— 本轮要修的正是它。原因由 policy 给出，
-  // 调用方只负责落日志，不在这里重新解释。
+  // 策略不允許呼叫（總開關關閉 / 低於門檻 / 引擎自帶整理）。這裡原來是靜默 return，
+  // 於是"AI 沒生效"在日誌裡一個字都沒有 —— 本輪要修的正是它。原因由 policy 給出，
+  // 呼叫方只負責落日誌，不在這裡重新解釋。
   if (!policy.allowCall) {
     return toResult(policy, {}, options)
   }
@@ -139,7 +139,7 @@ export async function polishWithClientAi(
     route: policy.route,
     provider: config.provider,
     model: config.model,
-    // 只记长度，不记正文（与 providers/diag.rs 的口径一致）
+    // 只記長度，不記正文（與 providers/diag.rs 的口徑一致）
     asrChars: asrText.length,
   })
 
@@ -179,11 +179,11 @@ export async function polishWithClientAi(
   } catch (error) {
     if (!isCurrent()) return null
     const message = String(error)
-    // 超时和调用失败要分开：前者多半是模型慢或网络，后者常常是密钥/地址/模型名。
-    // 合成一个原因会让这两类问题在日志里长得一样。
+    // 超時和呼叫失敗要分開：前者多半是模型慢或網路，後者常常是金鑰/地址/模型名。
+    // 合成一個原因會讓這兩類問題在日誌里長得一樣。
     const isTimeout = message.includes('timed out')
-    // 原因码进 ai.outcome，**错误原文只在这条 warn 里**（warn 无条件落盘）。
-    // 不把它塞进结果对象：那个对象会流向历史记录，错误文本可能回显请求内容。
+    // 原因碼進 ai.outcome，**錯誤原文只在這條 warn 裡**（warn 無條件落盤）。
+    // 不把它塞進結果物件：那個物件會流向歷史記錄，錯誤文本可能回顯請求內容。
     addRuntimeEvent('warn', logSource, 'Custom AI cleanup failed; using raw ASR text', {
       error: message,
       provider: config.provider,

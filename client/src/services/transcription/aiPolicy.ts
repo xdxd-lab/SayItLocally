@@ -1,49 +1,49 @@
-// AI 整理的「策略」与「结果」判据 —— 全模式、全入口唯一一份。
+// AI 整理的「策略」與「結果」判據 —— 全模式、全入口唯一一份。
 //
-// 为什么要单独抽一层：影响「这次会不会被 AI 整理、由谁整理」的有四个设置
-// （aiEnabled / aiMinDurationSec / server.aiSource / workMode），它们此前在五处
-// 各判一遍（录音器停止段、ServerProvider、clientAiPolish、History 的三条重跑路径），
-// 结论已经漂移了：云 API 重跑漏了时长门槛、对 ollama 的配置判据和本地重跑不一致、
-// 重跑路径的失败被空 catch 吞掉既无日志也无代次检查。改一处永远漏一处。
+// 為什麼要單獨抽一層：影響「這次會不會被 AI 整理、由誰整理」的有四個設定
+// （aiEnabled / aiMinDurationSec / server.aiSource / workMode），它們此前在五處
+// 各判一遍（錄音器停止段、ServerProvider、clientAiPolish、History 的三條重跑路徑），
+// 結論已經漂移了：雲 API 重跑漏了時長門檻、對 ollama 的配置判據和本地重跑不一致、
+// 重跑路徑的失敗被空 catch 吞掉既無日誌也無代次檢查。改一處永遠漏一處。
 //
-// 拆成两个函数而不是一个大函数，是因为两件事的已知信息不同：
-//   - resolveAiPolicy：松键时就能算（配置 + 音频时长），决定路由和是否允许调用。
-//   - resolveAiOutcome：要等执行完（识别是否为空、服务端有没有真跑、调用成功与否）。
-// 合成一个会迫使调用方在信息不全时先猜一个结果，再回头改——那正是现在的毛病。
+// 拆成兩個函式而不是一個大函式，是因為兩件事的已知資訊不同：
+//   - resolveAiPolicy：松鍵時就能算（配置 + 音訊時長），決定路由和是否允許呼叫。
+//   - resolveAiOutcome：要等執行完（識別是否為空、服務端有沒有真跑、呼叫成功與否）。
+// 合成一個會迫使呼叫方在資訊不全時先猜一個結果，再回頭改——那正是現在的毛病。
 
 import { addRuntimeEvent, AI_EVENT_OUTCOME, AI_LOG_SOURCE } from '../debugLog'
 import type { AiExecutionSource, AiExecutionStatus, WorkMode } from './types'
 
 /**
- * 谁负责这次整理。**独立于「有没有执行」**。
+ * 誰負責這次整理。**獨立於「有沒有執行」**。
  *
- * `custom` 永远不是跳过原因：服务器模式选自配 AI 时，服务端只是不做整理，客户端会
- * 继续调用（见 ServerProvider.handleCustomFinal）。把它记成跳过会直接把排查带错方向。
+ * `custom` 永遠不是跳過原因：伺服器模式選自配 AI 時，服務端只是不做整理，客戶端會
+ * 繼續呼叫（見 ServerProvider.handleCustomFinal）。把它記成跳過會直接把排查帶錯方向。
  */
 export type AiRoute
-  = | 'managed' // 服务器内置 AI
-  | 'custom' // 客户端调用用户自配的 AI 档案（可能是远程服务，不一定在本机）
-  | 'integrated_asr' // 识别引擎自带整理（如 Qwen Omni），不另外调独立 AI
-  | 'none' // 总开关关闭
+  = | 'managed' // 伺服器內建 AI
+  | 'custom' // 客戶端呼叫使用者自配的 AI 檔案（可能是遠端服務，不一定在本機）
+  | 'integrated_asr' // 識別引擎自帶整理（如 Qwen Omni），不另外調獨立 AI
+  | 'none' // 總開關關閉
 
-/** 没整理 / 没整理成功的原因。稳定取值，日志与历史共用，不要改字面量。 */
+/** 沒整理 / 沒整理成功的原因。穩定取值，日誌與歷史共用，不要改字面量。 */
 export type AiReason
-  = | 'ai_off' // 总开关关闭
-  | 'duration_below_min' // 低于短语音门槛
-  | 'empty_asr' // 没识别出文本，无可整理
-  | 'integrated_asr' // 识别引擎已内置整理
-  | 'config_incomplete' // 选了自配 AI 但档案不完整
-  | 'call_failed' // 调用发出去了，失败
-  | 'call_timeout' // 调用超时
-  | 'empty_output' // 调用成功但返回空文本
-  | 'no_evidence' // 旧响应缺少执行证据，无法确认跑没跑
+  = | 'ai_off' // 總開關關閉
+  | 'duration_below_min' // 低於短語音門檻
+  | 'empty_asr' // 沒識別出文本，無可整理
+  | 'integrated_asr' // 識別引擎已內建整理
+  | 'config_incomplete' // 選了自配 AI 但檔案不完整
+  | 'call_failed' // 呼叫發出去了，失敗
+  | 'call_timeout' // 呼叫超時
+  | 'empty_output' // 呼叫成功但返回空文本
+  | 'no_evidence' // 舊響應缺少執行證據，無法確認跑沒跑
 
 export interface AiConfigSnapshot {
   workMode: WorkMode
   aiEnabled: boolean
-  /** 0 = 不设门槛。 */
+  /** 0 = 不設門檻。 */
   aiMinDurationSec: number
-  /** 仅服务器模式有意义；其它模式整理一律由客户端执行。 */
+  /** 僅伺服器模式有意義；其它模式整理一律由客戶端執行。 */
   serverAiSource: 'managed' | 'custom'
   /** A selected-text edit explicitly chooses a separate client AI profile. */
   selectionAiOverride?: boolean
@@ -51,23 +51,23 @@ export interface AiConfigSnapshot {
 
 export interface AiPolicyInput extends AiConfigSnapshot {
   /**
-   * 实际 PCM 时长（秒）。**不要四舍五入，也不要用热键按住时长或界面显示值**：
-   * 按住时长含松键前后的空白，界面值是格式化过的，两者都会让「恰好等于门槛」
-   * 这一档判错。
+   * 實際 PCM 時長（秒）。**不要四捨五入，也不要用熱鍵按住時長或介面顯示值**：
+   * 按住時長含松鍵前後的空白，介面值是格式化過的，兩者都會讓「恰好等於門檻」
+   * 這一檔判錯。
    */
   audioDurationSec: number
-  /** 识别引擎自带整理（Qwen Omni 一类）。 */
+  /** 識別引擎自帶整理（Qwen Omni 一類）。 */
   integratedAsr?: boolean
 }
 
 export interface AiPolicy {
   route: AiRoute
-  /** 策略是否允许发起调用。false 时 reason 必定有值。 */
+  /** 策略是否允許發起呼叫。false 時 reason 必定有值。 */
   allowCall: boolean
   reason?: AiReason
   aiEnabled: boolean
   workMode: WorkMode
-  /** 冻结进日志与历史，供事后解释用：不能拿今天的设置解释昨天的记录。 */
+  /** 凍結進日誌與歷史，供事後解釋用：不能拿今天的設定解釋昨天的記錄。 */
   audioMs: number
   minAudioMs: number
 }
@@ -78,11 +78,11 @@ function toMs(sec: number): number {
 }
 
 /**
- * 决定路由与是否允许调用。
+ * 決定路由與是否允許呼叫。
  *
- * 优先级是刻意的：总开关关闭优先于时长门槛（用户主动关掉 AI 时，报「低于门槛」
- * 会让他去调一个根本不生效的设置）。配置完整性**不在这里判** —— 它属于执行证据，
- * 只有策略已经允许调用之后才有意义，否则 AI 关着也会报「配置不完整」。
+ * 優先順序是刻意的：總開關關閉優先於時長門檻（使用者主動關掉 AI 時，報「低於門檻」
+ * 會讓他去調一個根本不生效的設定）。配置完整性**不在這裡判** —— 它屬於執行證據，
+ * 只有策略已經允許呼叫之後才有意義，否則 AI 關著也會報「配置不完整」。
  */
 export function resolveAiPolicy(input: AiPolicyInput): AiPolicy {
   const audioMs = toMs(input.audioDurationSec)
@@ -98,8 +98,8 @@ export function resolveAiPolicy(input: AiPolicyInput): AiPolicy {
     return { ...base, route: 'none', allowCall: false, reason: 'ai_off' }
   }
 
-  // 路由只看配置，与「这次跑不跑」无关。日志里保留它才能回答
-  // 「AI 开着但没整理，本来该谁做」。
+  // 路由只看配置，與「這次跑不跑」無關。日誌裡保留它才能回答
+  // 「AI 開著但沒整理，本來該誰做」。
   const integratedAsr = input.integratedAsr && !input.selectionAiOverride
   const route: AiRoute = integratedAsr
     ? 'integrated_asr'
@@ -116,23 +116,23 @@ export function resolveAiPolicy(input: AiPolicyInput): AiPolicy {
   return { ...base, route, allowCall: true }
 }
 
-/** 执行证据。缺省一律按「不知道」处理，绝不按「失败」处理。 */
+/** 執行證據。預設一律按「不知道」處理，絕不按「失敗」處理。 */
 export interface AiEvidence {
-  /** 识别结果是否为空。空文本时不存在「整理」这件事。 */
+  /** 識別結果是否為空。空文本時不存在「整理」這件事。 */
   asrTextEmpty?: boolean
-  /** 自配 AI 档案是否完整。仅 route=custom 时有意义。 */
+  /** 自配 AI 檔案是否完整。僅 route=custom 時有意義。 */
   configComplete?: boolean
-  /** 服务端回传的 llm_debug.error。有值即服务端调用失败。 */
+  /** 服務端回傳的 llm_debug.error。有值即服務端呼叫失敗。 */
   serverError?: string
   /**
-   * 服务端回传的 llm_debug.provider。有值即服务端**确实**调过 AI，
-   * 哪怕 llm_ms 是 0 —— 不能再拿耗时反推成功失败（服务端异常时返回原文 + 0ms，
-   * 按耗时判会把「失败」误归成「不可用」）。
+   * 服務端回傳的 llm_debug.provider。有值即服務端**確實**調過 AI，
+   * 哪怕 llm_ms 是 0 —— 不能再拿耗時反推成功失敗（服務端異常時返回原文 + 0ms，
+   * 按耗時判會把「失敗」誤歸成「不可用」）。
    */
   serverProvider?: string
-  /** 自配 AI 的失败种类。 */
+  /** 自配 AI 的失敗種類。 */
   clientFailure?: 'timeout' | 'error'
-  /** 自配 AI 调用成功但返回空文本。 */
+  /** 自配 AI 呼叫成功但返回空文本。 */
   clientOutputEmpty?: boolean
   llmMs?: number
   provider?: string
@@ -143,7 +143,7 @@ export interface AiOutcome {
   source: AiExecutionSource
   status: AiExecutionStatus
   reason?: AiReason
-  /** 是否真的向 AI 发出过调用。跳过时必须为 false，用来交叉验证日志。 */
+  /** 是否真的向 AI 發出過呼叫。跳過時必須為 false，用來交叉驗證日誌。 */
   attempted: boolean
   llmMs: number
   provider?: string
@@ -153,14 +153,14 @@ export interface AiOutcome {
 const NOT_ATTEMPTED = { attempted: false, llmMs: 0 } as const
 
 /**
- * 由策略 + 执行证据得出最终结果。
+ * 由策略 + 執行證據得出最終結果。
  *
- * 刻意不比较文本：AI 整理成功但文本恰好没变化（本来就规范的一句话）是正常结果，
- * 按文本相等判会把它记成没执行。
+ * 刻意不比較文本：AI 整理成功但文本恰好沒變化（本來就規範的一句話）是正常結果，
+ * 按文本相等判會把它記成沒執行。
  */
 export function resolveAiOutcome(policy: AiPolicy, evidence: AiEvidence = {}): AiOutcome {
-  // 空识别排在最前：没有文本时「为什么没整理」的真答案是「没识别出东西」，
-  // 报门槛或总开关都会把人引去查 AI 设置。
+  // 空識別排在最前：沒有文本時「為什麼沒整理」的真答案是「沒識別出東西」，
+  // 報門檻或總開關都會把人引去查 AI 設定。
   if (evidence.asrTextEmpty) {
     return { ...NOT_ATTEMPTED, source: 'none', status: 'skipped', reason: 'empty_asr' }
   }
@@ -190,8 +190,8 @@ export function resolveAiOutcome(policy: AiPolicy, evidence: AiEvidence = {}): A
         model: evidence.model,
       }
     }
-    // 旧版服务器不带 llm_debug.provider，只有 llm_ms=0 这一个信号，而它既可能是
-    // 「服务端没跑」也可能是「跑了但极快/失败回退」。不猜，如实记成无法确认。
+    // 舊版伺服器不帶 llm_debug.provider，只有 llm_ms=0 這一個訊號，而它既可能是
+    // 「服務端沒跑」也可能是「跑了但極快/失敗回退」。不猜，如實記成無法確認。
     return {
       source: 'server',
       status: 'unavailable',
@@ -246,13 +246,13 @@ export function resolveAiOutcome(policy: AiPolicy, evidence: AiEvidence = {}): A
 }
 
 /**
- * 从 start 时冻结的配置快照 + 本次实际时长复原策略。
+ * 從 start 時凍結的配置快照 + 本次實際時長復原策略。
  *
- * 缓冲型 Provider（本地 / 云 API）的识别在 stop 之后才做，时长由它们自己的 PCM 缓冲
- * 算出，所以策略只能在那时就地算。共用这个入口是为了保证「算的人不同、判据同一份」。
+ * 緩衝型 Provider（本地 / 雲 API）的識別在 stop 之後才做，時長由它們自己的 PCM 緩衝
+ * 算出，所以策略只能在那時就地算。共用這個入口是為了保證「算的人不同、判據同一份」。
  *
- * 快照缺失时按「AI 开启、无门槛」兜底：宁可多调一次 AI，也不要因为一个可选字段
- * 没传就静默不整理 —— 那正是本轮要消灭的故障形态。
+ * 快照缺失時按「AI 開啟、無門檻」兜底：寧可多調一次 AI，也不要因為一個可選欄位
+ * 沒傳就靜默不整理 —— 那正是本輪要消滅的故障形態。
  */
 export function policyFromSnapshot(
   snapshot: AiConfigSnapshot | undefined,
@@ -273,21 +273,21 @@ export function policyFromSnapshot(
 
 export interface AiOutcomeContext {
   /**
-   * 本次处理的唯一标识。实时录音用 runId 派生，历史重跑每次新建 —— **不能复用**
-   * 被重跑那条记录的旧标识，否则两次处理在日志里分不开。
+   * 本次處理的唯一標識。即時錄音用 runId 派生，歷史重跑每次新建 —— **不能複用**
+   * 被重跑那條記錄的舊標識，否則兩次處理在日誌裡分不開。
    */
   operationId: string
   trigger: 'live' | 'history_reprocess'
-  /** 服务端连接/会话标识，用来把客户端日志和服务器日志对起来（服务器日志每行有 cid/sid）。 */
+  /** 服務端連線/會話標識，用來把客戶端日誌和伺服器日誌對起來（伺服器日誌每行有 cid/sid）。 */
   serverRef?: string
 }
 
 /**
- * 已落过最终摘要的 operationId。
+ * 已落過最終摘要的 operationId。
  *
- * 「每次处理恰好一条 ai.outcome」如果只靠调用方自觉，早晚会在某条分支上漏掉或写两条
- * （asr / final / done 各写一次是最容易发生的）。这里做成结构保证：同一个 operationId
- * 第二次调用直接丢弃。容量有上限，避免长时间运行后无限增长。
+ * 「每次處理恰好一條 ai.outcome」如果只靠呼叫方自覺，早晚會在某條分支上漏掉或寫兩條
+ * （asr / final / done 各寫一次是最容易發生的）。這裡做成結構保證：同一個 operationId
+ * 第二次呼叫直接丟棄。容量有上限，避免長時間執行後無限增長。
  */
 const loggedOutcomes = new Set<string>()
 const MAX_LOGGED_OUTCOMES = 200
@@ -303,18 +303,18 @@ function markLogged(operationId: string): boolean {
   return true
 }
 
-/** 仅供测试重置。 */
+/** 僅供測試重置。 */
 export function __resetAiOutcomeLogDedupe(): void {
   loggedOutcomes.clear()
 }
 
 /**
- * 判定结果并落唯一一条 `ai.outcome`。
+ * 判定結果並落唯一一條 `ai.outcome`。
  *
- * 所有终结点都必须走这里，不要自己拼日志：这条日志是「为什么没整理」的唯一答案，
- * 分散拼写会让字段在各条路径上不一致，而排查时是按字段 grep 的。
+ * 所有終結點都必須走這裡，不要自己拼日誌：這條日誌是「為什麼沒整理」的唯一答案，
+ * 分散拼寫會讓欄位在各條路徑上不一致，而排查時是按欄位 grep 的。
  *
- * 只记长度与结论，不记识别正文、整理正文、prompt 正文。
+ * 只記長度與結論，不記識別正文、整理正文、prompt 正文。
  */
 export function resolveAndLogAiOutcome(
   context: AiOutcomeContext,
@@ -329,7 +329,7 @@ export function resolveAndLogAiOutcome(
       ...(context.serverRef && { serverRef: context.serverRef }),
       workMode: policy.workMode,
       aiEnabled: policy.aiEnabled,
-      // route 始终独立于 reason：custom 表示"服务端不做、客户端做"，不是跳过。
+      // route 始終獨立於 reason：custom 表示"服務端不做、客戶端做"，不是跳過。
       route: policy.route,
       audioMs: policy.audioMs,
       minAudioMs: policy.minAudioMs,
@@ -345,12 +345,12 @@ export function resolveAndLogAiOutcome(
 }
 
 /**
- * 从服务端 final 帧的 llm_debug 里摘出结论性证据。
+ * 從服務端 final 幀的 llm_debug 裡摘出結論性證據。
  *
- * 放在这里而不是各解析点各写一遍：实时 WebSocket 和历史重跑是两条独立的解析路径，
- * 分开写必然漂移（本仓库已经因此出过一次「重跑不带执行状态」）。
- * 只取 error 与 provider —— llm_debug 在服务器开了 debug_llm 时含完整 prompt 与
- * 原始输出，整体透传出去早晚会被某处日志打出来。
+ * 放在這裡而不是各解析點各寫一遍：即時 WebSocket 和歷史重跑是兩條獨立的解析路徑，
+ * 分開寫必然漂移（本倉庫已經因此出過一次「重跑不帶執行狀態」）。
+ * 只取 error 與 provider —— llm_debug 在伺服器開了 debug_llm 時含完整 prompt 與
+ * 原始輸出，整體透傳出去早晚會被某處日誌打出來。
  */
 export function extractServerAiEvidence(
   llmDebug: unknown,
@@ -364,10 +364,10 @@ export function extractServerAiEvidence(
 }
 
 /**
- * 服务端只需要一个布尔：这次它要不要做整理。
+ * 服務端只需要一個布林：這次它要不要做整理。
  *
- * 客户端自配 AI 时也要发 true —— 服务端不做、客户端做，不是「整次跳过」。
- * 这是唯一允许把 policy 压成布尔的地方，压完的值不要再回头当原因用。
+ * 客戶端自配 AI 時也要發 true —— 服務端不做、客戶端做，不是「整次跳過」。
+ * 這是唯一允許把 policy 壓成布林的地方，壓完的值不要再回頭當原因用。
  */
 export function serverShouldPolish(policy: AiPolicy): boolean {
   return policy.allowCall && policy.route === 'managed'

@@ -68,8 +68,8 @@ interface ReprocessResult {
 /**
  * 一次重跑的 AI 上下文。
  *
- * snapshot 是**这次重跑**的配置（不是被重跑那条记录当初的配置）；operationId 每次新建，
- * 不复用旧记录的标识，否则两次处理在日志里分不开。
+ * snapshot 是**這次重跑**的配置（不是被重跑那條記錄當初的配置）；operationId 每次新建，
+ * 不復用舊記錄的標識，否則兩次處理在日誌裡分不開。
  */
 interface ReprocessAiContext {
   snapshot: AiConfigSnapshot
@@ -96,7 +96,7 @@ async function buildReprocessAiContext(recordId: string): Promise<ReprocessAiCon
   }
 }
 
-/** 服务器模式重新识别：通过独立 WebSocket 连接，避免干扰全局连接 */
+/** 伺服器模式重新識別：透過獨立 WebSocket 連線，避免干擾全域性連線 */
 async function reprocessViaServer(
   chunk: ArrayBuffer,
   hotwords: string[],
@@ -107,8 +107,8 @@ async function reprocessViaServer(
   const { getWSUrl } = await import('@/services/runtimeConfig')
   const wsUrl = getWSUrl()
   const audioDurationSec = (chunk.byteLength / 2) / 16000
-  // 判据与实时录音共用同一个函数。这里原来自己又算了一遍门槛/来源/是否用内置 AI，
-  // 是本轮要消灭的第二份实现。
+  // 判據與即時錄音共用同一個函式。這裡原來自己又算了一遍門檻/來源/是否用內建 AI，
+  // 是本輪要消滅的第二份實現。
   const policy = policyFromSnapshot(ai.snapshot, 'server', audioDurationSec)
   const useManagedAi = serverShouldPolish(policy)
   const useCustomAi = policy.allowCall && policy.route === 'custom'
@@ -148,7 +148,7 @@ async function reprocessViaServer(
       if (hotwords.length > 0) startMsg.hotwords = hotwords
       socket.send(JSON.stringify(startMsg))
 
-      // 分片发送 PCM 数据
+      // 分片傳送 PCM 資料
       const CHUNK_SIZE = 32000
       const totalBytes = chunk.byteLength
       for (let offset = 0; offset < totalBytes; offset += CHUNK_SIZE) {
@@ -175,12 +175,12 @@ async function reprocessViaServer(
             durationSec: Number(msg.duration_sec || 0),
             asrEngine: msg.asr_engine || undefined,
             asrModel: msg.asr_model || undefined,
-            // 与实时路径同一个提取函数：重跑此前完全不看执行证据，于是服务端
-            // 调用失败在重跑后的记录里和"没调用"分不开。
+            // 與即時路徑同一個提取函式：重跑此前完全不看執行證據，於是服務端
+            // 呼叫失敗在重跑後的記錄裡和"沒呼叫"分不開。
             serverAi: extractServerAiEvidence(msg.llm_debug),
           })
         } else if (msg.type === 'done' && !resolved) {
-          // 没有 final 就 done 了（后端判定为静音/无结果）
+          // 沒有 final 就 done 了（後端判定為靜音/無結果）
           resolved = true
           clearTimeout(timeout)
           socket.close()
@@ -212,8 +212,8 @@ async function reprocessViaServer(
   })
 
   if (!useCustomAi) {
-    // 内置 AI 路线（含空识别、总开关关闭、低于门槛）：结论一律由共用判据给出，
-    // 不再拿 llmMs > 0 反推成功失败。
+    // 內建 AI 路線（含空識別、總開關關閉、低於門檻）：結論一律由共用判據給出，
+    // 不再拿 llmMs > 0 反推成功失敗。
     const outcome = resolveAndLogAiOutcome(ai.context, policy, {
       asrTextEmpty: !serverResult.asrText.trim(),
       serverError: serverResult.serverAi?.error,
@@ -246,7 +246,7 @@ async function reprocessViaServer(
   return polished ? { ...serverResult, ...polished } : serverResult
 }
 
-/** 云 API 模式重新识别：调用 cloud_transcribe + 可选 cloud_polish，与 CloudAPIProvider 一致 */
+/** 雲 API 模式重新識別：呼叫 cloud_transcribe + 可選 cloud_polish，與 CloudAPIProvider 一致 */
 async function reprocessViaCloudApi(
   chunk: ArrayBuffer,
   hotwords: string[],
@@ -287,15 +287,15 @@ async function reprocessViaCloudApi(
     new Uint8Array(chunk),
     { sample_rate: 16000, asr_config: asrConfig, hotwords },
   )
-  // 还原被 ASR 拆开加空格的无空格热词（如豆包把 "SayIt" 识别成 "Say It"）
+  // 還原被 ASR 拆開加空格的無空格熱詞（如豆包把 "SayIt" 識別成 "Say It"）
   const asrText = restoreHotwordSpacing(asrResult.text, hotwords)
   const asrMs = asrResult.elapsed_ms || Math.round(performance.now() - asrStart)
 
-  // 改走共用润色。原来这里直接 invoke('cloud_polish')，与实时路径有三处分歧：
-  //   1. 完全不检查短语音门槛（实时会跳过的语音，重跑却会调 AI）；
-  //   2. 配置判据写成 `url && key && model`，漏了 ollama 免密豁免 —— ollama 用户
-  //      重跑时被静默判成"配置不完整"；
-  //   3. catch 空吞，既无日志也无执行状态，失败与未调用在记录里分不开。
+  // 改走共用潤色。原來這裡直接 invoke('cloud_polish')，與即時路徑有三處分歧：
+  //   1. 完全不檢查短語音門檻（即時會跳過的語音，重跑卻會調 AI）；
+  //   2. 配置判據寫成 `url && key && model`，漏了 ollama 免密豁免 —— ollama 使用者
+  //      重跑時被靜默判成"配置不完整"；
+  //   3. catch 空吞，既無日誌也無執行狀態，失敗與未呼叫在記錄裡分不開。
   const policy = policyFromSnapshot(ai.snapshot, 'cloud_api', durationSec, isQwenOmni)
   const polish = await polishWithClientAi({
     asrText,
@@ -326,7 +326,7 @@ async function reprocessViaCloudApi(
   }
 }
 
-/** 本地模式重新识别：调用 local_transcribe + 可选 cloud_polish，与 LocalProvider 一致 */
+/** 本地模式重新識別：呼叫 local_transcribe + 可選 cloud_polish，與 LocalProvider 一致 */
 async function reprocessViaLocal(
   chunk: ArrayBuffer,
   hotwords: string[],
@@ -341,7 +341,7 @@ async function reprocessViaLocal(
   const gpuDevice = await getSetting('localAsr.gpuDevice', '') as string
 
   // hotwords 在 GGUF 引擎上不支持（transcribe.cpp 只有 whisper 族接 initial prompt），
-  // 参数留着是为了不改调用方签名，后端会忽略。
+  // 引數留著是為了不改呼叫方簽名，後端會忽略。
   void hotwords
   const asrResult = await bridge.localTranscribeRaw(new Uint8Array(chunk), {
     modelId, language, accelerator, gpuDevice,
@@ -349,7 +349,7 @@ async function reprocessViaLocal(
   const asrText = asrResult.text
   const asrMs = asrResult.elapsed_ms
 
-  // 同云 API 重跑：改走共用润色，补上短语音门槛与执行状态（原来也是空 catch 吞掉失败）。
+  // 同雲 API 重跑：改走共用潤色，補上短語音門檻與執行狀態（原來也是空 catch 吞掉失敗）。
   const policy = policyFromSnapshot(ai.snapshot, 'local', durationSec)
   const polish = await polishWithClientAi({
     asrText,
@@ -379,7 +379,7 @@ async function reprocessViaLocal(
   }
 }
 
-/** 重新识别后写回历史记录所需的供应商元数据 */
+/** 重新識別後寫回歷史記錄所需的供應商後設資料 */
 async function buildReprocessMetadata(
   workMode: WorkMode,
   result: ReprocessResult,
@@ -390,23 +390,23 @@ async function buildReprocessMetadata(
   aiSource?: AiExecutionSource
   aiStatus?: AiExecutionStatus
 }> {
-  // AI 那几个字段一律取本次执行结果，不再读当前设置。
+  // AI 那幾個欄位一律取本次執行結果，不再讀當前設定。
   //
   // 此前只有 server 分支返回 aiSource/aiStatus，cloud_api 与 local 返回 undefined，
-  // 而写回是显式传值 —— 于是重跑一次就把记录里原有的执行状态抹成空；同时 aiProvider
-  // 照当前设置填，哪怕这次 AI 压根没跑，记录里也会写着某个服务商。
+  // 而寫回是顯式傳值 —— 於是重跑一次就把記錄裡原有的執行狀態抹成空；同時 aiProvider
+  // 照當前設定填，哪怕這次 AI 壓根沒跑，記錄裡也會寫著某個服務商。
   const aiFields = {
     aiSource: result.aiSource,
     aiStatus: result.aiStatus,
-    // 只有真的执行到（或尝试过）才写服务商，避免"没跑却记着供应商"。
+    // 只有真的執行到（或嘗試過）才寫服務商，避免"沒跑卻記著供應商"。
     aiProvider: result.aiStatus === 'skipped' ? undefined : result.aiProvider,
     aiModel: result.aiStatus === 'skipped' ? undefined : result.aiModel,
   }
 
   if (workMode === 'cloud_api') {
     const asrProviderKey = await getSetting('cloudAsr.provider', '') as string
-    // 选定的模型要一起带上：只按 provider 推的话，用户明明选了 whisper-large-v3，
-    // 历史记录里却会写成该服务的默认模型
+    // 選定的模型要一起帶上：只按 provider 推的話，使用者明明選了 whisper-large-v3，
+    // 歷史記錄裡卻會寫成該服務的預設模型
     const asrSelectedModel = await getSetting('cloudAsr.model', '') as string
     return { asrProvider: resolveAsrDisplayModel(asrProviderKey, asrSelectedModel), ...aiFields }
   }
@@ -458,7 +458,7 @@ export default function History() {
     void loadRecords(debouncedKeyword, visibleCount, favoriteOnly)
   }, [debouncedKeyword, favoriteOnly, loadRecords, visibleCount])
 
-  // 监听新记录写入，自动刷新列表
+  // 監聽新記錄寫入，自動重新整理列表
   useEffect(() => {
     const unlisten = bridge.listen('history-updated', () => {
       void loadRecords(debouncedKeyword, visibleCount, favoriteOnly)
@@ -493,15 +493,15 @@ export default function History() {
       manualEditedAt: editedAt,
     }
     await updateHistoryRecord(id, patch)
-    // 局部更新，避免整页刷新丢失展开态/滚动位置
+    // 區域性更新，避免整頁重新整理丟失展開態/滾動位置
     setRecords((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)))
   }
 
   /**
-   * 记下「这条的 ASR 纠错已提交 / 已撤回」。
+   * 記下「這條的 ASR 糾錯已提交 / 已撤回」。
    *
-   * 只写 asrCorrection* 三个字段，**不动 llmText / charCount / manualEditedAt** ——
-   * 纠正的是识别原文，正文和统计不该被它带着改（handleEdit 改的才是正文）。
+   * 只寫 asrCorrection* 三個欄位，**不動 llmText / charCount / manualEditedAt** ——
+   * 糾正的是識別原文，正文和統計不該被它帶著改（handleEdit 改的才是正文）。
    */
   const handleSaveAsrCorrection = async (id: string, patch: Partial<HistoryRecord>) => {
     await updateHistoryRecord(id, patch)
@@ -528,10 +528,10 @@ export default function History() {
     if (!record.audioFilePath) return
 
     const bytes = await bridge.readAudioFileBytes(record.audioFilePath)
-    // 录音已被保留期清掉或被手动删了。原来这里静默 return，按钮转一下就没下文。
+    // 錄音已被保留期清掉或被手動刪了。原來這裡靜默 return，按鈕轉一下就沒下文。
     if (!bytes) throw new Error(t('record.audioMissing'))
 
-    // WAV → PCM（去掉 44 字节文件头）
+    // WAV → PCM（去掉 44 位元組檔案頭）
     const pcmData = bytes.slice(44)
     const chunk = pcmData.buffer.slice(pcmData.byteOffset, pcmData.byteOffset + pcmData.byteLength)
 
@@ -556,7 +556,7 @@ export default function History() {
     const preset = await getActivePreset()
     const aiEnabled = await getSetting('aiEnabled', false)
 
-    // 加载热词
+    // 載入熱詞
     let hotwords: string[] = []
     try {
       const [rawSetWords, rawSetActive, rawCustomThemes, rawCustomThemeActive, rawSetExtraWords] = await Promise.all([
@@ -575,17 +575,17 @@ export default function History() {
 
     const clientMeta = await bridge.getClientRuntimeInfo().catch(() => null)
 
-    // 按用户当前选择的工作模式重新识别，与实时录音保持一致
-    // （此前这里硬编码走服务器模式，导致云 API/本地模式下重新识别被错误地发回服务器）
+    // 按使用者當前選擇的工作模式重新識別，與即時錄音保持一致
+    // （此前這裡硬編碼走伺服器模式，導致雲 API/本地模式下重新識別被錯誤地發回伺服器）
     const workMode = getWorkMode()
     let systemPrompt = aiEnabled ? preset.systemPrompt : undefined
-    // 与实时一致：开启"热词注入 AI 提示词"时，重新识别也把热词表注入系统提示词
+    // 與即時一致：開啟"熱詞注入 AI 提示詞"時，重新識別也把熱詞表注入系統提示詞
     if (systemPrompt && (await getSetting('injectHotwordsToPrompt', false))) {
       const part = buildHotwordInjectionPart(hotwords)
       if (part) systemPrompt = `${systemPrompt}\n\n${part}`
     }
 
-    // 一次重跑只建一份 AI 上下文，三条路径共用：策略同一个函数算，结果同一条 ai.outcome。
+    // 一次重跑只建一份 AI 上下文，三條路徑共用：策略同一個函式算，結果同一條 ai.outcome。
     const ai = await buildReprocessAiContext(record.id)
 
     let result: ReprocessResult
@@ -597,7 +597,7 @@ export default function History() {
       result = await reprocessViaServer(chunk, hotwords, ai, systemPrompt, clientMeta)
     }
 
-    // 新链路优先采用显式执行状态；旧的云/本地历史重跑尚未返回状态时才兼容文本比较。
+    // 新鏈路優先採用顯式執行狀態；舊的雲/本地歷史重跑尚未返回狀態時才相容文本比較。
     const rawAsr = result.aiStatus
       ? result.aiStatus !== 'applied'
       : !result.llmText || result.llmText === result.asrText
@@ -629,7 +629,7 @@ export default function History() {
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-4">
           <h1 className="text-2xl font-bold">{t('history.title')}</h1>
-          {/* 选中底色是滑块（useSlidingIndicator），按钮自己不画；aria-pressed 同时给读屏和滑块定位用。 */}
+          {/* 選中底色是滑塊（useSlidingIndicator），按鈕自己不畫；aria-pressed 同時給讀屏和滑塊定位用。 */}
           <div ref={filterGroupRef} className="relative flex gap-1 rounded-lg border border-border p-0.5">
             <span ref={filterIndicatorRef} aria-hidden className="sliding-indicator rounded-md bg-accent" />
             <button

@@ -22,13 +22,13 @@ import {
 } from '../displayNames'
 
 /**
- * 这些测试锁的是 i18n 的**不变量**，不是具体文案。
- * 断言里出现任何一句人类语言时都要先问：这条会不会在文案改一个字之后就挂？
+ * 這些測試鎖的是 i18n 的**不變數**，不是具體文案。
+ * 斷言裡出現任何一句人類語言時都要先問：這條會不會在文案改一個字之後就掛？
  */
 describe('locale 表', () => {
   it('en 与 zh-TW 的 key 集合完全一致', () => {
-    // 类型层面已经保证 en 不缺 key（i18n/index.ts 的 Record<TranslationKey, string>），
-    // 这里补的是另一半：en 里**多出来**的 key 类型查不出来，只能靠测试。
+    // 型別層面已經保證 en 不缺 key（i18n/index.ts 的 Record<TranslationKey, string>），
+    // 這裡補的是另一半：en 裡**多出來**的 key 型別查不出來，只能靠測試。
     const zhKeys = Object.keys(zhTW).sort()
     const enKeys = Object.keys(en).sort()
     expect(enKeys).toEqual(zhKeys)
@@ -43,7 +43,7 @@ describe('locale 表', () => {
   })
 
   it('两边的插值占位符一一对应', () => {
-    // 漏掉一个 {name} 不会报错，只会在界面上少显示一个东西 —— 典型的静默失败。
+    // 漏掉一個 {name} 不會報錯，只會在介面上少顯示一個東西 —— 典型的靜默失敗。
     const placeholders = (text: string) => (text.match(/\{(\w+)\}/g) ?? []).sort()
     for (const key of Object.keys(zhTW) as (keyof typeof zhTW)[]) {
       expect(placeholders(en[key]), `key=${key}`).toEqual(placeholders(zhTW[key]))
@@ -111,8 +111,8 @@ describe('只有正體中文與英文', () => {
 describe('t', () => {
   afterEach(() => setLocale('zh-TW'))
 
-  // 断言对照 JSON 表本身，不写死具体文案：改一个字就挂的测试没人愿意维护，
-  // 而这里要锁的是「t 有没有按当前语言查表」这个机制。
+  // 斷言對照 JSON 表本身，不寫死具體文案：改一個字就掛的測試沒人願意維護，
+  // 而這裡要鎖的是「t 有沒有按當前語言查表」這個機制。
   it('按当前语言取文案', () => {
     setLocale('zh-TW')
     expect(t('nav.home')).toBe(zhTW['nav.home'])
@@ -228,7 +228,7 @@ describe('locale 状态', () => {
 
   it('setLocale 忽略非法值', () => {
     setLocale('en')
-    // @ts-expect-error 故意传非法值：运行时来源（overlay payload）不受类型保护
+    // @ts-expect-error 故意傳非法值：執行時來源（overlay payload）不受型別保護
     setLocale('fr')
     expect(getLocale()).toBe('en')
   })

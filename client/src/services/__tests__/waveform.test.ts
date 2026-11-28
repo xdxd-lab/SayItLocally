@@ -5,8 +5,8 @@ describe('computeBarsFromPCM', () => {
   it('空 PCM 返回上一帧的高度', () => {
     const state = createWaveformBarState()
     const bars = computeBarsFromPCM(new Int16Array(0), state)
-    expect(bars).toHaveLength(24) // 默认 barCount
-    expect(bars.every((h) => h === 2)).toBe(true) // 默认 minHeight
+    expect(bars).toHaveLength(24) // 預設 barCount
+    expect(bars.every((h) => h === 2)).toBe(true) // 預設 minHeight
   })
 
   it('静音 PCM 返回最小高度附近的值', () => {
@@ -43,7 +43,7 @@ describe('computeBarsFromPCM', () => {
 
   it('resetWaveformBarState 重置状态', () => {
     const state = createWaveformBarState()
-    // 先喂一些数据改变状态
+    // 先喂一些資料改變狀態
     const pcm = new Int16Array(1600)
     for (let i = 0; i < 1600; i++) pcm[i] = Math.round(Math.sin(i * 0.1) * 16000)
     computeBarsFromPCM(pcm, state)
