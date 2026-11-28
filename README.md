@@ -115,11 +115,11 @@ For regular use, choose Local mode or add your own cloud provider keys from the 
 
 The Mac app is signed but not notarized by Apple, so macOS asks you to confirm it once:
 
-1. Open the dmg and drag SayIt into Applications. Don't run it from the dmg, or updates can't be installed.
+1. Open the dmg and drag SayIt into Applications. Don't run it from the dmg, or updates can't be installed. *(This fork: in-app updates are disabled; install a new build by replacing the app yourself.)*
 2. Open SayIt from Applications. When macOS says it can't verify the developer, click Done, then go to System Settings → Privacy & Security, scroll down, and click Open Anyway next to the message about SayIt.
 3. Allow the microphone when asked, and turn SayIt on under System Settings → Privacy & Security → Accessibility. Shortcuts, pasting and reading the text around the cursor all need Accessibility.
 
-The default shortcuts on a Mac are Right ⌘ for hands-free (press to start, press again to finish) and Right ⌥ for hold-to-talk. Later updates install from inside the app.
+The default shortcuts on a Mac are Right ⌘ for hands-free (press to start, press again to finish) and Right ⌥ for hold-to-talk. Later updates install from inside the app. *(This fork: in-app updates are disabled.)*
 
 ## Self-hosting
 
@@ -161,6 +161,8 @@ SayIt/
 ├── docs/         # Images
 └── dev-docs/     # Internal development notes
 ```
+
+*(This fork: the upstream `server/` directory has been removed, `docs/` now holds images only, and `dev-docs/` is not included in this repository.)*
 
 ## Community
 
