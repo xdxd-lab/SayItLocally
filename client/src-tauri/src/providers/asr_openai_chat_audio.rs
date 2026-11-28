@@ -7,23 +7,23 @@
 // 形狀全都不一樣。合成一份實現的話，使用者填錯地址只會得到一個含義模糊的 404/400。
 //
 // 覆蓋三個 provider id：
-//   · `qwen_chat_audio`    → 地址內建為百鍊，給千問卡里的 qwen3.8-omni-flash 用
-//   · `openai_chat_audio`  → 自定義地址，百鍊 data URL 形態（相容舊配置）
+//   · `qwen_chat_audio`    → 地址內建為百煉，給千問卡裡的 qwen3.8-omni-flash 用
+//   · `openai_chat_audio`  → 自定義地址，百煉 data URL 形態（相容舊配置）
 //   · `openai_chat_audio_standard` → 自定義地址，標準 OpenAI input_audio 物件
 //
 // ## 實測記錄（2026-09-18，真實帳號，dev-scripts/probe_bailian_openai_audio.py）
 //
-// * 百鍊的 `input_audio` **必須裝 data URL**。兩種寫法都行：
+// * 百煉的 `input_audio` **必須裝 data URL**。兩種寫法都行：
 //       {"type":"input_audio","input_audio":"data:audio/wav;base64,AAA..."}
 //       {"type":"input_audio","input_audio":{"data":"data:audio/wav;base64,AAA...","format":"wav"}}
 //   裸 base64 放進 `data` 會被拒，而且錯誤資訊**極具誤導性**：
 //       400 invalid_parameter_error "The provided URL does not appear to be valid."
-//   這句話裡沒有任何線索指向「少了 data: 字首」。百鍊模式保留 data URL，
+//   這句話裡沒有任何線索指向「少了 data: 字首」。百煉模式保留 data URL，
 //   標準 OpenAI 模式才改為裸 base64 物件。
 // * **不需要流式。** qwen3-asr-flash 與 qwen3.8-omni-flash 非流式都回 200，
 //   所以這份實現不帶 SSE 解析器。
 // * 通用域名與業務空間專屬域名都能用，故 workspaceId 對這條路是可選的。
-// * `asr_options: {"language": "..."}` 是非標準的頂層欄位，百鍊接受它。
+// * `asr_options: {"language": "..."}` 是非標準的頂層欄位，百煉接受它。
 // * ⚠️ **Omni 是對話模型。** 給它音訊但不給指令，它會自己編一段對話 —— 探測裡拿到過
 //   「澳大利亞的首都是堪培拉」這種回答，還燒了 reasoning token。所以 omni 模型必須
 //   帶 system 指令把它按成「只轉寫」。qwen3-asr-flash 沒這個毛病（它就是 ASR 模型）。
@@ -49,7 +49,7 @@ const QWEN: Endpoint = Endpoint {
     base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1",
     default_model: "qwen3.8-omni-flash",
     scope: "qwen/chat-audio",
-    // 允許覆蓋：百鍊官方推薦遷到業務空間專屬域名
+    // 允許覆蓋：百煉官方推薦遷到業務空間專屬域名
     // （`{WorkspaceId}.cn-beijing.maas.aliyuncs.com`），那就得靠這一欄。
     allows_custom_url: true,
     requires_custom_url: false,
@@ -129,7 +129,7 @@ fn resolve_model(config: &AsrProviderConfig, endpoint: &Endpoint) -> String {
 
 /// 這個模型需要 system 指令按住嗎。
 ///
-/// 判據是「模型名裡有 omni」而不是前端傳下來的某個開關：前端的 `omni` 標記隻影響
+/// 判據是「模型名裡有 omni」而不是前端傳下來的某個開關：前端的 `omni` 標記只影響
 /// 介面（要不要顯示 System Prompt 輸入框），而**真正會自說自話的是模型本身**。
 /// 萬一某天前端漏傳了標記，這裡也得把它按住，否則使用者會看到模型編出來的回答被
 /// 當成轉寫結果插進文件 —— 那比少一句標點嚴重得多。
@@ -175,7 +175,7 @@ fn pcm_to_wav(pcm: &[u8], sr: u32) -> Vec<u8> {
     w
 }
 
-/// 百鍊接受 data URL 字串；標準 OpenAI Chat Completions 要求
+/// 百煉接受 data URL 字串；標準 OpenAI Chat Completions 要求
 /// `input_audio: { data: "<base64>", format: "wav" }`。
 /// 保留舊模式，避免修改已有 Qwen 配置的請求格式。
 #[derive(Clone, Copy)]
@@ -205,12 +205,12 @@ fn build_body(
         AudioPayloadFormat::DataUrl => serde_json::json!(format!("data:audio/wav;base64,{}", data)),
         AudioPayloadFormat::OpenAi => serde_json::json!({ "data": data, "format": "wav" }),
     };
-    // 標準模式的語言只能寫進指令：`asr_options` 是百鍊私有的頂層欄位，嚴格的閘道器
+    // 標準模式的語言只能寫進指令：`asr_options` 是百煉私有的頂層欄位，嚴格的閘道器
     // （如 Gemini 的 OpenAI 相容端點）碰到不認識的欄位會直接 400。
     // 測試連線不傳語言，所以這條路只有真實轉寫才會走到，單測得替它把住。
     let instruction = match (audio_format, language) {
         (AudioPayloadFormat::OpenAi, Some(lang)) => Some(format!(
-            "{}\n\n音訊的語言程式碼是 {}，按這個語言轉寫。",
+            "{}\n\n音訊的語言代碼是 {}，按這個語言轉寫。",
             instruction.unwrap_or(DEFAULT_TRANSCRIBE_INSTRUCTION),
             lang
         )),
@@ -230,7 +230,7 @@ fn build_body(
 
     let mut body = serde_json::json!({ "model": model, "messages": messages });
     if let (AudioPayloadFormat::DataUrl, Some(lang)) = (audio_format, language) {
-        // 非標準欄位，百鍊實測接受。只在百鍊形態裡發，理由見上面指令那段。
+        // 非標準欄位，百煉實測接受。只在百煉形態裡發，理由見上面指令那段。
         body["asr_options"] = serde_json::json!({ "language": lang });
     }
     body
@@ -283,7 +283,7 @@ pub async fn transcribe(
     let wav = pcm_to_wav(&pcm, sample_rate);
 
     // 指令：使用者填過就用他的，否則對 omni 這類對話模型上預設指令。
-    // 熱詞接在指令後面 —— 百鍊的 system 訊息正是它的術語表通道。
+    // 熱詞接在指令後面 —— 百煉的 system 訊息正是它的術語表通道。
     let mut instruction = config
         .extra
         .get("instructions")
@@ -472,7 +472,7 @@ mod tests {
         assert_eq!(join_chat_url(expected), expected);
     }
 
-    /// 千問那一檔：空著用百鍊通用域名，填了用使用者的（業務空間專屬域名就靠這個）。
+    /// 千問那一檔：空著用百煉通用域名，填了用使用者的（業務空間專屬域名就靠這個）。
     #[test]
     fn the_qwen_endpoint_defaults_to_bailian_and_honors_an_override() {
         let endpoint = endpoint_for("qwen_chat_audio");
@@ -533,7 +533,7 @@ mod tests {
         assert_eq!(body["messages"][0]["role"], "system");
     }
 
-    /// 標準模式不許帶百鍊私有的 `asr_options`（嚴格閘道器會 400），語言改走指令。
+    /// 標準模式不許帶百煉私有的 `asr_options`（嚴格閘道器會 400），語言改走指令。
     #[test]
     fn standard_body_carries_language_in_the_instruction_not_asr_options() {
         let body = build_body(
@@ -552,7 +552,7 @@ mod tests {
         assert!(text.contains("ja"), "got {}", text);
     }
 
-    /// 百鍊形態保持原樣：語言照舊走 `asr_options`，指令不被改寫。
+    /// 百煉形態保持原樣：語言照舊走 `asr_options`，指令不被改寫。
     #[test]
     fn data_url_body_still_sends_asr_options_language() {
         let body = build_body(

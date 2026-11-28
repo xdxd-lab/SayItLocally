@@ -28,9 +28,9 @@ import type {
  * 攢夠這麼多位元組才發一個 WebSocket 包：16 kHz、16 bit 單聲道下正好 200 ms。
  *
  * 採集端每 8 ms 左右給一幀（AudioWorklet 一個渲染塊），原來收到就發，每秒 125 個
- * 256 位元組的小包，回落路徑更碎（每秒約 375 個 85 位元組）。服務端松鍵之前只是把音訊攢著，
+ * 256 位元組的小包，回落路徑更碎（每秒約 375 個 85 位元組）。服務端鬆鍵之前只是把音訊攢著，
  * 沒有流式結果，所以合批不影響識別結果和速度；雲 API 模式一直就是 200 ms 一批。
- * 松鍵時剩下的不足 200 ms 一定在 stop 之前發掉（見 flushAudio）。
+ * 鬆鍵時剩下的不足 200 ms 一定在 stop 之前發掉（見 flushAudio）。
  */
 const SEND_BATCH_BYTES = 6400
 
@@ -44,7 +44,7 @@ export class ServerProvider implements TranscriptionProvider {
   private customAiReady = false
   private customFinalPending = false
   private serverDonePending = false
-  /** 松鍵時隨 stop 傳入的本次策略；與線上那個 disable_ai 布林同出一源。 */
+  /** 鬆鍵時隨 stop 傳入的本次策略；與線上那個 disable_ai 布林同出一源。 */
   private activePolicy: AiPolicy | undefined
   private activeConnectionId: string | undefined
   private pendingAudio: ArrayBuffer[] = []

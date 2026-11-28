@@ -1,7 +1,7 @@
 //! macOS 文字插入：寫 NSPasteboard → 模擬 ⌘V → 延時還原剪貼簿。
 //!
 //! 與 Windows 的對應關係：
-//! - Windows 先試 `WM_PASTE` 直髮控制元件、再退 `SendInput` Ctrl+V；mac 沒有跨程序直髮貼上訊息的
+//! - Windows 先試 `WM_PASTE` 直發控制元件、再退 `SendInput` Ctrl+V；mac 沒有跨程序直發貼上訊息的
 //!   通道，統一用 `CGEventPost` 發 ⌘V（終端裡的 TUI 也能用：⌘V 由終端程式自己處理，
 //!   不需要 conhost 那條特殊路徑）。
 //! - 剪貼簿保護：插入前給剪貼簿拍全型別快照，貼上後 500 ms 若剪貼簿仍是我們寫的那份就還原。

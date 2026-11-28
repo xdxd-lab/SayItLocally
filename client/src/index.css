@@ -102,7 +102,7 @@
   }
 
   /* 英文介面下把 Segoe UI 提前：微軟雅黑渲染英文字元明顯更糊（字重偏細、
-     字距偏松）。<html lang> 由 i18n 的 setLocale 寫入，所以這條規則跟著
+     字距偏鬆）。<html lang> 由 i18n 的 setLocale 寫入，所以這條規則跟著
      介面語言走，不跟系統語言 —— 中文使用者切到英文介面也應該看到 Segoe UI。 */
   html[lang="en"] body {
     font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, "Microsoft YaHei", sans-serif;
@@ -485,7 +485,7 @@
   animation: overlay-progress-sheen 1.6s ease-in-out var(--estimate, 3s) infinite;
 }
 
-/* 錄音中的提示（聲音太小、麥克風靜音、最後 10 秒）。以前是 Tailwind 的 animate-pulse：一齣現就
+/* 錄音中的提示（聲音太小、麥克風靜音、最後 10 秒）。以前是 Tailwind 的 animate-pulse：一出現就
    直接亮在那裡，再 50% 透明度來回閃，黑底小膠囊上顯得急躁。現在先等膠囊寬度彈開（150ms），
    從輕微模糊裡出來，之後只做幅度更小、更慢的呼吸。 */
 @keyframes overlay-attention-breathe {

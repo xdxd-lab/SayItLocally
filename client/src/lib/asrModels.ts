@@ -7,7 +7,7 @@ const QWEN_OMNI_MODEL_MAP: Record<string, string> = {
   qwen_omni_35_plus: 'qwen3.5-omni-plus-realtime',
   qwen_omni_35_flash: 'qwen3.5-omni-flash-realtime',
   // 這兩個舊執行時鍵原來指向 qwen3-omni-flash-realtime / qwen-omni-turbo-realtime。
-  // 2026-09-23 實測那兩個端點已被百鍊縮容（讀超時 / 「system capacity limits」），
+  // 2026-09-23 實測那兩個端點已被百煉縮容（讀超時 / 「system capacity limits」），
   // 所以改指向同族還活著的 flash。**不能只是刪掉這兩行** —— 刪了以後
   // resolveQwenOmniModel 返回 undefined、extra.model 不帶值，後端會用它自己的
   // 預設模型，等於把落點交給另一處程式碼去定，兩邊一漂就查不出來。
@@ -78,7 +78,7 @@ export interface AsrConfigExtra extends Record<string, unknown> {
 }
 
 /**
- * 組 `asr_config.extra` —— 「這次用哪個模型」的唯一齣處。
+ * 組 `asr_config.extra` —— 「這次用哪個模型」的唯一出處。
  *
  * 四個地方要組 asr_config（錄音主鏈路、歷史重跑、設定頁識別測試、診斷頁測試），
  * 以前每處都自己拼一遍 extra，於是加一個「可選模型」就得改四處、還容易漏掉一處 ——
@@ -87,7 +87,7 @@ export interface AsrConfigExtra extends Record<string, unknown> {
  * ⚠️ 這裡**不再**根據 provider 去反查 Omni 的模型名。改成「一張卡 = 一個平台」之後，
  * 模型由 `resolveAsrApiModel` 解析好再傳進來，而執行時 provider 變成了 `qwen_omni`
  * 這個平台級的值 —— 老程式碼拿它去查 QWEN_OMNI_MODEL_MAP 查不到，於是
- * `extra.model` 是 undefined，後端回落到自己的預設模型。表現是**下拉里選哪個
+ * `extra.model` 是 undefined，後端回落到自己的預設模型。表現是**下拉裡選哪個
  * Omni 都跑同一個**（都變成 qwen3-omni-flash-realtime），而介面顯示得一切正常。
  * 老表只作為存量執行時鍵的兜底保留（那時 provider 還是 `qwen_omni_35_plus` 這類）。
  */

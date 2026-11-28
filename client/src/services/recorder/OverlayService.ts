@@ -510,7 +510,7 @@ export class OverlayService {
       cardToken: token,
       ...this.getCommonPayload(),
     })
-    // 失敗卡里沒有需要交付給使用者的內容，只有一條原因和一個操作機會，所以允許自動收起。
+    // 失敗卡裡沒有需要交付給使用者的內容，只有一條原因和一個操作機會，所以允許自動收起。
     this.beginCardLifecycle(token, 'dismiss_fallback', [], { autoHide: true })
   }
 

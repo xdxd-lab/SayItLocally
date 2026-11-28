@@ -110,7 +110,7 @@ export const DEFAULTS: Record<string, unknown> = {
   'localAsr.downloadSource': 'HuggingFace', // [自訂] S25：預設官方 huggingface.co（原為 'HuggingFace Mirror'）
   'localAsr.model': '',
   // GGUF 引擎的計算後端偏好。'auto' = 有 GPU 用 GPU、沒有自動用 CPU。
-  // 沒裝 GPU 加速包的機器永遠是 CPU，這個值不影響功能，隻影響速度。
+  // 沒裝 GPU 加速包的機器永遠是 CPU，這個值不影響功能，只影響速度。
   'localAsr.accelerator': 'auto', // 可選: 'auto' | 'cpu' | 'gpu'
   // 多顯示卡機器上指定用哪張卡。空串 = 交給引擎自動挑（獨顯優先）。
   // 值是 GgufDevice.id（後端報的 PCI 匯流排 id，拿不到時回落成 "kind:name"），

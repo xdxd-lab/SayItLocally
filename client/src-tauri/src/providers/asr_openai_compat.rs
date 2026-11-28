@@ -6,7 +6,7 @@
 // `dev-scripts/probe_bailian_openai_audio.py`）：
 //   · `/audio/transcriptions`：multipart 傳檔案，響應 `{"text": ...}` —— asr_groq.rs
 //   · `/chat/completions`：音訊作為 `input_audio` 塞進 messages —— asr_openai_chat_audio.rs
-//     對話介面有兩種音訊形態：百鍊 data URL 字串、標準 OpenAI data/format 物件。
+//     對話介面有兩種音訊形態：百煉 data URL 字串、標準 OpenAI data/format 物件。
 //
 // 這裡曾經做成兩張卡、讓使用者自己選。否掉了：**使用者沒辦法知道自己要連的服務說哪種協議**，
 // 他得去翻對方文件，或者兩張卡輪流試。那是把我們的實現細節推給使用者承擔。
@@ -220,7 +220,7 @@ pub async fn transcribe(
                 );
                 return Err(if show_second { second_error } else { first_error });
             }
-            // 百鍊 data URL 不一定能被相容閘道器解析；換標準 OpenAI 物件再試一次。
+            // 百煉 data URL 不一定能被相容閘道器解析；換標準 OpenAI 物件再試一次。
             match run(AS_CHAT_STANDARD, audio_pcm_b64, sample_rate, config, hotwords).await {
                 Ok(result) => {
                     remember_protocol(&key, AS_CHAT_STANDARD);

@@ -79,7 +79,7 @@ async function syncRuntimeActive(profile: AsrProfile | null): Promise<void> {
   const creds = profile ? effectiveAsrCredentials(profile) : { apiKey: '', appId: '' }
   await Promise.all([
     // ⚠️ 寫的是**選中模型的 provider**，不是 profile.provider（那是卡片 id = 平台）。
-    // 一張卡里的模型可以走不同協議，真正的分發 key 只能從模型上取 ——
+    // 一張卡裡的模型可以走不同協議，真正的分發 key 只能從模型上取 ——
     // 寫成卡片 id 的話 Rust 會報 "ASR provider not implemented"。
     setSetting('cloudAsr.provider', profile ? resolveAsrRuntimeProvider(profile) : ''),
     setSetting('cloudAsr.model', profile ? resolveAsrApiModel(profile) : ''),
@@ -145,7 +145,7 @@ function hasKey(creds: PlatformCreds): boolean {
  *     只剩 1 張卡，使用者升級後發現"我的服務少了 3 個"——而它們本來都能用；
  *   · 於是改成「每個服務各建一份」，代價是介面上千問一家佔 5 張卡；
  *   · 現在一張卡帶模型下拉，一張卡就覆蓋了該平台全部模型，所以回到「每平台一張」——
- *     這次不會丟東西，模型都在下拉里。
+ *     這次不會丟東西，模型都在下拉裡。
  *
  * 兩條跳過規則，缺一不可：
  *  · 已有同一張卡的檔案 —— 不重複建；

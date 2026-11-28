@@ -40,7 +40,7 @@ describe('PTT 物理組合鍵', () => {
     expect(PTT_CODE_TO_VK.KeyK).toBe(0x4b)
   })
 
-  // F13–F24 是給可程式設計鍵盤 / 自制 HID 語音裝置當專用觸發鍵用的（物理鍵盤上沒有這些鍵，
+  // F13–F24 是給可程式設計鍵盤 / 自製 HID 語音裝置當專用觸發鍵用的（物理鍵盤上沒有這些鍵，
   // 因此幾乎不與任何程式衝突）。
   //
   // 這條斷言與 Rust 的 function_keys_f1_through_f24_are_all_present_with_contiguous_vks

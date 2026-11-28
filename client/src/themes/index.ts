@@ -56,7 +56,7 @@ async function setMainWindowAppearance(theme: Theme): Promise<void> {
   try {
     await getCurrentWindow().setTheme(theme)
   } catch {
-    // 設定失敗隻影響原生選單的深淺色，不影響頁面本身
+    // 設定失敗只影響原生選單的深淺色，不影響頁面本身
   }
 }
 

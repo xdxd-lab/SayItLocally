@@ -53,8 +53,8 @@ describe('segmentAsrText：正體輸入', () => {
 describe('segmentAsrText：簡體輸入', () => {
   it('簡體的話題轉換詞照樣分段', () => {
     const lead = '今天我們先把登入頁面的錯誤修好然後推到測試環境讓大家確認一下。'
-    // 還有就是、接下來、最後就是、總的來說、第二個（簡體）
-    for (const shift of ['\u8fd8有就是', '接下\u6765', '最\u540e就是', '\u603b的\u6765\u8bf4', '第二\u4e2a']) {
+    // 還有就是、接下來、最後就是、總的來說、總之、第二個（簡體）
+    for (const shift of ['\u8fd8有就是', '接下\u6765', '最\u540e就是', '\u603b的\u6765\u8bf4', '\u603b之', '第二\u4e2a']) {
       const text = `${lead}${shift}要把文件補齊，順便整理一下待辦清單裡的項目。`
       expect(segmentAsrText(text), shift).toBe(`${lead}\n\n${shift}要把文件補齊，順便整理一下待辦清單裡的項目。`)
     }

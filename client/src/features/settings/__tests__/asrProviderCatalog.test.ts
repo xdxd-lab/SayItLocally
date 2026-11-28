@@ -130,7 +130,7 @@ describe('ASR_PROVIDERS 結構性不變數', () => {
    * OpenRouter 的 slug 必須帶廠商字首（`openai/whisper-1` 而不是 `whisper-1`）。
    *
    * 少了字首是 404 model not found —— 一個只在真呼叫時才暴露、而且報錯指向
-   * 「模型不存在」而不是「你寫錯了格式」的錯誤。目錄是這些 slug 的唯一齣處，
+   * 「模型不存在」而不是「你寫錯了格式」的錯誤。目錄是這些 slug 的唯一出處，
    * 所以在這裡擋住。
    */
   it('OpenRouter 的每個模型 slug 都帶廠商字首', () => {
@@ -177,7 +177,7 @@ describe('ASR_PROVIDERS 結構性不變數', () => {
   })
 
   /**
-   * 「檔案轉寫」與「即時字幕」現在是同一張卡里的兩個模型，各走各的實現。
+   * 「檔案轉寫」與「即時字幕」現在是同一張卡裡的兩個模型，各走各的實現。
    *
    * 流式模型在檔案端點上根本不存在（gpt-live-transcribe 之於 /audio/transcriptions、
    * gemini-3.5-transcribe-live 之於 generateContent），所以關掉即時字幕回落時
@@ -353,7 +353,7 @@ describe('ASR_PROVIDERS 結構性不變數', () => {
   })
 
   /**
-   * 模型下拉里必須能看到**真實 ID**，不能只有中文短名。
+   * 模型下拉裡必須能看到**真實 ID**，不能只有中文短名。
    *
    * 短名說明這是什麼，真實 ID 才是能拿去對服務商文件、能在日誌和帳單裡搜到的
    * 那個東西 —— 只給短名的話使用者根本對不上號。
@@ -541,7 +541,7 @@ describe('parseAsrProfiles 容錯', () => {
   /**
    * 上一代 Omni 的舊 id 也要能落下來。
    *
-   * 它們指向的模型本身已經從目錄裡刪掉（被百鍊縮容），但這些卡**不能**丟，也不能
+   * 它們指向的模型本身已經從目錄裡刪掉（被百煉縮容），但這些卡**不能**丟，也不能
    * 落到卡片預設那個純 ASR 模型上 —— 那會把使用者從「不用配 AI 服務」悄悄搬到
    * 「必須另配 AI 服務」。所以兩個都落到同族還活著的 qwen3.5-omni-flash。
    */
@@ -628,7 +628,7 @@ describe('parseAsrProfiles 容錯', () => {
       { id: 'a', provider: 'some_removed_vendor', model: 'x', apiKey: 'secret1' },
       { id: 'b', provider: 'qwen', model: 'qwen3-asr-flash', apiKey: 'k' },
       'not an object',
-      { id: 'b', provider: 'qwen', model: 'qwen3-asr-flash' }, // 重复 id
+      { id: 'b', provider: 'qwen', model: 'qwen3-asr-flash' }, // 重複 id
     ]
     const { profiles, orphans } = parseAsrProfilesDetailed(raw)
     expect(profiles.map((p) => p.id)).toEqual(['b'])
@@ -806,10 +806,10 @@ describe('describeAsrMissing', () => {
 
 describe('asrEndpointUrl', () => {
   /**
-   * ⚠️ 這一組守的是「音訊不會被髮到使用者沒打算用的地址」。
+   * ⚠️ 這一組守的是「音訊不會被發到使用者沒打算用的地址」。
    *
    * 閘門必須看**選中的模型**，不能看卡片：檔案裡的 apiUrl 會殘留（換過供應商、
-   * 換過模型都會留下），而殘值一旦被髮出去，音訊就去了一個使用者早就不用的地方。
+   * 換過模型都會留下），而殘值一旦被發出去，音訊就去了一個使用者早就不用的地方。
    */
   it('模型不支援改地址時，殘留的 apiUrl 一律不發出去', () => {
     // qwen3.5-omni-plus 是 realtime WebSocket，地址改不了

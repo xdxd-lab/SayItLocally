@@ -260,7 +260,7 @@ export default function DiagnosticsReportPanel({ embedded = false }: Diagnostics
                 {t('diagnosticsReport.issueType')}<span className="ml-0.5 text-red-500">*</span>
               </label>
               {/* 用 aria-pressed 的切換按鈕組，而不是 role="radiogroup" —— 後者的互動
-                  契約是「Tab 進入組、方向鍵切換」，這裡沒實現方向鍵，宣告瞭反而會讓
+                  契約是「Tab 進入組、方向鍵切換」，這裡沒實現方向鍵，宣告了反而會讓
                   讀屏使用者按方向鍵無反應。aria-pressed 的 Tab 逐個遍歷是自洽的。 */}
               <div className="flex flex-wrap gap-2">
                 {issueTypeOptions.map((option) => {

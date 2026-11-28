@@ -1,7 +1,7 @@
 // 雲 API 語音識別的供應商目錄、服務檔案（profile）解析與延遲分檔。
 //
 // 結構與「AI 服務」頁對齊：一張卡 = 一份完整配置（供應商 + 該平台的憑據），可以存多份，
-// 同一家也能存多份（比如兩個百鍊帳號、兩套豆包金鑰）。啟用哪一份由 activeProfileId 決定。
+// 同一家也能存多份（比如兩個百煉帳號、兩套豆包金鑰）。啟用哪一份由 activeProfileId 決定。
 //
 // 和 AI 服務的唯一實質差別：供應商只能從內建清單裡選，不能填任意地址 —— 每家 ASR 的
 // 協議都要一份專門的 Rust 實現（asr_doubao / asr_qwen / asr_qwen_omni / asr_mimo），
@@ -57,7 +57,7 @@ export const ASR_PLATFORMS: Record<AsrPlatform, AsrPlatformInfo> = {
  * 這兩套協議都被叫做「OpenAI 相容」，但地址、請求體、響應形狀完全不同：
  *   · `transcriptions` → `/audio/transcriptions`，multipart 傳檔案，響應 `{"text": ...}`。
  *     OpenAI 自己、Groq、矽基流動、whisper.cpp / faster-whisper / FunASR 的包裝都是這套。
- *   · `chat`           → `/chat/completions`，阿里雲百鍊 data URL 字串。
+ *   · `chat`           → `/chat/completions`，阿里雲百煉 data URL 字串。
  *   · `chat_standard`  → `/chat/completions`，標準 OpenAI `input_audio.data`（裸 base64）
  *     與 `input_audio.format`。相容 Gemini 等使用標準 OpenAI 格式的閘道器。
  *
@@ -77,7 +77,7 @@ export function parseAsrCompatProtocol(value: unknown): AsrCompatProtocol {
 /**
  * 一家平台下的一個可選模型。
  *
- * **關鍵在 `provider`：同一張卡里的模型可以走完全不同的後端實現。**
+ * **關鍵在 `provider`：同一張卡裡的模型可以走完全不同的後端實現。**
  * 千問那五個就是四種協議（DashScope duplex / HTTP 一次性 / OpenAI-Realtime 風格 /
  * chat+base64），OpenAI 與 Gemini 也各是「HTTP 一次性」加「WebSocket 流式」兩種。
  *
@@ -87,8 +87,8 @@ export function parseAsrCompatProtocol(value: unknown): AsrCompatProtocol {
  */
 export interface AsrModelOption {
   /**
-   * 存進 `profile.model`，也是下拉里的值。同一張卡內唯一。
-   * 用真實模型名（不是內部代號），這樣使用者在下拉里看到的和服務商文件裡寫的是一個東西。
+   * 存進 `profile.model`，也是下拉裡的值。同一張卡內唯一。
+   * 用真實模型名（不是內部代號），這樣使用者在下拉裡看到的和服務商文件裡寫的是一個東西。
    */
   id: string
   /** 走哪份後端實現 —— 即 Rust `registry.rs` 分發用的 key，會寫進 `cloudAsr.provider` */
@@ -122,14 +122,14 @@ export interface AsrModelOption {
   streaming?: boolean
   /** 識別與 AI 整理一步完成，不需要單獨配 AI 服務 */
   omni?: boolean
-  /** 需要百鍊「業務空間 ID」才能用 */
+  /** 需要百煉「業務空間 ID」才能用 */
   needsWorkspaceId?: boolean
   /**
    * 這個模型的地址可以由使用者覆蓋（填了就用他的，空著就用實現裡內建的官方地址）。
    *
    * **這是協議的屬性，不是平台的屬性** —— 所以它掛在模型上而不是卡片上。
-   * 千問那張卡里 `qwen3.8-omni-flash` 是 HTTP（能改），`qwen3.5-omni-plus` 是
-   * realtime WebSocket（改不了）：同一張卡里兩種答案，掛在卡片上就表達不了。
+   * 千問那張卡裡 `qwen3.8-omni-flash` 是 HTTP（能改），`qwen3.5-omni-plus` 是
+   * realtime WebSocket（改不了）：同一張卡裡兩種答案，掛在卡片上就表達不了。
    *
    * 為什麼內建卡也要開放：中轉站/反代很常見（尤其 OpenAI 和 Gemini），
    * 使用者拿的是官方協議、只是換了個域名。不給填就等於逼他們用不了。
@@ -293,10 +293,10 @@ export const ASR_PROVIDERS: AsrProviderEntry[] = [
    *   · 四個 Omni 是「識別+整理」一體，選它們就不用再配 AI 服務。3.8 那兩個是
    *     同一代的兩條協議（HTTP / realtime WS），不是新舊關係。
    *
-   * ── 這裡**不放**哪些百鍊模型，以及為什麼（2026-09-23 實測，見 dev-scripts）──
+   * ── 這裡**不放**哪些百煉模型，以及為什麼（2026-09-23 實測，見 dev-scripts）──
    *  · `qwen3-omni-flash` / `qwen-omni-turbo`：已從清單裡刪掉。官網標了「即將下線」，
    *    而且**實測已經在被縮容** —— 前者讀超時，後者直接回
-   *    「Too many requests ... system capacity limits」。百鍊的下線機制是先逐步壓
+   *    「Too many requests ... system capacity limits」。百煉的下線機制是先逐步壓
    *    QPM/TPM 再正式下線，所以這兩個的表現不是偶發抖動。存量配置的落點見
    *    RETIRED_MODELS。
    *  · `qwen-audio-3.1-asr-flash-filetrans` / `-message`：filetrans 只收音訊 URL
@@ -352,7 +352,7 @@ export const ASR_PROVIDERS: AsrProviderEntry[] = [
         provider: 'qwen_chat_audio',
         get blurb() { return t('asrProvider.omni38Blurb') },
         omni: true,
-        // HTTP 協議，地址可改 —— 百鍊官方推薦遷到業務空間專屬域名
+        // HTTP 協議，地址可改 —— 百煉官方推薦遷到業務空間專屬域名
         // （`{WorkspaceId}.cn-beijing.maas.aliyuncs.com`），那就得靠這一欄。
         supportsCustomUrl: true,
       },
@@ -395,7 +395,7 @@ export const ASR_PROVIDERS: AsrProviderEntry[] = [
       },
       // 上一代 Omni（qwen3-omni-flash / qwen-omni-turbo）曾經排在這裡，理由是
       // 「便宜 + 讓存量配置有地方落」。現在刪掉了：實測它們的即時端點已經被縮容到
-      // 不可用（超時 / 容量限流），留著等於在下拉里擺兩個點了就壞的選項，比沒有更糟。
+      // 不可用（超時 / 容量限流），留著等於在下拉裡擺兩個點了就壞的選項，比沒有更糟。
       // 存量配置改由 RETIRED_MODELS 接到 qwen3.5-omni-flash 上。
     ],
   },
@@ -506,7 +506,7 @@ export const ASR_PROVIDERS: AsrProviderEntry[] = [
    *   · `/audio/transcriptions`：multipart 上傳檔案，響應 `{"text": "..."}`。
    *     OpenAI 自己、Groq、矽基流動、FunASR、whisper.cpp、faster-whisper 都是這套。
    *   · `/chat/completions`：音訊作為 `input_audio` 內容項塞進 messages。
-   *     百鍊（qwen3-asr-flash / Omni / livetranslate）走的是這套。
+   *     百煉（qwen3-asr-flash / Omni / livetranslate）走的是這套。
    *
    * 這裡曾經做成兩張卡、讓使用者自己選。否掉了：使用者沒辦法知道自己要連的服務說哪種
    * 協議 —— 他得去翻對方文件，或者兩張卡輪流試。那是把我們的實現細節推給他承擔。
@@ -553,7 +553,7 @@ export function asrModelsOf(entry: AsrProviderEntry): AsrModelOption[] {
  *
  * `doubao` / `aliyun` 這兩個是更早的別名（registry.rs 裡還認），一併對映過來。
  *
- * 上一代 Omni 那三個舊 id 也在表裡 —— 它們對應的模型現在作為選項留在千問卡里
+ * 上一代 Omni 那三個舊 id 也在表裡 —— 它們對應的模型現在作為選項留在千問卡裡
  * （走的是同一份 asr_qwen_omni.rs），所以能原地落下來。表裡沒有的值才丟棄。
  */
 const LEGACY_PROVIDERS: Record<string, { provider: string; model: string }> = {
@@ -565,10 +565,10 @@ const LEGACY_PROVIDERS: Record<string, { provider: string; model: string }> = {
   qwen_realtime: { provider: 'qwen', model: 'qwen3-asr-flash-realtime' },
   qwen_omni_35_plus: { provider: 'qwen', model: 'qwen3.5-omni-plus' },
   qwen_omni_35_flash: { provider: 'qwen', model: 'qwen3.5-omni-flash' },
-  // 上一代 Omni 的三個舊 id。它們對應的模型現在作為選項留在千問卡里，
+  // 上一代 Omni 的三個舊 id。它們對應的模型現在作為選項留在千問卡裡，
   // 所以這些配置能落下來而不是被丟棄（早先沒有它們，使用者的卡直接消失）。
   qwen_omni_plus: { provider: 'qwen', model: 'qwen3.5-omni-plus' },
-  // 這兩個指向的模型已經從目錄裡刪掉（被百鍊縮容），所以落到同族還活著的那個。
+  // 這兩個指向的模型已經從目錄裡刪掉（被百煉縮容），所以落到同族還活著的那個。
   // 目標必須和 RETIRED_MODELS 一致 —— 兩張表給出不同答案的話，同一個使用者
   // 走遷移路徑和走回落路徑會得到不同的模型。
   qwen_omni_flash: { provider: 'qwen', model: 'qwen3.5-omni-flash' },
@@ -637,7 +637,7 @@ function migrateLegacyProvider(
   // LEGACY_PROVIDERS 攔住並直接返回，於是退役對映對最需要它的那批配置
   // （千問卡上的 Omni）壓根不執行。測試裡表現為退役 Omni 落到了 qwen3-asr-flash。
   //
-  // 換完名之後由 belongsTo 承擔「替代確實還在這張卡里」的校驗，所以這裡不必
+  // 換完名之後由 belongsTo 承擔「替代確實還在這張卡裡」的校驗，所以這裡不必
   // 再自己查一遍：替代要是也沒了，會照常回落，不會返回一個不存在的模型名。
   const trimmed = RETIRED_MODELS[model.trim()] ?? model.trim()
   const direct = findAsrProvider(provider)
@@ -722,9 +722,9 @@ export function asrAvailabilityLabel(entry: AsrProviderEntry): string {
  *
  * 閘門在**選中的那個模型**上，不在卡片上：只有標了 `supportsCustomUrl` 的模型
  * （即 HTTP 協議那些）才會返回非空值。兩個理由：
- *  · 同一張卡里兩種協議並存 —— 千問卡的 qwen3.8-omni-flash 是 HTTP、
+ *  · 同一張卡裡兩種協議並存 —— 千問卡的 qwen3.8-omni-flash 是 HTTP、
  *    qwen3.5-omni-plus 是 realtime WebSocket，後者改地址沒有意義；
- *  · 檔案裡可能殘留地址（使用者換過供應商 / 換過模型），殘值絕不能被髮出去 ——
+ *  · 檔案裡可能殘留地址（使用者換過供應商 / 換過模型），殘值絕不能被發出去 ——
  *    那會把音訊送到一個他早就不打算用的地方。
  */
 export function asrEndpointUrl(profile: AsrProfile): string {
@@ -845,7 +845,7 @@ export interface AsrProfile {
   console: DoubaoConsole
   /** 豆包另一代的金鑰，切換代次時原樣保留，不用重新粘 */
   otherKey: string
-  /** 百鍊業務空間 ID（流式識別需要） */
+  /** 百煉業務空間 ID（流式識別需要） */
   workspaceId: string
   /** Omni 模型的 System Prompt（識別與整理一體，屬於這份服務的行為） */
   omniPrompt: string

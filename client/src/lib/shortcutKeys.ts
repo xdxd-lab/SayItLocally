@@ -48,7 +48,7 @@ const ALL_SINGLE_KEYS: SingleKeyDef[] = [
   //
   // F13–F24 在 Windows 裡是正式的虛擬鍵、鍵盤佈局裡也有真實 scan code，但沒有任何
   // 量產鍵盤把它做成物理鍵 —— 所以它們幾乎不可能和別的程式的快捷鍵撞，正好適合
-  // 可程式設計鍵盤、自制 HID 語音裝置這類「專用觸發鍵」的場景。
+  // 可程式設計鍵盤、自製 HID 語音裝置這類「專用觸發鍵」的場景。
   // Rust 側的幻影過濾對這一段開了例外，見 keyboard/mod.rs 的 is_injection_exempt_vk。
   ...Array.from({ length: 24 }, (_, index) => ({
     setting: `F${index + 1}`,

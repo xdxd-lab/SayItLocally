@@ -97,7 +97,7 @@ export function Modal({
     if (!locked) onClose()
   }, [locked, onClose])
 
-  // 點背板關閉。判據在 hook 裡，別改回「背板直接掛 onClick」—— 那樣拖選一齣面板就誤關。
+  // 點背板關閉。判據在 hook 裡，別改回「背板直接掛 onClick」—— 那樣拖選一出面板就誤關。
   const backdropDismiss = useBackdropDismiss(requestClose)
 
   const rootRef = useRef<HTMLDivElement>(null)

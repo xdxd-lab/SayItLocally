@@ -89,7 +89,7 @@ export default function ServerSection() {
    *
    * 這裡原來是兩個同權重的按鈕：「測試連線」只測不存（用輸入框裡的值），「儲存」存了再測。
    * 使用者點前者看到「連線成功」，合理地以為配置生效了——它沒有。兩個動作合併成一個之後，
-   * 介面上就不再存在"測試透過但沒儲存"這種狀態。
+   * 介面上就不再存在"測試通過但沒儲存"這種狀態。
    */
   async function handleSaveAndTest() {
     if (busy) return

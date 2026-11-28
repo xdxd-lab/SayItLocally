@@ -120,7 +120,7 @@ fn endpoint_for(provider: &str) -> &'static Endpoint {
 ///
 /// 使用者會填成什麼樣無法預設，實際見過這三種，都要能用：
 ///   · `http://127.0.0.1:8000/v1`            → 補 `/audio/transcriptions`
-///   · `http://127.0.0.1:8000/v1/`           → 同上，先去掉尾斜杠
+///   · `http://127.0.0.1:8000/v1/`           → 同上，先去掉尾斜線
 ///   · `http://.../v1/audio/transcriptions`  → 已經是完整地址，原樣用
 /// 不做第四種猜測（比如自動補 `/v1`）：猜錯會打到一個存在但語義不同的路徑上，
 /// 那種失敗比「404 地址不對」難查得多。
@@ -226,7 +226,7 @@ fn pcm_to_wav(pcm: &[u8], sr: u32) -> Vec<u8> {
 /// 識別語言：設定裡存的是 auto|zh|en，Whisper 只接受 ISO-639-1。
 ///
 /// auto 必須**整個省略 language 欄位**，不能傳字串 "auto" —— Whisper 會把它當成
-/// 一個不存在的語言程式碼，行為不確定（可能報 400，也可能默默按英語轉寫）。
+/// 一個不存在的語言代碼，行為不確定（可能報 400，也可能默默按英語轉寫）。
 /// 返回 None 表示讓服務端自己檢測。
 fn resolve_language(config: &AsrProviderConfig) -> Option<String> {
     let raw = config
@@ -296,7 +296,7 @@ fn extract_text_or_plain(body: &str) -> String {
 /// 響應體像不像是在抱怨 `prompt` 這個欄位。
 ///
 /// 只在這一個判據成立時才去掉 prompt 重試，不做「失敗就重試」—— 金鑰錯、模型不存在
-/// 這類 400 一旦也觸發重試，每次轉寫都要白髮兩遍（AI 潤色那邊的降級判定踩過同一個坑，
+/// 這類 400 一旦也觸發重試，每次轉寫都要白發兩遍（AI 潤色那邊的降級判定踩過同一個坑，
 /// 見 decisions.md「預設替所有 OpenAI 相容端點關閉思考」）。
 fn complains_about_prompt(body: &str) -> bool {
     let lower = body.to_lowercase();
@@ -645,7 +645,7 @@ mod tests {
 
     /// 去掉 prompt 重試的判據要窄：只在服務端確實在抱怨這個欄位時才重試。
     ///
-    /// 放寬成「失敗就重試」會讓金鑰錯、模型不存在這類 400 每次都白髮兩遍請求。
+    /// 放寬成「失敗就重試」會讓金鑰錯、模型不存在這類 400 每次都白發兩遍請求。
     #[test]
     fn prompt_retry_only_triggers_on_complaints_about_prompt() {
         assert!(complains_about_prompt(
@@ -716,7 +716,7 @@ mod tests {
     }
 
     /// 前端選定的模型要真的被用上。這條釘住的是使用者報的那個缺口：
-    /// 目錄里加了 whisper-large-v3，但如果這裡仍用常量，選了也還是發 turbo。
+    /// 目錄裡加了 whisper-large-v3，但如果這裡仍用常量，選了也還是發 turbo。
     #[test]
     fn selected_model_overrides_the_default() {
         let groq = endpoint_for("groq_whisper");
@@ -750,7 +750,7 @@ mod tests {
         );
     }
 
-    /// auto 必須省略 language 欄位，而不是把 "auto" 當語言程式碼發出去。
+    /// auto 必須省略 language 欄位，而不是把 "auto" 當語言代碼發出去。
     #[test]
     fn auto_language_is_omitted() {
         assert_eq!(resolve_language(&config_with_language(serde_json::json!({}))), None);

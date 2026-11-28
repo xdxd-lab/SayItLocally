@@ -439,7 +439,7 @@ export function verifyUpdatePackage(filePath: string, sha512?: string | null) {
 /**
  * 把托盤右鍵選單裡「AI 整理」那一項刷成給定狀態（文字上的開/關 + 狀態圖示）。
  *
- * 托盤選單隻在啟動時建一次（Tauri v2 沒有「選單即將彈出」的鉤子），
+ * 托盤選單只在啟動時建一次（Tauri v2 沒有「選單即將彈出」的鉤子），
  * 所以介面裡每次切開關都要主動回寫，否則右鍵看到的是上一次的狀態。
  */
 export function setTrayAiEnabled(enabled: boolean) {

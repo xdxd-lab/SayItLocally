@@ -336,7 +336,7 @@ export class MicLevelMonitor {
 
     if (this.consecutiveSilentSamples < firstWarn) return
 
-    // 只有從未正常說過話且整段所有采樣均為 0，才允許提示「未檢測到聲音」。
+    // 只有從未正常說過話且整段所有採樣均為 0，才允許提示「未檢測到聲音」。
     const kind: 'muted' | 'low' =
       !this.hasDetectedVoiceThisSession && !this.quietRunSawSignal ? 'muted' : 'low'
 

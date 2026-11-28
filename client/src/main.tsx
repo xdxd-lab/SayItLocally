@@ -11,7 +11,7 @@ import { initLanguage, initLocaleDefaults } from './stores/language'
 import { IS_MAC } from './lib/platform'
 import { installMacWebviewBehavior } from './lib/macWebview'
 
-// mac：系統捲軸、介面文字不可選、右鍵選單隻留在輸入框裡（見 lib/macWebview.ts）。
+// mac：系統捲軸、介面文字不可選、右鍵選單只留在輸入框裡（見 lib/macWebview.ts）。
 // 放在最前面，首幀就帶上 platform-mac。
 if (IS_MAC) installMacWebviewBehavior()
 

@@ -976,7 +976,7 @@ mod tests {
             text.chars().any(|c| "，。！？、".contains(c)),
             "SenseVoice 輸出沒有標點，itn 開關可能失效了: {text:?}"
         );
-        // 特殊標籤不該漏到最終文本里
+        // 特殊標籤不該漏到最終文本裡
         assert!(!text.contains("<|"), "輸出殘留特殊標籤: {text:?}");
         unload();
     }
@@ -1069,7 +1069,7 @@ mod tests {
             "{id} 在 language=en 下輸出為空 —— locale 對映可能失效了"
         );
         // auto 檢測模式會在原始 token 流裡插 <en-US> 這類標籤，庫預設會清掉。
-        // 漏到最終文本里就會被當成使用者說的話插進目標程式。
+        // 漏到最終文本裡就會被當成使用者說的話插進目標程式。
         assert!(!text.contains('<') && !text.contains('>'), "殘留語種標籤: {text:?}");
         unload();
     }
@@ -1513,7 +1513,7 @@ mod tests {
     /// 候選新模型族的落地探針：能力、輸出形態、語言引數、速度。
     ///
     /// 加一個**新架構**（不只是新量化檔）之前必須先過這一關 —— 尤其 audio-LLM
-    /// 類的族帶 chat template，很可能把模板字首吐進文本里（上一代 ONNX 的
+    /// 類的族帶 chat template，很可能把模板字首吐進文本裡（上一代 ONNX 的
     /// funasr-nano 就需要額外清洗）。權重放到
     /// `%LOCALAPPDATA%\com.sayitlocally.desktop\models\<dir>\` 下即可，不必先進 catalog。
     #[test]

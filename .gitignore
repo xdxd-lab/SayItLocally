@@ -11,7 +11,7 @@ dev-docs/
 dev-scripts/
 dev-notes/
 we-media/
-sayit說話波形圖效果.html
+sayit*.html
 
 # ── Client dev artifacts ──
 client/scripts/*

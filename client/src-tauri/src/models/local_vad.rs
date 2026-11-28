@@ -106,7 +106,7 @@ fn normalize_segments(
 ///   只裁首尾時一致：總長不超過上限時只有一塊，就是首段開頭到末段結尾）；
 /// - 兩塊之間的長停頓直接丟掉，那裡本來就是靜音；
 /// - 單獨一段話就超過上限（一口氣說了很久、中間沒有 0.45 s 以上的停頓）時，
-///   在這一塊的後三分之一里找最安靜的 100 ms 切開，找不到更好的位置才硬切。
+///   在這一塊的後三分之一裡找最安靜的 100 ms 切開，找不到更好的位置才硬切。
 pub fn plan_chunks(samples: &[f32], segments: &[Range<usize>], max_len: usize) -> Vec<Range<usize>> {
     let segments = normalize_segments(segments.iter().cloned(), samples.len());
     if max_len == 0 {

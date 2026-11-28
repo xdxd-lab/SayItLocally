@@ -9,7 +9,7 @@
 // **兩種模式都必須邊發邊讀**（官方文件：兩個端點都是「每輸入一個包返回一個包」）。
 // 以前普通模式錄音期間一幀都不讀，2026-10-27 實測 120 秒錄音服務端回了 605 幀、4.76 MB，
 // 全堆在接收緩衝裡；使用者網路上某個環節緩衝一滿就被流控卡死，服務端 5 秒收不到包就結束會話
-// （45000081 等包超時），客戶端要到松鍵才發現（診斷包 61c93385，>90 秒錄音 4/10 失敗）。
+// （45000081 等包超時），客戶端要到鬆鍵才發現（診斷包 61c93385，>90 秒錄音 4/10 失敗）。
 // 所以普通模式也拆成寫半邊 + 後台 reader，只是不 emit。見 .kiro/decisions.md「豆包長錄音失敗」。
 
 use super::diag;
@@ -37,7 +37,7 @@ const WS_URL_STREAM_ASYNC: &str = "wss://openspeech.bytedance.com/api/v3/sauc/bi
 const RESOURCE_ID_DURATION: &str = "volc.seedasr.sauc.duration";
 const RESOURCE_ID_CONCURRENT: &str = "volc.seedasr.sauc.concurrent";
 
-/// 發完最後一包後等最終結果的上限。nostream 實測松鍵後 0.6~1.3 秒出全文。
+/// 發完最後一包後等最終結果的上限。nostream 實測鬆鍵後 0.6~1.3 秒出全文。
 const FINISH_TIMEOUT: Duration = Duration::from_secs(15);
 
 type WsStream = tokio_tungstenite::WebSocketStream<

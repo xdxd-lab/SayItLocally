@@ -138,7 +138,7 @@ function formatMemory(mb: number): string {
   return `~${(mb / 1024).toFixed(1)} GB`
 }
 
-/** 下載源的展示名。同一個源在模型卡里叫「HF Mirror（國內推薦）」、在離線指引裡叫
+/** 下載源的展示名。同一個源在模型卡裡叫「HF Mirror（國內推薦）」、在離線指引裡叫
  *  「HF Mirror (China)」，收斂到一處。 */
 function sourceLabel(source: string): string {
   return source === 'HuggingFace Mirror' ? t('local.source.mirror') : source

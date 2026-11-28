@@ -258,7 +258,7 @@ export default function AsrTestSection({ workMode }: { workMode: WorkMode }) {
               <span>{t('asrTest.audioLen', { sec: result.audioDurationSec.toFixed(1) })}</span>
               <span>{t('asrTest.elapsed', { ms: result.asrMs })}</span>
             </div>
-            {/* mac-selectable：mac 上介面文字預設不可選，識別結果要能選中複製（index.css） */}
+            {/* mac-selectable：mac 上介面文字預設不可選，識別結果要能選中拷貝（index.css） */}
             <p className="mac-selectable mt-2 text-sm text-foreground">{result.text || t('asrTest.noResult')}</p>
           </div>
         )}

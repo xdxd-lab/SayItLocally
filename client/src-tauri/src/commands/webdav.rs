@@ -441,7 +441,7 @@ pub struct WebDavBackupResult {
 
 /// 連線測試：PROPFIND 目標目錄，目錄不存在就先建。
 ///
-/// 走的是和真實備份完全相同的動詞與認證方式，避免「測試透過但備份失敗」。
+/// 走的是和真實備份完全相同的動詞與認證方式，避免「測試通過但備份失敗」。
 #[tauri::command]
 pub async fn webdav_test(config: WebDavConfig) -> Result<u64, String> {
     let target = Target::from_config(&config)?;

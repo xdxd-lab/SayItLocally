@@ -132,7 +132,7 @@ function successMessage(model: string, ms: number): string {
 }
 
 /**
- * 測試透過後的完整交代。
+ * 測試通過後的完整交代。
  *
  * 為什麼要這麼全：這行結果是使用者唯一能核對"我到底測的是哪一份配置"的地方。
  * 只報一個耗時的話，兩張卡都叫 gpt-4o-mini 時根本分不清剛才測的是哪個端點。
@@ -217,7 +217,7 @@ function describeStatus(profile: AiProfile, checking: boolean): CardStatus {
 
   const ms = check.latencyMs
   if (ms === undefined) {
-    // 遷移來的老結論可能只知道"透過"、沒有耗時
+    // 遷移來的老結論可能只知道"通過"、沒有耗時
     return {
       text: t('ai.status.available'),
       box: fresh ? 'bg-success/10 text-success-strong' : NEUTRAL_BOX,
@@ -269,7 +269,7 @@ export default function AIProviderSection() {
   const [profiles, setProfiles] = useState<AiProfile[]>([])
   const [activeId, setActiveId] = useState('')
   const [loaded, setLoaded] = useState(false)
-  /** 彈窗里正在編輯的那份（新建也走這裡）。null = 彈窗關著 */
+  /** 彈窗裡正在編輯的那份（新建也走這裡）。null = 彈窗關著 */
   const [draft, setDraft] = useState<AiProfile | null>(null)
   const [draftIsNew, setDraftIsNew] = useState(false)
   /**
@@ -787,7 +787,7 @@ export default function AIProviderSection() {
    *
    * 兩個顏色的分工是刻意的，也是上一版最誤導的地方：
    *   - 對勾是**主題色**，只表示"這份正在被使用"（和工作模式卡一致）；
-   *   - **綠色只屬於狀態標籤**，只有真的測透過才會出現。
+   *   - **綠色只屬於狀態標籤**，只有真的測通過才會出現。
    * 上一版把對勾塗成綠的，等於一選中就宣佈"能用"——而它可能金鑰都沒填對。
    */
   function renderCard(profile: AiProfile) {
@@ -1070,7 +1070,7 @@ export default function AIProviderSection() {
                     {t('ai.keyReused', { provider: draftProvider.label })}
                   </p>
                 )}
-                {/* 金鑰入口放在金鑰這一格里。
+                {/* 金鑰入口放在金鑰這一格裡。
                     這裡原來還有一個「怎麼申請金鑰？看配置文件」的連結，去掉了：AI 服務
                     要做的只有「去控制台複製一把 Key」，上面那個控制台連結就是最短路徑，
                     再掛一篇文件反而暗示這件事很複雜。

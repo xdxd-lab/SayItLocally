@@ -395,7 +395,7 @@ impl WindowState {
         }
 
         // 先學縮放：這一輪的視窗已經按舊 css_zoom 建好了，學到新值就地重設幾何，讓**當前**
-        // 這次顯示也能被糾正，而不是隻讓下一次受益（使用者按一次熱鍵只看到這一次）。
+        // 這次顯示也能被糾正，而不是只讓下一次受益（使用者按一次熱鍵只看到這一次）。
         if self.note_css_zoom(app, data.get("devicePixelRatio").and_then(Value::as_f64)) {
             let layout = self.overlay_layout.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).clone();
             if let Some(overlay) = app.get_webview_window("overlay") {
@@ -1198,7 +1198,7 @@ fn spawn_render_watchdog(app: AppHandle, show_id: u64) {
 /// 說明有控制代碼洩漏——是“懸浮窗用久後不再出現、重啟即好”的典型根因。
 #[cfg(windows)]
 fn gui_resource_counts() -> (u32, u32) {
-    // GetGuiResources 在不同 windows crate 版本里的模組路徑不穩定，直接用 FFI 宣告最穩。
+    // GetGuiResources 在不同 windows crate 版本裡的模組路徑不穩定，直接用 FFI 宣告最穩。
     // GR_GDIOBJECTS=0，GR_USEROBJECTS=1；當前程序用偽控制代碼 (HANDLE)-1。
     #[link(name = "user32")]
     extern "system" {
@@ -1598,7 +1598,7 @@ mod tests {
         );
     }
 
-    /// 同一條兜底也要覆蓋「輸入源提示還在顯示」的那一支，否則提示條一齣現就又漏一個組合。
+    /// 同一條兜底也要覆蓋「輸入源提示還在顯示」的那一支，否則提示條一出現就又漏一個組合。
     #[test]
     fn streaming_window_survives_a_mic_hint_only_update() {
         let layouts = layouts_after(&[

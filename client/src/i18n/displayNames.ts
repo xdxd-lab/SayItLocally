@@ -16,7 +16,7 @@ const BUILTIN_APP_NAME_KEYS: Record<string, TranslationKey> = {
   kiro: 'builtinApp.kiro',
   vscode: 'builtinApp.vscode',
   cursor: 'builtinApp.cursor',
-  // mac 上這條規則對應系統自帶的「文本編輯」（見 personalization/defaults.ts 的 MAC_RULE_OVERRIDES）
+  // mac 上這條規則對應系統自帶的「文字編輯」（見 personalization/defaults.ts 的 MAC_RULE_OVERRIDES）
   notepad: IS_MAC ? 'builtinApp.notepadMac' : 'builtinApp.notepad',
   codex: 'builtinApp.codex',
   weixin: 'builtinApp.weixin',

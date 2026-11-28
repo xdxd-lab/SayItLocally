@@ -113,7 +113,7 @@ pub struct AsrHotwordCapability {
     pub has_streaming_path: bool,
     /// **SayIt 自己設的**最多傳送條數，不是服務端限制。走流式路徑時的那份。
     ///
-    /// 三家都是 100，三處註釋都寫明瞭是客戶端保護：千問的文件「只對超級熱詞明確了
+    /// 三家都是 100，三處註釋都寫明了是客戶端保護：千問的文件「只對超級熱詞明確了
     /// 50 的上限，普通熱詞沒給數字」，OpenAI 的是怕整條 `session.update` 被拒，
     /// Gemini 的是怕 prompt 被撐長、每個詞的作用被稀釋。
     /// 介面上必須說成"SayIt 最多傳送 N 條"，不能說成"這家協議只吃 N 條"。
@@ -190,7 +190,7 @@ fn buffered_delivery(provider: &str, extra: &Value) -> HotwordDelivery {
         "qwen_audio_stream" => HotwordDelivery::Vocabulary,
         // asr_qwen_omni → 追加到 system instructions
         "qwen_omni" => HotwordDelivery::Instruction,
-        // asr_openai_chat_audio → 复用 asr_qwen 的上下文文本，追加到 instruction
+        // asr_openai_chat_audio → 複用 asr_qwen 的上下文文本，追加到 instruction
         "qwen_chat_audio" | "openai_chat_audio" | "openai_chat_audio_standard" => HotwordDelivery::Instruction,
         // asr_gemini::build_prompt → 拼一段 vocabulary 提示
         "gemini_transcribe" | "gemini_live_transcribe" => HotwordDelivery::Instruction,
@@ -220,7 +220,7 @@ fn buffered_delivery(provider: &str, extra: &Value) -> HotwordDelivery {
             // → asr_groq，prompt 被標點佔用
             Some("transcriptions") => HotwordDelivery::NotWiredUp,
             // auto：探過就給準話，沒探過才說"未確定"。
-            // 複用真實轉寫留下的快取，而不是隻認「測試連線」—— 使用者可能直接開始口述。
+            // 複用真實轉寫留下的快取，而不是只認「測試連線」—— 使用者可能直接開始口述。
             // 換了地址或模型，快取鍵就不命中，自然退回"未確定"。
             _ => match super::asr_openai_compat::detected_protocol(extra) {
                 Some(inner) => buffered_delivery(inner, extra),
@@ -523,7 +523,7 @@ mod tests {
         assert_eq!(gemini.streaming_client_cap, gemini.buffered_client_cap);
     }
 
-    /// 凡是宣告瞭上限的路徑，檔位必須是"熱詞真的進了請求"那三檔。
+    /// 凡是宣告了上限的路徑，檔位必須是"熱詞真的進了請求"那三檔。
     ///
     /// 反過來說：`reaches_asr()` 為假卻帶著上限，就是一次自相矛盾的輸出。
     /// 遍歷全清單，新加 provider 時自動納入。
@@ -630,7 +630,7 @@ mod tests {
     /// 對照表裡的 `openai_compat` 必須是「取決於協議」。
     ///
     /// 它沒有具體配置可依，只能這麼說。這條釘的是**不要圖省事給它填一個具體答案** ——
-    /// 填 `NotWiredUp`（多數自建服務確實走 transcriptions）會讓接百鍊那類走 chat 的
+    /// 填 `NotWiredUp`（多數自建服務確實走 transcriptions）會讓接百煉那類走 chat 的
     /// 使用者在表裡讀到錯的結論。
     #[test]
     fn the_matrix_leaves_the_compat_card_undecided() {

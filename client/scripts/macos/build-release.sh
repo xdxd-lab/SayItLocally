@@ -5,7 +5,7 @@
 #
 # 用法：scripts/macos/build-release.sh
 # 環境變數：
-#   SAYIT_SIGN_IDENTITY  簽名證書名，預設「SayItLocally Self-Signed」（先跑 create-signing-cert.sh）；
+#   SAYIT_SIGN_IDENTITY  簽署憑證名，預設「SayItLocally Self-Signed」（先跑 create-signing-cert.sh）；
 #                        找不到就退回 ad-hoc 簽名（能用，但使用者每次更新都要重新授權輔助功能）。
 set -euo pipefail
 
@@ -24,10 +24,10 @@ esac
 IDENTITY="${SAYIT_SIGN_IDENTITY:-SayItLocally Self-Signed}"
 if security find-identity -v -p codesigning | grep -q "\"$IDENTITY\""; then
   export APPLE_SIGNING_IDENTITY="$IDENTITY"
-  echo "簽名證書：$IDENTITY"
+  echo "簽署憑證：$IDENTITY"
 else
   export APPLE_SIGNING_IDENTITY="-"
-  echo "⚠️ 沒找到簽名證書「$IDENTITY」，改用 ad-hoc 簽名。"
+  echo "⚠️ 沒找到簽署憑證「$IDENTITY」，改用 ad-hoc 簽名。"
   echo "   ad-hoc 簽名的版本每次更新後，使用者都要重新勾選「輔助功能」。先執行 scripts/macos/create-signing-cert.sh。"
 fi
 
@@ -41,7 +41,7 @@ ZIP_NAME="SayItLocally_${VERSION}_${ARCH}.zip"
 DMG_NAME="SayItLocally_${VERSION}_${ARCH}.dmg"
 mkdir -p "$OUT"
 
-# 釋出物一律從一份不帶擴充套件屬性的乾淨複製生成，不直接用構建目錄裡那份 .app：
+# 釋出物一律從一份不帶擴充套件屬性的乾淨拷貝生成，不直接用構建目錄裡那份 .app：
 # 它簽完名以後，Finder 或 iCloud「桌面與文稿」同步還可能往 .app 根目錄寫 com.apple.FinderInfo
 # 之類的擴充套件屬性（codesign 管這叫 detritus），codesign --strict 校驗不過，Tauri 打的 dmg 裡也會帶上。
 # 簽名本身不依賴擴充套件屬性，去掉不影響簽名。

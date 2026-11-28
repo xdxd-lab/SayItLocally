@@ -91,7 +91,7 @@ describe('listening 更新必須始終攜帶佈局判據', () => {
    * 釘的是"走了統一入口"，不只是"這一版欄位恰好對"。
    *
    * 差別在於：某個方法哪天被改回手寫字面量、當時抄得還挺全，上面那批斷言照樣全綠，
-   * 但它從此不再跟著 listeningPayload 演進 —— 下次往 payload 里加欄位又會漏掉它一個。
+   * 但它從此不再跟著 listeningPayload 演進 —— 下次往 payload 裡加欄位又會漏掉它一個。
    * 這條能當場把那種退化照出來。
    */
   it('所有 listening 出口都經由 listeningPayload，而非各自複製一份', () => {

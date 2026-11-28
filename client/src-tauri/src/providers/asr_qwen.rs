@@ -11,7 +11,7 @@ const SCOPE: &str = "qwen/asr-flash";
 /// 將熱詞列表拼接為千問 ASR 的上下文偏置文本。
 ///
 /// Qwen3-ASR 支援透過上下文文本（context/corpus）提升專業術語、人名等識別準確率，
-/// 最多 10000 tokens。非流式介面放在 system 訊息文本里，即時介面放在
+/// 最多 10000 tokens。非流式介面放在 system 訊息文本裡，即時介面放在
 /// session.input_audio_transcription.corpus.text 裡。
 ///
 /// 詞表用「空格」拼接（與本專案自建後端本地 qwen3 的 context 用法一致：
@@ -175,7 +175,7 @@ pub async fn transcribe(
             SCOPE,
             "http_status",
             // 曾經這裡是 `&body[..body.len().min(300)]`：DashScope 的報錯體是中文，
-            // 按位元組切會切在漢字中間直接 panic —— 一齣錯就崩，反而什麼都查不到
+            // 按位元組切會切在漢字中間直接 panic —— 一出錯就崩，反而什麼都查不到
             format!(
                 "Qwen ASR error {} [{}]: {}",
                 status,

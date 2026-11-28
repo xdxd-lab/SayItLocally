@@ -172,7 +172,7 @@ fn interim_transcription(ev: &serde_json::Value) -> Option<&str> {
 /// **定稿**的轉寫（`inputTranscription`）。一輪結束時來一條，text 也是全量。
 ///
 /// 同時認 camelCase 與 snake_case：Live API 的 JSON 是 camelCase，
-/// 但 proto 名是 snake_case，兩種寫法在不同閘道器/版本里都出現過。
+/// 但 proto 名是 snake_case，兩種寫法在不同閘道器/版本裡都出現過。
 fn final_transcription(ev: &serde_json::Value) -> Option<&str> {
     ev.pointer("/serverContent/inputTranscription/text")
         .or_else(|| ev.pointer("/serverContent/input_transcription/text"))

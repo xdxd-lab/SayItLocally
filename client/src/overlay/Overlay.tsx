@@ -469,7 +469,7 @@ export default function Overlay() {
       ? null
       : { heights: visibleBars, colors: palette }
   } else if (state === 'waiting') {
-    // 新一次錄音開始就清掉。否則按一下就松（還沒畫出波形）時，收進進度條的會是上一次的波形。
+    // 新一次錄音開始就清掉。否則按一下就鬆（還沒畫出波形）時，收進進度條的會是上一次的波形。
     waveSnapshotRef.current = null
   }
   const waveSnapshot = waveSnapshotRef.current
@@ -815,7 +815,7 @@ export default function Overlay() {
                   aria-hidden={recordingVisualPhase !== 'listening'}
                 >
                   {warning && warningTone === 'error' ? (
-                    // 靜音高警：波形此時是平的、無意義，直接在膠囊里居中顯示紅字，
+                    // 靜音高警：波形此時是平的、無意義，直接在膠囊裡居中顯示紅字，
                     // 既更醒目、也避免波形+長文字撐破固定寬度把膠囊圓角裁掉。
                     <div
                       key={warning}
@@ -848,7 +848,7 @@ export default function Overlay() {
                         })}
                       </div>
                       {/* 計時**不再**被警告頂掉：警告是一閃而過的提示，計時是持續狀態。
-                          以前條件裡帶 !warning，導致 4 分鐘提示一齣現，剩下一整分鐘都看不到秒數。 */}
+                          以前條件裡帶 !warning，導致 4 分鐘提示一出現，剩下一整分鐘都看不到秒數。 */}
                       {showDuration && (
                         <span
                           className={`ml-1.5 shrink-0 whitespace-nowrap text-right font-mono tabular-nums text-xs${inCountdown ? ' font-semibold' : ''}${urgent ? ' overlay-breathe' : ''}`}

@@ -786,7 +786,7 @@ mod tests {
         assert!(!handle_tap_combo(0x44, false, true, 0));
         assert!(!handle_tap_combo(0x45, true, false, opt_shift)); // ⌥⇧E 沒登記
         assert!(handle_tap_combo(0x32, true, false, opt_shift)); // ⌥⇧2 → 切換潤色模式
-        assert!(handle_tap_combo(0x32, false, true, 0)); // 先松修飾鍵再松 2：抬起照樣吞掉
+        assert!(handle_tap_combo(0x32, false, true, 0)); // 先鬆修飾鍵再鬆 2：抬起照樣吞掉
 
         // 錯過了抬起：同一個鍵不帶修飾鍵再按，就不算「按住中」了
         assert!(handle_tap_combo(0x44, true, false, opt_shift));

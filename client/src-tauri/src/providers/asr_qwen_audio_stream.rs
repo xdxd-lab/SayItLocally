@@ -69,7 +69,7 @@ const GENERIC_HOST: &str = "dashscope.aliyuncs.com";
 
 /// 音訊幀大小：16kHz 單聲道 16-bit 下正好 100ms。
 ///
-/// 官方示例用的就是 3200 位元組，probe 指令碼也是按這個尺寸實測透過的 ——
+/// 官方示例用的就是 3200 位元組，probe 指令碼也是按這個尺寸實測通過的 ——
 /// 一次性路徑不改成"一大幀發完"是因為那個形狀沒驗證過，而這個驗證過。
 const FRAME_BYTES: usize = 3200;
 
@@ -113,7 +113,7 @@ fn ws_url(workspace: &str) -> String {
 /// 不做白名單校驗，與 asr_qwen_omni::get_model 一致：模型名只出現在 run-task 的
 /// payload 裡、不進 URL，寫錯的後果是服務端回一條指名道姓的 task-failed
 /// （`InvalidParameter: ...`），比我們自己維護第二份清單更準 —— 那份清單一定會
-/// 比百鍊的模型表舊。
+/// 比百煉的模型表舊。
 fn get_model(config: &AsrProviderConfig) -> String {
     config
         .extra

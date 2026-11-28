@@ -262,7 +262,7 @@ export function useHotwordsManager() {
     themeInputs,
   ])
 
-  /** 往內建分類里加詞。加進來的詞和預設詞一樣受分類開關控制，「恢復預設」會把它們清掉。 */
+  /** 往內建分類裡加詞。加進來的詞和預設詞一樣受分類開關控制，「恢復預設」會把它們清掉。 */
   const addWordsToBuiltinSet = useCallback(async (setKey: string) => {
     if (!BUILTIN_SETS[setKey]) return
     const inputKey = builtinInputKey(setKey)

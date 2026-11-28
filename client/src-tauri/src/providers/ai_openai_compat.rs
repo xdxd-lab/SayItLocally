@@ -38,7 +38,7 @@ fn disable_thinking_overrides() -> serde_json::Value {
 /// 決定這次請求該注入哪些關閉思考的欄位。`None` = 一個欄位都不發。
 ///
 /// 三檔，從窄到寬：
-///   1. 已知供應商沿用各自**精確**的那一個欄位。這些組合是實測透過的，不要順手升級成
+///   1. 已知供應商沿用各自**精確**的那一個欄位。這些組合是實測通過的，不要順手升級成
 ///      通吃集合 —— 多注入未知欄位只會給本來好用的路徑引入 400 風險。
 ///   2. OpenAI 官方與 Azure OpenAI **顯式排除**。它們對未知頂層引數直接回 400
 ///      （`Unrecognized request argument supplied`），而且連自家 `reasoning_effort` 的合法
@@ -204,7 +204,7 @@ fn forced_thinking_error(body: &str) -> bool {
 /// 這個 400 是不是我們注入的思考引數引起的 —— 返回被點名的那個欄位名。
 ///
 /// 判定刻意保守：**只有響應體裡出現了我們實際注入的鍵名**才算。金鑰錯、模型不存在這些
-/// 400 絕不能觸發降級重試，否則每次請求都要白髮兩遍。
+/// 400 絕不能觸發降級重試，否則每次請求都要白發兩遍。
 /// 供應商用自然語言描述、完全不提欄位名的那一類，由 `forced_thinking_error` 單獨認。
 fn rejected_thinking_field(body: &str, overrides: &serde_json::Value) -> Option<String> {
     let object = overrides.as_object()?;
@@ -745,7 +745,7 @@ mod tests {
 
     #[test]
     fn known_providers_keep_their_exact_field() {
-        // 這些組合是實測透過的，別順手升級成通吃集合——多注入未知欄位只會給
+        // 這些組合是實測通過的，別順手升級成通吃集合——多注入未知欄位只會給
         // 本來好用的路徑引入 400 風險。
         let qwen = thinking_overrides(&config(
             "qwen",
@@ -847,7 +847,7 @@ mod tests {
         // 先確認前提：這個錯誤體確實不含 "thinking"，否則這條測試證明不了什麼
         assert!(
             !ZHIPU_5_3_FORCED.to_ascii_lowercase().contains("thinking"),
-            "樣本里出現了 thinking，這條測試的前提不成立了，請換一個真實樣本"
+            "樣本裡出現了 thinking，這條測試的前提不成立了，請換一個真實樣本"
         );
         // 舊判據對它無效 —— 這就是使用者看到「連線失敗」的直接原因
         let old_signal = rejected_thinking_field(
@@ -871,7 +871,7 @@ mod tests {
 
     #[test]
     fn forced_thinking_error_does_not_fire_on_unrelated_failures() {
-        // 這些都不能觸發降級重試，否則每次請求白髮兩遍
+        // 這些都不能觸發降級重試，否則每次請求白發兩遍
         for body in [
             r#"{"error":{"message":"Incorrect API key provided","code":"invalid_api_key"}}"#,
             r#"{"error":{"message":"The model `glm-9` does not exist","code":"model_not_found"}}"#,
@@ -986,7 +986,7 @@ mod tests {
             r#"{"error":{"code":"unsupported_value","param":"reasoning_effort"}}"#;
         assert!(rejected_thinking_field(unsupported_value, &overrides).is_some());
 
-        // 金鑰錯、模型不存在這些 400 絕不能觸發降級重試，否則每次請求都白髮兩遍
+        // 金鑰錯、模型不存在這些 400 絕不能觸發降級重試，否則每次請求都白發兩遍
         for body in [
             r#"{"error":{"message":"Incorrect API key provided"}}"#,
             r#"{"error":{"message":"The model `gpt-9` does not exist"}}"#,

@@ -54,7 +54,7 @@ interface StreamCommandSet {
   streamWithoutRealtime?: boolean
   /** open 要帶 sampleRate（只有豆包的 Rust 簽名收它，其餘把 16000 寫死在函式體裡） */
   needsSampleRate?: boolean
-  /** open 要帶 workspaceId（百鍊業務空間，只有千問那兩個用） */
+  /** open 要帶 workspaceId（百煉業務空間，只有千問那兩個用） */
   needsWorkspaceId?: boolean
   /** open 要帶 appId（只有豆包舊版控制台用得上） */
   needsAppId?: boolean

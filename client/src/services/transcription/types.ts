@@ -106,7 +106,7 @@ export interface StartOptions {
 export interface StopOptions {
   pttHoldMs?: number
   /**
-   * 松鍵時才知道的「這次別做 AI 整理」。錄音時長要等錄完才知道，而伺服器模式的 AI
+   * 鬆鍵時才知道的「這次別做 AI 整理」。錄音時長要等錄完才知道，而伺服器模式的 AI
    * 在服務端緊跟 ASR 執行，start 時來不及決定。
    *
    * 這是 policy 壓成的布林，只給線上協議用。**壓完的值不要再回頭當跳過原因**
@@ -114,7 +114,7 @@ export interface StopOptions {
    */
   disableAi?: boolean
   /**
-   * 本次的完整策略（含路由與原因）。松鍵時由錄音器用實際 PCM 時長算出，
+   * 本次的完整策略（含路由與原因）。鬆鍵時由錄音器用實際 PCM 時長算出，
    * 隨 stop 一起交給 Provider，保證「線上那個布林」和「日誌裡記的原因」出自同一次判斷。
    */
   aiPolicy?: AiPolicy

@@ -225,7 +225,7 @@ pub async fn cloud_transcribe(request: CloudTranscribeRequest) -> Result<AsrResu
         }
         // chat/completions + input_audio 那一套。**與上面那組不是同一個協議**，
         // 別看著都叫「OpenAI 相容」就並過去（地址、請求體、響應形狀全不一樣）。
-        // qwen_chat_audio 地址內建為百鍊（qwen3.8-omni-flash 走這條）；
+        // qwen_chat_audio 地址內建為百煉（qwen3.8-omni-flash 走這條）；
         // openai_chat_audio 是 asr_openai_compat 分發下來的內部 key。
         "qwen_chat_audio" | "openai_chat_audio" | "openai_chat_audio_standard" => {
             asr_openai_chat_audio::transcribe(
@@ -368,7 +368,7 @@ fn match_arm_keys<'a>(source: &'a str) -> Vec<&'a str> {
     keys
 }
 
-/// 取出一段文本里所有雙引號包住的內容。
+/// 取出一段文本裡所有雙引號包住的內容。
 #[cfg(test)]
 fn quoted_literals<'a>(text: &'a str) -> Vec<&'a str> {
     let mut out = Vec::new();

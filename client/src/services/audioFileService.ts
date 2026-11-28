@@ -29,7 +29,7 @@ export async function saveRecordingAudio(
     })
   }
 
-  // 合并 PCM chunks
+  // 合併 PCM chunks
   const merged = new Uint8Array(totalLen)
   let offset = 0
   for (const chunk of chunks) {

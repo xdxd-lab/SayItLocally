@@ -885,7 +885,7 @@ pub async fn download_update(
     let temp_dir = update_dir();
     std::fs::create_dir_all(&temp_dir).map_err(|e| format!("Failed to create temporary directory: {}", e))?;
     let file_path = temp_dir.join(&filename);
-    // 先寫到 .part，校驗透過才改名：半截檔案永遠不會被當成可安裝的包。
+    // 先寫到 .part，校驗通過才改名：半截檔案永遠不會被當成可安裝的包。
     let part_path = temp_dir.join(format!("{}.part", filename));
     let (downloaded, total) = fetch_installer_part(&client, &url, &part_path, &mut |done, total, status, error| {
         emit_update_progress(&app, done, total, status, error)
@@ -909,7 +909,7 @@ pub async fn download_update(
         }
     }
 
-    // 新包已經校驗透過，把同目錄裡其它版本的安裝包刪掉。
+    // 新包已經校驗通過，把同目錄裡其它版本的安裝包刪掉。
     // 舊流程下載完立刻安裝，包只存在幾秒；現在它按設計等到使用者點更新或退出時才用，
     // 於是每升一次版就在 %TEMP% 裡多躺一個十幾 MB 的安裝包，沒人清。
     std::fs::rename(&part_path, &file_path)
@@ -1022,7 +1022,7 @@ async fn fetch_installer_part(
 
 /// 刪掉更新目錄裡除 keep 之外的所有檔案。
 ///
-/// 只在新包**校驗透過之後**呼叫：下載失敗時磁碟上那個舊包可能還是待安裝的有效包，
+/// 只在新包**校驗通過之後**呼叫：下載失敗時磁碟上那個舊包可能還是待安裝的有效包，
 /// 提前清理等於把使用者已經下好的更新弄丟，還得重下一遍。
 /// 刪不掉（被佔用等）只記日誌不報錯 —— 清理失敗不該讓一次成功的下載變成失敗。
 fn prune_stale_packages(dir: &std::path::Path, keep: &str) {

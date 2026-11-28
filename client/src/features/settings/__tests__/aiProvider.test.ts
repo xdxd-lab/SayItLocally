@@ -207,7 +207,7 @@ describe('parseProfiles', () => {
     expect(parseProfiles([{ ...profile(), check: 'ok' }])[0].check).toBeUndefined()
   })
 
-  it('更早版本平鋪的 latencyMs 升級成"測透過"的結論（老版本只有測通才寫這個數）', () => {
+  it('更早版本平鋪的 latencyMs 升級成"測通過"的結論（老版本只有測通才寫這個數）', () => {
     const upgraded = parseProfiles([{ ...profile(), check: undefined, latencyMs: 1200 }])[0].check
     expect(upgraded).toEqual({ ok: true, latencyMs: 1200 })
     // 沒有 at：那次是什麼時候測的沒人知道，介面上就不該聲稱"剛測過"
@@ -342,7 +342,7 @@ describe('migrateLegacyProfiles', () => {
     { provider: 'qwen', apiUrl: '', apiKey: '', model: '', models: [], latencies: {} },
   ]
 
-  it('每個候選模型各成一條，帶上原來的地址、金鑰；有耗時的算測透過一次', () => {
+  it('每個候選模型各成一條，帶上原來的地址、金鑰；有耗時的算測通過一次', () => {
     const { profiles } = migrateLegacyProfiles(legacy, 'deepseek', 'deepseek-chat')
     expect(profiles.map((p) => p.model)).toEqual(['deepseek-v4-flash', 'deepseek-chat'])
     expect(profiles.every((p) => p.apiKey === 'sk-ds')).toBe(true)

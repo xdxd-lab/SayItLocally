@@ -264,7 +264,7 @@ pub enum EditableGate {
     UiaEditableControl,
     /// UIA 報了 Custom/Group/Pane 且有 ValuePattern，即富文本編輯器
     UiaRichEditor,
-    /// UIA 說這個可編輯控制元件是隻讀的
+    /// UIA 說這個可編輯控制元件是唯讀的
     UiaReadOnly,
     /// Chromium 視窗且能獲得鍵盤焦點，樂觀放行
     ChromiumOptimistic,
@@ -807,7 +807,7 @@ mod ffi {
 /// Everything 裡連續幾次日誌都是 `WM_PASTE ok`，視窗標題（= 搜尋框內容）卻一個字沒變；
 /// 不核實的話這類失敗日誌裡看不出來，使用者也看不到兜底卡片。
 ///
-/// 核實只用 WM_GETTEXTLENGTH：它只回一個數字、不復制內容，Edit / Scintilla 內部存著這個數，
+/// 核實只用 WM_GETTEXTLENGTH：它只回一個數字、不複製內容，Edit / Scintilla 內部存著這個數，
 /// 10MB 的文件也是直接返回（WM_GETTEXT 才會複製全文，別換成它）。判據只能是「長度變沒變」，
 /// 不能是「漲了插入的字數」—— 單行框會截斷換行、有選區時是替換、還有 EM_LIMITTEXT 上限。
 ///
@@ -1019,7 +1019,7 @@ unsafe fn query_text_len(hwnd: HWND) -> Option<usize> {
 }
 
 /// 選區 (start, end)。用的是返回值那種形式：兩端各只有 16 位，超過 65535 字會被截斷；
-/// 指標引數那種形式跨程序不一定被轉送，不敢用。所以它只進日誌、只在短文本里參與判斷。
+/// 指標引數那種形式跨程序不一定被轉送，不敢用。所以它只進日誌、只在短文本裡參與判斷。
 #[cfg(windows)]
 unsafe fn query_selection(hwnd: HWND) -> Option<(usize, usize)> {
     let mut out: usize = 0;
@@ -1690,7 +1690,7 @@ mod tests {
 
     #[test]
     fn selection_positions_are_distrusted_beyond_16_bits() {
-        // EM_GETSEL 返回值兩端各只有 16 位，長文本里位置被截斷，不能據此下結論
+        // EM_GETSEL 返回值兩端各只有 16 位，長文本裡位置被截斷，不能據此下結論
         assert!(!selection_len_matches(Some((2, 5)), 0x1_0000, 3));
     }
 

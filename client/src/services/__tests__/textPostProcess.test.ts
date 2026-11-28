@@ -17,7 +17,7 @@ describe('normalizeChinesePunctuation', () => {
     expect(normalizeChinesePunctuation('注意:兩點;三點')).toBe('注意：兩點；三點')
   })
 
-  // 下面這幾條是這個函式存在的全部風險所在：判據寫松一點就會破壞內容。
+  // 下面這幾條是這個函式存在的全部風險所在：判據寫鬆一點就會破壞內容。
   it('數字裡的逗號與小數點絕不動', () => {
     expect(normalizeChinesePunctuation('一共 3,000 元')).toBe('一共 3,000 元')
     expect(normalizeChinesePunctuation('圓周率是 3.14')).toBe('圓周率是 3.14')

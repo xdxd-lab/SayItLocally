@@ -389,7 +389,7 @@ const SINGLE_KEY_TABLE: &[(&str, u32)] = &[
     ("F5", 0x74), ("F6", 0x75), ("F7", 0x76), ("F8", 0x77),
     ("F9", 0x78), ("F10", 0x79), ("F11", 0x7A), ("F12", 0x7B),
     // F13–F24：物理鍵盤上沒有這些鍵，因此幾乎不與任何程式的快捷鍵衝突，
-    // 適合可程式設計鍵盤 / 自制 HID 語音裝置當專用觸發鍵。
+    // 適合可程式設計鍵盤 / 自製 HID 語音裝置當專用觸發鍵。
     // 這一段在幻影過濾裡有例外，見 is_injection_exempt_vk。
     ("F13", 0x7C), ("F14", 0x7D), ("F15", 0x7E), ("F16", 0x7F),
     ("F17", 0x80), ("F18", 0x81), ("F19", 0x82), ("F20", 0x83),
@@ -591,7 +591,7 @@ fn is_mouse_button_setting(setting: &str) -> bool {
 /// 佇列，Windows 也就不為它們維護非同步鍵狀態 —— `GetAsyncKeyState` 會一直報「沒按下」。
 /// 所以凡是以 `is_ptt_member_physically_down` 為判據的邏輯，遇到滑鼠按鍵都必須繞開。
 ///
-/// 若日後往 SINGLE_KEY_TABLE 里加第四個滑鼠鍵，這裡也要跟著加（有測試釘住）。
+/// 若日後往 SINGLE_KEY_TABLE 裡加第四個滑鼠鍵，這裡也要跟著加（有測試釘住）。
 fn is_mouse_vk(vk: u32) -> bool {
     matches!(vk, 0x04 | 0x05 | 0x06)
 }

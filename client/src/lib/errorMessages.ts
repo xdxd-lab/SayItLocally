@@ -118,7 +118,7 @@ export function errorDetailText(error: unknown): string {
 }
 
 /**
- * 從各種異常文本里摳出 HTTP 狀態碼（`HTTP 401` / `status: 403` / `http=403` / `(404)`）。
+ * 從各種異常文本裡摳出 HTTP 狀態碼（`HTTP 401` / `status: 403` / `http=403` / `(404)`）。
  *
  * `http=403` 這一種是**我們自己**的格式：Rust 側 `diag::http_summary` 寫的就是
  * `[http=403 x-request-id=…]`。原來的正則把 `[:=]?` 只掛在 status 那個分支上，

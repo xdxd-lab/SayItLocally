@@ -422,10 +422,10 @@ mod tests {
         let mut ids = std::collections::HashSet::new();
         let mut names = std::collections::HashSet::new();
         for m in &models {
-            assert!(ids.insert(m.id.clone()), "模型 id 重复: {}", m.id);
+            assert!(ids.insert(m.id.clone()), "模型 id 重複: {}", m.id);
             // 展示名去掉量化檔字尾後必須仍然互不相同（兩個 1.7B 靠"高精度"區分），
             // 否則刪除確認框、當前模型提示這些只顯示 name 的地方會分不清
-            assert!(names.insert(m.name.clone()), "模型展示名重复: {}", m.name);
+            assert!(names.insert(m.name.clone()), "模型展示名重複: {}", m.name);
             // id 決定權重的落盤目錄，重名會讓兩個量化檔下到同一個資料夾裡
             assert!(m.id.ends_with("-gguf"), "{} 的 id 應以 -gguf 結尾", m.id);
             assert!(!m.sources.is_empty(), "{} 沒有下載源", m.id);
@@ -450,7 +450,7 @@ mod tests {
                     m.id, s.source, sum, m.total_size_bytes
                 );
                 for f in &s.files {
-                    assert!(f.url.ends_with(&f.name), "{} 的 URL 与文件名不匹配: {}", m.id, f.url);
+                    assert!(f.url.ends_with(&f.name), "{} 的 URL 與檔名不匹配: {}", m.id, f.url);
                     let sha = f.sha256.as_deref().unwrap_or("");
                     assert_eq!(sha.len(), 64, "{} 的 {} 缺少或非法 sha256", m.id, f.name);
                 }

@@ -1039,7 +1039,7 @@ export class RecorderOrchestrator {
       void this.history.discard(historyArtifact)
     }
 
-    // token 與當前 run 在同一同步檢查內透過後才允許提示“已取消”；舊佇列動作不會影響新代次。
+    // token 與當前 run 在同一同步檢查內通過後才允許提示“已取消”；舊佇列動作不會影響新代次。
     addRuntimeEvent('info', 'recorder', 'Processing canceled by user', {
       runId: canceledRunId,
       mode: this.provider.mode,
@@ -1226,7 +1226,7 @@ export class RecorderOrchestrator {
           // 而使用者看到的那句話會把他引去查麥克風。這是呼叫失敗，不是沒說話。
           // 這條路**保留卡片**：它不是「沒識別出文字」，是協議沒跑完 —— 服務端結束了
           // 會話卻什麼都沒回，屬於確實出了錯。文案也從 noResultTitle 換成專屬的一條：
-          // 兩種成因共用一個標題時，日誌里根本分不清彈的是哪一張卡（查這個 bug 時
+          // 兩種成因共用一個標題時，日誌裡根本分不清彈的是哪一張卡（查這個 bug 時
           // 就被它誤導過一次）。
           void (async () => {
             await this.failRunWithCard(runId, {

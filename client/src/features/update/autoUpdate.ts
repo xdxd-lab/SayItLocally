@@ -134,7 +134,7 @@ async function clearPending(): Promise<void> {
  *
  * 必須做：`ensureDownloaded` 只按版本號判斷"這個包已經在盤上了"，而版本號相同不代表
  * 來自同一台伺服器、內容也相同。留著它的後果是"把地址指到測試伺服器驗一遍"實際裝的
- * 還是上一個來源那個包 —— 測試看起來透過了，測的卻不是目標產物。
+ * 還是上一個來源那個包 —— 測試看起來通過了，測的卻不是目標產物。
  * versionInfo 一起清掉，否則介面還掛著舊地址那次檢查的結論。
  */
 export async function discardPendingForChannelSwitch(): Promise<void> {

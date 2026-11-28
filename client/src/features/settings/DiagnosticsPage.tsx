@@ -381,7 +381,7 @@ export default function DiagnosticsPage() {
               </div>
             </div>
 
-            {/* mac-selectable：mac 上介面文字預設不可選，執行日誌要能選中複製（index.css） */}
+            {/* mac-selectable：mac 上介面文字預設不可選，執行日誌要能選中拷貝（index.css） */}
             <div className="mac-selectable custom-scrollbar max-h-64 min-h-[3rem] space-y-1 overflow-y-auto">
               {filteredEvents().length === 0 ? (
                 <div className="flex h-12 items-center justify-center text-sm text-muted-foreground/50">

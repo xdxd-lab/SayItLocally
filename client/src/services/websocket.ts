@@ -487,7 +487,7 @@ export function sendStart(opts?: {
 
 export function sendStop(opts?: {
   pttHoldMs?: number
-  /** 松鍵時補上的「這次別做 AI」。服務端在收到 stop 之後才開始 ASR+AI，來得及。 */
+  /** 鬆鍵時補上的「這次別做 AI」。服務端在收到 stop 之後才開始 ASR+AI，來得及。 */
   disableAi?: boolean
   audioStats?: AudioStats
 }): boolean {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 // Rust 原始碼當字串讀進來（Vite 的 `?raw`）。用它而不是 node:fs 是因為本專案沒裝
-// @types/node，而 `vite/client` 已經宣告瞭 `*?raw`，不需要額外的型別宣告。
+// @types/node，而 `vite/client` 已經宣告了 `*?raw`，不需要額外的型別宣告。
 import capabilitiesSource from '../../../src-tauri/src/providers/capabilities.rs?raw'
 
 import {
@@ -185,7 +185,7 @@ describe('hotwordDependsOnStreamingPath', () => {
  * 關係：Rust 那邊加一個 key、刪一個 key，前端這份副本不動，斷言照樣全綠 —— 測出來的
  * 只是"我抄得一致嗎"。讀原始碼之後，兩邊的差異必然顯形。
  *
- * 解析失敗時**拋錯而不是返回空集**：返回空集會讓下面的子集斷言全部平凡透過
+ * 解析失敗時**拋錯而不是返回空集**：返回空集會讓下面的子集斷言全部平凡通過
  * （空集包含一切），那正是"測試變綠而什麼都沒驗"的經典形狀。
  */
 function parseAllAsrProviders(rustSource: string): string[] {
@@ -212,7 +212,7 @@ function declaredProvidersInRust(): Set<string> {
  *
  * 為什麼要這一步：讀真實原始碼只保證"讀到的是真的"，不保證"少一個 key 會被看見"。
  * 而那正是這條跨語言斷言的全部意義 —— 解析器若在某種寫法下靜默漏讀，
- * 下面的子集斷言會平凡透過，漂移照舊發生。
+ * 下面的子集斷言會平凡通過，漂移照舊發生。
  */
 const FAKE_DECLARATION = `
 pub const ALL_ASR_PROVIDERS: &[&str] = &[
@@ -225,7 +225,7 @@ pub const ALL_ASR_PROVIDERS: &[&str] = &[
 /**
  * 跨語言的防漂移斷言。
  *
- * 前端目錄里加一張卡 / 一個模型，它的 `provider` 必須在 Rust 的
+ * 前端目錄裡加一張卡 / 一個模型，它的 `provider` 必須在 Rust 的
  * `capabilities::ALL_ASR_PROVIDERS` 裡有宣告；漏了的話 Rust 會返回
  * `unknown_provider`，介面顯示"未確定"—— 不會騙人，但使用者也拿不到答案。
  *
@@ -261,7 +261,7 @@ describe('目錄裡每個模型的執行時 provider 都在 Rust 宣告過熱詞
     expect(parseAllAsrProviders(shrunk)).toEqual(['alpha', 'gamma'])
   })
 
-  /** 常量被改名或換寫法時必須報錯，不能靜默返回空集（空集會讓子集斷言平凡透過）。 */
+  /** 常量被改名或換寫法時必須報錯，不能靜默返回空集（空集會讓子集斷言平凡通過）。 */
   it('解析不到時拋錯而不是返回空集', () => {
     expect(() => parseAllAsrProviders('pub const SOMETHING_ELSE: &[&str] = &["x"];')).toThrow()
     expect(() => parseAllAsrProviders('pub const ALL_ASR_PROVIDERS: &[&str] = &[];')).toThrow()
@@ -270,7 +270,7 @@ describe('目錄裡每個模型的執行時 provider 都在 Rust 宣告過熱詞
   it('遍歷的是模型上的 provider，不是卡片 id', () => {
     // 卡片 id 是平台（openai / google / openai_compat），真正調 Rust 的是模型的
     // provider（openai_transcribe / openai_live_transcribe…）。按卡片 id 檢查會
-    // 漏掉"同一張卡里兩個模型走不同實現"這件事，而那正是 OpenAI 與 Gemini 兩張卡
+    // 漏掉"同一張卡裡兩個模型走不同實現"這件事，而那正是 OpenAI 與 Gemini 兩張卡
     // 的形狀 —— 它們卡內就有熱詞行為相反的兩個模型。
     const cardIds = new Set(ASR_PROVIDERS.map((entry) => entry.id))
     const modelProviders = new Set(

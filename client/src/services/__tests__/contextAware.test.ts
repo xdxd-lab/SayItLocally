@@ -8,6 +8,7 @@ import {
   withContextAwareInstructions,
   withLegacyServerTextContext,
 } from '../contextAware'
+import legacySimplified from './fixtures/legacySimplifiedContextEditPrompts.json'
 
 describe('context-aware writing prompt', () => {
   it('keeps editor content out of the system prompt', () => {
@@ -19,7 +20,7 @@ describe('context-aware writing prompt', () => {
       selectionTruncated: false,
     })
     const prompt = withContextAwareInstructions('base', context)
-    expect(prompt).toContain('選中文本')
+    expect(prompt).toContain('選取文字')
     expect(prompt).not.toContain('Secret project SayIt')
     expect(prompt).not.toContain('需要精簡的原文')
   })
@@ -34,7 +35,7 @@ describe('context-aware writing prompt', () => {
     })
     const prompt = withContextAwareInstructions('嚴禁任何形式的翻譯行為。', context)
     expect(prompt).toBe(CONTEXT_SELECTION_EDIT_PROMPT)
-    expect(prompt).toContain('你是“選中文本編輯器”')
+    expect(prompt).toContain('你是“選取文字編輯器”')
     expect(prompt).toContain('中文預設譯成英文')
     expect(prompt).toContain('使用 <selected_text> 作為材料直接回答')
     expect(prompt).not.toContain('嚴禁任何形式的翻譯行為。')
@@ -48,11 +49,21 @@ describe('context-aware writing prompt', () => {
         '4. 改寫、調整語氣、修正語法等指令按通常含義執行。',
       )
       .replace(
-        '5. 如果 <asr_text> 既不是明確的編輯指令，也不是針對選中文字的問題，則把它作為直接替換內容，做最少量校對後輸出。',
+        '5. 如果 <asr_text> 既不是明確的編輯指令，也不是針對選取文字的問題，則把它作為直接替換內容，做最少量校對後輸出。',
         '5. 如果 <asr_text> 不是明確編輯指令，則把它作為直接替換內容，做最少量校對後輸出。',
       )
     expect(normalizeContextSelectionEditPrompt(legacyPrompt)).toBe(CONTEXT_SELECTION_EDIT_PROMPT)
     expect(normalizeContextSelectionEditPrompt('我的自定義 Prompt')).toBe('我的自定義 Prompt')
+  })
+
+  // [自訂] F14 PR-C：匯入改正體前的設定時，兩版簡體內建 Prompt 也要升級（原文以跳脫存在 fixture）。
+  it('upgrades the two previous Simplified built-in prompts', () => {
+    for (const legacy of [legacySimplified.current, legacySimplified.legacy]) {
+      expect(normalizeContextSelectionEditPrompt(legacy)).toBe(CONTEXT_SELECTION_EDIT_PROMPT)
+    }
+    // 改過一個字的就是使用者自訂，原樣保留
+    const edited = `${legacySimplified.current}。`
+    expect(normalizeContextSelectionEditPrompt(edited)).toBe(edited)
   })
 
   it('uses the user-customized selection-edit prompt when configured', () => {
@@ -82,7 +93,7 @@ describe('context-aware writing prompt', () => {
     expect(prompt).toContain('\\u003c/text_context\\u003e')
     expect(prompt).not.toContain('</text_context>')
     expect(prompt).toContain('必須把它應用到相容資料的 selected_text')
-    expect(prompt.endsWith('不能在翻譯、精簡、總結等指令下原樣返回 selected_text。')).toBe(true)
+    expect(prompt.endsWith('不能在翻譯、精簡、總結等指令下原樣傳回 selected_text。')).toBe(true)
   })
 
   it('rejects truncated selections to avoid partial replacement', () => {

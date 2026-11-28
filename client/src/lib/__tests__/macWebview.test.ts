@@ -12,7 +12,7 @@ function fakeTarget(matches: string[]): EventTarget {
 }
 
 describe('macOS 右鍵選單', () => {
-  it('輸入框、文本框和可編輯區域裡保留系統右鍵選單（剪下 / 複製 / 貼上）', () => {
+  it('輸入框、文本框和可編輯區域裡保留系統右鍵選單（剪下 / 拷貝 / 貼上）', () => {
     expect(shouldShowNativeContextMenu(fakeTarget(['input']), '')).toBe(true)
     expect(shouldShowNativeContextMenu(fakeTarget(['textarea']), '')).toBe(true)
     expect(shouldShowNativeContextMenu(
@@ -26,7 +26,7 @@ describe('macOS 右鍵選單', () => {
     expect(shouldShowNativeContextMenu(null, '')).toBe(false)
   })
 
-  it('選中了文字時照常彈出，方便複製、查詢', () => {
+  it('選中了文字時照常彈出，方便拷貝、查詢', () => {
     expect(shouldShowNativeContextMenu(fakeTarget([]), '識別結果')).toBe(true)
     // 只選中了空白不算
     expect(shouldShowNativeContextMenu(fakeTarget([]), '  \n')).toBe(false)

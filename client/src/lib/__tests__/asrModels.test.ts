@@ -129,7 +129,7 @@ describe('buildAsrExtra', () => {
    * 呼叫方（resolveAsrApiModel）解析好再傳進來。而老實現看到 provider 以 `qwen_omni`
    * 開頭就去查 QWEN_OMNI_MODEL_MAP —— 表裡沒有 `qwen_omni` 這個鍵，於是
    * `extra.model` 是 undefined，後端回落到它自己的預設模型。
-   * 表現是**下拉里選哪個 Omni 都跑同一個**，而介面顯示一切正常。
+   * 表現是**下拉裡選哪個 Omni 都跑同一個**，而介面顯示一切正常。
    *
    * 老測試用的是舊 id（`qwen_omni_35_plus`，表裡有），所以它一直是綠的 ——
    * 斷言釘在了已經不存在的呼叫形態上。

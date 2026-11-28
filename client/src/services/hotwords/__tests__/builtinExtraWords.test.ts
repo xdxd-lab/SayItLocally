@@ -35,3 +35,11 @@ describe('user words added to a builtin set', () => {
     expect(extractBuiltinSetExtraWords({ ai: [...defaults] })).toEqual({})
   })
 })
+
+// [自訂] F14 PR-C：舊設定存的是簡體「千問」（以 Unicode 跳脫寫出），讀取時要換成正體，不能被濾掉。
+describe('舊簡體內建詞', () => {
+  it('簡體「千問」讀成「千問」並保留', () => {
+    const result = normalizeBuiltinSetWords({ ai: ['ChatGPT', '\u5343\u95ee'] })
+    expect(result.ai).toEqual(['ChatGPT', '千問'])
+  })
+})

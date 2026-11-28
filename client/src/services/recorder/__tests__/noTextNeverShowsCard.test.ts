@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 // 原始碼當字串讀進來（Vite 的 `?raw`）。用它而不是 node:fs 是因為本專案沒裝
-// @types/node，而 `vite/client` 已經宣告瞭 `*?raw` —— 與 hotwordCapability.test.ts 同款。
+// @types/node，而 `vite/client` 已經宣告了 `*?raw` —— 與 hotwordCapability.test.ts 同款。
 import SOURCE from '../RecorderOrchestrator.ts?raw'
 
 /**

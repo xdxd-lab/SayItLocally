@@ -119,7 +119,7 @@ export const AI_PROVIDERS: AiProvider[] = [
 ]
 
 /**
- * 新建服務時的地區預設；隻影響還沒選擇過供應商的場景。
+ * 新建服務時的地區預設；只影響還沒選擇過供應商的場景。
  * 英文預設 OpenRouter，與英文介面推薦的 DeepSeek V4.1 Flash（經 OpenRouter）一致；
  * 中文不跟：國內付款和訪問 OpenRouter 都不方便，直連 DeepSeek 更合適。
  */
@@ -186,7 +186,7 @@ export function providerLabel(value: string): string {
  */
 export interface AiProfileCheck {
   ok: boolean
-  /** 檢測完成的時間戳。用來說"多久之前測的"——一次透過不等於此刻還通 */
+  /** 檢測完成的時間戳。用來說"多久之前測的"——一次通過不等於此刻還通 */
   at?: number
   /** 成功時的一次往返耗時 */
   latencyMs?: number
@@ -513,7 +513,7 @@ export function migrateLegacyProfiles(
         apiUrl: url,
         apiKey: entry.apiKey,
         model,
-        // 老版本只在測通之後才記耗時，所以有耗時就等於有過一次透過的檢測；
+        // 老版本只在測通之後才記耗時，所以有耗時就等於有過一次通過的檢測；
         // 但那是什麼時候測的沒人知道，所以不寫 at（介面上就不會聲稱"剛測過"）
         check: latencyMs === undefined ? undefined : { ok: true, latencyMs },
       })

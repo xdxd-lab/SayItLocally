@@ -193,13 +193,13 @@ fn close_reason(frame: Option<tungstenite::protocol::CloseFrame>) -> String {
         .unwrap_or_else(|| "No reason".to_string())
 }
 
-/// 一次性識別每包發 1 秒音訊。包大小不影響限速（Omni 那邊實測過），隻影響事件條數。
+/// 一次性識別每包發 1 秒音訊。包大小不影響限速（Omni 那邊實測過），只影響事件條數。
 const ONESHOT_CHUNK_BYTES: usize = 32_000;
 
 /// 錄完再發：整段音訊推完 → commit → 等一條 completed。
 ///
 /// 關掉即時字幕、或者流式連線沒建起來時走這裡。**以前這條路走的是 asr_qwen（模型寫死
-/// qwen3-asr-flash）**，使用者在下拉里選的是 realtime，實際識別、計費的卻是另一個模型，
+/// qwen3-asr-flash）**，使用者在下拉裡選的是 realtime，實際識別、計費的卻是另一個模型，
 /// 介面上看不出來。別再把 qwen_realtime 並回 asr_qwen 那個分支。
 ///
 /// 為什麼關掉 server_vad、手動 commit：錄音一口氣推上去，VAD 按音訊時間軸切句，而錄音

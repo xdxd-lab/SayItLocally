@@ -147,7 +147,7 @@ function SegmentedTabs<T extends string>({
   )
 }
 
-/** 條目面板：一組同類條目共用一塊麵板 + 髮絲分割線。 */
+/** 條目面板：一組同類條目共用一塊面板 + 髮絲分割線。 */
 function Panel({ children }: { children: ReactNode }) {
   return (
     <div className="overflow-hidden rounded-xl border border-border/70 divide-y divide-border/60">{children}</div>

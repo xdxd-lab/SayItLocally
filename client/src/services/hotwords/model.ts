@@ -4,7 +4,7 @@ export const MAX_HOTWORDS = 1000
 export const BUILTIN_SET_WORDS_KEY = 'builtinSetWords'
 export const BUILTIN_SET_ACTIVE_KEY = 'builtinSetActive'
 /**
- * 使用者自己往內建分類里加的詞，按分類 key 存。
+ * 使用者自己往內建分類裡加的詞，按分類 key 存。
  *
  * 為什麼不直接寫進 builtinSetWords：讀那份時會按內建詞表過濾（normalizeBuiltinSetWords），
  * 新版本從預設詞表裡刪掉的詞靠這一步從老使用者那裡清掉。使用者加的詞同樣不在內建詞表裡，
@@ -102,6 +102,14 @@ export function composeHotwords(
  * 讀內建分類的詞。`extraValue` 是 BUILTIN_SET_EXTRA_WORDS_KEY 裡存的使用者自加詞，
  * **凡是要拿內建分類實際詞表的地方都要把它一起傳進來**，否則使用者加的詞在那條路徑上不生效。
  */
+/**
+ * [自訂] F14 PR-C：內建詞改為正體前存下的舊寫法 → 現行寫法。舊設定裡的簡體「千問」
+ * （以 Unicode 跳脫保存）讀取時換成「千問」，不會因不在現行詞表而被濾掉。
+ */
+const LEGACY_BUILTIN_WORD_ALIASES: Readonly<Record<string, string>> = {
+  '\u5343\u95ee': '千問', // i18n-allow: 內建中文熱詞資料
+}
+
 export function normalizeBuiltinSetWords(value: unknown, extraValue?: unknown): Record<string, string[]> {
   const obj = value && typeof value === 'object' ? value as Record<string, unknown> : {}
   const extras = normalizeBuiltinSetExtraWords(extraValue)
@@ -115,7 +123,7 @@ export function normalizeBuiltinSetWords(value: unknown, extraValue?: unknown): 
     const allow = new Set(setDef.words)
     // 沒存過預設詞時按全部預設詞算（與熱詞頁首次載入的兜底一致），不能只剩使用者加的那幾個
     const base = Array.isArray(raw)
-      ? uniqueWords(raw.map((v) => String(v))).filter((w) => allow.has(w))
+      ? uniqueWords(raw.map((v) => LEGACY_BUILTIN_WORD_ALIASES[String(v)] ?? String(v))).filter((w) => allow.has(w))
       : uniqueWords(setDef.words)
     result[key] = uniqueWords([...base, ...extra])
   }

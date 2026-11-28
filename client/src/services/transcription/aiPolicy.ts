@@ -7,7 +7,7 @@
 // 重跑路徑的失敗被空 catch 吞掉既無日誌也無代次檢查。改一處永遠漏一處。
 //
 // 拆成兩個函式而不是一個大函式，是因為兩件事的已知資訊不同：
-//   - resolveAiPolicy：松鍵時就能算（配置 + 音訊時長），決定路由和是否允許呼叫。
+//   - resolveAiPolicy：鬆鍵時就能算（配置 + 音訊時長），決定路由和是否允許呼叫。
 //   - resolveAiOutcome：要等執行完（識別是否為空、服務端有沒有真跑、呼叫成功與否）。
 // 合成一個會迫使呼叫方在資訊不全時先猜一個結果，再回頭改——那正是現在的毛病。
 
@@ -52,7 +52,7 @@ export interface AiConfigSnapshot {
 export interface AiPolicyInput extends AiConfigSnapshot {
   /**
    * 實際 PCM 時長（秒）。**不要四捨五入，也不要用熱鍵按住時長或介面顯示值**：
-   * 按住時長含松鍵前後的空白，介面值是格式化過的，兩者都會讓「恰好等於門檻」
+   * 按住時長含鬆鍵前後的空白，介面值是格式化過的，兩者都會讓「恰好等於門檻」
    * 這一檔判錯。
    */
   audioDurationSec: number

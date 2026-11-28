@@ -14,7 +14,7 @@ const labels = {
  * 外加 Chromium 自己擺的兩個偽裝置，label 是 `<本地化字首> - <真實端點名>`。
  */
 const RAW = '耳機式麥克風 (Plantronics Blackwire 5220 Series) (047f:c053)'
-/** 下拉里該顯示的：留型號，剝掉結尾的 USB 標識。 */
+/** 下拉裡該顯示的：留型號，剝掉結尾的 USB 標識。 */
 const SHOWN = '耳機式麥克風 (Plantronics Blackwire 5220 Series)'
 
 const snapshot: MicEndpoint[] = [

@@ -41,7 +41,7 @@ function profile(provider: string, over: Partial<AsrProfile> = {}): AsrProfile {
 describe('topUpProfiles', () => {
   /**
    * 這條規則變過兩次，兩次的理由都寫在 topUpProfiles 的註釋裡。現在是「每平台一張卡」，
-   * 而且這次不會丟東西 —— 該平台的全部模型都在那張卡的下拉里。
+   * 而且這次不會丟東西 —— 該平台的全部模型都在那張卡的下拉裡。
    */
   it('一個平台填了金鑰，就給這個平台建一張卡', () => {
     const r = topUpProfiles([], { qwen: creds({ apiKey: 'sk-1' }) })
@@ -204,7 +204,7 @@ describe('loadAsrProfiles / saveAsrProfiles 的落盤往返', () => {
 
   /**
    * 執行時鍵寫的是**選中模型**的分發 key，不是卡片 id。寫成卡片 id 的話
-   * Rust 側會報 "ASR provider not implemented"（一張卡里的模型可以走不同協議）。
+   * Rust 側會報 "ASR provider not implemented"（一張卡裡的模型可以走不同協議）。
    */
   it('寫回時把選中模型的分發 key 同步進執行時鍵', async () => {
     store.set(ASR_PROFILES_KEY, [

@@ -1,7 +1,7 @@
 // 雲 API 模式配置面板 —— 一張卡 = 一份語音識別服務配置
 //
 // 結構與「AI 服務」頁對齊（同一套卡片、同一套彈窗、同一套狀態語義）：可以新建多份，
-// 同一家也能存多份（兩個百鍊帳號、兩套豆包金鑰），點一張即啟用。
+// 同一家也能存多份（兩個百煉帳號、兩套豆包金鑰），點一張即啟用。
 //
 // 與 AI 服務的唯一實質差別：供應商從內建清單裡選，不能填任意地址 —— 每家 ASR 的協議
 // 都要一份專門的 Rust 實現，不像 AI 整理那邊只要 OpenAI 相容端點就能接。
@@ -113,7 +113,7 @@ type AsrTestOutcome =
 
 /**
  * 把內建測試音訊準備成後端要的裸 PCM（base64）。
- * 從測試邏輯裡單獨拆出來，是為了讓批次測試**只准備一次**給 N 張卡共用。
+ * 從測試邏輯裡單獨拆出來，是為了讓批次測試**只準備一次**給 N 張卡共用。
  */
 async function prepareTestPcm(): Promise<{ pcmB64: string; audioSec: number }> {
   const wavB64 = await invoke<string>('get_test_audio_b64')
@@ -274,7 +274,7 @@ export default function CloudAPISection() {
    *
    * 為什麼不用更便宜的 test_asr_connection：那個只做握手鑑權，握手過了識別仍可能失敗
    * （資源沒開通、額度用盡），而且它測不出耗時。這一頁要回答「哪個更快」，
-   * 就得測真實轉寫。代價是一次真實計費呼叫，頁面上寫明瞭。
+   * 就得測真實轉寫。代價是一次真實計費呼叫，頁面上寫明了。
    */
   async function handleTest(profile: AsrProfile) {
     if (busy) return
@@ -316,7 +316,7 @@ export default function CloudAPISection() {
    * 一鍵測試全部：**併發**真跑一次識別，一次點選直接開始（沒有二次確認）。
    *
    * ⚠️ 併發的代價，改回序列前先想清楚：卡上的耗時是用來橫向比較「哪個更快」的，
-   * 併發跑出來的數字互相汙染 —— 同平台的卡尤其明顯（千問那幾個變體共用一把百鍊
+   * 併發跑出來的數字互相汙染 —— 同平台的卡尤其明顯（千問那幾個變體共用一把百煉
    * 金鑰，打的是同一個服務），還可能撞上限流被記成「不可用」。所以批次結果裡會
    * 註明這批耗時不宜橫向比較；要拿準數字，用卡上的單張測試。
    *
@@ -344,7 +344,7 @@ export default function CloudAPISection() {
     setTestingIds(targets.map((p) => p.id))
 
     try {
-      // 測試音訊只准備一次，N 張卡共用
+      // 測試音訊只準備一次，N 張卡共用
       const audio = await prepareTestPcm()
       let done = 0
       const results = await Promise.all(targets.map(async (target) => {
@@ -760,7 +760,7 @@ export default function CloudAPISection() {
           </div>
 
           {/* 介面地址。**按選中的模型決定要不要顯示**，不是按卡片 ——
-              同一張卡里可以既有 HTTP 模型（能改地址）又有 WebSocket 模型（改不了），
+              同一張卡裡可以既有 HTTP 模型（能改地址）又有 WebSocket 模型（改不了），
               千問那張卡就是。協議卡是必填，內建卡是可選覆蓋（中轉站 / 反代）。 */}
           {draftModelOption?.supportsCustomUrl && (
             <div>
