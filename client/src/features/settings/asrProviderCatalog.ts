@@ -1,7 +1,7 @@
 // 雲 API 語音識別的供應商目錄、服務檔案（profile）解析與延遲分檔。
 //
 // 結構與「AI 服務」頁對齊：一張卡 = 一份完整配置（供應商 + 該平台的憑據），可以存多份，
-// 同一家也能存多份（比如兩個百鍊賬號、兩套豆包金鑰）。啟用哪一份由 activeProfileId 決定。
+// 同一家也能存多份（比如兩個百鍊帳號、兩套豆包金鑰）。啟用哪一份由 activeProfileId 決定。
 //
 // 和 AI 服務的唯一實質差別：供應商只能從內建清單裡選，不能填任意地址 —— 每家 ASR 的
 // 協議都要一份專門的 Rust 實現（asr_doubao / asr_qwen / asr_qwen_omni / asr_mimo），
@@ -40,7 +40,7 @@ export const ASR_PLATFORMS: Record<AsrPlatform, AsrPlatformInfo> = {
   groq: { label: 'Groq', consoleUrl: 'https://console.groq.com/keys' },
   openai: { label: 'OpenAI', consoleUrl: 'https://platform.openai.com/api-keys' },
   // Gemini API 的 key 在 AI Studio 領，不是 Google Cloud 控制台 —— 後者那套
-  // （專案 + 服務賬號 + OAuth）我們刻意沒接，見 providers/asr_gemini.rs 的檔案頭。
+  // （專案 + 服務帳號 + OAuth）我們刻意沒接，見 providers/asr_gemini.rs 的檔案頭。
   google: { label: 'Google Gemini', consoleUrl: 'https://aistudio.google.com/apikey' },
   openrouter: { label: 'OpenRouter', consoleUrl: 'https://openrouter.ai/keys' },
   // consoleUrl 指向協議文件而不是某家控制台 —— 金鑰去哪兒領取決於使用者對接的是誰，
@@ -109,7 +109,7 @@ export interface AsrModelOption {
   // 使用者在「模型」那一欄看到的是一個既不像模型、也說不清是什麼的詞（使用者原話：
   // 「還有什麼『千問一次性』…下面不是應該顯示模型嗎」）。
   //
-  // 現在一律顯示真實模型 ID：它一眼認得出是模型，還能拿去對服務商文件和賬單。
+  // 現在一律顯示真實模型 ID：它一眼認得出是模型，還能拿去對服務商文件和帳單。
   // 「這個模型什麼時候該選」交給 blurb 說，那本來就是它的活。
   /**
    * 一句話說清「什麼時候選這個模型」，顯示在模型下拉下面。
@@ -159,7 +159,7 @@ export interface AsrProviderEntry {
   /** 一句定位，說清「什麼時候選這家」 */
   blurb: string
   /**
-   * 當前內建端點與控制台所面向的賬號地區。
+   * 當前內建端點與控制台所面向的帳號地區。
    * `global` 是海外端點，國內直連可能不穩定，卡片上要如實標出來 ——
    * 否則使用者會把「連不上」當成自己金鑰填錯。
    */
@@ -256,7 +256,7 @@ const OPENROUTER_MODELS: AsrModelOption[] = OPENROUTER_SLUGS.map((id) => ({
  *     才是中文最準的一檔，一開字幕就掉檔；Audio 3.0 反過來，開著字幕也是第一檔。
  *     少了這個前提，兩張卡的「最準」會互相矛盾。
  *   · 不如別家的地方照實寫（千問 realtime 不及 Audio 3.0、MiMo 準確率一般），
- *     但用詞留餘地 —— 目錄裡留著它們是因為有人的賬號/網路只有那一家能用。
+ *     但用詞留餘地 —— 目錄裡留著它們是因為有人的帳號/網路只有那一家能用。
  *   · 引用別的卡一律用**產品名**（"Audio 3.0"、"Omni Plus"），不要用「上面那個」
  *     「同上」：順序會變，位置指代改一次順序就錯。
  *   · 這些準確率結論來自實際使用對比，不是跑分。改結論前先真用一遍。
@@ -485,7 +485,7 @@ export const ASR_PROVIDERS: AsrProviderEntry[] = [
    * 所以它是這份清單裡模型選項最多的一張卡，也是唯一「換模型就等於換廠商」的一張。
    *
    * 放在最後：它多出一層中間商（價格與延遲都比直連略高），適合的場景是
-   * 「不想為每家單獨開賬號」。已經有 OpenAI / Google key 的人直連更划算。
+   * 「不想為每家單獨開帳號」。已經有 OpenAI / Google key 的人直連更划算。
    */
   {
     id: 'openrouter',
@@ -662,7 +662,7 @@ function migrateLegacyProvider(
 /**
  * 舊 provider id → 它現在屬於哪張卡（不認識就原樣返回）。
  *
- * 給「已經自動補建過哪些」那份記賬用（`cloudAsr.autoCreatedProviders`）：
+ * 給「已經自動補建過哪些」那份記帳用（`cloudAsr.autoCreatedProviders`）：
  * 存量裡記的是舊的分發 key，不換算的話新程式碼認不出來，會把使用者主動刪掉的卡
  * 重新補回來一次。
  */
@@ -703,7 +703,7 @@ export function findAsrProvider(id: string): AsrProviderEntry | undefined {
  * 地區提示，**只在需要提醒時才給字**。
  *
  * `mainland_china` 刻意返回空串：內建清單裡絕大多數都是國內端點，那是預設情形，
- * 每張卡上都掛一句「面向中國大陸賬號」等於把噪音重複七遍，還把真正要緊的
+ * 每張卡上都掛一句「面向中國大陸帳號」等於把噪音重複七遍，還把真正要緊的
  * 「這個要海外網路才連得上」沖淡了。availability 欄位本身保留 —— 它是資料，
  * 只是這一條不值得佔介面上的字。
  */
@@ -803,7 +803,7 @@ function parseCheck(raw: unknown): AsrCheck | undefined {
  * 一份語音識別服務配置 = 選定的供應商 + 該平台需要的憑據。
  *
  * 憑據直接掛在檔案上（而不是按平台共享），這樣一張卡就是一份自洽的完整配置，
- * 也才可能同時存兩個賬號。重複粘金鑰的問題由「新建時自動沿用同平台上一份」解決。
+ * 也才可能同時存兩個帳號。重複粘金鑰的問題由「新建時自動沿用同平台上一份」解決。
  */
 export interface AsrProfile {
   id: string
@@ -812,7 +812,7 @@ export interface AsrProfile {
   /**
    * 使用者給這張卡起的名字，可空。
    *
-   * 存在的理由：同一個平台可以有多張卡（兩個賬號、或兩個自建地址），而卡片標題
+   * 存在的理由：同一個平台可以有多張卡（兩個帳號、或兩個自建地址），而卡片標題
    * 只有平台名時它們長得一模一樣。這裡原來是自動補「金鑰末 4 位」，使用者一眼就把它
    * 認成「金鑰被顯示出來了」—— 那種區分方式不該由我們替他選，讓他自己起名。
    */

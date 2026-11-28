@@ -40,7 +40,7 @@ describe('macOS 快捷鍵校驗', () => {
     }
   })
 
-  // 使用者實測時把擴音設成了 ⌘W：註冊成功了，但從此所有程式裡的 ⌘W（關視窗）都被 SayIt 搶走
+  // 使用者實測時把免持設成了 ⌘W：註冊成功了，但從此所有程式裡的 ⌘W（關視窗）都被 SayIt 搶走
   it('一個修飾鍵 + 字母 / 數字 / 方向鍵被攔下，加第二個修飾鍵或換 F 鍵就放行', () => {
     for (const combo of ['CommandOrControl+W', 'CommandOrControl+C', 'CommandOrControl+1', 'CommandOrControl+,', 'CommandOrControl+Left', 'Control+A', 'Control+Right', 'CommandOrControl+Return']) {
       expect(getAcceleratorShortcutValidationError(combo), combo).not.toBeNull()

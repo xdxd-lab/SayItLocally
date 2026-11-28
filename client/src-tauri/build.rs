@@ -133,7 +133,7 @@ fn copy_to(src: &Path, dir: &Path, name: &str) {
 ///
 /// 為什麼用 app-local 而不是讓安裝包去裝 vc_redist：
 /// exe 所在目錄在 DLL 搜尋順序裡排在 System32 前面，同目錄放一份新的就會優先命中；
-/// 而且我們是 currentUser 擴音權安裝，本來就沒法跑需要管理員的 vc_redist。
+/// 而且我們是 currentUser 免持權安裝，本來就沒法跑需要管理員的 vc_redist。
 /// 這也是 Handy 的做法（它在 CI 裡算好目錄塞給 build.rs，我們直接在這兒自己找）。
 fn stage_vc_redist(profile_dir: &Path, staging: &Path) -> usize {
     println!("cargo:rerun-if-env-changed=SAYIT_VC_REDIST_DIRS");

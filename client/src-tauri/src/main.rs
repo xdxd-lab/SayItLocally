@@ -968,7 +968,7 @@ fn main() {
             providers::registry::test_ai_connection,
             // [自訂] S17 已註解停用：providers::registry::test_asr_connection,
             // 「這家 ASR 拿熱詞做什麼」的唯一權威來源。前端不再自己維護一份清單 ——
-            // 那正是 issue #67 的成因（宣告和實現分處兩側、無人對賬）。
+            // 那正是 issue #67 的成因（宣告和實現分處兩側、無人對帳）。
             providers::capabilities::asr_hotword_capability,
             // 同上，全部服務一次給全，供「各服務對熱詞的支援」對照表使用。
             // 那張表因此是實現的投影，不是第二份手寫清單。

@@ -472,8 +472,8 @@ describe('RecorderOrchestrator 超時與遲到結果', () => {
   })
 })
 
-describe('RecorderOrchestrator 擴音與中途斷線', () => {
-  it('擴音：按一下開始、期間的按住說話事件被忽略、再按一下結束並正常出字', async () => {
+describe('RecorderOrchestrator 免持與中途斷線', () => {
+  it('免持：按一下開始、期間的按住說話事件被忽略、再按一下結束並正常出字', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'] })
     await startedOrchestrator()
     emit('hands-free')
@@ -481,7 +481,7 @@ describe('RecorderOrchestrator 擴音與中途斷線', () => {
     expect(orch.getState()).toBe('recording')
 
     feedAudio(2)
-    // 擴音期間的 PTT 鬆開不能把錄音停掉
+    // 免持期間的 PTT 鬆開不能把錄音停掉
     emit('ptt-up')
     await flush()
     expect(orch.getState()).toBe('recording')

@@ -94,7 +94,7 @@ describe('PTT 物理組合鍵', () => {
     expect(getPTTShortcutWarning('AltRight')).toBeNull()
   })
 
-  // Shift 只在「按住說話」裡有問題（要長按、會連按）。擴音這類按一下的快捷鍵照舊可用。
+  // Shift 只在「按住說話」裡有問題（要長按、會連按）。免持這類按一下的快捷鍵照舊可用。
   it('按一下的快捷鍵不受 Shift 限制', () => {
     expect(getAcceleratorShortcutValidationError('CommandOrControl+Shift+K')).toBeNull()
   })
@@ -108,7 +108,7 @@ describe('PTT 物理組合鍵', () => {
     expect(getAcceleratorShortcutValidationError('CommandOrControl+K')).toBeNull()
   })
 
-  it('可與擴音 accelerator 做語義衝突比較', () => {
+  it('可與免持 accelerator 做語義衝突比較', () => {
     expect(pttShortcutToAccelerator('ControlLeft+KeyK')).toBe('CommandOrControl+K')
     expect(
       pttShortcutConflictsWithAccelerator('ControlLeft+KeyK', 'CommandOrControl+K'),
@@ -152,7 +152,7 @@ describe('按鍵事件 → 候選快捷鍵', () => {
       .toBe('CommandOrControl+D')
   })
 
-  it('修飾鍵單鍵仍然可用（擴音預設就是右 Alt）', () => {
+  it('修飾鍵單鍵仍然可用（免持預設就是右 Alt）', () => {
     expect(keyEventToShortcutCandidate(keyEvent({ code: 'AltRight', key: 'Alt', alt: true })))
       .toBe('AltRight')
     expect(keyEventToShortcutCandidate(keyEvent({ code: 'ControlRight', key: 'Control', ctrl: true })))

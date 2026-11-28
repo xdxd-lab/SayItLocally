@@ -30,12 +30,12 @@ export const DEFAULTS: Record<string, unknown> = {
   // ⚠️ 預設鍵不能用 Shift：長按右 Shift 約 8 秒會觸發 Windows 篩選鍵，導致鬆開後錄音停不下來
   // （詳見 lib/shortcutKeys.ts 的 PTT_FORBIDDEN_CODES）。這裡曾經是 'ShiftRight'，
   // 於是每台新裝的機器開箱就綁在那個鍵上。右 Ctrl 位置相近、沒有輔助功能陷阱，
-  // 也不和擴音的預設鍵（右 Alt）撞。
+  // 也不和免持的預設鍵（右 Alt）撞。
   // ⚠️ 改這裡要同步 Rust：src-tauri/src/defaults.rs 和 storage/mod.rs 的種子。
-  // defaults.rs 裡有讀本檔案的對賬測試，漏改 cargo test 會紅。
-  // 對賬測試按「key: '值',」逐行解析，這幾行保持單行字面量。
+  // defaults.rs 裡有讀本檔案的對帳測試，漏改 cargo test 會紅。
+  // 對帳測試按「key: '值',」逐行解析，這幾行保持單行字面量。
   shortcutPTT: 'ControlRight',
-  shortcutHandsFree: 'AltRight', // 擴音模式。預設右 Alt 單鍵。也支援組合鍵格式如 'Control+Shift+S'
+  shortcutHandsFree: 'AltRight', // 免持模式。預設右 Alt 單鍵。也支援組合鍵格式如 'Control+Shift+S'
   // AI 整理總開關。留空 = 不註冊，避免升級時意外佔用使用者已有的全域性組合鍵。
   shortcutToggleAi: '',
 
@@ -168,7 +168,7 @@ export const DEFAULTS: Record<string, unknown> = {
   // （尤其堅果雲免費版）有月流量額度，預設開啟等於替使用者做了一個很貴的決定。
   // ⚠️ Rust 側在 src-tauri/src/defaults.rs 有一份（includeHistory / includeAudio / keepCount），
   // 改這裡要一起改 —— 兩份不一致時介面顯示的和實際上傳的就不是一回事了。那邊有讀本檔案的
-  // 對賬測試，漏改 cargo test 會紅。
+  // 對帳測試，漏改 cargo test 會紅。
   'webdav.enabled': false, // 自動定期備份。可選: true | false
   'webdav.url': '', // 目錄地址，只接受 https（Basic 認證等於明文發密碼）
   'webdav.username': '',
@@ -202,8 +202,8 @@ export const DEFAULTS: Record<string, unknown> = {
 }
 
 /**
- * macOS 上覆蓋的預設值。MacBook 內建鍵盤沒有右 Ctrl，所以按住說話改成右 ⌥、擴音改成右 ⌘。
- * ⚠ 同樣要和 Rust 對賬（defaults.rs 的宏），對賬測試逐行解析，保持單行字面量。
+ * macOS 上覆蓋的預設值。MacBook 內建鍵盤沒有右 Ctrl，所以按住說話改成右 ⌥、免持改成右 ⌘。
+ * ⚠ 同樣要和 Rust 對帳（defaults.rs 的宏），對帳測試逐行解析，保持單行字面量。
  */
 export const MAC_DEFAULT_OVERRIDES: Record<string, unknown> = {
   shortcutPTT: 'AltRight',

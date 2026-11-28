@@ -42,7 +42,7 @@ let labKeyDown = false
 let labEnabled = false
 let started = false
 // 設定頁正在錄製快捷鍵：此時按鍵要交給錄製框去繫結，不能再當成“使用者按了熱鍵”。
-// 不掛起的話，按到已繫結的鍵（如擴音的右 Alt）會從這裡 emit toggle-hands-free，
+// 不掛起的話，按到已繫結的鍵（如免持的右 Alt）會從這裡 emit toggle-hands-free，
 // 於是彈出懸浮窗開始錄音——而不是把這個鍵錄進設定裡。
 let captureActive = false
 
@@ -182,7 +182,7 @@ function handleKeyDown(event: KeyboardEvent) {
     return
   }
 
-  // 擴音鍵（HF）：首個 keydown 立即觸發；後續 repeat down 不重複切換。
+  // 免持鍵（HF）：首個 keydown 立即觸發；後續 repeat down 不重複切換。
   if (hfCode && event.code === hfCode && !pttCodes.includes(hfCode)) {
     if (!hfKeyDown) {
       hfKeyDown = true
@@ -230,7 +230,7 @@ function handleKeyUp(event: KeyboardEvent) {
     return
   }
 
-  // 擴音鍵：keyup 只重新佈防，下一次物理按下才能再次切換。
+  // 免持鍵：keyup 只重新佈防，下一次物理按下才能再次切換。
   if (hfCode && event.code === hfCode && hfKeyDown && !pttCodes.includes(hfCode)) {
     hfKeyDown = false
     if (isModifierSetting(hfSetting)) event.preventDefault()

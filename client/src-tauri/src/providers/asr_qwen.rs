@@ -39,7 +39,7 @@ fn normalize_for_echo(s: &str) -> String {
 }
 
 /// 熱詞回顯檢測：音訊短/不清晰時，模型可能把傳入的熱詞表整串吐出來。
-/// 做法：結果去標點/空白/常見連線詞後，逐個扣掉命中的熱詞；若最終無殘餘
+/// 做法：結果去標點/空白/常見連接詞後，逐個扣掉命中的熱詞；若最終無殘餘
 /// 且命中的「不同熱詞」≥3，判為回顯幻覺，返回空串。
 /// 門檻 ≥3 是為了不誤傷真實的單/雙熱詞短句（如只說了 "Typeless 和 SayIt"）。
 fn strip_hotword_echo(text: String, hotwords: &[&str]) -> String {
@@ -50,8 +50,8 @@ fn strip_hotword_echo(text: String, hotwords: &[&str]) -> String {
     if rest.is_empty() {
         return text;
     }
-    // 去掉常見連線詞，避免它們殘留導致誤判為"有額外內容"
-    // 「與」「還有」是簡體寫法，以 Unicode 跳脫儲存，並列正體「與」「還有」
+    // 去掉常見連接詞，避免它們殘留導致誤判為"有額外內容"
+    // 「與」「還有」的簡體寫法以 Unicode 跳脫保存，並列正體寫法
     for conn in ["和", "\u{4e0e}", "與", "跟", "及", "以及", "\u{8fd8}\u{6709}", "還有", "and"] {
         rest = rest.replace(conn, "");
     }
@@ -312,5 +312,22 @@ pub async fn test_connection(config: &AsrProviderConfig) -> TestResult {
             elapsed_ms,
             detail: String::new(),
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::strip_hotword_echo;
+
+    /// [自訂] F14 PR-C：連接詞的簡體（跳脫）與正體寫法都要扣掉，整串熱詞回顯才認得出來。
+    #[test]
+    fn hotword_echo_with_simplified_or_traditional_connectors_is_dropped() {
+        let words = ["Typeless", "SayIt", "Ollama"];
+        for text in [
+            "Typeless\u{4e0e}SayIt\u{8fd8}\u{6709}Ollama", // 與、還有（簡體）
+            "Typeless與SayIt還有Ollama",
+        ] {
+            assert_eq!(strip_hotword_echo(text.to_string(), &words), "", "{text}");
+        }
     }
 }

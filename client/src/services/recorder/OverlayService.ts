@@ -143,7 +143,7 @@ export class OverlayService {
       const ctx = this.readySoundCtx
       // AudioContext 新建或長時間無操作後常處於 suspended 狀態（瀏覽器自動播放/省電策略）。
       // resume() 是非同步的，若不等它完成就 start()，振盪器可能被靜默丟棄或延遲——
-      // 這正是「第一次按擴音鍵聽不到提示音，過一會又聽不到」的根因。
+      // 這正是「第一次按免持鍵聽不到提示音，過一會又聽不到」的根因。
       if (ctx.state === 'suspended') {
         ctx.resume().then(() => this.emitReadyTone(ctx)).catch(() => { /* ignore */ })
       } else {

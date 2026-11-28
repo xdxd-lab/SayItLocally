@@ -484,7 +484,7 @@ pub async fn webdav_backup_now(
     // 打包用的臨時檔案不留在磁碟上：含音訊時它和音訊庫一樣大。
     let _ = std::fs::remove_file(&temp_path);
 
-    // 成功與失敗都記賬。少了失敗那一半，一個靜默失敗幾個月的備份看起來
+    // 成功與失敗都記帳。少了失敗那一半，一個靜默失敗幾個月的備份看起來
     // 和一個正常工作的備份完全一樣。
     let finished_at = chrono::Utc::now().timestamp_millis();
     match &outcome {
@@ -1000,7 +1000,7 @@ mod tests {
 
     /// 設定沒配過時，scope 必須是「只有配置」。
     ///
-    /// 這條要用真的 Storage 跑：讀不到設定時靠 `crate::defaults` 的兜底（與 defaults.ts 有對賬測試）。
+    /// 這條要用真的 Storage 跑：讀不到設定時靠 `crate::defaults` 的兜底（與 defaults.ts 有對帳測試）。
     /// 一旦有人把兜底改成 true，
     /// 後果是每台機器悄悄開始上傳整個音訊庫，而介面上的勾還是沒勾的。
     #[test]

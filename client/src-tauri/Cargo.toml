@@ -9,7 +9,7 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 # macos-private-api：macOS 上透明視窗（懸浮窗、更新通知）必須開；在 Windows 上不起作用。
-# 與 tauri.conf.json 的 app.macOSPrivateApi 必須同時開關（tauri-build 會對賬）。
+# 與 tauri.conf.json 的 app.macOSPrivateApi 必須同時開關（tauri-build 會對帳）。
 tauri = { version = "2", features = ["tray-icon", "image-png", "image-ico", "macos-private-api"] }
 tauri-plugin-shell = "2"
 tauri-plugin-dialog = "2"

@@ -233,7 +233,7 @@ fn queue_release(state: &HookSharedState, vk: u32, reason: &'static str) {
     });
 }
 
-/// PTT 成員按下：記賬，湊齊整個組合時開始一次新的 PTT 代次。
+/// PTT 成員按下：記帳，湊齊整個組合時開始一次新的 PTT 代次。
 fn press_member(state: &HookSharedState, member_index: usize, vk: u32) {
     let member_bit = 1_u64 << member_index;
     state.ptt_last_down_ms[member_index].store(now_ms(), Ordering::SeqCst);
@@ -257,7 +257,7 @@ fn press_member(state: &HookSharedState, member_index: usize, vk: u32) {
 
 // ─── 系統快捷鍵接不住的組合鍵 ───
 //
-// 擴音、AI 整理開關、潤色模式切換的組合鍵平時走系統的 RegisterEventHotKey
+// 免持、AI 整理開關、潤色模式切換的組合鍵平時走系統的 RegisterEventHotKey
 // （tauri-plugin-global-shortcut，見 commands/shortcuts.rs）：「安全輸入」期間（密碼框等）
 // 它照樣有效，event tap 卻收不到按鍵，所以能交給系統的都交給系統。
 //
@@ -464,7 +464,7 @@ unsafe fn handle_key_event(event_type: CGEventType, event: CGEventRef) -> bool {
 }
 
 /// 一個已歸一化的按鍵事件。返回 true = 吞掉。邏輯與 Windows 的 `low_level_keyboard_proc`
-/// 逐段對應（順序也一樣：錄製捕獲 → Esc → 卡片 ⌘C → PTT / 擴音 / AI 開關）。
+/// 逐段對應（順序也一樣：錄製捕獲 → Esc → 卡片 ⌘C → PTT / 免持 / AI 開關）。
 fn process_key(vk: u32, is_kdown: bool, is_kup: bool, is_modifier: bool, flags: CGEventFlags) -> bool {
     // ── 設定頁錄製快捷鍵：先結束仍活動的 PTT，然後一律放行給 webview 去繫結 ──
     if SHORTCUT_CAPTURE.load(Ordering::SeqCst) {
@@ -598,7 +598,7 @@ fn process_key(vk: u32, is_kdown: bool, is_kup: bool, is_modifier: bool, flags: 
             }
         }
 
-        // 擴音：首個按下立即觸發，repeat 忽略，抬起重新佈防
+        // 免持：首個按下立即觸發，repeat 忽略，抬起重新佈防
         if is_hf_key {
             if is_kdown && !modifiers_block_down {
                 consumed = true;

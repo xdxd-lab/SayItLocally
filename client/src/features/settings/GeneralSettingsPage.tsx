@@ -233,7 +233,7 @@ export default function GeneralSettingsPage() {
   const handlePTTChange = async (value: string) => { setPttKey(value); await setSetting('shortcutPTT', value); bridge.notifyShortcutsChanged(); refreshPTTSetting() }
   const handleHandsFreeChange = async (value: string) => { setHandsFreeKey(value); await setSetting('shortcutHandsFree', value); bridge.notifyShortcutsChanged(); refreshPTTSetting() }
 
-  // 應用內部快捷鍵互斥：擴音和按住說話綁同一個鍵，兩個功能會同時被觸發；
+  // 應用內部快捷鍵互斥：免持和按住說話綁同一個鍵，兩個功能會同時被觸發；
   // 預設切換的組合鍵同理。提交前攔下來，而不是等使用者按了才發現行為詭異。
   const validatePTT = useCallback(async (value: string) => {
     if (!value) return null

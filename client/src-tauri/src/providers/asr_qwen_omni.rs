@@ -458,7 +458,7 @@ async fn run_attempt(session: &OmniSession<'_>, pacing: Pacing) -> Result<AsrRes
     // 為什麼不按模型分支：實測 3.5 plus/flash 帶上這個欄位同樣正常，所以**一份會話
     // 形狀通吃三代**。按模型拆兩套 session 會多出一條只在某一代上跑過的程式碼路徑。
     //
-    // 排查提示：錯誤資訊只提音色、不提模型，容易被當成「賬號沒開通音色」或
+    // 排查提示：錯誤資訊只提音色、不提模型，容易被當成「帳號沒開通音色」或
     // 「模型不可用」。真正的判據是 `response.create` 之後立刻來一個 error 事件。
     let session_update = serde_json::json!({
         "type": "session.update",
@@ -489,7 +489,7 @@ async fn run_attempt(session: &OmniSession<'_>, pacing: Pacing) -> Result<AsrRes
     // response.create 能觸發響應），但真發生了必須停下來 —— 繼續發完再 commit 會開第二輪，
     // 而主接收迴圈等不到新的 response.done，只能掛滿 60 秒超時。
     let mut completed_while_sending = false;
-    // 限速記賬。按線上位元組（序列化後的 JSON 文本長度）算，不按 PCM 位元組：服務端量的是
+    // 限速記帳。按線上位元組（序列化後的 JSON 文本長度）算，不按 PCM 位元組：服務端量的是
     // 收到的流量，base64 + JSON 讓每包從 3200 位元組漲到約 4.33KB。WS 幀頭每包十幾位元組，忽略。
     let send_start = Instant::now();
     let mut wire_sent: u64 = 0;

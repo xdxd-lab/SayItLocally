@@ -297,7 +297,7 @@ interface SupportRow {
    * 同一個坑在 `asrProviderCatalog.ts` 的 `AsrProvider.label` 上有註釋。
    */
   platform: AsrPlatform
-  /** 模型顯示名（就是模型 id，和服務商文件、賬單上的寫法一致） */
+  /** 模型顯示名（就是模型 id，和服務商文件、帳單上的寫法一致） */
   model: string
   /** 執行時 provider，用於和當前配置比對、以及取能力 */
   provider: string

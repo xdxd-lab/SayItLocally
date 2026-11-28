@@ -72,7 +72,7 @@ describe('describeProviderError', () => {
    * `{"error":{"message":"This request requires at least $0.50 in balance for audio","code":402}}`
    *
    * 以前 402 一條分類都沒命中，落到 connect_failed 顯示成「連線失敗」——
-   * 而真實原因是賬戶裡沒錢，使用者完全看不出該去幹什麼。
+   * 而真實原因是帳戶裡沒錢，使用者完全看不出該去幹什麼。
    *
    * 它必須和限流分開：兩者給使用者的動作是相反的。限流等一會兒就好；
    * 餘額不足等到明年也還是不行，得去充值。

@@ -34,14 +34,14 @@ pub fn shortcuts_changed(
     // Reconfigure PTT + hands-free + AI cleanup single-key/mouse hook
     hook.reconfigure(&app, ptt_str, hf_key, ai_toggle_key);
 
-    // 重新註冊所有 global_shortcut（擴音組合鍵 + 各潤色模式切換快捷鍵）
+    // 重新註冊所有 global_shortcut（免持組合鍵 + 各潤色模式切換快捷鍵）
     register_all_global_shortcuts(&app, storage.inner());
 }
 
-/// 集中註冊所有 global_shortcut：擴音組合鍵、AI 整理開關和各潤色模式切換快捷鍵。
+/// 集中註冊所有 global_shortcut：免持組合鍵、AI 整理開關和各潤色模式切換快捷鍵。
 ///
 /// `unregister_all` 會清空全部已註冊的 global_shortcut，因此這兩類必須在同一處
-/// 一次性重註冊，否則會互相覆蓋。單鍵（PTT/擴音單鍵）不走這裡，由底層鍵盤鉤子處理。
+/// 一次性重註冊，否則會互相覆蓋。單鍵（PTT/免持單鍵）不走這裡，由底層鍵盤鉤子處理。
 pub fn register_all_global_shortcuts(app: &AppHandle, storage: &Storage) {
     use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
@@ -54,7 +54,7 @@ pub fn register_all_global_shortcuts(app: &AppHandle, storage: &Storage) {
     #[cfg(target_os = "macos")]
     let mut tap_combos: Vec<crate::keyboard::TapCombo> = Vec::new();
 
-    // 擴音組合鍵
+    // 免持組合鍵
     let hf_val = storage.get("shortcutHandsFree", None);
     let hf_key = hf_val.as_str().unwrap_or(crate::defaults::SHORTCUT_HANDS_FREE).to_string();
     let hf_is_combo = !hf_key.is_empty() && hf_key.contains('+');
@@ -205,7 +205,7 @@ pub fn test_shortcut(
         }
     };
 
-    // 恢復本應用自己的全部註冊（擴音 + 各預設快捷鍵）
+    // 恢復本應用自己的全部註冊（免持 + 各預設快捷鍵）
     register_all_global_shortcuts(&app, storage.inner());
 
     Ok(available)
@@ -214,7 +214,7 @@ pub fn test_shortcut(
 /// 開啟"錄製捕獲"模式：設定頁開始錄製快捷鍵時呼叫。開啟後：
 /// - 底層滑鼠鉤子把下一個側鍵按下吞掉（避免 webview 把它當"後退"導航）並透過
 ///   `mouse-shortcut-captured` 事件回報給前端用於繫結；
-/// - 鍵盤鉤子放行 PTT/擴音單鍵，不再觸發錄音（否則按到已繫結的鍵會直接開始口述）；
+/// - 鍵盤鉤子放行 PTT/免持單鍵，不再觸發錄音（否則按到已繫結的鍵會直接開始口述）；
 /// - 登出全部 global_shortcut。RegisterHotKey 註冊的組合鍵會被系統直接吞掉、送不到
 ///   webview，不登出的話按已繫結的組合鍵只會觸發它自己，永遠錄不進新設定。
 #[tauri::command]

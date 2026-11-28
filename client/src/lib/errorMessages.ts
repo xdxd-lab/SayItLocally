@@ -232,7 +232,7 @@ export function describeProviderError(error: unknown): FriendlyError {
     }
   }
   // 401 才是明確的鑑權失敗。403 單獨一類（見下方分支）：403 的常見成因是
-  // 「這個請求根本不該到這兒」——CDN 按地區拒絕、賬號沒開通該模型，響應裡
+  // 「這個請求根本不該到這兒」——CDN 按地區拒絕、帳號沒開通該模型，響應裡
   // 一個字都不提金鑰。把它報成金鑰問題只會讓使用者反覆重建金鑰。
   if (stableCode === 'provider_bad_key' || status === 401 || /invalid.*(key|token)|unauthorized|\u8ba4\u8bc1\u5931\u8d25|\u9274\u6743|認證失敗|鑑權/i.test(text)) { // i18n-allow: 匹配底層中文錯誤串（簡體以 Unicode 跳脫保存，並列正體）
     return {

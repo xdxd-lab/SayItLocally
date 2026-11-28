@@ -91,7 +91,7 @@ fn contains_http_status(message: &str, expected: &[u16]) -> bool {
 fn classify_failure(stage: &str, message: &str) -> &'static str {
     let lower = message.to_ascii_lowercase();
     // 401 才是明確的鑑權失敗。**403 不是** —— 它更常見的成因是"這個請求根本不該到這兒"：
-    // CDN 按 IP 地區拒絕、賬號沒開通該模型、被 WAF 攔下，響應裡一個字都不提金鑰。
+    // CDN 按 IP 地區拒絕、帳號沒開通該模型、被 WAF 攔下，響應裡一個字都不提金鑰。
     // 這兩個狀態碼曾經一起歸成 provider_bad_key，於是國內直連 Groq（Cloudflare 邊緣
     // 按 IP 拒，返回 403 {"error":{"message":"Forbidden"}}，連鑑權頭都沒被讀過）
     // 被報成「金鑰被拒絕，確認複製完整、沒有多餘空格」—— 使用者只會一遍遍重建金鑰。
@@ -114,7 +114,7 @@ fn classify_failure(stage: &str, message: &str) -> &'static str {
     // OpenRouter 的 402 響應體裡帶 "balance" 字樣，實測（2026-09-16）會是
     // `This request requires at least $0.50 in balance for audio`。
     // 以前沒有這一檔，它落到最後的 connect_failed，介面顯示成「連線失敗」——
-    // 而真實原因是賬戶裡沒錢，使用者完全看不出來該去幹什麼。
+    // 而真實原因是帳戶裡沒錢，使用者完全看不出來該去幹什麼。
     if contains_http_status(message, &[402])
         || lower.contains("payment required")
         || lower.contains("insufficient balance")

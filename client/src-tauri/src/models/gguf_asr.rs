@@ -1345,7 +1345,7 @@ mod tests {
     }
 
     /// 內嵌的預熱音訊必須能解析出足夠的樣本。這條防的是 include_bytes! 的路徑
-    /// 寫錯或資原始檔被換掉 —— 那樣預熱會靜默變成空操作，第一次口述又會慢回去。
+    /// 寫錯或資源檔案被換掉 —— 那樣預熱會靜默變成空操作，第一次口述又會慢回去。
     #[test]
     fn warmup_wav_yields_usable_pcm() {
         let n = WARMUP_WAV
@@ -1356,7 +1356,7 @@ mod tests {
             .count();
         assert!(
             n >= 16000,
-            "預熱音訊只解析出 {n} 個樣本（不足 1 秒），include_bytes! 路徑或資原始檔有問題"
+            "預熱音訊只解析出 {n} 個樣本（不足 1 秒），include_bytes! 路徑或資源檔案有問題"
         );
     }
 

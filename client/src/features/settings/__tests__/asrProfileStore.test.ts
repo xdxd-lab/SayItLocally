@@ -91,10 +91,10 @@ describe('topUpProfiles', () => {
   })
 
   /**
-   * 存量的「補過誰」那份記賬裡存的是**舊的分發 key**（`qwen_audio_stream` 之類）。
+   * 存量的「補過誰」那份記帳裡存的是**舊的分發 key**（`qwen_audio_stream` 之類）。
    * 不換算成卡片 id 的話新程式碼認不出來，會把老使用者主動刪掉的卡在升級後補回來一次。
    */
-  it('存量記賬裡的舊 provider id 也算已補過', () => {
+  it('存量記帳裡的舊 provider id 也算已補過', () => {
     const r = topUpProfiles([], { qwen: creds({ apiKey: 'sk-1' }) }, ['qwen_audio_stream'])
     expect(r.added).toEqual([])
     const other = topUpProfiles([], { doubao: creds() }, ['doubao_v2'])

@@ -393,7 +393,7 @@ export function getPTTPhysicalKeyStates(codes: string[]) {
 /**
  * 開始快捷鍵錄製捕獲（設定頁點開錄製時呼叫）。Rust 側會：
  * - 底層滑鼠鉤子吞掉下一個側鍵並透過 mouse-shortcut-captured 回報；
- * - 鍵盤鉤子在錄製期間放行 PTT/擴音單鍵，不觸發錄音；
+ * - 鍵盤鉤子在錄製期間放行 PTT/免持單鍵，不觸發錄音；
  * - 登出全部 global_shortcut，避免已繫結的組合鍵被系統搶走、錄不進來。
  */
 export function beginShortcutCapture() {
@@ -689,7 +689,7 @@ export function onPTTLabEvent(cb: (data?: unknown) => void) {
  * 這家 ASR 拿使用者的熱詞做什麼。**權威宣告在 Rust**（providers/capabilities.rs）。
  *
  * 前端刻意不自己維護一份「哪家支援熱詞」的清單：issue #67 的成因正是實現在 Rust、
- * 宣告在前端一張手寫表格，兩者無人對賬，結果 6 家雲服務被漏掉，介面平靜地告訴
+ * 宣告在前端一張手寫表格，兩者無人對帳，結果 6 家雲服務被漏掉，介面平靜地告訴
  * 使用者熱詞生效。
  *
  * 失敗時返回 null（而不是編一個"不支援"）—— 讓呼叫方能把"查不到"和"確定不傳"

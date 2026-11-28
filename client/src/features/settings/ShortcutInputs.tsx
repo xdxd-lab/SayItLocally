@@ -51,7 +51,7 @@ function isShortcutCaptureOwner(cancel: () => void) {
 /**
  * 錄製期間掛起本應用自己的全部熱鍵，結束後恢復。
  *
- * 不掛起的話，按到已繫結的鍵（如擴音的右 Alt）會先被熱鍵鏈路吃掉：webview 回退監聽
+ * 不掛起的話，按到已繫結的鍵（如免持的右 Alt）會先被熱鍵鏈路吃掉：webview 回退監聽
  * 直接 emit toggle-hands-free 彈出懸浮窗開始錄音，組合鍵則被 RegisterHotKey 搶走、
  * 根本送不到 webview——兩種情況都錄不進新設定。
  *
@@ -261,7 +261,7 @@ export function PTTShortcutInput({
 }
 
 /**
- * 提交一個「擴音 / 預設切換」類快捷鍵前要過的全部關卡。返回錯誤文案，null = 可儲存。
+ * 提交一個「免持 / 預設切換」類快捷鍵前要過的全部關卡。返回錯誤文案，null = 可儲存。
  *
  * 抽出來是為了讓**嚮導和設定頁走同一條校驗路徑**。嚮導原先一條都沒走，於是它能存進
  * 設定頁會當場拒掉的值（系統保留組合、已被別的程式佔用的組合）。
@@ -306,7 +306,7 @@ export function ComboShortcutInput({
    * 是否給出「清空」按鈕。
    *
    * 嚮導裡傳 false：那一步的目的是讓新使用者拿到一個**能用的**鍵，
-   * 一個把擴音功能清成"未設定"的按鈕在這裡只會製造問題。設定頁保持可清空。
+   * 一個把免持功能清成"未設定"的按鈕在這裡只會製造問題。設定頁保持可清空。
    */
   allowClear?: boolean
   validate?: ShortcutValidate
@@ -328,7 +328,7 @@ export function ComboShortcutInput({
     event.preventDefault()
     event.stopPropagation()
 
-    // 單鍵（擴音的右 Alt）與組合鍵（Ctrl+D）的判定收斂在 keyEventToShortcutCandidate。
+    // 單鍵（免持的右 Alt）與組合鍵（Ctrl+D）的判定收斂在 keyEventToShortcutCandidate。
     // null = 這次按鍵還沒湊成東西（單按 Ctrl、或 comboOnly 下的單鍵），
     // 此時**保留上一個候選**：提交發生在 keyup，中途覆蓋成空會把已錄到的組合鍵抹掉。
     const candidate = keyEventToShortcutCandidate(event, { comboOnly })

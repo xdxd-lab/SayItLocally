@@ -442,7 +442,7 @@ mod tests {
     }
 
     /// 實測（2026-09-16）：餘額不足時 OpenRouter 返回 402，而 402 以前一條分類都
-    /// 沒命中，介面顯示成「連線失敗」—— 真實原因是賬戶沒錢，使用者看不出該幹什麼。
+    /// 沒命中，介面顯示成「連線失敗」—— 真實原因是帳戶沒錢，使用者看不出該幹什麼。
     /// 這條釘住 diag 側的分類（前端那半在 errorMessages.test.ts）。
     #[test]
     fn payment_required_is_classified_as_insufficient_balance() {

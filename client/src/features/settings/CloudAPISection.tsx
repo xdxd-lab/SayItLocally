@@ -1,13 +1,13 @@
 // 雲 API 模式配置面板 —— 一張卡 = 一份語音識別服務配置
 //
 // 結構與「AI 服務」頁對齊（同一套卡片、同一套彈窗、同一套狀態語義）：可以新建多份，
-// 同一家也能存多份（兩個百鍊賬號、兩套豆包金鑰），點一張即啟用。
+// 同一家也能存多份（兩個百鍊帳號、兩套豆包金鑰），點一張即啟用。
 //
 // 與 AI 服務的唯一實質差別：供應商從內建清單裡選，不能填任意地址 —— 每家 ASR 的協議
 // 都要一份專門的 Rust 實現，不像 AI 整理那邊只要 OpenAI 相容端點就能接。
 //
 // 「同平台重複粘金鑰」不靠把憑據提到平台級來解決（那樣一張卡就不再是一份完整配置、
-// 也沒法存兩個賬號），而是照 AI 服務的做法：新建時自動沿用同平台上一份的金鑰，
+// 也沒法存兩個帳號），而是照 AI 服務的做法：新建時自動沿用同平台上一份的金鑰，
 // 並在介面上說明它從哪來。
 
 import { useEffect, useState } from 'react'
@@ -411,7 +411,7 @@ export default function CloudAPISection() {
 
   function handleNew() {
     const fresh = emptyAsrProfile()
-    // 同平台已有配置時把金鑰帶過來：最常見的一次操作是「同一個賬號、換個模型再存一份」，
+    // 同平台已有配置時把金鑰帶過來：最常見的一次操作是「同一個帳號、換個模型再存一份」，
     // 否則又要回控制台複製貼上一遍
     const prev = lastProfileOfPlatform(fresh.provider, fresh.id)
     if (prev) {
@@ -595,7 +595,7 @@ export default function CloudAPISection() {
     // 顯示**真實模型 ID**，不再顯示短名。短名是「一張卡 = 一個模型」時代留下的，
     // 那時它們是卡片標題（「千問 ASR 一次性」靠「一次性」跟流式那張卡對比）。
     // 挪進卡內當模型名之後，字首重複、對比物件也沒了，使用者看到的是一個
-    // 既不像模型也說不清是什麼的詞。真實 ID 反而一眼認得出，也能拿去對文件和賬單。
+    // 既不像模型也說不清是什麼的詞。真實 ID 反而一眼認得出，也能拿去對文件和帳單。
     const option = resolveAsrModelOption(profile)
     const model = option ? option.id : resolveAsrModel(profile)
     // 自定義端點的卡再補一個主機名：那種卡之間真正的差別是「連的是哪台」

@@ -1391,7 +1391,7 @@ fn finalize_parallel_download(
     Ok(())
 }
 
-/// 併發失敗後只有協議不相容或最終對賬失敗適合改走單流；
+/// 併發失敗後只有協議不相容或最終對帳失敗適合改走單流；
 /// 普通網路中斷保留分片，讓使用者重試時從已有進度繼續。
 fn should_fallback_to_single_stream(err_msg: &str) -> bool {
     err_msg.starts_with("sayit_error:download_range_invalid:")

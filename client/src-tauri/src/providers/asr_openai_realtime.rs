@@ -265,7 +265,7 @@ async fn open_session(
             )
         })?,
     );
-    // Realtime 的 beta 頭。GA 之後帶著它也無害，缺了則老賬號連不上。
+    // Realtime 的 beta 頭。GA 之後帶著它也無害，缺了則老帳號連不上。
     request
         .headers_mut()
         .insert("openai-beta", HeaderValue::from_static("realtime=v1"));

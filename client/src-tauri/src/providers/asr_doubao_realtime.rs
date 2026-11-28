@@ -33,7 +33,7 @@ const WS_URL_STREAM: &str = "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel
 // 雙向流式最佳化版（官方更推薦，時延更優，只在結果變化時返回新包）
 const WS_URL_STREAM_ASYNC: &str = "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_async";
 // 豆包 Seed-ASR 2.0 資源 ID：小時版(包時) / 併發版(按量)。
-// 雙向流式端點對資源授權更嚴格，不同賬號可能只開通了其中之一，即時連線時依次嘗試。
+// 雙向流式端點對資源授權更嚴格，不同帳號可能只開通了其中之一，即時連線時依次嘗試。
 const RESOURCE_ID_DURATION: &str = "volc.seedasr.sauc.duration";
 const RESOURCE_ID_CONCURRENT: &str = "volc.seedasr.sauc.concurrent";
 
@@ -67,7 +67,7 @@ static STATE: once_cell::sync::Lazy<Arc<Mutex<SessionState>>> =
 /// 當前是否有會話。
 static ACTIVE: AtomicBool = AtomicBool::new(false);
 
-// ── 傳送節奏記賬：排查「服務端等包超時」時要知道是不是我們自己停發了 ──
+// ── 傳送節奏記帳：排查「服務端等包超時」時要知道是不是我們自己停發了 ──
 static OPENED_AT_MS: AtomicU64 = AtomicU64::new(0);
 static LAST_SEND_MS: AtomicU64 = AtomicU64::new(0);
 static MAX_SEND_GAP_MS: AtomicU64 = AtomicU64::new(0);

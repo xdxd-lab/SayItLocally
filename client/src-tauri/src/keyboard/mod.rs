@@ -43,7 +43,7 @@ static RECONFIGURE_COUNT: AtomicU64 = AtomicU64::new(0);
 //  - 滑鼠鉤子把下一個側鍵(XBUTTON)按下吞掉並回報，webview 不會當成“後退”導航；
 //  - 鍵盤鉤子把瀏覽器後退/前進鍵(0xA6/0xA7，羅技等改鍵滑鼠常把側鍵對映成這個)也
 //    吞掉並回報；
-//  - 鍵盤鉤子放行已繫結的 PTT/擴音單鍵，不觸發錄音——錄製時按到舊熱鍵應當是"想把它
+//  - 鍵盤鉤子放行已繫結的 PTT/免持單鍵，不觸發錄音——錄製時按到舊熱鍵應當是"想把它
 //    錄進來"（或看到衝突提示），而不是開始口述。
 static SHORTCUT_CAPTURE: AtomicBool = AtomicBool::new(false);
 /// 捕獲到側鍵 down 後，記住其 vk，好把配對的 up 也一併吞掉（否則可能殘留導航）。
@@ -398,7 +398,7 @@ const SINGLE_KEY_TABLE: &[(&str, u32)] = &[
 
 /// 只在 macOS 上能單獨當熱鍵的鍵，Windows 上不放進上面的公共表（Windows 行為保持不變）：
 /// - 單獨的 ⌘（Windows 上是 Win 鍵，單按會彈開始選單，所以 Windows 不允許）；
-///   mac 上右 ⌘ 單按沒有系統動作，是擴音的預設鍵。
+///   mac 上右 ⌘ 單按沒有系統動作，是免持的預設鍵。
 /// - Fn / 🌐：Windows 沒有對應的虛擬鍵；mac 的 event tap 把它翻譯成保留值 0xFF
 ///   （見 platform::macos::keycodes::VK_FN）。
 /// ⚠️ 與前端 lib/shortcutKeys.ts 裡 IS_MAC 時追加的單鍵保持一致。
@@ -497,9 +497,9 @@ impl PttKeyConfig {
 /// **不能是 Shift**：長按右 Shift 約 8 秒會觸發 Windows 篩選鍵，那之後我們收不到
 /// 這次「鬆開」，錄音不會隨手指抬起而結束。這裡曾經是 ShiftRight，於是每台新裝的
 /// 機器開箱就綁在那個鍵上（前端也一樣，見 services/defaults.ts）。
-/// 右 Ctrl 位置相近、沒有輔助功能陷阱，也不和擴音的預設鍵（右 Alt）撞。
+/// 右 Ctrl 位置相近、沒有輔助功能陷阱，也不和免持的預設鍵（右 Alt）撞。
 ///
-/// 值在 crate::defaults，那裡有與前端 defaults.ts 的對賬測試。
+/// 值在 crate::defaults，那裡有與前端 defaults.ts 的對帳測試。
 const DEFAULT_PTT_SETTING: &str = crate::defaults::SHORTCUT_PTT;
 /// 與 DEFAULT_PTT_SETTING 對應的鍵：Windows 右 Ctrl，macOS 右 ⌥（MacBook 沒有右 Ctrl）。
 #[cfg(not(target_os = "macos"))]
@@ -624,12 +624,12 @@ const MODIFIER_VK_CODES: [u32; 8] = [0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0x5B, 0
 
 /// 這個單鍵熱鍵是否要求「裸按」—— 按下的那一刻不能有額外修飾鍵按住。
 ///
-/// 起因：使用者把 F4 設成擴音，結果按 Alt+F4 也會開始錄音（而且 F4 的 down 被我們吞掉，
+/// 起因：使用者把 F4 設成免持，結果按 Alt+F4 也會開始錄音（而且 F4 的 down 被我們吞掉，
 /// Alt+F4 本身還失效了）。判定原來只比 vk，壓根不看修飾鍵。
 ///
 /// **只對主鍵成立**（F1–F24、Space、Insert、CapsLock、BrowserBack…）。熱鍵本身就是
 /// 修飾鍵時絕不能套這條規則，兩個原因都會讓熱鍵徹底失效：
-///   · 「按住說話」預設是右 Ctrl、擴音預設是右 Alt。自己就是 Ctrl，再去問
+///   · 「按住說話」預設是右 Ctrl、免持預設是右 Alt。自己就是 Ctrl，再去問
 ///     「有沒有 Ctrl 按住」永遠為真；
 ///   · 歐洲鍵盤佈局的 AltGr 會同時產生 左Ctrl + 右Alt。右 Alt 當熱鍵時，
 ///     這些使用者每次按都帶著一個左 Ctrl，會被永久擋住。
@@ -710,7 +710,7 @@ struct HookSharedState {
     /// hook 生命週期標記，供獨立成員狀態看門狗在重配/停止時退出。
     ptt_hook_alive: AtomicBool,
     hands_free_active: AtomicBool,
-    /// 擴音鍵是否處於"已按下"狀態。首個真實 keydown 觸發 toggle，repeat down 被忽略；
+    /// 免持鍵是否處於"已按下"狀態。首個真實 keydown 觸發 toggle，repeat down 被忽略；
     /// 配對 keyup（包括被標成 synthetic 的 up）負責清零，讓下一次按下可以再次觸發。
     hf_key_down: AtomicBool,
     /// VK codes for hands-free toggle key (empty = not using hook for hands-free)
@@ -769,12 +769,12 @@ fn begin_ptt_press(active_generation: &AtomicU64, generation: &AtomicU64) -> Opt
         .map(|_| gen)
 }
 
-/// 擴音鍵只在一次物理按下的首個 keydown 觸發；Windows 隨後的 repeat down 被忽略。
+/// 免持鍵只在一次物理按下的首個 keydown 觸發；Windows 隨後的 repeat down 被忽略。
 fn begin_hf_press(key_down: &AtomicBool) -> bool {
     !key_down.swap(true, Ordering::SeqCst)
 }
 
-/// 清除擴音按下狀態。返回 true 表示確實存在一枚需要配對消費的 keyup。
+/// 清除免持按下狀態。返回 true 表示確實存在一枚需要配對消費的 keyup。
 fn end_hf_press(key_down: &AtomicBool) -> bool {
     key_down.swap(false, Ordering::SeqCst)
 }
@@ -1904,7 +1904,7 @@ impl KeyboardHookManager {
 }
 
 /// 低階滑鼠鉤子回撥：只處理滑鼠側鍵（XButton1/2）的按下/抬起，複用與鍵盤鉤子
-/// 完全相同的 PTT/擴音流水線（HookAction -> dispatcher -> emit）。
+/// 完全相同的 PTT/免持流水線（HookAction -> dispatcher -> emit）。
 ///
 /// ⚠️ 效能：WH_MOUSE_LL 會在**每次滑鼠移動**都被呼叫。因此第一件事就是判斷
 /// “不是側鍵的按下/抬起就立刻放行”，絕不在滑鼠移動這條最熱的路徑上做任何多餘的事。
@@ -1984,7 +1984,7 @@ unsafe extern "system" fn low_level_mouse_proc(
             let is_ai_toggle_key = !state.ai_toggle_vk_codes.is_empty()
                 && state.ai_toggle_vk_codes.contains(&vk)
                 && !is_ptt_key
-                && !is_hf_key; // PTT / 擴音高於 AI 開關
+                && !is_hf_key; // PTT / 免持高於 AI 開關
 
             if let Some(member_index) = ptt_member {
                 // 滑鼠按鍵只允許舊單鍵格式；按下和抬起都吞掉，避免誤觸發其它程式導航。
@@ -2034,7 +2034,7 @@ unsafe extern "system" fn low_level_mouse_proc(
             }
 
             if is_hf_key {
-                // 擴音在首個按下時立即觸發；hf_key_down 過濾滑鼠驅動可能產生的重複 down。
+                // 免持在首個按下時立即觸發；hf_key_down 過濾滑鼠驅動可能產生的重複 down。
                 if is_down {
                     consumed = true;
                     if begin_hf_press(&state.hf_key_down) {
@@ -2151,8 +2151,8 @@ unsafe extern "system" fn low_level_keyboard_proc(
                 return LRESULT(1);
             }
 
-            // 其餘按鍵一律放行給 webview 去繫結，本輪不做任何 PTT/擴音判定：
-            // 錄製時按到已繫結的熱鍵（如擴音的右 Alt）應該被錄進設定或提示衝突，
+            // 其餘按鍵一律放行給 webview 去繫結，本輪不做任何 PTT/免持判定：
+            // 錄製時按到已繫結的熱鍵（如免持的右 Alt）應該被錄進設定或提示衝突，
             // 而不是觸發錄音彈出懸浮窗。
             return CallNextHookEx(None, n_code, w_param, l_param);
         }
@@ -2300,14 +2300,14 @@ unsafe extern "system" fn low_level_keyboard_proc(
                 // 「修飾鍵卡住」。非 Alt 單鍵（F 鍵、Space、側鍵等）維持原狀：只吞 keydown。
                 let is_alt_key = vk == 0xA4 || vk == 0xA5;
 
-                // 單鍵熱鍵必須是「裸按」才算命中：Alt+F4 不該喚起綁在 F4 上的擴音。
+                // 單鍵熱鍵必須是「裸按」才算命中：Alt+F4 不該喚起綁在 F4 上的免持。
                 //
                 // ⚠️ **只能用在 keydown 上。** keyup 一律照原樣處理 —— 否則
                 // 「按 F4 開始錄音 → 再按住 Alt → 鬆開 F4」會因為鬆開那一刻有修飾鍵
                 // 而跳過釋放，錄音就再也停不下來了（只能等 5 分鐘硬截止）。
                 let modifiers_block_down = single_key_blocked_by_modifiers(vk, kb_flags);
 
-                // ── 診斷：僅在「當前配置的 PTT/擴音熱鍵」被按下時記錄 flags/scanCode ──
+                // ── 診斷：僅在「當前配置的 PTT/免持熱鍵」被按下時記錄 flags/scanCode ──
                 // 只記每個組合成員的首個 down，不把按住產生的 repeat 全部塞進無界佇列；
                 // 漏 key-up 看門狗直接重新整理該成員的 last_down，不依賴診斷日誌。
                 let should_log_hotkey_down = is_kdown
@@ -2354,7 +2354,7 @@ unsafe extern "system" fn low_level_keyboard_proc(
                     // 若順序是 K→Ctrl，組合仍可開始，但 K 的 down/up 都放行，不製造孤立事件。
                     if !is_combo {
                         // 帶修飾鍵按下時整條放行：不吞，讓 Alt+F4 這類系統/程式快捷鍵
-                        // 照常送到前台程式。下面的按下記賬也一併跳過。
+                        // 照常送到前台程式。下面的按下記帳也一併跳過。
                         if (is_kdown && !bare_press_violated) || (is_kup && is_alt_key) {
                             consumed = true;
                         }
@@ -2386,7 +2386,7 @@ unsafe extern "system" fn low_level_keyboard_proc(
                         }
                     }
 
-                    // 記賬也要跳過：否則 Alt+F4 雖然沒被吞，錄音照樣開始了。
+                    // 記帳也要跳過：否則 Alt+F4 雖然沒被吞，錄音照樣開始了。
                     if is_kdown && !bare_press_violated {
                         state.ptt_last_down_ms[member_index].store(now_ms(), Ordering::SeqCst);
                         let became_complete = press_ptt_member(
@@ -2437,7 +2437,7 @@ unsafe extern "system" fn low_level_keyboard_proc(
                     }
                 }
 
-                // 擴音鍵：首次 keydown 立即觸發，後續 repeat down 忽略；keyup 只負責重新佈防。
+                // 免持鍵：首次 keydown 立即觸發，後續 repeat down 忽略；keyup 只負責重新佈防。
                 // 合成 keydown 仍在上方被過濾，所以遠端桌面的幻影 Alt 不會觸發錄音。
                 if is_hf_key {
                     let is_up = msg == WM_KEYUP || msg == WM_SYSKEYUP;
@@ -2467,7 +2467,7 @@ unsafe extern "system" fn low_level_keyboard_proc(
                 if is_ai_toggle_key {
                     let is_up = msg == WM_KEYUP || msg == WM_SYSKEYUP;
                     let is_down = msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN;
-                    // 同擴音：帶修飾鍵就整條放行（見上面 modifiers_block_down 的註釋）
+                    // 同免持：帶修飾鍵就整條放行（見上面 modifiers_block_down 的註釋）
                     if is_down && !modifiers_block_down {
                         consumed = true;
                         if begin_hf_press(&state.ai_toggle_key_down) {
@@ -2797,9 +2797,9 @@ mod tests {
 
     /// 「裸按」規則必須覆蓋每一個主鍵，且必須放過每一個修飾鍵。
     ///
-    /// 這兩條各自對應一個真實故障：漏掉主鍵 → Alt+F4 會喚起綁在 F4 上的擴音，
+    /// 這兩條各自對應一個真實故障：漏掉主鍵 → Alt+F4 會喚起綁在 F4 上的免持，
     /// 而且 F4 的 down 被吞掉、Alt+F4 本身也失效（使用者報的就是這個）；
-    /// 誤傷修飾鍵 → 「按住說話」預設的右 Ctrl、擴音預設的右 Alt 會永久失效
+    /// 誤傷修飾鍵 → 「按住說話」預設的右 Ctrl、免持預設的右 Alt 會永久失效
     /// （自己就是 Ctrl，再問「Ctrl 有沒有按下」永遠為真），而且是靜默的：
     /// 編譯過、其它測試全綠，只有真機上按下去沒反應。
     #[test]
@@ -2824,7 +2824,7 @@ mod tests {
         assert!(single_key_requires_bare_press(0x20), "Space 是主鍵");
         assert!(single_key_requires_bare_press(0xA6), "BrowserBack 走鍵盤鉤子，算主鍵");
         assert!(!single_key_requires_bare_press(0xA3), "右 Ctrl 是「按住說話」預設鍵，不能套");
-        assert!(!single_key_requires_bare_press(0xA5), "右 Alt 是擴音預設鍵，也是 AltGr 的一半");
+        assert!(!single_key_requires_bare_press(0xA5), "右 Alt 是免持預設鍵，也是 AltGr 的一半");
         assert!(!single_key_requires_bare_press(0x05), "滑鼠側鍵走滑鼠鉤子，不套這條");
     }
 

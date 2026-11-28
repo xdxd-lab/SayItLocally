@@ -11,7 +11,7 @@
 //   · `openai_chat_audio`  → 自定義地址，百鍊 data URL 形態（相容舊配置）
 //   · `openai_chat_audio_standard` → 自定義地址，標準 OpenAI input_audio 物件
 //
-// ## 實測記錄（2026-09-18，真實賬號，dev-scripts/probe_bailian_openai_audio.py）
+// ## 實測記錄（2026-09-18，真實帳號，dev-scripts/probe_bailian_openai_audio.py）
 //
 // * 百鍊的 `input_audio` **必須裝 data URL**。兩種寫法都行：
 //       {"type":"input_audio","input_audio":"data:audio/wav;base64,AAA..."}

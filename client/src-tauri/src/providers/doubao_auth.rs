@@ -19,7 +19,7 @@
 use super::types::AsrProviderConfig;
 
 /// 豆包 Seed-ASR 2.0 流式資源 ID。小時版（包時）與併發版（按量）是兩種計費方式，
-/// 同一個賬號通常只開通其中之一，所以連線時要依次嘗試。
+/// 同一個帳號通常只開通其中之一，所以連線時要依次嘗試。
 pub const RESOURCE_ID_SAUC_DURATION: &str = "volc.seedasr.sauc.duration";
 pub const RESOURCE_ID_SAUC_CONCURRENT: &str = "volc.seedasr.sauc.concurrent";
 
@@ -53,7 +53,7 @@ impl<'a> DoubaoAuth<'a> {
         }
     }
 
-    /// 請求體裡的 `user.uid`。舊版用 App ID（它本來就是公開的賬號標識），
+    /// 請求體裡的 `user.uid`。舊版用 App ID（它本來就是公開的帳號標識），
     /// 新版沒有可用標識，用固定佔位符，絕不回落到金鑰。
     pub fn uid(&self) -> &str {
         match self {
@@ -214,7 +214,7 @@ mod tests {
         assert_ne!(auth.uid(), "SECRET");
     }
 
-    /// 舊版下 uid 用 App ID —— 它是賬號標識，不是金鑰。
+    /// 舊版下 uid 用 App ID —— 它是帳號標識，不是金鑰。
     #[test]
     fn uid_uses_app_id_on_legacy() {
         let c = cfg("TOKEN", "1234567890");

@@ -55,7 +55,7 @@ export interface PTTEventPayload {
  * 單次錄音上限（秒）。到點會自動結束本次錄音並進入識別。
  *
  * ⚠️ 必須與 Rust 側 `keyboard/mod.rs` 的 HARD_RELEASE_AFTER_SECS 保持一致
- * （按住說話的硬釋放在 Rust 看門狗裡；擴音的自動停止在 RecorderOrchestrator）。
+ * （按住說話的硬釋放在 Rust 看門狗裡；免持的自動停止在 RecorderOrchestrator）。
  */
 export const MAX_RECORDING_SEC = 300
 

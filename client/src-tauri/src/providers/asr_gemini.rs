@@ -5,8 +5,8 @@
 //
 // ── 為什麼是 Gemini API 而不是 Cloud Speech-to-Text（Chirp 3）──
 // Chirp 3 的準確率也在第一檔，但它在 Google Cloud 那套體系裡：要建 GCP 專案、開
-// Speech-to-Text API、拿服務賬號 JSON、走 OAuth2 換 access token（還要處理過期重新整理）。
-// 我們這一頁的前提是「粘一把 API Key 就能用」—— 讓使用者去配服務賬號，絕大多數人到不了
+// Speech-to-Text API、拿服務帳號 JSON、走 OAuth2 換 access token（還要處理過期重新整理）。
+// 我們這一頁的前提是「粘一把 API Key 就能用」—— 讓使用者去配服務帳號，絕大多數人到不了
 // 能用的那一步。Gemini API 只要一個 `x-goog-api-key`，和別的供應商一樣。
 //
 // ── 為什麼用 generateContent 而不是新的 Interactions API ──
@@ -17,7 +17,7 @@
 // ── MEASURED 2026-09-16（`dev-scripts/probe_new_asr_providers.py --target gemini-file`，
 //    打的是真實介面，用一個**沒有繫結結算資訊**的 AI Studio 專案）──
 //   · 免費層可用：HTTP 200、`serviceTier: standard`，3.05s 中文音訊 2113ms 返回。
-//     不需要綁賬單。（綁過賬單又欠費的專案反而不行：那種會 429
+//     不需要綁帳單。（綁過帳單又欠費的專案反而不行：那種會 429
 //     "prepayment credits are depleted"，因為它已經離開免費層了。）
 //   · **響應形狀與通用模型不同**：轉寫專用模型把結果放在
 //     `parts[0].audioTranscription.text`，不是 `parts[0].text`。

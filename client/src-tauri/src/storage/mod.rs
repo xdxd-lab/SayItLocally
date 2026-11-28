@@ -9,7 +9,7 @@ use std::time::Duration;
 pub(crate) mod recovery;
 pub(crate) use recovery::StorageRecovery;
 
-/// 新庫的種子值。JSON 字面量用不了常量，快捷鍵幾項與 crate::defaults 的對賬在 defaults.rs 的測試裡。
+/// 新庫的種子值。JSON 字面量用不了常量，快捷鍵幾項與 crate::defaults 的對帳在 defaults.rs 的測試裡。
 pub(crate) const DEFAULT_SETTINGS: &[(&str, &str)] = &[
     // 兩個快捷鍵預設值按平台不同（mac 沒有右 Ctrl），字面量來自 defaults.rs 的宏。
     ("shortcutPTT", concat!("\"", crate::default_shortcut_ptt!(), "\"")),

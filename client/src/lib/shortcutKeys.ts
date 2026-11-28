@@ -72,7 +72,7 @@ const MAC_UNAVAILABLE_SINGLE_KEYS = new Set([
 
 /**
  * 只在 mac 上可以單獨當熱鍵的鍵（Rust 側見 keyboard/mod.rs 的 PLATFORM_EXTRA_SINGLE_KEYS）：
- * 單獨的 ⌘（右 ⌘ 是 mac 擴音的預設鍵；Windows 上單按 Win 會彈開始選單，所以不允許）、Fn / 🌐。
+ * 單獨的 ⌘（右 ⌘ 是 mac 免持的預設鍵；Windows 上單按 Win 會彈開始選單，所以不允許）、Fn / 🌐。
  */
 const MAC_EXTRA_SINGLE_KEYS: SingleKeyDef[] = [
   { setting: 'MetaLeft', vk: 0x5b, label: 'Left ⌘' },
@@ -85,7 +85,7 @@ export const SINGLE_KEYS: SingleKeyDef[] = IS_MAC
   : ALL_SINGLE_KEYS
 // i18n-allow-end
 
-/** setting → 虛擬鍵碼（舊單鍵與擴音回退使用） */
+/** setting → 虛擬鍵碼（舊單鍵與免持回退使用） */
 export const SETTING_TO_VK: Record<string, number> = Object.fromEntries(
   SINGLE_KEYS.map((key) => [key.setting, key.vk]),
 )
@@ -122,7 +122,7 @@ const PTT_MOUSE_CODES = new Set(['XButton1', 'XButton2', 'MButton'])
  * 所以 Shift 不做成"可以選但給個警告"——警告只能讓使用者在出問題之後回來讀一遍，
  * 擋不住任何人。左右都禁：單鍵和組合成員都算，`Ctrl+右Shift` 一樣會觸發篩選鍵。
  *
- * **只約束 PTT。** 擴音、預設切換那類"按一下"的快捷鍵（走 accelerator 那條校驗）
+ * **只約束 PTT。** 免持、預設切換那類"按一下"的快捷鍵（走 accelerator 那條校驗）
  * 照舊可以用 Shift —— 它們不長按也不連按，兩個觸發條件都碰不到。
  */
 const PTT_FORBIDDEN_CODES = new Set(['ShiftLeft', 'ShiftRight'])
@@ -304,7 +304,7 @@ export function displayShortcut(shortcut: string): string[] {
 /**
  * 按鍵事件 → Tauri accelerator。只有「修飾鍵 + 主鍵」才成型，單按修飾鍵返回 null。
  *
- * 擴音與預設切換存的就是這種格式（見 defaults.ts 的 shortcutHandsFree）。
+ * 免持與預設切換存的就是這種格式（見 defaults.ts 的 shortcutHandsFree）。
  */
 export function eventToAccelerator(event: KeyboardEvent): string | null {
   const parts: string[] = []
@@ -352,7 +352,7 @@ export function eventToAccelerator(event: KeyboardEvent): string | null {
  *
  * **這個判斷必須只有一份。** 嚮導裡曾經自己寫過一份「只認單鍵白名單」的版本，
  * 於是按 Ctrl+D 時 Ctrl 的 keydown 先到、`ControlLeft` 恰好在白名單裡 ——
- * 擴音鍵被靜默存成「左 Ctrl」，D 根本沒輪到，而使用者看到的是"組合鍵不支援"。
+ * 免持鍵被靜默存成「左 Ctrl」，D 根本沒輪到，而使用者看到的是"組合鍵不支援"。
  *
  * 判定順序是**先組合、後單鍵**，不能反過來：`Space`、`Insert`、`F1`–`F24` 同時
  * 出現在單鍵白名單裡，先判單鍵會把 `Ctrl+Space`、`Ctrl+F1` 也吃成單鍵。
@@ -452,7 +452,7 @@ function normalizedAcceleratorParts(accelerator: string): string[] {
 /**
  * 通用 accelerator 的 Windows 保留組合校驗。
  *
- * PTT 使用物理 code，有自己的完整校驗；擴音與預設切換使用 Tauri accelerator，
+ * PTT 使用物理 code，有自己的完整校驗；免持與預設切換使用 Tauri accelerator，
  * 也必須在試註冊前擋住系統安全介面、視窗切換等無法可靠覆蓋的組合。
  */
 export function getAcceleratorShortcutValidationError(accelerator: string): string | null {
@@ -480,7 +480,7 @@ export function getAcceleratorShortcutValidationError(accelerator: string): stri
 }
 
 /**
- * macOS 的 accelerator 校驗（擴音組合、AI 開關、潤色模式切換）。
+ * macOS 的 accelerator 校驗（免持組合、AI 開關、潤色模式切換）。
  *
  * - 帶 ⌘ 或 ⌃ 的組合註冊成系統快捷鍵；修飾鍵只有 ⌥ / ⇧ 的組合（macOS 15 起系統快捷鍵不觸發）
  *   由 Rust 的 event tap 接管（keyboard/macos.rs 的 TAP_COMBOS），兩類都能用。
@@ -699,7 +699,7 @@ export function pttShortcutToAccelerator(setting: string): string | undefined {
   if (hasControl && hasMeta) return undefined
 
   const parts: string[] = []
-  // 現有擴音錄製將 Windows 的 Ctrl/Meta 都儲存為 CommandOrControl。
+  // 現有免持錄製將 Windows 的 Ctrl/Meta 都儲存為 CommandOrControl。
   if (hasControl || hasMeta) parts.push('CommandOrControl')
   if (codes.some((code) => code.startsWith('Alt'))) parts.push('Alt')
   if (codes.some((code) => code.startsWith('Shift'))) parts.push('Shift')
@@ -726,14 +726,14 @@ function normalizeAccelerator(accelerator: string): string {
     .join('+')
 }
 
-/** 比較 PTT 物理組合與擴音/預設 accelerator 是否會觸發同一組合。 */
+/** 比較 PTT 物理組合與免持/預設 accelerator 是否會觸發同一組合。 */
 export function pttShortcutConflictsWithAccelerator(
   pttSetting: string,
   otherShortcut: string,
 ): boolean {
   if (!pttSetting || !otherShortcut) return false
   const pttCodes = parsePTTShortcut(canonicalizePTTShortcut(pttSetting))
-  // 擴音單鍵若同時是 PTT 組合成員，會被原生 hook 的“PTT 優先”規則完全遮蔽。
+  // 免持單鍵若同時是 PTT 組合成員，會被原生 hook 的“PTT 優先”規則完全遮蔽。
   if (isSingleKeySetting(otherShortcut) && pttCodes.includes(otherShortcut)) return true
   if (canonicalizePTTShortcut(pttSetting) === canonicalizePTTShortcut(otherShortcut)) return true
   const accelerator = pttShortcutToAccelerator(pttSetting)

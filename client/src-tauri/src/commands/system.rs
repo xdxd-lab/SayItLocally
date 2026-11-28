@@ -1119,7 +1119,7 @@ fn sh_quote(value: &str) -> String {
 ///
 /// 替換走「先拷到旁邊、再兩次 rename」，不是先刪再拷：關機或斷電時指令碼被殺在半路，
 /// 最壞也只是留下一個 `.sayit-new`/`.sayit-old` 目錄，而不是一個被刪掉一半的 SayIt。
-/// `/Applications` 沒有寫許可權（非管理員賬戶）時替換會失敗，此時在 Finder 裡選中更新包，
+/// `/Applications` 沒有寫許可權（非管理員帳戶）時替換會失敗，此時在 Finder 裡選中更新包，
 /// 讓使用者手動拖進去。
 #[cfg(target_os = "macos")]
 fn spawn_installer(installer_path: &str, relaunch: bool) -> Result<(), String> {

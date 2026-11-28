@@ -159,7 +159,7 @@ export function isStreamingDisplayReady(provider: string, qwenWorkspaceId?: stri
 //
 // 宣告在 Rust（providers/capabilities.rs），這裡只做「五檔 → 介面要說的話」的摺疊。
 // **前端刻意不再自己維護一份「哪家支援熱詞」的清單** —— 那正是 issue #67 的成因：
-// 實現在 Rust、宣告在前端一張手寫表格，兩者無人對賬，結果 6 家雲服務被漏掉。
+// 實現在 Rust、宣告在前端一張手寫表格，兩者無人對帳，結果 6 家雲服務被漏掉。
 
 /** Rust `HotwordDelivery` 的序列化形態。新增檔位時 TS 這邊會因為窮盡檢查報錯。 */
 export type HotwordDelivery =

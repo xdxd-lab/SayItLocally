@@ -88,7 +88,7 @@ export default function AIInstructionsPage() {
     }
   }
 
-  // 預設切換快捷鍵不能和錄音熱鍵（擴音 / 按住說話）相同，否則一次按鍵觸發兩個功能。
+  // 預設切換快捷鍵不能和錄音熱鍵（免持 / 按住說話）相同，否則一次按鍵觸發兩個功能。
   // 預設之間的重複不在這裡攔：handleSetPresetShortcut 會自動把舊的清掉（後設的贏）。
   const validatePresetShortcut = async (value: string): Promise<string | null> => {
     if (!value) return null

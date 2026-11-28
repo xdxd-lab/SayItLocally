@@ -153,7 +153,7 @@ function hasKey(creds: PlatformCreds): boolean {
  *    存量記的是舊分發 key，要先換算成卡片 id（asrCardIdOfLegacyProvider），
  *    不換算的話老使用者刪掉的卡會在升級後回來一次。
  *
- * 返回 added 讓呼叫方記賬，這也是它能反覆安全執行的原因。
+ * 返回 added 讓呼叫方記帳，這也是它能反覆安全執行的原因。
  */
 export function topUpProfiles(
   existing: AsrProfile[],
@@ -222,7 +222,7 @@ export async function loadAsrProfiles(): Promise<AsrProfileState> {
   if (topUp.added.length > 0) {
     profiles = topUp.profiles
     needsWrite = true
-    // 先記賬再落盤：這一步失敗也只會導致下次重來，不會造成"補過了卻沒記"的空檔
+    // 先記帳再落盤：這一步失敗也只會導致下次重來，不會造成"補過了卻沒記"的空檔
     await setSetting(ASR_AUTO_CREATED_KEY, [...alreadyAuto, ...topUp.added])
   }
 

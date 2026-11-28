@@ -2,15 +2,15 @@
 //!
 //! 原來同一個預設鍵在 Rust 裡抄了四處（storage 種子、main.rs 兜底、shortcuts.rs 兩處、
 //! keyboard 的 fallback），改漏一處就是"介面顯示一個鍵、實際監聽另一個鍵"。
-//! 兩種語言沒法共用一個常量，所以下面的測試直接讀 defaults.ts 的原始碼對賬：
+//! 兩種語言沒法共用一個常量，所以下面的測試直接讀 defaults.ts 的原始碼對帳：
 //! 任何一邊改了、另一邊沒跟上，`cargo test` 就紅。
 
 // 兩個快捷鍵預設值按平台不同，先用宏給出字面量：storage 的種子是 JSON 字面量，
 // `concat!` 只吃字面量，用不了下面的 const。
 //
-// Windows：按住說話 = 右 Ctrl，擴音 = 右 Alt。
-// macOS：MacBook 內建鍵盤沒有右 Ctrl，改成按住說話 = 右 ⌥（AltRight），擴音 = 右 ⌘（MetaRight）。
-// 前端對應 services/defaults.ts 的 DEFAULTS 與 MAC_DEFAULT_OVERRIDES，下面的測試會對賬。
+// Windows：按住說話 = 右 Ctrl，免持 = 右 Alt。
+// macOS：MacBook 內建鍵盤沒有右 Ctrl，改成按住說話 = 右 ⌥（AltRight），免持 = 右 ⌘（MetaRight）。
+// 前端對應 services/defaults.ts 的 DEFAULTS 與 MAC_DEFAULT_OVERRIDES，下面的測試會對帳。
 #[cfg(not(target_os = "macos"))]
 #[macro_export]
 macro_rules! default_shortcut_ptt {
@@ -43,7 +43,7 @@ macro_rules! default_shortcut_hands_free {
 /// 按住說話的預設鍵。不能是 Shift：長按右 Shift 約 8 秒會觸發 Windows 篩選鍵，
 /// 鬆開後錄音停不下來（前端 lib/shortcutKeys.ts 的 PTT_FORBIDDEN_CODES）。
 pub const SHORTCUT_PTT: &str = crate::default_shortcut_ptt!();
-/// 擴音模式的預設鍵。
+/// 免持模式的預設鍵。
 pub const SHORTCUT_HANDS_FREE: &str = crate::default_shortcut_hands_free!();
 /// AI 整理開關的快捷鍵。留空 = 不註冊，避免升級時意外佔用使用者已有的全域性組合鍵。
 pub const SHORTCUT_TOGGLE_AI: &str = "";

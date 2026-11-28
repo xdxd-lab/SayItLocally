@@ -25,11 +25,11 @@ import { IS_MAC } from '@/lib/platform'
 import { getDefault } from '@/services/defaults'
 import { MacPermissionsPanel } from '@/components/MacPermissionsPanel'
 
-/** 擴音的預設鍵（Windows 右 Alt，mac 右 ⌘） */
+/** 免持的預設鍵（Windows 右 Alt，mac 右 ⌘） */
 const DEFAULT_HANDS_FREE: string = getDefault<string>('shortcutHandsFree') || 'AltRight'
 
 /**
- * 擴音鍵與「按住說話」撞在同一個鍵上時，兩個功能會被同一次按鍵同時觸發。
+ * 免持鍵與「按住說話」撞在同一個鍵上時，兩個功能會被同一次按鍵同時觸發。
  *
  * 模組級函式而不是 useCallback：它進 effect 的依賴陣列，引用一變就會把整個錄製
  * effect（連帶 begin/endShortcutCapture）重啟一遍。PTT 設定在這裡現讀現用，
@@ -43,7 +43,7 @@ async function validateHandsFreeAgainstPTT(value: string): Promise<string | null
     : null
 }
 
-/** 儲存擴音鍵並讓原生側立刻用上：三步缺一不可，所以只留這一個出口。 */
+/** 儲存免持鍵並讓原生側立刻用上：三步缺一不可，所以只留這一個出口。 */
 async function persistHandsFreeShortcut(value: string): Promise<void> {
   await setSetting('shortcutHandsFree', value)
   bridge.notifyShortcutsChanged()
@@ -204,11 +204,11 @@ export default function WelcomeGuide({ onComplete }: WelcomeGuideProps) {
     }
   }, [])
 
-  // 熱鍵確認步驟：錄製擴音熱鍵。
+  // 熱鍵確認步驟：錄製免持熱鍵。
   //
   // **單鍵和組合鍵（Ctrl+D）都要能錄。** 判定與提交校驗都複用設定頁那兩個函式，
   // 口徑必須一致 —— 這裡以前自己寫了一份只認單鍵白名單的版本，於是按 Ctrl+D 時
-  // Ctrl 的 keydown 先到、`ControlLeft` 恰好在白名單裡，擴音鍵被靜默存成「左 Ctrl」，
+  // Ctrl 的 keydown 先到、`ControlLeft` 恰好在白名單裡，免持鍵被靜默存成「左 Ctrl」，
   // D 根本沒輪到，而使用者看到的現象是"組合鍵不支援"。
   //
   // 只依賴 step，避免 hfKey 等 state 變化導致 effect 反覆執行、鉤子反覆重啟。
@@ -259,9 +259,9 @@ export default function WelcomeGuide({ onComplete }: WelcomeGuideProps) {
       if (event.repeat) return
       const candidate = keyEventToShortcutCandidate(event)
       // **錄不成快捷鍵的鍵一律放行，不要 preventDefault。**
-      // 裸 Tab、裸 Enter 都不是合法的擴音鍵（candidate 為 null），攔下來只會把
+      // 裸 Tab、裸 Enter 都不是合法的免持鍵（candidate 為 null），攔下來只會把
       // 鍵盤使用者困在這一步：Tab 移不了焦點，Enter 點不了「下一步」。
-      // 修飾鍵自己也返回 null，但它是組合鍵的一半，要照常吞掉並記賬。
+      // 修飾鍵自己也返回 null，但它是組合鍵的一半，要照常吞掉並記帳。
       if (!candidate && !isModifierKey(event)) return
       event.preventDefault()
       pressed.add(event.code)

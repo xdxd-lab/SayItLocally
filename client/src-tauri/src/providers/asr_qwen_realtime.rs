@@ -25,7 +25,7 @@ use tungstenite::http::header::{AUTHORIZATION, USER_AGENT};
 use tungstenite::http::HeaderValue;
 
 // 用穩定版模型名（不帶日期快照）：帶日期的快照版免費額度可能已耗盡，
-// 穩定版按賬號額度計費，實測可正常建連並返回即時中間結果。
+// 穩定版按帳號額度計費，實測可正常建連並返回即時中間結果。
 const MODEL: &str = "qwen3-asr-flash-realtime";
 
 type WsStream = tokio_tungstenite::WebSocketStream<
