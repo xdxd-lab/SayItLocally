@@ -659,6 +659,21 @@ mod tests {
         );
     }
 
+    /// [自訂] F14 PR-C：Windows 簡體與正體系統的路由字首都要去掉（簡體以 Unicode 跳脫保存）。
+    #[test]
+    fn simplified_and_traditional_route_prefixes_are_removed() {
+        for label in [
+            "\u{9ed8}\u{8ba4}\u{503c} - USB Microphone", // 預設值
+            "\u{9ed8}\u{8ba4} - USB Microphone",          // 預設
+            "\u{901a}\u{4fe1} - USB Microphone",          // 通訊
+            "預設值 - USB Microphone",
+            "預設 - USB Microphone",
+            "通訊 - USB Microphone",
+        ] {
+            assert_eq!(normalize_mic_label(label), "usb microphone", "{label}");
+        }
+    }
+
     #[test]
     fn ordinary_device_name_is_preserved_for_matching() {
         assert_eq!(normalize_mic_label("  Studio   Mic  "), "studio mic");

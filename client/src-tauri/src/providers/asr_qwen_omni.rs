@@ -164,7 +164,7 @@ fn get_instructions(config: &AsrProviderConfig) -> String {
         .get("instructions")
         .and_then(|v| v.as_str())
         .filter(|s| !s.is_empty())
-        .unwrap_or("你是一個語音轉文字助手。請將使用者的語音內容準確轉寫為文字，保持原意，適當新增標點符號，不要新增任何額外的解釋或評論。")
+        .unwrap_or("你是一個語音轉文字助手。請將使用者的語音內容準確轉寫為文字，保持原意，適當加上標點符號，不要加上任何額外的解釋或評論。中文一律以台灣正體中文與台灣用語輸出。")
         .to_string()
 }
 

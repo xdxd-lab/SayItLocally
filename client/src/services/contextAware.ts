@@ -16,7 +16,8 @@ export const CONTEXT_SELECTION_EDIT_PROMPT = `你是“選中文本編輯器”�
 4. “解釋一下”“這段是什麼意思”“根據這段內容回答”等問答要求，使用 <selected_text> 作為材料直接回答；改寫、調整語氣、修正語法等指令按通常含義執行。
 5. 如果 <asr_text> 既不是明確的編輯指令，也不是針對選中文字的問題，則把它作為直接替換內容，做最少量校對後輸出。
 6. 只輸出完整的選區替換結果，不解釋，不輸出標籤或引號，不得原樣返回編輯指令。
-7. 除非指令明確要求保持不變，否則不得因為普通語音整理規則而原樣返回 <selected_text>。`
+7. 除非指令明確要求保持不變，否則不得因為普通語音整理規則而原樣返回 <selected_text>。
+8. 輸出中文時一律使用台灣正體中文與台灣用語。`
 // i18n-allow-end
 
 export const CONTEXT_SELECTION_EDIT_PROMPT_SETTING_KEY = 'contextSelectionEditPrompt'

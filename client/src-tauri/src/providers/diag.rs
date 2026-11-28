@@ -272,6 +272,26 @@ pub fn http_summary(
 mod tests {
     use super::*;
 
+    /// [自訂] F14 PR-C：供應商錯誤可能是簡體原文，也可能是正體；兩種都要分到同一類。
+    /// 簡體以 Unicode 跳脫保存，註解寫對應的正體。
+    #[test]
+    fn simplified_and_traditional_provider_errors_classify_the_same() {
+        for (text, code) in [
+            ("\u{8ba4}\u{8bc1}\u{5931}\u{8d25}", "provider_bad_key"), // 認證失敗
+            ("認證失敗", "provider_bad_key"),
+            ("\u{9274}\u{6743}", "provider_bad_key"), // 鑑權
+            ("鑑權", "provider_bad_key"),
+            ("\u{4f59}\u{989d}\u{4e0d}\u{8db3}", "provider_insufficient_balance"), // 餘額不足
+            ("餘額不足", "provider_insufficient_balance"),
+            ("\u{6b20}\u{8d39}", "provider_rate_limit"), // 欠費
+            ("欠費", "provider_rate_limit"),
+            ("\u{8d85}\u{65f6}", "provider_timeout"), // 超時
+            ("超時", "provider_timeout"),
+        ] {
+            assert_eq!(classify_failure("request", text), code, "{text}");
+        }
+    }
+
     #[test]
     fn classifies_provider_failures_before_the_detail_is_translated() {
         assert_eq!(classify_failure("http_status", "HTTP 401 Unauthorized"), "provider_bad_key");

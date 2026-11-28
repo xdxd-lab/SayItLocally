@@ -859,6 +859,16 @@ mod tests {
         assert!(forced_thinking_error(ZHIPU_5_3_FORCED));
     }
 
+    /// [自訂] F14 PR-C：「始終思考」與「最終答案」的簡體原文與正體寫法都要認得。
+    #[test]
+    fn simplified_and_traditional_markers_are_both_recognized() {
+        assert!(forced_thinking_error("\u{59cb}\u{7ec8}\u{601d}\u{8003}")); // 始終思考
+        assert!(forced_thinking_error("始終思考"));
+        assert!(forced_thinking_error("不支援關閉思考"));
+        assert_eq!(strip_thinking("推理過程\u{6700}\u{7ec8}\u{7b54}\u{6848}：結果"), "結果"); // 最終答案
+        assert_eq!(strip_thinking("推理過程最終答案：結果"), "結果");
+    }
+
     #[test]
     fn forced_thinking_error_does_not_fire_on_unrelated_failures() {
         // 這些都不能觸發降級重試，否則每次請求白髮兩遍
