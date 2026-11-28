@@ -29,12 +29,12 @@ fn link_clang_runtime_on_macos() {
         .filter(|out| out.status.success())
         .map(|out| String::from_utf8_lossy(&out.stdout).trim().to_string());
     let Some(resource_dir) = resource_dir else {
-        println!("cargo:warning=没找到 clang，无法链接 libclang_rt.osx.a（可能报 ___isPlatformVersionAtLeast 未定义）");
+        println!("cargo:warning=沒找到 clang，無法連結 libclang_rt.osx.a（可能報 ___isPlatformVersionAtLeast 未定義）");
         return;
     };
     let lib_dir = Path::new(&resource_dir).join("lib").join("darwin");
     if !lib_dir.join("libclang_rt.osx.a").is_file() {
-        println!("cargo:warning={} 里没有 libclang_rt.osx.a", lib_dir.display());
+        println!("cargo:warning={} 裡沒有 libclang_rt.osx.a", lib_dir.display());
         return;
     }
     println!("cargo:rustc-link-search=native={}", lib_dir.display());
@@ -74,13 +74,13 @@ fn stage_transcribe_runtime_libs() {
     let profile_dir = out_dir
         .ancestors()
         .nth(3)
-        .expect("OUT_DIR 形状变了")
+        .expect("OUT_DIR 形狀變了")
         .to_path_buf();
 
     let staging = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap()).join("transcribe-libs");
     // 重建 staging，避免上次構建遺留的、這次已經改名/刪掉的模組被一起打包。
     let _ = std::fs::remove_dir_all(&staging);
-    std::fs::create_dir_all(&staging).expect("创建 transcribe-libs 目录");
+    std::fs::create_dir_all(&staging).expect("建立 transcribe-libs 目錄");
 
     let mut copied = 0usize;
     for dir in &dirs {
@@ -102,8 +102,8 @@ fn stage_transcribe_runtime_libs() {
 
     if copied == 0 {
         panic!(
-            "transcribe-cpp 是 shared/dynamic-backends 构建，但在 {dirs:?} 里没找到任何 DLL；\
-             这样打出来的包会注册 0 个计算设备、本地 GGUF 模型加载必失败"
+            "transcribe-cpp 是 shared/dynamic-backends 構建，但在 {dirs:?} 裡沒找到任何 DLL；\
+             這樣打出來的包會註冊 0 個計算裝置、本地 GGUF 模型載入必失敗"
         );
     }
     println!("cargo:warning=staged {copied} transcribe/ggml DLL(s)");
@@ -121,7 +121,7 @@ fn copy_to(src: &Path, dir: &Path, name: &str) {
 }
 
 /// 把 VC++ 執行庫（MSVCP140 / VCRUNTIME140 / VCRUNTIME140_1 …）拷到 exe 同級，
-/// 跟着安装包一起分发。返回拷了几个。
+/// 跟著安裝包一起分發。返回拷了幾個。
 ///
 /// 為什麼非做不可（0.1.4 真砸過一台機器）：
 /// 上面那些 transcribe/ggml DLL 是 C++ 編的，**載入期**就依賴 MSVCP140.dll。
@@ -146,22 +146,22 @@ fn stage_vc_redist(profile_dir: &Path, staging: &Path) -> usize {
     }
     if std::env::var_os("SAYIT_SKIP_VC_REDIST").is_some() {
         println!(
-            "cargo:warning=SAYIT_SKIP_VC_REDIST 已设置：不随附 VC++ 运行库。\
-             这样打出来的包在运行库比构建工具集旧的机器上会启动即崩，别拿去发版。"
+            "cargo:warning=SAYIT_SKIP_VC_REDIST 已設定：不隨附 VC++ 執行庫。\
+             這樣打出來的包在執行庫比構建工具集舊的機器上會啟動即崩，別拿去發版。"
         );
         return 0;
     }
 
     let dirs = resolve_vc_redist_dirs().unwrap_or_else(|| {
         panic!(
-            "找不到 VC++ 运行库 redist 目录，无法把 MSVCP140/VCRUNTIME140 随应用分发。\n\
-             不带这几个 DLL 打出来的包，在运行库版本低于构建工具集的机器上会在 \
-             init_backends() 里访问违例崩掉（0xc0000005，无窗口、无报错、日志只有开头两行）。\n\
-             解决其一：\n\
-               1. VS Installer 里装上「MSVC v143 - VS 2022 C++ x64/x86 生成工具（最新）」，\
-                  它带 VC\\Redist\\MSVC\\<ver>\\x64\\Microsoft.VC143.CRT；\n\
-               2. 手动指定 SAYIT_VC_REDIST_DIRS=<CRT 目录>[;<OpenMP 目录>]；\n\
-               3. 明确要打不带运行库的包（只在本机自测）：SAYIT_SKIP_VC_REDIST=1。"
+            "找不到 VC++ 執行庫 redist 目錄，無法把 MSVCP140/VCRUNTIME140 隨應用分發。\n\
+             不帶這幾個 DLL 打出來的包，在執行庫版本低於構建工具集的機器上會在 \
+             init_backends() 裡訪問違例崩掉（0xc0000005，無視窗、無報錯、日誌只有開頭兩行）。\n\
+             解決其一：\n\
+               1. VS Installer 裡裝上「MSVC v143 - VS 2022 C++ x64/x86 生成工具（最新）」，\
+                  它帶 VC\\Redist\\MSVC\\<ver>\\x64\\Microsoft.VC143.CRT；\n\
+               2. 手動指定 SAYIT_VC_REDIST_DIRS=<CRT 目錄>[;<OpenMP 目錄>]；\n\
+               3. 明確要打不帶執行庫的包（只在本機自測）：SAYIT_SKIP_VC_REDIST=1。"
         )
     });
 
@@ -184,7 +184,7 @@ fn stage_vc_redist(profile_dir: &Path, staging: &Path) -> usize {
     }
 
     if copied == 0 {
-        panic!("VC++ redist 目录 {dirs:?} 里一个 DLL 都没有，装的 VS 组件可能不完整");
+        panic!("VC++ redist 目錄 {dirs:?} 裡一個 DLL 都沒有，裝的 VS 元件可能不完整");
     }
     copied
 }

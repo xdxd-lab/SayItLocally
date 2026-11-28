@@ -204,7 +204,7 @@ export default function AppearancePage() {
     // 兩個坑都在這裡躲掉了：
     //  1. 每項自帶 catch 兜底 —— Promise.all 是 fail-fast，只要有一項 reject 就會
     //     立刻往下走，那時其它項還沒回來，ready 會在值到位前就被置上（並留下一個
-    //     未处理的 rejection）。
+    //     未處理的 rejection）。
     //  2. 不用 requestAnimationFrame —— 那會把 setReady 丟到與賦值不同的批次裡，
     //     同樣可能先提交出一幀「已顯示但值是預設值」。
     let cancelled = false
@@ -358,8 +358,8 @@ export default function AppearancePage() {
             <h2 className="mb-4 text-lg font-semibold">{t('appearance.overlayStyle')}</h2>
 
             {/* 整塊一起等值到位再顯示。除了選擇器，**懸浮窗預覽**那顆膠囊的長度也跟著
-                overlayWidth 变（它有可见边框），只盖住选择器的话，仍会看到预览从「中」
-                的长度一下缩到「短」——那正是之前反复没修掉的那个「闪」。 */}
+                overlayWidth 變（它有可見邊框），只蓋住選擇器的話，仍會看到預覽從「中」
+                的長度一下縮到「短」——那正是之前反覆沒修掉的那個「閃」。 */}
             <div className="space-y-4" style={ready ? undefined : { visibility: 'hidden' }}>
               <div>
                 <p className="mb-2 text-sm text-muted-foreground">{t('appearance.waveTheme')}</p>

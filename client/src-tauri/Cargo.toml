@@ -73,8 +73,8 @@ features = ["metal"]
 version = "0.1.3"
 default-features = false
 
-# macOS 系统集成：AppKit / Foundation 走 objc2（与 tauri/tao 用的是同一套版本，
-# 类型可以互通）；CoreGraphics / CoreFoundation / Accessibility / CoreAudio / Carbon
+# macOS 系統整合：AppKit / Foundation 走 objc2（與 tauri/tao 用的是同一套版本，
+# 型別可以互通）；CoreGraphics / CoreFoundation / Accessibility / CoreAudio / Carbon
 # 這些穩定的 C 介面直接在 src/platform/macos/ffi.rs 裡宣告，不再引入第二套繫結。
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"

@@ -180,7 +180,7 @@ export async function polishWithClientAi(
     if (!isCurrent()) return null
     const message = String(error)
     // 超時和呼叫失敗要分開：前者多半是模型慢或網路，後者常常是金鑰/地址/模型名。
-    // 合成一個原因會讓這兩類問題在日誌里長得一樣。
+    // 合成一個原因會讓這兩類問題在日誌裡長得一樣。
     const isTimeout = message.includes('timed out')
     // 原因碼進 ai.outcome，**錯誤原文只在這條 warn 裡**（warn 無條件落盤）。
     // 不把它塞進結果物件：那個物件會流向歷史記錄，錯誤文本可能回顯請求內容。

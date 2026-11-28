@@ -72,7 +72,7 @@ static CACHE: Mutex<Option<Loaded>> = Mutex::new(None);
 ///
 /// 為什麼必須分開：`ensure_loaded` 在**整個"卸舊 + 載入 + 預熱"期間**都持著 CACHE
 /// 鎖（1.7B 約 9 s，冷盤 / 弱 GPU / 首次編譯 Vulkan pipeline 會更久）。
-/// 而 `gguf_asr_diagnostics` 曾经是同步 `#[tauri::command]` —— Tauri 把同步命令放在
+/// 而 `gguf_asr_diagnostics` 曾經是同步 `#[tauri::command]` —— Tauri 把同步命令放在
 /// 主執行緒執行，主執行緒又是 UI 事件迴圈，於是"進設定頁選個模型"會讓整個視窗假死到
 /// 載入結束，使用者只能強殺程序（0.1.4 的使用者反饋就是這個）。
 ///
@@ -97,7 +97,7 @@ fn mark_loading(model_id: &str) {
     if let Ok(mut status) = STATUS.lock() {
         status.loading_model = Some(model_id.to_string());
         // 舊引擎馬上就要被丟棄，先把 backend 清空：否則過載期間診斷頁會報一個
-        // 已经不存在的后端。
+        // 已經不存在的後端。
         status.backend = None;
         status.device = None;
     }
@@ -193,7 +193,7 @@ pub struct GgufDevice {
     /// `kind:name`。**絕不能存 registry 索引** —— 上游明確說索引會隨驅動更新
     /// 或換機器變動，存索引等於讓使用者的選擇在某次驅動更新後靜默指向另一張卡。
     pub id: String,
-    /// ggml registry 索引，也就是 `ModelOptions::gpu_device` 的取值空间。
+    /// ggml registry 索引，也就是 `ModelOptions::gpu_device` 的取值空間。
     /// 帶給前端只為排序與除錯展示，不作為持久化標識。
     pub index: usize,
     /// 是不是 GPU/IGPU（只有這兩類能被顯式指定）。CPU 與 BLAS 之類的 ACCEL 裝置
@@ -208,7 +208,7 @@ pub struct GgufDevice {
 /// 三條硬規則，違反任意一條上游都會直接 `TRANSCRIBE_ERR_INVALID_ARG`、
 /// 讓整次模型載入失敗（不是回落，是報錯）：
 /// 1. 請求 CPU 後端時必須是 0 —— 沒有 GPU 可選。
-/// 2. 只能指向 GPU/IGPU 设备。
+/// 2. 只能指向 GPU/IGPU 裝置。
 /// 3. 必須在 `[0, device_count)` 範圍內。
 ///
 /// 還有一條不是錯誤但會讓結果與使用者預期不符：**索引 0 是"自動"哨兵，沒辦法
@@ -344,7 +344,7 @@ pub fn process_memory_mb() -> u64 {
 /// 自己負責註冊後端（啟動路徑上已經不做了），否則拿到的永遠是空列表。
 ///
 /// 這不會讓雲 / 伺服器模式的使用者白付 Vulkan 初始化：本函式只有兩個呼叫點，
-/// `LocalModeSection` 的 GPU 摘要（`VoiceEnginePage` 里由 `workMode === 'local'`
+/// `LocalModeSection` 的 GPU 摘要（`VoiceEnginePage` 裡由 `workMode === 'local'`
 /// 門住，只在本地模式渲染）和使用者主動開啟的診斷頁。兩者都意味著使用者正在檢視
 /// 本地引擎的硬體資訊，這時列舉裝置就是他要的結果。
 pub fn describe_devices() -> Vec<GgufDevice> {
@@ -428,7 +428,7 @@ fn resolve_backend(pref: &str) -> Backend {
 }
 
 /// 載入模型（若 key 未變則複用）。`accelerator` 取 "auto" | "cpu" | "gpu"，
-/// `gpu_device` 是 `GgufDevice::id`（空 = 自动挑）。
+/// `gpu_device` 是 `GgufDevice::id`（空 = 自動挑）。
 /// 換加速器或換顯示卡都要重建：裝置是 Model::load_with 時繫結的，之後改不了。
 fn ensure_loaded(model_id: &str, accelerator: &str, gpu_device: &str) -> Result<(), String> {
     // 後端註冊的**唯一生產入口之一**（另一個是 describe_devices）。啟動路徑上不再註冊，
@@ -467,7 +467,7 @@ fn ensure_loaded(model_id: &str, accelerator: &str, gpu_device: &str) -> Result<
 
     let options = ModelOptions {
         backend: resolve_backend(accelerator),
-        // 0 = 自动/首个匹配；非 0 = 指定的 ggml registry 索引。见 resolve_gpu_device。
+        // 0 = 自動/首個匹配；非 0 = 指定的 ggml registry 索引。見 resolve_gpu_device。
         gpu_device: resolve_gpu_device(gpu_device, accelerator),
     };
     let model = Model::load_with(&path, &options)
@@ -901,7 +901,7 @@ pub fn spawn_idle_unloader(initial_idle_minutes: u64) {
     });
 }
 
-// 注：曾有个 `is_gguf_model()` 用于在 sherpa / GGUF 之间分派。1c 之后本地只剩
+// 注：曾有個 `is_gguf_model()` 用於在 sherpa / GGUF 之間分派。1c 之後本地只剩
 // 這一個引擎，分派沒有意義，已刪除。catalog 裡的 id 仍保留 `-gguf` 字尾 ——
 // 它現在的作用是讓新權重目錄和上一代 ONNX 目錄不撞名，從而讓舊模型回收能靠
 // 目錄名白名單精確定位（見 local_asr::LEGACY_MODEL_IDS）。
@@ -951,13 +951,13 @@ mod tests {
         init_backends();
         assert!(
             !transcribe_cpp::devices().is_empty(),
-            "没有注册到任何计算设备：DLL 没放到 exe 旁边？"
+            "沒有註冊到任何計算裝置：DLL 沒放到 exe 旁邊？"
         );
         let mut pcm = Vec::with_capacity(base.len() * repeats);
         for _ in 0..repeats {
             pcm.extend_from_slice(&base);
         }
-        transcribe(model_id, language, "auto", "", &pcm, SR_U).expect("转写失败")
+        transcribe(model_id, language, "auto", "", &pcm, SR_U).expect("轉寫失敗")
     }
 
     /// SenseVoice：轉寫要出中文，且**必須有標點**。
@@ -967,39 +967,39 @@ mod tests {
     fn sensevoice_gguf_has_punctuation() {
         let id = "sensevoice-small-gguf";
         if !model_present(id) {
-            eprintln!("skip: {id} 未下载");
+            eprintln!("skip: {id} 未下載");
             return;
         }
         let text = run(id, 3);
-        assert!(!text.trim().is_empty(), "输出为空");
+        assert!(!text.trim().is_empty(), "輸出為空");
         assert!(
             text.chars().any(|c| "，。！？、".contains(c)),
-            "SenseVoice 输出没有标点，itn 开关可能失效了: {text:?}"
+            "SenseVoice 輸出沒有標點，itn 開關可能失效了: {text:?}"
         );
         // 特殊標籤不該漏到最終文本里
-        assert!(!text.contains("<|"), "输出残留特殊标签: {text:?}");
+        assert!(!text.contains("<|"), "輸出殘留特殊標籤: {text:?}");
         unload();
     }
 
-    /// Qwen3-ASR：自帶標點，且輸出不該帶 `<asr_text>` 這類範本前綴
+    /// Qwen3-ASR：自帶標點，且輸出不該帶 `<asr_text>` 這類範本字首
     /// （sherpa 的 ONNX 匯出會帶，需要額外清洗；ggml 這條路不需要）。
     fn assert_qwen3_output(id: &str) {
         if !model_present(id) {
-            eprintln!("skip: {id} 未下载");
+            eprintln!("skip: {id} 未下載");
             return;
         }
         let text = run(id, 3);
         // 打出來便於人眼比對不同量化檔的輸出質量（Q4_K_M 這種激進量化最容易
         // 在這裡露出馬腳：錯字、漏字、標點亂）
         eprintln!("[text] {id}: {text}");
-        assert!(!text.trim().is_empty(), "{id} 输出为空");
+        assert!(!text.trim().is_empty(), "{id} 輸出為空");
         assert!(
             !text.contains("<asr_text>") && !text.contains("<|"),
-            "{id} 输出带模板前缀/特殊标签: {text:?}"
+            "{id} 輸出帶模板字首/特殊標籤: {text:?}"
         );
         assert!(
             text.chars().any(|c| "，。！？、".contains(c)),
-            "{id} 输出没有标点: {text:?}"
+            "{id} 輸出沒有標點: {text:?}"
         );
         unload();
     }
@@ -1031,20 +1031,20 @@ mod tests {
     fn parakeet_en_gguf_is_punctuated_and_capitalized() {
         let id = "parakeet-unified-en-0.6b-gguf";
         if !model_present(id) {
-            eprintln!("skip: {id} 未下载");
+            eprintln!("skip: {id} 未下載");
             return;
         }
         let text = run_with(id, 1, read_test_en_wav(), "en");
         eprintln!("[text] {id}: {text}");
-        assert!(!text.trim().is_empty(), "{id} 输出为空");
-        assert!(!text.contains("<|") && !text.contains('<'), "残留特殊标签: {text:?}");
+        assert!(!text.trim().is_empty(), "{id} 輸出為空");
+        assert!(!text.contains("<|") && !text.contains('<'), "殘留特殊標籤: {text:?}");
         assert!(
             text.contains('.') || text.contains(','),
-            "{id} 英文输出没有标点: {text:?}"
+            "{id} 英文輸出沒有標點: {text:?}"
         );
         assert!(
             text.chars().any(|c| c.is_ascii_uppercase()),
-            "{id} 输出没有大写字母，capitalization 失效？: {text:?}"
+            "{id} 輸出沒有大寫字母，capitalization 失效？: {text:?}"
         );
         unload();
     }
@@ -1052,25 +1052,25 @@ mod tests {
     /// Nemotron 3.5：本目錄裡第一個只認**帶地區 locale** 的模型。
     ///
     /// 這條測試的重點不是轉寫質量，而是 `language="en"` 不會炸 —— 介面上的
-    /// `localAsr.language` 只有 auto/zh/en/ja/ko，不经 `resolve_language` 映射成
+    /// `localAsr.language` 只有 auto/zh/en/ja/ko，不經 `resolve_language` 對映成
     /// `en-US` 就會得到 `unsupported language (status 10)`，使用者選「英語」後
     /// 每次口述都失敗。斷言"有輸出"就足以證明對映生效了。
     #[test]
     fn nemotron_gguf_accepts_a_bare_language_code() {
         let id = "nemotron-asr-streaming-0.6b-gguf";
         if !model_present(id) {
-            eprintln!("skip: {id} 未下载");
+            eprintln!("skip: {id} 未下載");
             return;
         }
         let text = run_with(id, 1, read_test_en_wav(), "en");
         eprintln!("[text] {id} (language=en): {text}");
         assert!(
             !text.trim().is_empty(),
-            "{id} 在 language=en 下输出为空 —— locale 映射可能失效了"
+            "{id} 在 language=en 下輸出為空 —— locale 對映可能失效了"
         );
         // auto 檢測模式會在原始 token 流裡插 <en-US> 這類標籤，庫預設會清掉。
         // 漏到最終文本里就會被當成使用者說的話插進目標程式。
-        assert!(!text.contains('<') && !text.contains('>'), "残留语种标签: {text:?}");
+        assert!(!text.contains('<') && !text.contains('>'), "殘留語種標籤: {text:?}");
         unload();
     }
 
@@ -1080,13 +1080,13 @@ mod tests {
     fn nemotron_gguf_handles_chinese_via_locale_mapping() {
         let id = "nemotron-asr-streaming-0.6b-gguf";
         if !model_present(id) {
-            eprintln!("skip: {id} 未下载");
+            eprintln!("skip: {id} 未下載");
             return;
         }
         let text = run_with(id, 3, read_test_wav(), "zh");
         eprintln!("[text] {id} (language=zh): {text}");
-        assert!(!text.trim().is_empty(), "{id} 在 language=zh 下输出为空");
-        assert!(!text.contains('<') && !text.contains('>'), "残留语种标签: {text:?}");
+        assert!(!text.trim().is_empty(), "{id} 在 language=zh 下輸出為空");
+        assert!(!text.contains('<') && !text.contains('>'), "殘留語種標籤: {text:?}");
         unload();
     }
 
@@ -1098,19 +1098,19 @@ mod tests {
     fn funasr_nano_gguf_is_clean_and_punctuated() {
         let id = "funasr-nano-2512-gguf";
         if !model_present(id) {
-            eprintln!("skip: {id} 未下载");
+            eprintln!("skip: {id} 未下載");
             return;
         }
         let text = run(id, 3);
         eprintln!("[text] {id}: {text}");
-        assert!(!text.trim().is_empty(), "输出为空");
+        assert!(!text.trim().is_empty(), "輸出為空");
         assert!(
             text.chars().any(|c| "，。！？、".contains(c)),
-            "Fun-ASR Nano 输出没有标点，itn 门控失效了？: {text:?}"
+            "Fun-ASR Nano 輸出沒有標點，itn 門控失效了？: {text:?}"
         );
         assert!(
             !text.contains("<|") && !text.contains("<asr_text>") && !text.contains("im_start"),
-            "输出残留模板/特殊标签: {text:?}"
+            "輸出殘留模板/特殊標籤: {text:?}"
         );
         unload();
     }
@@ -1157,7 +1157,7 @@ mod tests {
     }
 
     /// 裸碼族的行為必須和加 `resolve_language` 之前完全一樣，否則這個改動就把
-    /// 已发布的三个模型搞坏了。
+    /// 已釋出的三個模型搞壞了。
     #[test]
     fn bare_language_codes_pass_through_unchanged() {
         let langs = bare_codes();
@@ -1165,7 +1165,7 @@ mod tests {
             assert_eq!(
                 resolve_language(code, &langs).as_deref(),
                 Some(code),
-                "{code} 在裸码族上不该被改写"
+                "{code} 在裸碼族上不該被改寫"
             );
         }
     }
@@ -1226,9 +1226,9 @@ mod tests {
         let main_rs = strip_line_comments(include_str!("../main.rs"));
         assert!(
             !main_rs.contains("init_backends"),
-            "main.rs 又在启动路径上注册计算后端了。这会 dlopen ggml-vulkan.dll 并建出\n\
-             Vulkan 上下文，云 API / 服务器模式的用户白付显存与启动时间。\n\
-             注册应当只发生在 gguf_asr 的懒路径（ensure_loaded / describe_devices）。"
+            "main.rs 又在啟動路徑上註冊計算後端了。這會 dlopen ggml-vulkan.dll 並建出\n\
+             Vulkan 上下文，雲 API / 伺服器模式的使用者白付視訊記憶體與啟動時間。\n\
+             註冊應當只發生在 gguf_asr 的懶路徑（ensure_loaded / describe_devices）。"
         );
     }
 
@@ -1246,13 +1246,13 @@ mod tests {
         ] {
             let body_start = source
                 .find(signature)
-                .unwrap_or_else(|| panic!("{entry} 的签名变了，请同步更新这条测试"));
+                .unwrap_or_else(|| panic!("{entry} 的簽名變了，請同步更新這條測試"));
             // 只看函式開頭這一小段：註冊是前置動作，必須在任何實際工作之前發生。
             let head = &source[body_start..(body_start + 700).min(source.len())];
             assert!(
                 head.contains("init_backends()"),
-                "{entry} 没有先调用 init_backends()。启动路径上已经不注册了，\n\
-                 这里少一步就会让本地模式报 TRANSCRIBE_ERR_BACKEND / 设备列表空白。"
+                "{entry} 沒有先呼叫 init_backends()。啟動路徑上已經不註冊了，\n\
+                 這裡少一步就會讓本地模式報 TRANSCRIBE_ERR_BACKEND / 裝置列表空白。"
             );
         }
     }
@@ -1356,7 +1356,7 @@ mod tests {
             .count();
         assert!(
             n >= 16000,
-            "预热音频只解析出 {n} 个样本（不足 1 秒），include_bytes! 路径或资源文件有问题"
+            "預熱音訊只解析出 {n} 個樣本（不足 1 秒），include_bytes! 路徑或資原始檔有問題"
         );
     }
 
@@ -1366,7 +1366,7 @@ mod tests {
     fn first_transcribe_after_load_is_not_slower_than_the_second() {
         let id = "sensevoice-small-gguf";
         if !model_present(id) {
-            eprintln!("skip: {id} 未下载");
+            eprintln!("skip: {id} 未下載");
             return;
         }
         unload();
@@ -1374,15 +1374,15 @@ mod tests {
 
         // 這一次含載入 + 預熱
         let t_load = std::time::Instant::now();
-        let _ = transcribe(id, "auto", "auto", "", &base, SR_U).expect("转写失败");
+        let _ = transcribe(id, "auto", "auto", "", &base, SR_U).expect("轉寫失敗");
         let load_and_first = t_load.elapsed().as_secs_f64();
 
         let t1 = std::time::Instant::now();
-        let _ = transcribe(id, "auto", "auto", "", &base, SR_U).expect("转写失败");
+        let _ = transcribe(id, "auto", "auto", "", &base, SR_U).expect("轉寫失敗");
         let first = t1.elapsed().as_secs_f64();
 
         let t2 = std::time::Instant::now();
-        let _ = transcribe(id, "auto", "auto", "", &base, SR_U).expect("转写失败");
+        let _ = transcribe(id, "auto", "auto", "", &base, SR_U).expect("轉寫失敗");
         let second = t2.elapsed().as_secs_f64();
 
         eprintln!(
@@ -1391,7 +1391,7 @@ mod tests {
         // 預熱到位時兩次穩定態解碼應該接近；給 3 倍餘量吸收排程噪聲
         assert!(
             first < second * 3.0 + 0.3,
-            "加载后的第一次解码 {first:.3}s 远慢于第二次 {second:.3}s，预热没生效？"
+            "載入後的第一次解碼 {first:.3}s 遠慢於第二次 {second:.3}s，預熱沒生效？"
         );
         unload();
     }
@@ -1410,7 +1410,7 @@ mod tests {
 
         for id in ids {
             if !model_present(id) {
-                eprintln!("skip: {id} 未下载");
+                eprintln!("skip: {id} 未下載");
                 continue;
             }
             // 預熱一次（首次含圖構建/視訊記憶體分配），再計時
@@ -1429,7 +1429,7 @@ mod tests {
             );
             assert!(
                 rtf < 2.0,
-                "{id} 的 RTF {rtf:.3} 异常高（backend={:?}）",
+                "{id} 的 RTF {rtf:.3} 異常高（backend={:?}）",
                 current_backend()
             );
             unload();
@@ -1444,20 +1444,20 @@ mod tests {
     fn forcing_cpu_binds_cpu_even_when_a_gpu_exists() {
         let id = "sensevoice-small-gguf";
         if !model_present(id) {
-            eprintln!("skip: {id} 未下载");
+            eprintln!("skip: {id} 未下載");
             return;
         }
         init_backends();
         let has_gpu = transcribe_cpp::devices().iter().any(|d| d.kind != "cpu");
-        eprintln!("[info] GPU 设备存在: {has_gpu}");
+        eprintln!("[info] GPU 裝置存在: {has_gpu}");
 
         let base = read_test_wav();
-        let text = transcribe(id, "auto", "cpu", "", &base, SR_U).expect("转写失败");
-        assert!(!text.trim().is_empty(), "强制 CPU 后输出为空");
+        let text = transcribe(id, "auto", "cpu", "", &base, SR_U).expect("轉寫失敗");
+        assert!(!text.trim().is_empty(), "強制 CPU 後輸出為空");
         let backend = current_backend().unwrap_or_default();
         assert!(
             backend.to_lowercase().contains("cpu"),
-            "设置要求 CPU，实际绑定到了 {backend:?}"
+            "設定要求 CPU，實際繫結到了 {backend:?}"
         );
         unload();
     }
@@ -1488,13 +1488,13 @@ mod tests {
         let base = read_test_wav();
         for id in ALL_MODELS {
             if !model_present(id) {
-                eprintln!("skip: {id} 未下载");
+                eprintln!("skip: {id} 未下載");
                 continue;
             }
             unload();
             std::thread::sleep(std::time::Duration::from_secs(2)); // 等工作集回落
             let before = process_memory_mb();
-            transcribe(id, "auto", "auto", "", &base, SR_U).expect("转写失败");
+            transcribe(id, "auto", "auto", "", &base, SR_U).expect("轉寫失敗");
             let after = process_memory_mb();
             let limits = CACHE
                 .lock()
@@ -1543,7 +1543,7 @@ mod tests {
                     gpu_device: 0,
                 },
             )
-            .expect("加载失败");
+            .expect("載入失敗");
             let load_ms = t_load.elapsed().as_millis();
             let caps = model.capabilities();
             eprintln!(
@@ -1560,7 +1560,7 @@ mod tests {
                 caps.max_audio_ms as f64 / 60_000.0,
             );
 
-            let mut s = model.session().expect("session 失败");
+            let mut s = model.session().expect("session 失敗");
             // lang_detect=false 的族傳 None（自動）會怎樣？和顯式 "zh" 對照。
             for lang in [None, Some("zh")] {
                 let opts = RunOptions {
@@ -1577,7 +1577,7 @@ mod tests {
                         tr.language,
                         tr.text.trim()
                     ),
-                    Err(e) => eprintln!("[probe] {dir} lang={lang:?}: 失败 {e}"),
+                    Err(e) => eprintln!("[probe] {dir} lang={lang:?}: 失敗 {e}"),
                 }
             }
         }
@@ -1595,7 +1595,7 @@ mod tests {
         eprintln!("[lang] clip = {:.2}s", base.len() as f64 / SR_U as f64);
         for id in ["qwen3-asr-0.6b-gguf", "qwen3-asr-1.7b-q4-gguf", "qwen3-asr-1.7b-gguf"] {
             if !model_present(id) {
-                eprintln!("skip: {id} 未下载");
+                eprintln!("skip: {id} 未下載");
                 continue;
             }
             let path = registry::verified_model_path(id).unwrap();
@@ -1606,10 +1606,10 @@ mod tests {
                     gpu_device: 0,
                 },
             )
-            .expect("加载失败");
-            let mut s = model.session().expect("session 失败");
+            .expect("載入失敗");
+            let mut s = model.session().expect("session 失敗");
             for i in 0..3 {
-                let tr = s.run(&base, &RunOptions::default()).expect("推理失败");
+                let tr = s.run(&base, &RunOptions::default()).expect("推理失敗");
                 eprintln!(
                     "[lang] {id} auto#{i}: detected={:?} text={}",
                     tr.language,
@@ -1619,7 +1619,7 @@ mod tests {
             // 復刻生產路徑：先用前 2 秒預熱，再跑整段
             let warm: Vec<f32> = base.iter().copied().take(2 * SR_U).collect();
             let _ = s.run(&warm, &RunOptions::default());
-            let tr = s.run(&base, &RunOptions::default()).expect("推理失败");
+            let tr = s.run(&base, &RunOptions::default()).expect("推理失敗");
             eprintln!(
                 "[lang] {id} after-warmup: detected={:?} text={}",
                 tr.language,
@@ -1633,7 +1633,7 @@ mod tests {
                         ..Default::default()
                     },
                 )
-                .expect("推理失败");
+                .expect("推理失敗");
             eprintln!(
                 "[lang] {id} lang=zh: detected={:?} text={}",
                 tr.language,
@@ -1657,7 +1657,7 @@ mod tests {
 
         for id in ["qwen3-asr-0.6b-gguf", "qwen3-asr-1.7b-gguf"] {
             if !model_present(id) {
-                eprintln!("skip: {id} 未下载");
+                eprintln!("skip: {id} 未下載");
                 continue;
             }
             let path = registry::verified_model_path(id).unwrap();
@@ -1668,7 +1668,7 @@ mod tests {
                     gpu_device: 0,
                 },
             )
-            .expect("加载失败");
+            .expect("載入失敗");
             let caps = model.capabilities();
             eprintln!(
                 "[caps] {id}: backend={} spec_decode={} streaming={} max_ts={:?} max_audio_ms={}",
@@ -1689,13 +1689,13 @@ mod tests {
                         n_ctx,
                         ..Default::default()
                     })
-                    .expect("session 失败");
+                    .expect("session 失敗");
                 let limits = s.limits().unwrap();
                 let opts = RunOptions::default();
                 let _ = s.run(&pcm, &opts); // 預熱
                 let mem = process_memory_mb();
                 let t = std::time::Instant::now();
-                let _ = s.run(&pcm, &opts).expect("推理失败");
+                let _ = s.run(&pcm, &opts).expect("推理失敗");
                 eprintln!(
                     "[n_ctx] {id} n_ctx={n_ctx}: eff={} max_audio={:.1}min max_kv={:.0}MB mem={mem}MB rtf={:.3}",
                     limits.effective_n_ctx,
@@ -1706,7 +1706,7 @@ mod tests {
             }
 
             // (2) spec_k_drafts：-1 = 族預設，0 = 關，正數 = 每步猜幾個 token。
-            let mut s = model.session().expect("session 失败");
+            let mut s = model.session().expect("session 失敗");
             for k in [-1, 0, 2, 4, 8] {
                 let opts = RunOptions {
                     spec_k_drafts: k,
@@ -1721,7 +1721,7 @@ mod tests {
                         t.elapsed().as_secs_f64() / audio_sec,
                         tr.text.chars().count()
                     ),
-                    Err(e) => eprintln!("[spec] {id} k={k}: 失败 {e}"),
+                    Err(e) => eprintln!("[spec] {id} k={k}: 失敗 {e}"),
                 }
             }
 
@@ -1733,7 +1733,7 @@ mod tests {
                 };
                 let _ = s.run(&pcm, &opts);
                 let t = std::time::Instant::now();
-                let _ = s.run(&pcm, &opts).expect("推理失败");
+                let _ = s.run(&pcm, &opts).expect("推理失敗");
                 eprintln!(
                     "[ts] {id} {:?}: rtf={:.3}",
                     ts,
@@ -1749,17 +1749,17 @@ mod tests {
     fn audio_over_model_limit_is_chunked() {
         let id = "sensevoice-small-gguf";
         if !model_present(id) {
-            eprintln!("skip: {id} 未下载");
+            eprintln!("skip: {id} 未下載");
             return;
         }
         // test_zh.wav 約 3.05 s，重複 12 遍 ≈ 36.6 s > 30 s 上限
         let text = run(id, 12);
-        assert!(!text.trim().is_empty(), "长音频输出为空");
+        assert!(!text.trim().is_empty(), "長音訊輸出為空");
         // 12 段內容相同，至少應該比單段長得多，說明後面的段沒被丟掉
         let single = run(id, 1);
         assert!(
             text.chars().count() > single.chars().count() * 3,
-            "长音频疑似被截断: len={} single={}",
+            "長音訊疑似被截斷: len={} single={}",
             text.chars().count(),
             single.chars().count()
         );

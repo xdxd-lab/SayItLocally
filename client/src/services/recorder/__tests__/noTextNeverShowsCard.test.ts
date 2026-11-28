@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 // 原始碼當字串讀進來（Vite 的 `?raw`）。用它而不是 node:fs 是因為本專案沒裝
-// @types/node，而 `vite/client` 已经声明了 `*?raw` —— 与 hotwordCapability.test.ts 同款。
+// @types/node，而 `vite/client` 已經宣告瞭 `*?raw` —— 與 hotwordCapability.test.ts 同款。
 import SOURCE from '../RecorderOrchestrator.ts?raw'
 
 /**
@@ -34,28 +34,28 @@ const CARD_TITLE_KEYS = [
   'recorder.recognitionFailedTitle',
 ]
 
-describe('识别没出文字不弹卡片', () => {
-  it('源码读到了，不是空字符串（否则下面几条会假绿）', () => {
+describe('識別沒出文字不彈卡片', () => {
+  it('原始碼讀到了，不是空字串（否則下面幾條會假綠）', () => {
     expect(SOURCE.length).toBeGreaterThan(1000)
     expect(SOURCE).toContain('showNoSpeech')
   })
 
-  it('卡片入口一个都没少认', () => {
+  it('卡片入口一個都沒少認', () => {
     // 入口名改了而這裡沒跟著改，下面的斷言就會形同虛設。
     for (const entry of CARD_ENTRY_POINTS) {
-      expect(SOURCE, `卡片入口 ${entry} 在源码里找不到了，先确认它是不是改名了`)
+      expect(SOURCE, `卡片入口 ${entry} 在原始碼裡找不到了，先確認它是不是改名了`)
         .toContain(entry)
     }
   })
 
-  it('没有任何一处取用已删除的「没有取得识别结果」文案', () => {
+  it('沒有任何一處取用已刪除的「沒有取得識別結果」文案', () => {
     // 這兩個 key 已經從兩份 locale 裡刪掉了，取它只會渲染出 key 本身。
     // 只查真實呼叫形式 `t('...')`，不查裸識別符號 —— 否則註釋裡提一句名字都會誤報。
     expect(SOURCE).not.toContain("t('recorder.noResultTitle')")
     expect(SOURCE).not.toContain("t('recorder.noResultDetail')")
   })
 
-  it('每一处卡片的标题都在白名单里', () => {
+  it('每一處卡片的標題都在白名單裡', () => {
     // 逐個卡片入口往後掃一小段，把它傳的 title key 抓出來比對。
     const titles: string[] = []
     for (const entry of CARD_ENTRY_POINTS) {
@@ -74,11 +74,11 @@ describe('识别没出文字不弹卡片', () => {
     // 抓到 0 條說明正則和原始碼寫法不再匹配 —— 那時這條斷言等於沒跑。
     expect(titles.length).toBeGreaterThan(0)
     for (const title of titles) {
-      expect(CARD_TITLE_KEYS, `卡片标题 ${title} 不在白名单里`).toContain(title)
+      expect(CARD_TITLE_KEYS, `卡片標題 ${title} 不在白名單裡`).toContain(title)
     }
   })
 
-  it('两条空结果路径都调了 showNoSpeech，且都带 no_text 分支', () => {
+  it('兩條空結果路徑都調了 showNoSpeech，且都帶 no_text 分支', () => {
     // 漏改的那一次，原始碼裡 showNoSpeech 只出現在一條路徑上。
     const noSpeechCalls = SOURCE.match(/showNoSpeech\(/g) ?? []
     expect(noSpeechCalls.length).toBeGreaterThanOrEqual(3)

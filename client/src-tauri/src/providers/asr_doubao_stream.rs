@@ -121,7 +121,7 @@ pub async fn transcribe(
 
     let (mut ws, resource_id) = connect(&auth, SCOPE).await?;
 
-    // 1. 发送 full client request
+    // 1. 傳送 full client request
     let mut request_params = serde_json::json!({
         "model_name": "bigmodel",
         "enable_itn": true,
@@ -175,7 +175,7 @@ pub async fn transcribe(
     }
 
     // 2. 傳送音訊資料（直接發 PCM，不轉 WAV）
-    // nostream 模式下服务端等最后一包才处理，一次性发完最快
+    // nostream 模式下服務端等最後一包才處理，一次性發完最快
     let audio_frame = doubao_protocol::build_audio_request(&pcm_data, true);
     ws.send(tungstenite::Message::Binary(audio_frame.into()))
         .await

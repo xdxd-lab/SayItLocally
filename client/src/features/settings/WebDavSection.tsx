@@ -1,4 +1,4 @@
-// WebDAV 自动备份的设置面板。
+// WebDAV 自動備份的設定面板。
 //
 // 分工：**卡面回答「現在在做什麼」，彈窗回答「怎麼配」。**
 //
@@ -304,16 +304,16 @@ export default function WebDavSection() {
     <Card>
       <CardContent className="p-6">
         {/* items-center 是本頁卡片頭部的既有寫法（音訊卡、日誌卡都是），右側控制元件對著
-            标题+说明整块居中。用 items-start 会让 32px 高的按钮压着 28px 的标题行，
-            视觉上往下坠；而且「配置服务器」按钮和「自动备份」开关高度不同，
-            顶对齐时两个状态的右侧内容会错开。 */}
+            標題+說明整塊居中。用 items-start 會讓 32px 高的按鈕壓著 28px 的標題行，
+            視覺上往下墜；而且「配置伺服器」按鈕和「自動備份」開關高度不同，
+            頂對齊時兩個狀態的右側內容會錯開。 */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
             <h2 className="text-lg font-semibold">{t('webdav.title')}</h2>
             <p className="mt-1 text-sm text-muted-foreground">{t('webdav.desc')}</p>
           </div>
           {/* 右上角這一格是這張卡的開關位：沒配置時是唯一的入口，配置完就換成自動備份開關。
-              入口按钮单独放在说明下面会显得像一个孤立的动作，和卡片其它内容对不上。 */}
+              入口按鈕單獨放在說明下面會顯得像一個孤立的動作，和卡片其它內容對不上。 */}
           <div className="flex shrink-0 items-center gap-2">
             {configured ? (
               <>
@@ -340,10 +340,10 @@ export default function WebDavSection() {
         {configured && (
           <>
             {/* 備份目標做成一張有邊框的小卡，寫法沿用「AI 供應商」的服務卡：
-                地址 + 状态徽标一行，摘要一行。原先这些是三段没有容器的散排文字，
-                夹在标题和按钮之间，读起来像还在写说明，而不是「这是已经配好的那个东西」。
-                自动备份开启时用 border-primary + bg-primary/5 —— 这是本仓库表示
-                「这一份正在被使用」的既有语汇，不额外增加元素。 */}
+                地址 + 狀態徽標一行，摘要一行。原先這些是三段沒有容器的散排文字，
+                夾在標題和按鈕之間，讀起來像還在寫說明，而不是「這是已經配好的那個東西」。
+                自動備份開啟時用 border-primary + bg-primary/5 —— 這是本倉庫表示
+                「這一份正在被使用」的既有語彙，不額外增加元素。 */}
             <div
               className={cn(
                 'mt-4 rounded-lg border p-3',
@@ -365,8 +365,8 @@ export default function WebDavSection() {
               </div>
 
               {/* 三個動作收成卡上的圖示 + tooltip，和「AI 供應商」服務卡一致。
-                  原先是卡片下面三颗并排的文字按钮：一个实心加两个 ghost，宽窄不齐、
-                  又和卡片抢层级，而它们本来就是「对这台服务器做的三件事」，属于这张卡。 */}
+                  原先是卡片下面三顆並排的文字按鈕：一個實心加兩個 ghost，寬窄不齊、
+                  又和卡片搶層級，而它們本來就是「對這台伺服器做的三件事」，屬於這張卡。 */}
               <div className="mt-1 flex items-center gap-2">
                 <span className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground">
                   {uploading && progress ? t(phaseLabelKeys[progress.phase]) : metaParts.join(' · ')}
@@ -428,8 +428,8 @@ export default function WebDavSection() {
               )}
 
               {/* 失敗原因單獨一行：它可能很長，擠進摘要會把前面的資訊頂掉。
-                  成功和失败都要能看见 —— 少了失败那一半，一个静默失败几个月的
-                  备份在界面上和一个正常工作的备份长得一模一样。 */}
+                  成功和失敗都要能看見 —— 少了失敗那一半，一個靜默失敗幾個月的
+                  備份在介面上和一個正常工作的備份長得一模一樣。 */}
               {!uploading && lastResult && !lastResult.ok && (
                 <p className="mt-1.5 text-[11px] text-destructive">
                   {describeWebDavError(lastResult.error ?? '')}
@@ -508,8 +508,8 @@ export default function WebDavSection() {
           </div>
 
           {/* ── 備份內容 ──
-              三项全部列出，配置那一项标「始终包含」而不是不显示：「会同步哪些文件」
-              这个问题需要一个看得见的完整答案，而不是从两个开关反推。 */}
+              三項全部列出，配置那一項標「始終包含」而不是不顯示：「會同步哪些檔案」
+              這個問題需要一個看得見的完整答案，而不是從兩個開關反推。 */}
           <div className="mt-5 border-t border-border pt-4">
             <p className="text-sm font-medium">{t('webdav.contentTitle')}</p>
 
@@ -538,7 +538,7 @@ export default function WebDavSection() {
               />
             </div>
             {/* 就地提示而不是二級確認框：彈窗裡再套彈窗是反模式，而且只要錄音是開著的，
-                代价就应该一直写在那儿，而不是点一次就消失。 */}
+                代價就應該一直寫在那兒，而不是點一次就消失。 */}
             {includeAudio && <FormatHint text={t('webdav.audioOnHint')} />}
           </div>
 
@@ -566,7 +566,7 @@ export default function WebDavSection() {
                 />
               </div>
               {/* 「保留份數」本身說不清會不會刪東西。每次備份是一個新檔案、不覆蓋舊的，
-                  所以必须明说超出的那些会被删掉 —— 用户拿这个数做决定，就得知道代价。 */}
+                  所以必須明說超出的那些會被刪掉 —— 使用者拿這個數做決定，就得知道代價。 */}
               <p className="mt-1 text-[11px] text-muted-foreground">{t('webdav.keepHint')}</p>
             </div>
           </div>

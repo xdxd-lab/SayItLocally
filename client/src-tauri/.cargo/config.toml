@@ -3,7 +3,7 @@
 # src/arch/canary/model.cpp 註釋裡有 UTF-8 的 ▁(U+2581)。按 GBK 解碼時那三個
 # 位元組會把換行一起吞掉，註釋不閉合 → 幾十條級聯的 C2065/C3927/C4430。
 # CL 是 MSVC 認的"前置追加編譯選項"環境變數，用它給所有 C/C++ 編譯加 /utf-8，
-# 比改 CMAKE_CXX_FLAGS 安全（不会把 crate 自己设的 /EHsc -W0 冲掉）。
+# 比改 CMAKE_CXX_FLAGS 安全（不會把 crate 自己設的 /EHsc -W0 沖掉）。
 CL = "/utf-8"
 
 # transcribe-cpp 的 vulkan feature 要靠 Vulkan SDK 編 SPIR-V shader，CMake 找的是
@@ -22,7 +22,7 @@ VULKAN_SDK = "C:\\VulkanSDK\\1.4.350.0"
 # 鎖序列化了，純邏輯測試又都在毫秒級。
 RUST_TEST_THREADS = "1"
 
-# macOS 最低版本，与 tauri.macos.conf.json 的 minimumSystemVersion 保持一致。
+# macOS 最低版本，與 tauri.macos.conf.json 的 minimumSystemVersion 保持一致。
 # `tauri build/dev` 會自己設這個變數，但直接跑 cargo（check / test / build）時沒人設，
 # transcribe-cpp 的 CMake 就按本機系統版本編 ggml（實測 minos 26.5），編出來的東西
 # 在舊系統上可能直接崩，還和 tauri 構建的產物對不上快取。只對 Apple 目標生效，Windows 無影響。

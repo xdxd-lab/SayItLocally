@@ -12,7 +12,7 @@ import { t, type TranslationKey } from '@/i18n'
 import { IS_MAC } from '@/lib/platform'
 
 export interface SingleKeyDef {
-  /** 存入设置、也等于 DOM KeyboardEvent.code */
+  /** 存入設定、也等於 DOM KeyboardEvent.code */
   setting: string
   /** Windows 虛擬鍵碼（供 webview 回退補發事件用） */
   vk: number
@@ -32,18 +32,18 @@ const ALL_SINGLE_KEYS: SingleKeyDef[] = [
   // 常見低衝突鍵
   { setting: 'CapsLock', vk: 0x14, label: 'Caps Lock' },
   { setting: 'Space', vk: 0x20, label: '空格' },
-  { setting: 'ContextMenu', vk: 0x5d, label: '菜单键' },
+  { setting: 'ContextMenu', vk: 0x5d, label: '選單鍵' },
   { setting: 'Pause', vk: 0x13, label: 'Pause' },
   { setting: 'ScrollLock', vk: 0x91, label: 'ScrollLock' },
   { setting: 'Insert', vk: 0x2d, label: 'Insert' },
   // 滑鼠側鍵（原始 XBUTTON，由 Rust 低階滑鼠鉤子處理）
-  { setting: 'XButton1', vk: 0x05, label: '鼠标侧键1（后退）' },
-  { setting: 'XButton2', vk: 0x06, label: '鼠标侧键2（前进）' },
+  { setting: 'XButton1', vk: 0x05, label: '滑鼠側鍵1（後退）' },
+  { setting: 'XButton2', vk: 0x06, label: '滑鼠側鍵2（前進）' },
   // 滑鼠中鍵（VK_MBUTTON，由 Rust 低階滑鼠鉤子處理）
-  { setting: 'MButton', vk: 0x04, label: '鼠标中键' },
+  { setting: 'MButton', vk: 0x04, label: '滑鼠中鍵' },
   // 瀏覽器後退/前進鍵（羅技等改鍵滑鼠常把側鍵對映成這個，由鍵盤鉤子處理）
-  { setting: 'BrowserBack', vk: 0xa6, label: '鼠标侧键（后退键）' },
-  { setting: 'BrowserForward', vk: 0xa7, label: '鼠标侧键（前进键）' },
+  { setting: 'BrowserBack', vk: 0xa6, label: '滑鼠側鍵（後退鍵）' },
+  { setting: 'BrowserForward', vk: 0xa7, label: '滑鼠側鍵（前進鍵）' },
   // 功能鍵 F1–F24（VK 0x70–0x87 連續）。
   //
   // F13–F24 在 Windows 裡是正式的虛擬鍵、鍵盤佈局裡也有真實 scan code，但沒有任何
@@ -183,7 +183,7 @@ export function resolveSingleKeyShortcut(code: string): string | undefined {
   return isSingleKeySetting(code) ? code : undefined
 }
 
-/** setting → DOM code（恒等，未知返回空串）。 */
+/** setting → DOM code（恆等，未知返回空串）。 */
 export function settingToCode(setting: string): string {
   return isSingleKeySetting(setting) ? setting : ''
 }
@@ -483,7 +483,7 @@ export function getAcceleratorShortcutValidationError(accelerator: string): stri
  * macOS 的 accelerator 校驗（擴音組合、AI 開關、潤色模式切換）。
  *
  * - 帶 ⌘ 或 ⌃ 的組合註冊成系統快捷鍵；修飾鍵只有 ⌥ / ⇧ 的組合（macOS 15 起系統快捷鍵不觸發）
- *   由 Rust 的 event tap 接管（keyboard/macos.rs 的 TAP_COMBOS），两类都能用。
+ *   由 Rust 的 event tap 接管（keyboard/macos.rs 的 TAP_COMBOS），兩類都能用。
  * - ⌘Space（聚焦搜尋）、⌃Space（切換輸入法）、⌘Tab、⌘Q、⌘⇧3/4/5（截圖）被系統或所有程式佔用。
  * - 一個修飾鍵 + 會打出字元或有編輯含義的鍵，是各程式自己的快捷鍵或用來輸入特殊字元（⌥E、⌥2）。
  */
@@ -512,7 +512,7 @@ function getMacAcceleratorValidationError(accelerator: string): string | null {
   if (has('Meta') && has('Shift') && ['3', '4', '5'].includes(mainKey ?? '')) {
     return t('shortcut.error.reservedMac')
   }
-  // ⌥⌘Esc：强制退出
+  // ⌥⌘Esc：強制退出
   if (has('Meta') && has('Alt') && mainKey === 'Escape') {
     return t('shortcut.error.reservedMac')
   }

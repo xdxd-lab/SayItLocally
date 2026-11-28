@@ -33,7 +33,7 @@ const FALLBACK_UID: &str = "sayit";
 
 /// 一次呼叫要用哪套鑑權。
 pub enum DoubaoAuth<'a> {
-    /// 新版控制台：只发 X-Api-Key。
+    /// 新版控制台：只發 X-Api-Key。
     ApiKey { api_key: &'a str },
     /// 舊版控制台：App ID + Access Token。
     AppIdAccessKey { app_id: &'a str, access_key: &'a str },
@@ -182,7 +182,7 @@ mod tests {
         }
     }
 
-    /// 空 app_id = 新版控制台，只发 X-Api-Key。
+    /// 空 app_id = 新版控制台，只發 X-Api-Key。
     #[test]
     fn empty_app_id_selects_new_console() {
         let c = cfg("APPKEY", "");

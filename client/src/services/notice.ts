@@ -124,7 +124,7 @@ async function loadRaw(): Promise<unknown> {
 export async function _disabledLoadRaw(): Promise<unknown> {
   // 開發預覽：dev 環境下可在控制台執行
   //   localStorage.setItem('__devNotice', JSON.stringify({ id:'t1', level:'warning', title:'測試公告', body:'內容…', linkUrl:'https://sayitapp.site', linkLabel:'前往官網' }))
-  // 刷新即可看到 banner 效果，无需后端。清除：localStorage.removeItem('__devNotice')
+  // 重新整理即可看到 banner 效果，無需後端。清除：localStorage.removeItem('__devNotice')
   if (import.meta.env.DEV) {
     try {
       const dev = localStorage.getItem('__devNotice')
@@ -169,7 +169,7 @@ export async function dismissNotice(id: string): Promise<void> {
   const dismissed = await getSetting<string[]>(DISMISSED_KEY, [])
   const list = Array.isArray(dismissed) ? dismissed : []
   if (!list.includes(id)) {
-    // 只保留最近 50 条，避免无限增长
+    // 只保留最近 50 條，避免無限增長
     await setSetting(DISMISSED_KEY, [...list, id].slice(-50))
   }
 }

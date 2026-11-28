@@ -212,7 +212,7 @@ export default function Sidebar() {
   return (
     <nav className="flex w-48 flex-col border-r border-sidebar-border bg-sidebar py-4">
       {/* mac：標題欄左邊歸系統紅綠燈，圖示和名字放在側欄最上面、「首頁」上方（Windows 的在標題欄裡）。
-          图标中心对齐下面导航项的图标列（距侧栏左边 32px）。 */}
+          圖示中心對齊下面導航項的圖示列（距側欄左邊 32px）。 */}
       {IS_MAC && (
         <div className="mb-3 flex items-center gap-2.5 pl-[18px] pr-3">
           <img src={macIcon} srcSet={`${macIcon} 1x, ${macIcon2x} 2x`} width={28} height={28}

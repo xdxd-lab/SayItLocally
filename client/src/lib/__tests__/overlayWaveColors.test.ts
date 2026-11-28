@@ -28,14 +28,14 @@ function oklabL(hex: string): number {
 const HEX = /^#[0-9a-f]{6}$/
 
 describe('parseHexColor', () => {
-  it('规整成小写 6 位，接受简写和省略 #', () => {
+  it('規整成小寫 6 位，接受簡寫和省略 #', () => {
     expect(parseHexColor('#A78BFA')).toBe('#a78bfa')
     expect(parseHexColor('a78bfa')).toBe('#a78bfa')
     expect(parseHexColor('#fa0')).toBe('#ffaa00')
     expect(parseHexColor('  #123456 ')).toBe('#123456')
   })
 
-  it('不合法的输入返回 null，不替用户猜', () => {
+  it('不合法的輸入返回 null，不替使用者猜', () => {
     for (const bad of ['', '#12', '#12345', '#1234567', 'red', '#gggggg', null, 42, {}]) {
       expect(parseHexColor(bad)).toBeNull()
     }
@@ -43,7 +43,7 @@ describe('parseHexColor', () => {
 })
 
 describe('normalizeCustomWave / normalizeWaveTheme', () => {
-  it('坏字段逐个回落默认值，好字段保留', () => {
+  it('壞欄位逐個回落預設值，好欄位保留', () => {
     expect(normalizeCustomWave({ mode: 'solid', from: '#FF0000', to: 'nope' })).toEqual({
       mode: 'solid',
       from: '#ff0000',
@@ -53,15 +53,15 @@ describe('normalizeCustomWave / normalizeWaveTheme', () => {
     expect(normalizeCustomWave(null)).toEqual(DEFAULT_CUSTOM_WAVE)
   })
 
-  it('认识 custom，未知主题回落调用方给的默认', () => {
+  it('認識 custom，未知主題回落呼叫方給的預設', () => {
     expect(normalizeWaveTheme('custom', 'black-blue')).toBe('custom')
     expect(normalizeWaveTheme('black-rainbow', 'black-blue')).toBe('black-rainbow')
     expect(normalizeWaveTheme('neon', 'black-blue')).toBe('black-blue')
   })
 })
 
-describe('黑底可见性', () => {
-  it('太暗的颜色被提到亮度下限，色相大致保留', () => {
+describe('黑底可見性', () => {
+  it('太暗的顏色被提到亮度下限，色相大致保留', () => {
     for (const dark of ['#000000', '#000080', '#1e1b4b', '#3b0764', '#14532d']) {
       expect(needsBrightening(dark)).toBe(true)
       const fixed = visibleOnBlack(dark)
@@ -75,7 +75,7 @@ describe('黑底可见性', () => {
     expect(b).toBeGreaterThan(g)
   })
 
-  it('够亮的颜色原样返回，不被悄悄改掉', () => {
+  it('夠亮的顏色原樣返回，不被悄悄改掉', () => {
     for (const bright of ['#f472b6', '#a78bfa', '#fbbf24', '#ffffff', '#22d3ee']) {
       expect(needsBrightening(bright)).toBe(false)
       expect(visibleOnBlack(bright)).toBe(bright)
@@ -88,7 +88,7 @@ describe('buildWavePalette', () => {
    * 內建三套的配色從 Overlay.tsx 和 AppearancePage.tsx 各一份收進了這裡，
    * 釘住輸出，確保收口沒有改變任何現有使用者看到的顏色。
    */
-  it('内置主题与收口前逐根一致', () => {
+  it('內建主題與收口前逐根一致', () => {
     const legacy = (index: number, total: number, theme: string) => {
       const t = index / Math.max(1, total - 1)
       if (theme === 'black-white') return '#f1f5f9'
@@ -107,13 +107,13 @@ describe('buildWavePalette', () => {
     expect(getWaveThinkingColor('black-rainbow', DEFAULT_CUSTOM_WAVE)).toBe('#facc15')
   })
 
-  it('单色：每根条同一个颜色', () => {
+  it('單色：每根條同一個顏色', () => {
     const solid: CustomWaveColors = { mode: 'solid', from: '#f472b6', to: '#000000' }
     const palette = buildWavePalette(12, 'custom', solid)
     expect(new Set(palette)).toEqual(new Set(['#f472b6']))
   })
 
-  it('渐变：两端就是用户选的颜色，中间每根都在黑底上可见', () => {
+  it('漸變：兩端就是使用者選的顏色，中間每根都在黑底上可見', () => {
     const grad: CustomWaveColors = { mode: 'gradient', from: '#22d3ee', to: '#f472b6' }
     const palette = buildWavePalette(24, 'custom', grad)
     expect(palette).toHaveLength(24)
@@ -126,7 +126,7 @@ describe('buildWavePalette', () => {
     expect(new Set(palette).size).toBeGreaterThan(10)
   })
 
-  it('渐变的一端是灰色时，色相借另一端，中段不会突然跳成别的颜色', () => {
+  it('漸變的一端是灰色時，色相借另一端，中段不會突然跳成別的顏色', () => {
     const grad: CustomWaveColors = { mode: 'gradient', from: '#ffffff', to: '#60a5fa' }
     const palette = buildWavePalette(9, 'custom', grad)
     for (const c of palette.slice(1)) {
@@ -135,7 +135,7 @@ describe('buildWavePalette', () => {
     }
   })
 
-  it('计时与识别中颜色从自定义主色派生，且是合法色值', () => {
+  it('計時與識別中顏色從自定義主色派生，且是合法色值', () => {
     const grad: CustomWaveColors = { mode: 'gradient', from: '#000080', to: '#3b0764' }
     const timer = getWaveTimerColor('custom', grad)
     const thinking = getWaveThinkingColor('custom', grad)

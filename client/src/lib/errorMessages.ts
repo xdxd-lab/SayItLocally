@@ -49,7 +49,7 @@ export interface FriendlyError {
   code: FriendlyErrorCode
   /** 一句話說清發生了什麼，以及該往哪個方向查 */
   message: string
-  /** 原始异常文本，供排查用；UI 以次要字号展示 */
+  /** 原始異常文本，供排查用；UI 以次要字號展示 */
   detail: string
   /** 建議提供的動作按鈕型別，由呼叫方決定要不要渲染 */
   action: ErrorActionHint
@@ -135,12 +135,12 @@ function extractHttpStatus(text: string): number | null {
 }
 
 function isNetworkFailure(text: string): boolean {
-  return /failed to fetch|networkerror|error sending request|econnrefused|enotfound|dns|connection refused|unreachable|websocket 连接失败/i // i18n-allow: 匹配底层中文错误串
+  return /failed to fetch|networkerror|error sending request|econnrefused|enotfound|dns|connection refused|unreachable|websocket \u8fde\u63a5\u5931\u8d25|websocket 連線失敗|websocket 連接失敗/i // i18n-allow: 匹配底層中文錯誤串（簡體以 Unicode 跳脫保存，並列正體）
     .test(text)
 }
 
 function isTimeout(text: string): boolean {
-  return /timeout|timed out|超时/i.test(text) // i18n-allow: 匹配底层中文错误串
+  return /timeout|timed out|\u8d85\u65f6|超時/i.test(text) // i18n-allow: 匹配底層中文錯誤串（簡體以 Unicode 跳脫保存，並列正體）
 }
 
 /**
@@ -234,7 +234,7 @@ export function describeProviderError(error: unknown): FriendlyError {
   // 401 才是明確的鑑權失敗。403 單獨一類（見下方分支）：403 的常見成因是
   // 「這個請求根本不該到這兒」——CDN 按地區拒絕、賬號沒開通該模型，響應裡
   // 一個字都不提金鑰。把它報成金鑰問題只會讓使用者反覆重建金鑰。
-  if (stableCode === 'provider_bad_key' || status === 401 || /invalid.*(key|token)|unauthorized|认证失败|鉴权/i.test(text)) { // i18n-allow: 匹配底层中文错误串
+  if (stableCode === 'provider_bad_key' || status === 401 || /invalid.*(key|token)|unauthorized|\u8ba4\u8bc1\u5931\u8d25|\u9274\u6743|認證失敗|鑑權/i.test(text)) { // i18n-allow: 匹配底層中文錯誤串（簡體以 Unicode 跳脫保存，並列正體）
     return {
       code: 'provider_bad_key',
       message: t('err.provider.badKey'),
@@ -248,7 +248,7 @@ export function describeProviderError(error: unknown): FriendlyError {
   // 而充值入口就在同一個服務商後台（detail 裡帶著服務商給的具體金額和連結）。
   if (stableCode === 'provider_insufficient_balance'
     || status === 402
-    || /payment required|insufficient balance|in balance|insufficient_quota|余额不足/i.test(text)) { // i18n-allow: 匹配底层中文错误串
+    || /payment required|insufficient balance|in balance|insufficient_quota|\u4f59\u989d\u4e0d\u8db3|餘額不足/i.test(text)) { // i18n-allow: 匹配底層中文錯誤串（簡體以 Unicode 跳脫保存，並列正體）
     return {
       code: 'provider_insufficient_balance',
       message: t('err.provider.insufficientBalance'),
@@ -256,7 +256,7 @@ export function describeProviderError(error: unknown): FriendlyError {
       action: 'check_key',
     }
   }
-  if (stableCode === 'provider_rate_limit' || status === 429 || /rate.?limit|quota|欠费|余额/i.test(text)) { // i18n-allow: 匹配底层中文错误串
+  if (stableCode === 'provider_rate_limit' || status === 429 || /rate.?limit|quota|\u6b20\u8d39|\u4f59\u989d|欠費|餘額/i.test(text)) { // i18n-allow: 匹配底層中文錯誤串（簡體以 Unicode 跳脫保存，並列正體）
     return {
       code: 'provider_rate_limit',
       message: t('err.provider.rateLimit'),
@@ -331,7 +331,7 @@ export function describeDownloadError(error: unknown): FriendlyError {
       action: 'switch_source',
     }
   }
-  if (stableCode === 'download_no_space' || /no space|磁盘|disk full|not enough space/i.test(text)) { // i18n-allow: 匹配底层中文错误串
+  if (stableCode === 'download_no_space' || /no space|\u78c1\u76d8|磁碟|磁盤|disk full|not enough space/i.test(text)) { // i18n-allow: 匹配底層中文錯誤串（簡體以 Unicode 跳脫保存，並列正體）
     return {
       code: 'download_no_space',
       message: t('err.download.noSpace'),
@@ -339,7 +339,7 @@ export function describeDownloadError(error: unknown): FriendlyError {
       action: 'none',
     }
   }
-  if (stableCode === 'download_permission' || /permission|denied|access is denied|拒绝访问/i.test(text)) { // i18n-allow: 匹配底层中文错误串
+  if (stableCode === 'download_permission' || /permission|denied|access is denied|\u62d2\u7edd\u8bbf\u95ee|拒絕存取|拒絕訪問/i.test(text)) { // i18n-allow: 匹配底層中文錯誤串（簡體以 Unicode 跳脫保存，並列正體）
     return {
       code: 'download_permission',
       message: t('err.download.permission'),
@@ -347,7 +347,7 @@ export function describeDownloadError(error: unknown): FriendlyError {
       action: 'none',
     }
   }
-  if (stableCode === 'download_checksum' || /checksum|sha256|校验/i.test(text)) { // i18n-allow: 匹配底层中文错误串
+  if (stableCode === 'download_checksum' || /checksum|sha256|\u6821\u9a8c|校驗/i.test(text)) { // i18n-allow: 匹配底層中文錯誤串（簡體以 Unicode 跳脫保存，並列正體）
     return {
       code: 'download_checksum',
       message: t('err.download.checksum'),

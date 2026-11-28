@@ -1282,7 +1282,7 @@ pub struct ArchiveProgress<'a> {
 /// 「本地匯出能恢復、雲端備份恢復不了」這種只在換機時才暴露的問題。
 ///
 /// 先寫 `.part` 再原子釋出，失敗時清掉臨時檔案 —— 中斷留下的半個 zip 不能
-/// 长得像一个有效备份。
+/// 長得像一個有效備份。
 ///
 /// 總量（檔案數 / 位元組數）透過 `on_progress` 報出去，不作為返回值：呼叫方要的是
 /// 打包完成後**zip 本身**的大小（用來算上傳進度），那個得 stat 產物檔案才知道。
@@ -3657,7 +3657,7 @@ mod tests {
             json!({
                 "id": "intent",
                 "name": "Intent cleanup",
-                "systemPrompt": "中文自定义",
+                "systemPrompt": "中文自定義",
                 "builtinPromptLanguage": "zh-CN",
             }),
             json!({

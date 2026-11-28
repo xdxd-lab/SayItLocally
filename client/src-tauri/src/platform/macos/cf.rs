@@ -152,8 +152,8 @@ mod tests {
 
     #[test]
     fn cfstring_roundtrip_keeps_unicode() {
-        let s = cfstr("说话 SayIt ✓");
-        assert_eq!(unsafe { cfstring_to_string(s.as_ptr()) }.as_deref(), Some("说话 SayIt ✓"));
+        let s = cfstr("說話 SayIt ✓");
+        assert_eq!(unsafe { cfstring_to_string(s.as_ptr()) }.as_deref(), Some("說話 SayIt ✓"));
     }
 
     #[test]

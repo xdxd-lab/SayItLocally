@@ -481,7 +481,7 @@ mod tests {
         super::super::gguf_asr::init_backends();
         tokio::runtime::Builder::new_current_thread()
             .build()
-            .expect("创建测试 runtime 失败")
+            .expect("建立測試 runtime 失敗")
             .block_on(local_transcribe(
                 audio_b64,
                 model_id.to_string(),
@@ -662,7 +662,7 @@ mod tests {
     fn end_to_end_base64_to_text() {
         let model_id = "sensevoice-small-gguf";
         if !super::super::gguf_asr::model_is_downloaded(model_id) {
-            eprintln!("skip: {model_id} 未下载");
+            eprintln!("skip: {model_id} 未下載");
             return;
         }
 
@@ -683,7 +683,7 @@ mod tests {
         let result = run_local_transcribe(b64, model_id).unwrap();
         assert!(
             !result.text.trim().is_empty(),
-            "VAD 后仍应识别出内容，got {:?}",
+            "VAD 後仍應識別出內容，got {:?}",
             result.text
         );
         super::super::gguf_asr::unload();
@@ -699,7 +699,7 @@ mod tests {
     fn long_audio_is_chunked_and_transcribed_on_gpu() {
         let model_id = "qwen3-asr-1.7b-gguf";
         if !super::super::gguf_asr::model_is_downloaded(model_id) {
-            eprintln!("skip: {model_id} 未下载");
+            eprintln!("skip: {model_id} 未下載");
             return;
         }
         let wav = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("resources/test_zh.wav");
@@ -719,12 +719,12 @@ mod tests {
             .collect();
         let segments = super::super::local_vad::detect_speech_segments(&samples, SR).unwrap();
         let chunks = super::super::local_vad::plan_chunks(&samples, &segments, MAX_CHUNK_SEC * SR);
-        assert!(chunks.len() >= 7, "220 s 应切成至少 7 块，实际 {}", chunks.len());
+        assert!(chunks.len() >= 7, "220 s 應切成至少 7 塊，實際 {}", chunks.len());
         assert!(chunks.iter().all(|c| c.end - c.start <= MAX_CHUNK_SEC * SR));
 
         let b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &pcm_bytes);
         let t0 = std::time::Instant::now();
-        let result = run_local_transcribe(b64, model_id).expect("长录音识别失败");
+        let result = run_local_transcribe(b64, model_id).expect("長錄音識別失敗");
         let backend = super::super::gguf_asr::current_backend().unwrap_or_default();
         eprintln!(
             "[long-audio] audio={:.1}s chunks={} elapsed={:.1}s chars={} backend={}",
@@ -734,11 +734,11 @@ mod tests {
             result.text.chars().count(),
             backend,
         );
-        assert!(result.text.chars().count() > 200, "长录音识别结果太短：{:?}", result.text);
+        assert!(result.text.chars().count() > 200, "長錄音識別結果太短：{:?}", result.text);
         // 機器上有顯示卡時，必須是在顯示卡上跑完的：落到 CPU 說明中途出了後端錯誤
         let has_gpu = transcribe_cpp::devices().iter().any(|d| d.kind != "cpu");
         if has_gpu {
-            assert!(!backend.to_lowercase().contains("cpu"), "显卡中途失败、回落到了 CPU：{backend}");
+            assert!(!backend.to_lowercase().contains("cpu"), "顯示卡中途失敗、回落到了 CPU：{backend}");
         }
         super::super::gguf_asr::unload();
     }

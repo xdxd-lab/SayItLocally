@@ -29,7 +29,7 @@ done
 APP="$CLIENT_DIR/src-tauri/target/$PROFILE/bundle/macos/SayItLocally.app"
 if [ ! -d "$APP" ]; then
   echo "找不到 $APP"
-  echo "先构建：release 跑 scripts/macos/build-release.sh，debug 跑 npx tauri build --debug --bundles app"
+  echo "先構建：release 跑 scripts/macos/build-release.sh，debug 跑 npx tauri build --debug --bundles app"
   exit 1
 fi
 
@@ -57,7 +57,7 @@ touch "$TEST_HOME/$MARKER"
 
 open --env "HOME=$TEST_HOME" "$APP"
 
-echo "已启动：$APP"
+echo "已啟動：$APP"
 echo "測試目錄：$TEST_HOME"
-echo "日志：$TEST_HOME/Library/Application Support/com.sayitlocally.desktop/logs/sayit.log"
+echo "日誌：$TEST_HOME/Library/Application Support/com.sayitlocally.desktop/logs/sayit.log"
 echo "退出：點選單欄的 SayItLocally 圖示 → 退出"

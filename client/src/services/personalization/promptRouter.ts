@@ -80,7 +80,7 @@ export function buildHotwordInjectionPart(hotwords: string[] | undefined): strin
   if (!hotwords || hotwords.length === 0) return null
   const terms = Array.from(new Set(hotwords.map((w) => w.trim()).filter(Boolean)))
   if (terms.length === 0) return null
-  return `用户术语表：以下是用户常用的专有名词/术语，整理时若遇到读音相近或明显误识的词，请优先纠正为下列正确写法（保持其大小写），并原样保留：\n${terms.join('、')}` // i18n-allow: 中文口述整理 Prompt
+  return `使用者術語表：以下是使用者常用的專有名詞/術語，整理時若遇到讀音相近或明顯誤識的詞，請優先糾正為下列正確寫法（保持其大小寫），並原樣保留：\n${terms.join('、')}` // i18n-allow: 中文口述整理 Prompt
 }
 
 export function resolvePromptRouting(input: PromptRoutingInput): PromptResolution {
@@ -94,12 +94,12 @@ export function resolvePromptRouting(input: PromptRoutingInput): PromptResolutio
   const dominantScene = summarizeDomainScenes(input.userStats, 1)[0]
 
   if (matchedRule?.promptAppend) {
-    systemPromptParts.push(`应用场景补充：\n${matchedRule.promptAppend.trim()}`) // i18n-allow: 中文口述整理 Prompt
+    systemPromptParts.push(`應用場景補充：\n${matchedRule.promptAppend.trim()}`) // i18n-allow: 中文口述整理 Prompt
   }
 
   const dynamicIdentityPrompt = buildDynamicIdentityPrompt(input.userStats)
   if (dynamicIdentityPrompt) {
-    systemPromptParts.push(`用户画像补充：\n${dynamicIdentityPrompt}`) // i18n-allow: 中文口述整理 Prompt
+    systemPromptParts.push(`使用者畫像補充：\n${dynamicIdentityPrompt}`) // i18n-allow: 中文口述整理 Prompt
   }
 
   // 可選：把熱詞表注入系統提示詞，幫助 AI 在整理時糾正/保留專有名詞（預設關閉）。

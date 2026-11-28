@@ -137,7 +137,7 @@ export default function PromptPresetSection({
         </div>
 
         {/* 編輯/新建表單放在列表**上方**：以前在整個列表下面，列表一長就在螢幕外，
-            点了「新建」看着像没反应。 */}
+            點了「新建」看著像沒反應。 */}
         {editingPreset && (
           <div className="mb-4 space-y-3 rounded-lg border border-primary/30 bg-muted p-4">
             <p className="text-sm font-medium">{isCreating ? t('promptPreset.createTitle') : t('promptPreset.editTitle', { name: editingPresetName })}</p>
@@ -302,7 +302,7 @@ export default function PromptPresetSection({
                         )}
                       </div>
                       {/* 原來顯示提示詞原文的前 60 個字（「你是語音文本精煉助手。輸入是 ASR……」），
-                          看不出几个模式的区别。内置模式改成一句说明；自建模式没有说明，只显示名字。 */}
+                          看不出幾個模式的區別。內建模式改成一句說明；自建模式沒有說明，只顯示名字。 */}
                       {BUILTIN_PRESET_DESC[preset.id] && (
                         <p className="truncate text-xs text-muted-foreground">{t(BUILTIN_PRESET_DESC[preset.id])}</p>
                       )}

@@ -1,9 +1,9 @@
-//! macOS 系统 C 接口声明：CoreFoundation / CoreGraphics / Accessibility / Carbon / CoreAudio。
+//! macOS 系統 C 介面宣告：CoreFoundation / CoreGraphics / Accessibility / Carbon / CoreAudio。
 //!
 //! 只宣告 SayIt 用得到的那一小撮。這些都是十幾年沒變過簽名的穩定 C API，
 //! 直接宣告比再拉一套繫結 crate 更可控（Windows 側 `windows 0.58` 與 `windows-core 0.61`
 //! 兩套型別不能混用的坑，這裡不想再踩一遍）。AppKit / Foundation 的 Objective-C 物件
-//! 走 objc2（见 appkit.rs）。
+//! 走 objc2（見 appkit.rs）。
 #![allow(non_upper_case_globals, non_camel_case_types, non_snake_case, dead_code)]
 
 use std::ffi::{c_char, c_void};
@@ -26,7 +26,7 @@ pub type CFIndex = isize;
 pub type CFTypeID = usize;
 pub type CFStringEncoding = u32;
 pub type CFNumberType = CFIndex;
-/// Carbon 风格的 `Boolean`（unsigned char），与 C99 `bool` 不是一回事。
+/// Carbon 風格的 `Boolean`（unsigned char），與 C99 `bool` 不是一回事。
 pub type Boolean = u8;
 
 pub const kCFStringEncodingUTF8: CFStringEncoding = 0x0800_0100;
@@ -232,7 +232,7 @@ extern "C" {
     pub fn CGRequestListenEventAccess() -> bool;
 }
 
-// ─── Accessibility（HIServices，属于 ApplicationServices）───
+// ─── Accessibility（HIServices，屬於 ApplicationServices）───
 
 pub type AXUIElementRef = *const c_void;
 pub type AXValueRef = *const c_void;

@@ -51,7 +51,7 @@ export interface ThemeVars {
   // 為什麼要有 -strong：--success/--warning/--info 這類中等明度的彩色在淺色主題的
   // 白底上對比度只有 2~3.3:1，遠低於正文 4.5:1 的要求（`text-warning` 那句
   // 「模型尚未下載」曾經是全卡最不可讀的一行）。-strong 是同色相壓暗/提亮到達標
-  // 的版本，只用于文字与描边。
+  // 的版本，只用於文字與描邊。
   '--success': string
   '--success-foreground': string
   '--success-strong': string
@@ -69,7 +69,7 @@ export type ThemeExtras = Record<string, string>
 
 /** 主題字型配置（可選） */
 export interface ThemeFonts {
-  /** body 正文字体 */
+  /** body 正文字型 */
   body?: string
   /** 等寬字型 */
   mono?: string
@@ -90,7 +90,7 @@ export interface ThemeDefinition {
     primary: string
     accent: string
   }
-  /** 全局 CSS 变量 */
+  /** 全域性 CSS 變數 */
   vars: ThemeVars
   /** 主題獨有的擴充套件變數 */
   extras?: ThemeExtras

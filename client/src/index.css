@@ -131,7 +131,7 @@
   }
 }
 
-/* 自定义滚动条样式。
+/* 自定義捲軸樣式。
    macOS（<html class="platform-mac">）不用：系統捲軸會跟隨「顯示捲軸」設定，用觸控板時
    滾動才出現；自定義的細條在 mac 上會一直顯示。Windows 不帶這個 class，樣式與原來一致。 */
 @layer utilities {
@@ -376,7 +376,7 @@
 /* 膠囊換內容時（錄音 → 處理中 → 提示），新內容從輕微模糊裡浮出來，同時膠囊寬度
    彈簧過渡（pillMorph.ts）。延遲 50ms 是給寬度先動起來：先看到形狀在變，再看到字，
    讀起來是"同一顆膠囊變了樣"，而不是"換了一顆"。模糊只有 4px、只在這幾十畫素裡，
-   代价可以忽略。 */
+   代價可以忽略。 */
 @keyframes overlay-pill-content-enter {
   from {
     opacity: 0;
@@ -648,7 +648,7 @@
   }
 }
 
-/* 工具类 */
+/* 工具類 */
 @layer utilities {
   .animate-fade-in {
     animation: fade-in 250ms ease-out both;
@@ -668,7 +668,7 @@
   }
 }
 
-/* prefers-reduced-motion：尊重用户系统设置 */
+/* prefers-reduced-motion：尊重使用者系統設定 */
 @media (prefers-reduced-motion: reduce) {
 
   *,
@@ -710,7 +710,7 @@
 }
 
 /*
- * 自定义波形的取色面板（react-colorful，CustomWaveEditor.tsx 的 ColorPopover）。
+ * 自定義波形的取色面板（react-colorful，CustomWaveEditor.tsx 的 ColorPopover）。
  * 元件自帶的樣式是 200px 方塊、大圓角、粗白圈手柄；這裡改成隨面板寬度、和卡片同一套圓角，
  * 手柄細一圈並帶陰影，深色主題下也看得清。
  */

@@ -485,7 +485,7 @@ pub async fn webdav_backup_now(
     let _ = std::fs::remove_file(&temp_path);
 
     // 成功與失敗都記賬。少了失敗那一半，一個靜默失敗幾個月的備份看起來
-    // 和一个正常工作的备份完全一样。
+    // 和一個正常工作的備份完全一樣。
     let finished_at = chrono::Utc::now().timestamp_millis();
     match &outcome {
         Ok(result) => {

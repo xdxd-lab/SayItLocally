@@ -1,7 +1,7 @@
 // 千問 Qwen-Audio-ASR-Flash 流式語音識別 — 3.0 與 3.1 兩代共用這一份
 //
 // ⚠️ 協議與 asr_qwen_realtime.rs **不是同一套**，別指望改個模型名就能複用：
-//   · asr_qwen_realtime → `/api-ws/v1/realtime`，OpenAI-Realtime 风格事件
+//   · asr_qwen_realtime → `/api-ws/v1/realtime`，OpenAI-Realtime 風格事件
 //     （session.update / input_audio_buffer.append，音訊 base64 塞進 JSON）；
 //   · 這一份            → `/api-ws/v1/inference`，DashScope 原生 duplex 指令
 //     （run-task → task-started → 裸二進位制音訊幀 → result-generated →
@@ -1000,9 +1000,9 @@ mod tests {
     #[test]
     fn partials_replace_rather_than_append() {
         let mut t = Transcript::default();
-        t.apply(&result_event("语音输入", false));
-        t.apply(&result_event("语音输入法测试", false));
-        assert_eq!(t.display(), "语音输入法测试");
+        t.apply(&result_event("語音輸入", false));
+        t.apply(&result_event("語音輸入法測試", false));
+        assert_eq!(t.display(), "語音輸入法測試");
     }
 
     /// 開頭那批空文本的中間結果不能產生一次「更新」，否則懸浮窗會先閃一下空字幕。

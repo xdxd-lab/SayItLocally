@@ -64,7 +64,7 @@ export default function TextFormatSection() {
   const initialized = useRef(false)
   // 開著 AI 整理時，被 APPLIES_WITH_AI 判為不執行的項要置灰 —— 否則使用者點一個
   // 不起作用的開關，會以為功能壞了。aiReady 一起等：AI 開關的初值也是非同步讀回的，
-  // 不等它就会先画出"未置灰"再跳到"已置灰"。
+  // 不等它就會先畫出"未置灰"再跳到"已置灰"。
   const aiEnabled = useAiEnabled()
   const aiReady = useAiEnabledReady()
   // 讀到已儲存值之前，開關先隱藏、且不放動畫：避免先畫出預設值再跳到已儲存值（閃一下）。
@@ -107,8 +107,8 @@ export default function TextFormatSection() {
       <CardContent className="p-6">
         <h2 className="text-lg font-semibold">{t('textFormat.title')}</h2>
         {/* 說清生效條件：這幾項是"沒有 AI 時我們自己做的排版兜底"。開了 AI 整理，
-            排版就归 AI 管，置灰的项不生效——两边都做会互相打架。文本替换不在此列，见热词页的「文本替换」。
-            AI 开着时换成一句更直接的话，并指出去哪表达同样的诉求（输出约束在 AI 整理页）。 */}
+            排版就歸 AI 管，置灰的項不生效——兩邊都做會互相打架。文本替換不在此列，見熱詞頁的「文本替換」。
+            AI 開著時換成一句更直接的話，並指出去哪表達同樣的訴求（輸出約束在 AI 整理頁）。 */}
         <p className="mt-1 text-xs text-muted-foreground">
           {aiReady && aiEnabled ? t('textFormat.descAiOn') : t('textFormat.desc')}
         </p>
@@ -124,7 +124,7 @@ export default function TextFormatSection() {
                     {t(def.titleKey)}
                   </span>
                   {/* aiNote 只加在"確實會被 AI 接管"的項上；穿透 AI 的項不該聲稱自己會失效。
-                      AI 已经开着时也不重复——下面那句已经说了。 */}
+                      AI 已經開著時也不重複——下面那句已經說了。 */}
                   <InfoTip
                     content={`${t(def.detailKey)}${!APPLIES_WITH_AI[def.key] && !inert ? t('textFormat.aiNote') : ''}`}
                     label={t(def.titleKey)}

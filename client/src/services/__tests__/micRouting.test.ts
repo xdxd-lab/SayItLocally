@@ -7,8 +7,8 @@ import { endpointKey, isVirtualLabel, planMicDevice, type CaptureEndpoint } from
 
 /** 2026-11-07 本機現場：耳麥拔掉後系統預設變成 VB-Cable，還剩英特爾麥克風陣列。名字取自 sayit.log 與登錄檔。 */
 const CABLE = 'CABLE Output (VB-Audio Virtual Cable)'
-const INTEL = '麦克风阵列 (适用于数字麦克风的英特尔® 智音技术)'
-const HEADSET = '耳机式麦克风 (Plantronics Blackwire 5220 Series)'
+const INTEL = '麥克風陣列 (適用於數字麥克風的英特爾® 智音技術)'
+const HEADSET = '耳機式麥克風 (Plantronics Blackwire 5220 Series)'
 
 const ep = (name: string, extra: Partial<CaptureEndpoint> = {}): CaptureEndpoint => ({
   name, enumerator: extra.isVirtual ? 'ROOT' : 'USB', isVirtual: false, isDefault: false, isDefaultCommunications: false, ...extra,
@@ -17,7 +17,7 @@ const web = (deviceId: string, label: string) => ({ deviceId, groupId: `g-${devi
 
 const scene = {
   endpoints: [ep(CABLE, { isVirtual: true, isDefault: true }), ep(INTEL)],
-  webDevices: [web('default', `默认值 - ${CABLE}`), web('cable', CABLE), web('intel', INTEL)],
+  webDevices: [web('default', `預設值 - ${CABLE}`), web('cable', CABLE), web('intel', INTEL)],
 }
 
 describe('planMicDevice', () => {

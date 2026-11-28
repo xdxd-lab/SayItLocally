@@ -3,7 +3,7 @@
 // 兩套鍵，職責必須分清（與 aiProfileStore 同一套思路）：
 //   1. 列表本身 —— `cloudAsr.profiles` + `cloudAsr.activeProfileId`，只有設定頁讀寫；
 //   2. 執行時生效的那一份 —— `cloudAsr.provider / model / apiKey / appId`，外加
-//      `cloudAsr.qwen.workspaceId`（流式字幕判定要用）与 `cloudAsr.omniSystemPrompt`。
+//      `cloudAsr.qwen.workspaceId`（流式字幕判定要用）與 `cloudAsr.omniSystemPrompt`。
 //      這些扁平鍵由錄音鏈路（CloudAPIProvider、RecorderOrchestrator）、歷史記錄重跑、
 //      識別測試、診斷頁共同消費，**這個契約不能動**。
 //

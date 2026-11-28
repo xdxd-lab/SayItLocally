@@ -609,7 +609,7 @@ export default function LocalModeSection() {
           )}
 
           {/* 硬體背景。選模型是這一頁最難的決定，而"這台機器什麼水平"這條資訊
-              原来要往下翻两张卡才看得到。 */}
+              原來要往下翻兩張卡才看得到。 */}
           {gpuSummary !== null && (
             <p className="mb-4 text-xs text-muted-foreground">
               {gpuSummary
@@ -678,7 +678,7 @@ export default function LocalModeSection() {
                     </div>
                     <p className="mt-0.5 text-xs text-muted-foreground">{modelDescription}</p>
                     {/* 引數行：評分柱狀條 + 下載體積（硬碟圖示）+ 記憶體佔用 + 語種，一行小字。
-                        量化档（Q8_0 之类）不展示——普通用户看不懂，文件名里查得到 */}
+                        量化檔（Q8_0 之類）不展示——普通使用者看不懂，檔名裡查得到 */}
                     <div className="mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-muted-foreground">
                       {model.speed ? <MiniRating label={t('local.speed')} value={model.speed} /> : null}
                       {model.accuracy ? <MiniRating label={t('local.accuracy')} value={model.accuracy} /> : null}
@@ -726,8 +726,8 @@ export default function LocalModeSection() {
                       </div>
                     )}
                     {/* 下載失敗原來只有一行原始異常。而"換個源重試"和"手動下載指引"這兩條
-                        降级路径就在同一张卡上，失败信息却不指向任何一个——用户会以为
-                        本地模式不能用。现在直接把两个动作放进错误块里。 */}
+                        降級路徑就在同一張卡上，失敗資訊卻不指向任何一個——使用者會以為
+                        本地模式不能用。現在直接把兩個動作放進錯誤塊裡。 */}
                     {progress?.status === 'failed' && (() => {
                       const friendly = describeDownloadError(progress.error ?? '')
                       const hasOtherSource = sourceOptions.some((s) => s !== effectiveSource)
@@ -782,12 +782,12 @@ export default function LocalModeSection() {
           </div>
 
           {/* 載入一個模型要讀完整個權重檔案再預熱一次推理，大模型幾十秒也正常。
-              原来这段只让按钮变灰，界面看起来就是卡死了 —— 0.1.4 有用户因此强杀了进程。
-              所以这条必须显眼：配色沿用 Feedback 的 warning/error 写法（5% 底 + 25% 描边
-              + strong 图标色），但**用不停转的图标承担"还在动"的信息** —— 静态色块
-              说不出"没卡住"，转圈能。不用绿色：绿在这套配色里代表"成功/已完成"，
-              加载中打绿灯会让人以为已经好了。
-              role=status + aria-live：这条状态对读屏用户否则完全静默。 */}
+              原來這段只讓按鈕變灰，介面看起來就是卡死了 —— 0.1.4 有使用者因此強殺了程序。
+              所以這條必須顯眼：配色沿用 Feedback 的 warning/error 寫法（5% 底 + 25% 描邊
+              + strong 圖示色），但**用不停轉的圖示承擔"還在動"的資訊** —— 靜態色塊
+              說不出"沒卡住"，轉圈能。不用綠色：綠在這套配色裡代表"成功/已完成"，
+              載入中打綠燈會讓人以為已經好了。
+              role=status + aria-live：這條狀態對讀屏使用者否則完全靜默。 */}
           {preloadingModelId && (
             <div
               role="status"
@@ -797,7 +797,7 @@ export default function LocalModeSection() {
               <Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-info-strong" aria-hidden />
               <p className="text-sm leading-relaxed text-foreground">
                 {/* 顯式 {' '}：兩個表示式之間的換行會被 JSX 整個吃掉，
-                    英文下就会粘成 "…Loading" 这种没有空格的样子 */}
+                    英文下就會粘成 "…Loading" 這種沒有空格的樣子 */}
                 {t('local.preloading', { name: availableModels.find((m) => m.id === preloadingModelId)?.name || preloadingModelId })}
                 {' '}
                 {t('local.preloadingNote')}
@@ -1002,9 +1002,9 @@ export function LocalModeAdvancedSection() {
             <p className="mt-2 text-xs text-muted-foreground">
               {gpuSummary}
               {/* 載入中就說載入中：後端是在模型載入時才繫結的，這期間 currentBackend
-                  一定是空，原来这里会什么都不显示，看着像检测失败。
-                  多显卡机器上报设备名而不是后端名——那时用户真正想确认的是
-                  "用的是哪张卡"，而 currentDevice 是实际绑定结果（可能与所选不同）。 */}
+                  一定是空，原來這裡會什麼都不顯示，看著像檢測失敗。
+                  多顯示卡機器上報裝置名而不是後端名——那時使用者真正想確認的是
+                  "用的是哪張卡"，而 currentDevice 是實際繫結結果（可能與所選不同）。 */}
               {loadingModel
                 ? t('local.backendLoadingModel')
                 : showGpuPicker && currentDevice

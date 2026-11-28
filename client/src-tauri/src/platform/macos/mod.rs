@@ -1,6 +1,6 @@
-//! macOS 系统集成。
+//! macOS 系統整合。
 //!
-//! - `ffi`：CoreFoundation / CoreGraphics / Accessibility / Carbon / CoreAudio 的 C 声明
+//! - `ffi`：CoreFoundation / CoreGraphics / Accessibility / Carbon / CoreAudio 的 C 宣告
 //! - `cf`：CF 物件所有權與字串互轉
 //! - `ax`：Accessibility（對應 Windows 的 UI Automation）
 //! - `keycodes`：macOS 鍵碼 ↔ 內部鍵 ID（沿用 Windows VK）

@@ -89,7 +89,7 @@ export function AsrCorrectionDialog({
    * 不用 `rows={行數}` 那種演算法：`rows` 只數換行符，一段沒有換行但會折行的長文本
    * 仍然只算一行，框會比內容矮一大截。所以按 scrollHeight 實測。
    *
-   * `+ extra` 是上下边框：box-sizing 是 border-box，height 含边框而 scrollHeight 不含，
+   * `+ extra` 是上下邊框：box-sizing 是 border-box，height 含邊框而 scrollHeight 不含，
    * 少了它每次都會矮 2px，於是內容一進來就立刻出現捲軸。
    */
   useEffect(() => {
@@ -189,9 +189,9 @@ export function AsrCorrectionDialog({
         )}
 
         {/* 識別原文 + 改動標記合成一塊。
-            原本是"只读原文"和"改动预览"两个框，但 diff 本身就包含完整原文（删掉的部分
-            带删除线），两个框摆在一起是同一段话看两遍 —— 连上可编辑框一共三个框，
-            光是找"我该在哪儿打字"就要费一下。合成一块之后只剩「看」和「改」两块。 */}
+            原本是"只讀原文"和"改動預覽"兩個框，但 diff 本身就包含完整原文（刪掉的部分
+            帶刪除線），兩個框擺在一起是同一段話看兩遍 —— 連上可編輯框一共三個框，
+            光是找"我該在哪兒打字"就要費一下。合成一塊之後只剩「看」和「改」兩塊。 */}
         <AsrDiffPreview original={originalText} corrected={correctedText} />
 
         {/* 正確文本（可編輯） */}
@@ -212,7 +212,7 @@ export function AsrCorrectionDialog({
             </button>
           </div>
           {/* 內邊距/字號/行高與「識別原文」那塊保持一致，兩塊才對得齊；
-              高度交给上面那个 effect 算，所以关掉手动拖拽（拖完一打字就会被算回去）。 */}
+              高度交給上面那個 effect 算，所以關掉手動拖拽（拖完一打字就會被算回去）。 */}
           <textarea
             ref={editorRef}
             id="asr-correction-input"

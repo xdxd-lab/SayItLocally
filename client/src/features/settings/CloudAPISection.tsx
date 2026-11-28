@@ -71,18 +71,18 @@ const DOUBAO_CONSOLE_OPTIONS = [
 // 直譯成英文會讓中文口述的整理質量下降。英文 Prompt 集是獨立的一件事，見
 // dev-docs/i18n-todo.md 的 P2-5。只有下面 PRESETS 的 label 是界面文案，要翻。
 // i18n-allow-start: 發給中文語音模型的產品 Prompt，不隨介面語言切換
-const DEFAULT_OMNI_PROMPT = '你是一个语音转文字助手。请将用户的语音内容准确转写为文字，保持原意，适当添加标点符号，不要添加任何额外的解释或评论。'
+const DEFAULT_OMNI_PROMPT = '你是一個語音轉文字助手。請將使用者的語音內容準確轉寫為文字，保持原意，適當新增標點符號，不要新增任何額外的解釋或評論。'
 
-const OMNI_PROMPT_POLISH = `你是语音文本精炼助手。输入是 ASR 语音识别的原始转写，你的任务是清洗为可直接使用的干净文本。
-核心原则：保留用户全部有效信息，只清除语音噪声和识别错误。
-处理规则：
-1. 移除口语填充词（嗯、啊、那个、就是说、然后呢）和无意义的重复、犹豫。
-2. 识别自我修正——"不对"、"不是"、"应该是"、"改到"后以最终表达为准，删除前序错误。
-3. 修正明显的语音识别错误：同音字、音近字、专有名词、英文大小写、数字和时间。
-4. 添加标点符号，必要时分段。中英文混合保留合理空格。
-5. 检测到"第一/第二/首先/然后"等结构化表达时，输出为有序列表。
-约束：不添加原文没有的内容，不改变用户核心语义；不回答、解释、总结或续写文本中提到的问题。
-只输出精炼后的文本。`
+const OMNI_PROMPT_POLISH = `你是語音文本精煉助手。輸入是 ASR 語音識別的原始轉寫，你的任務是清洗為可直接使用的乾淨文本。
+核心原則：保留使用者全部有效資訊，只清除語音噪聲和識別錯誤。
+處理規則：
+1. 移除口語填充詞（嗯、啊、那個、就是說、然後呢）和無意義的重複、猶豫。
+2. 識別自我修正——"不對"、"不是"、"應該是"、"改到"後以最終表達為準，刪除前序錯誤。
+3. 修正明顯的語音識別錯誤：同音字、音近字、專有名詞、英文大小寫、數字和時間。
+4. 新增標點符號，必要時分段。中英文混合保留合理空格。
+5. 檢測到"第一/第二/首先/然後"等結構化表達時，輸出為有序列表。
+約束：不新增原文沒有的內容，不改變使用者核心語義；不回答、解釋、總結或續寫文本中提到的問題。
+只輸出精煉後的文本。`
 // i18n-allow-end
 
 const OMNI_PROMPT_PRESETS = [
@@ -319,7 +319,7 @@ export default function CloudAPISection() {
    * 金鑰，打的是同一個服務），還可能撞上限流被記成「不可用」。所以批次結果裡會
    * 註明這批耗時不宜橫向比較；要拿準數字，用卡上的單張測試。
    *
-   * 另外两个决定：
+   * 另外兩個決定：
    *  · **一次性落盤**，不逐張寫。併發下每個回撥拿到的都是同一份舊 profiles，
    *    逐張 persist 會互相覆蓋，只剩最後一個的結論。代價是中途關頁面這批就沒了 ——
    *    併發之後整批只等最慢那張，這個視窗很短。
@@ -609,7 +609,7 @@ export default function CloudAPISection() {
         )}
       >
         {/* 鋪滿整卡的單選按鈕：卡上還有自己的圖示按鈕，不能把整張卡做成 <button>
-            （按钮套按钮，读屏和键盘都会错） */}
+            （按鈕套按鈕，讀屏和鍵盤都會錯） */}
         <button
           type="button"
           role="radio"
@@ -637,7 +637,7 @@ export default function CloudAPISection() {
             {modelLine}
           </span>
           {/* 待配置的卡片按鈕常駐：它正在等使用者去填東西，把唯一的入口藏進 hover
-              等于让人对着一张没有可点之处的卡发呆。配好之后回到 hover 显隐 */}
+              等於讓人對著一張沒有可點之處的卡發呆。配好之後回到 hover 顯隱 */}
           <div
             className={cn(
               'pointer-events-none relative z-10 flex shrink-0 items-center gap-0.5 transition-opacity focus-within:opacity-100 group-hover:opacity-100',
@@ -717,15 +717,15 @@ export default function CloudAPISection() {
               className={selectClass}
             >
               {/* 平鋪，**不按「內建 / 自己填地址」分組**。曾經分成兩個 optgroup，
-                  用户否掉了：在他看来这些都是「一个能用的语音识别服务」，分组等于把
-                  我们的实现差异摆到选择界面上。要填什么由下面那几栏各自说明
-                  （地址栏和协议栏本来就只在需要时出现）。 */}
+                  使用者否掉了：在他看來這些都是「一個能用的語音識別服務」，分組等於把
+                  我們的實現差異擺到選擇介面上。要填什麼由下面那幾欄各自說明
+                  （位址列和協議欄本來就只在需要時出現）。 */}
               {ASR_PROVIDERS.map((p) => {
                 const models = asrModelsOf(p)
                 // 多模型的只列平台名（模型由下面那個下拉選）；**單模型的直接把模型名
                 // 帶出來** —— 那種情況下下面的模型下拉根本不渲染，不帶的話使用者在這一步
                 // 完全看不到自己要用的是哪個模型。協議卡除外：它那一個模型只是預設值，
-                // 真正用哪个由用户自己填。
+                // 真正用哪個由使用者自己填。
                 const showModel = models.length === 1 && !p.customEndpoint
                 return (
                   <option key={p.id} value={p.id}>
@@ -741,8 +741,8 @@ export default function CloudAPISection() {
           </div>
 
           {/* 卡片名稱。可空，留空就顯示平台名。
-              这一栏是为了取代「自动在标题后面补密钥末 4 位」那个做法 —— 同平台两张卡
-              到底差在哪，用户比我们清楚，而我们那个区分方式让人以为密钥泄露了。 */}
+              這一欄是為了取代「自動在標題後面補金鑰末 4 位」那個做法 —— 同平台兩張卡
+              到底差在哪，使用者比我們清楚，而我們那個區分方式讓人以為金鑰洩露了。 */}
           <div>
             <label htmlFor="asr-name" className="mb-1 block text-sm text-muted-foreground">
               {t('asr.cardName')}
@@ -759,8 +759,8 @@ export default function CloudAPISection() {
           </div>
 
           {/* 介面地址。**按選中的模型決定要不要顯示**，不是按卡片 ——
-              同一张卡里可以既有 HTTP 模型（能改地址）又有 WebSocket 模型（改不了），
-              千问那张卡就是。协议卡是必填，内置卡是可选覆盖（中转站 / 反代）。 */}
+              同一張卡里可以既有 HTTP 模型（能改地址）又有 WebSocket 模型（改不了），
+              千問那張卡就是。協議卡是必填，內建卡是可選覆蓋（中轉站 / 反代）。 */}
           {draftModelOption?.supportsCustomUrl && (
             <div>
               <label htmlFor="asr-api-url" className="mb-1 block text-sm text-muted-foreground">
@@ -783,8 +783,8 @@ export default function CloudAPISection() {
           )}
 
           {/* 協議：只有協議卡需要，而且預設「自動」。
-              摆在这里而不是藏进高级设置，是因为自动探测判不准时用户得找得到它；
-              但默认值让绝大多数人不必碰它。 */}
+              擺在這裡而不是藏進高階設定，是因為自動探測判不準時使用者得找得到它；
+              但預設值讓絕大多數人不必碰它。 */}
           {draftEntry?.customEndpoint && (
             <div>
               <label htmlFor="asr-protocol" className="mb-1 block text-sm text-muted-foreground">
@@ -805,7 +805,7 @@ export default function CloudAPISection() {
           )}
 
           {/* 協議卡的模型是**自由文本**：對面掛什麼模型我們無從知道，
-              给个下拉等于替用户瞎猜。占位符给的是常见默认值。 */}
+              給個下拉等於替使用者瞎猜。佔位符給的是常見預設值。 */}
           {draftEntry?.customEndpoint && (
             <div>
               <label htmlFor="asr-model-text" className="mb-1 block text-sm text-muted-foreground">
@@ -824,10 +824,10 @@ export default function CloudAPISection() {
           )}
 
           {/* 模型下拉。**只有一個模型時不渲染** —— 擺一個點開只有一項的下拉，
-              等于让用户以为这里有得选。多数服务换模型 = 换服务条目（协议都不一样），
-              真正有多个模型的只有走同一个端点的那几家。
-              OpenRouter 有 20 多个、来自十来家厂商，所以按厂商分组（optgroup）；
-              别家的模型名不带厂商前缀，groupAsrModelsByVendor 会返回 null 走平铺。 */}
+              等於讓使用者以為這裡有得選。多數服務換模型 = 換服務條目（協議都不一樣），
+              真正有多個模型的只有走同一個端點的那幾家。
+              OpenRouter 有 20 多個、來自十來家廠商，所以按廠商分組（optgroup）；
+              別家的模型名不帶廠商字首，groupAsrModelsByVendor 會返回 null 走平鋪。 */}
           {draftModels.length > 1 && (
             <div>
               <label htmlFor="asr-model" className="mb-1 block text-sm text-muted-foreground">{t('asr.model')}</label>
@@ -858,8 +858,8 @@ export default function CloudAPISection() {
                   ))}
               </select>
               {/* 選中模型自己的一句定位優先 —— 真正要幫使用者做的決定是「在這一家裡面
-                  选哪个」，而那五个千问模型的差别比千问和豆包的差别还大。
-                  模型没写 blurb 时退回讲整张卡的那句话。 */}
+                  選哪個」，而那五個千問模型的差別比千問和豆包的差別還大。
+                  模型沒寫 blurb 時退回講整張卡的那句話。 */}
               <p className="mt-1 text-xs text-muted-foreground">
                 {draftModelOption?.blurb
                   ?? (draftModelGroups ? t('asr.modelHintRouted') : t('asr.modelHint'))}
@@ -904,7 +904,7 @@ export default function CloudAPISection() {
           )}
 
           {/* data-modal-autofocus：彈窗開啟時焦點落在金鑰上（這才是要乾的事），
-              而不是第一个可聚焦元素 */}
+              而不是第一個可聚焦元素 */}
           <div data-modal-autofocus>
             <label htmlFor="asr-api-key" className="mb-1 block text-sm text-muted-foreground">{keyLabel}</label>
             <PasswordInput
@@ -936,10 +936,10 @@ export default function CloudAPISection() {
               </button>
               )}
               {/* 配置文件只對豆包顯示。別的平台都是「去控制台複製一把 API Key」，
-                  上面那个控制台链接已经足够；只有豆包要在新旧两代控制台之间做选择
-                  （新版只给 API Key，旧版还要 Access Token + App ID），光看界面讲不清，
-                  确实需要一篇文档。给所有平台都挂上等于让用户为一件不复杂的事去读文档。
-                  英文文档发布前，这个链接只对中文界面显示。 */}
+                  上面那個控制台連結已經足夠；只有豆包要在新舊兩代控制台之間做選擇
+                  （新版只給 API Key，舊版還要 Access Token + App ID），光看介面講不清，
+                  確實需要一篇文件。給所有平台都掛上等於讓使用者為一件不復雜的事去讀文件。
+                  英文文件釋出前，這個連結只對中文介面顯示。 */}
               {SHOW_CLOUD_CONSOLE_LINKS && draftPlatform === 'doubao' && getLocale() === 'zh-TW' && (
                 <button type="button" onClick={() => void shellOpen(DOC_URL)} className={linkClass}>
                   {t('asr.howToGetKey')}
@@ -969,7 +969,7 @@ export default function CloudAPISection() {
           )}
 
           {/* Omni 是「識別 + 整理」一體的模型，System Prompt 決定它整理成什麼樣，
-              属于这份服务自己的行为，所以放在这份配置里 */}
+              屬於這份服務自己的行為，所以放在這份配置裡 */}
           {draftModelOption?.omni && (
             <div>
               <label htmlFor="omni-system-prompt" className="mb-1.5 block text-sm text-muted-foreground">
@@ -1030,7 +1030,7 @@ export default function CloudAPISection() {
           </div>
           <div className="flex shrink-0 items-center gap-2">
             {/* 併發跑，所以沒有「停止」：invoke 發出去的請求沒法撤回，
-                摆一颗停不掉任何东西的按钮比没有更糟。整批只等最慢那张，很快。 */}
+                擺一顆停不掉任何東西的按鈕比沒有更糟。整批只等最慢那張，很快。 */}
             <Button
               variant="outline"
               size="sm"

@@ -324,7 +324,7 @@ export default function WelcomeGuide({ onComplete }: WelcomeGuideProps) {
       // beginShortcutCapture，而這邊遲到的 endShortcutCapture 會把它剛開的捕獲關掉，
       // 於是使用者在「試一試」裡按組合鍵錄不進去。
       // 兩個命令都是「從儲存讀當前值重新註冊一遍」，誰後執行都不會註冊到錯的鍵上：
-      // notifyShortcutsChanged 一定排在 setSetting 之后发出。
+      // notifyShortcutsChanged 一定排在 setSetting 之後發出。
       //
       // **退出必須無條件執行** —— 漏掉的話使用者走完嚮導會發現所有熱鍵都不響應了。
       void bridge.endShortcutCapture()
@@ -449,8 +449,8 @@ export default function WelcomeGuide({ onComplete }: WelcomeGuideProps) {
             <h2 className="mb-5 text-center text-xl font-bold">{t('welcome.tryTitle')}</h2>
 
             {/* 用設定頁那個錄製控制元件，不再自己寫一份：組合鍵、系統保留組合校驗、
-                「已被别的程序占用」探测全都在里面。allowClear=false —— 向导的目的是
-                让用户拿到一个能用的键，一个把它清成"未设置"的按钮在这里只会制造问题。 */}
+                「已被別的程式佔用」探測全都在裡面。allowClear=false —— 嚮導的目的是
+                讓使用者拿到一個能用的鍵，一個把它清成"未設定"的按鈕在這裡只會製造問題。 */}
             <Card className="mb-4">
               <CardContent className="p-4">
                 <ComboShortcutInput

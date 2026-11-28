@@ -270,7 +270,7 @@ export default function GeneralSettingsPage() {
       <h1 className="mb-6 text-2xl font-bold">{t('settings.title')}</h1>
       <div className="space-y-6">
         {/* 介面語言排在最前：看不懂介面的人做不了下面任何一件事。
-            这张卡自己走 t()，所以切换后它连自己的标题一起变，用户能立刻确认生效了。 */}
+            這張卡自己走 t()，所以切換後它連自己的標題一起變，使用者能立刻確認生效了。 */}
         <Card>
           <CardContent className="p-6">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -306,11 +306,11 @@ export default function GeneralSettingsPage() {
           <CardContent className="p-6">
             <h2 className="text-lg font-semibold">{t('settings.shortcuts.title')}</h2>
             {/* ⚠ 這是「按 Esc 能取消」在整個介面上的**唯一**出處 —— 懸浮窗上那行提示已經
-                去掉了（见 overlay/Overlay.tsx 的 thinking 分支）。删掉这句，这个能力就没有
-                任何地方告诉用户了。
-                录音上限不在这里讲 —— 最后一分钟悬浮窗会显示剩余时间、到点自动结束，界面自己会说。
-                「录音也不会保留」要写明：取消和「录了但没出字」在用户眼里很容易混。
-                「录音或识别处理」是两个阶段，别连写 —— Esc 在两个阶段都能按。 */}
+                去掉了（見 overlay/Overlay.tsx 的 thinking 分支）。刪掉這句，這個能力就沒有
+                任何地方告訴使用者了。
+                錄音上限不在這裡講 —— 最後一分鐘懸浮窗會顯示剩餘時間、到點自動結束，介面自己會說。
+                「錄音也不會保留」要寫明：取消和「錄了但沒出字」在使用者眼裡很容易混。
+                「錄音或識別處理」是兩個階段，別連寫 —— Esc 在兩個階段都能按。 */}
             <p className="mb-4 mt-1 text-xs text-muted-foreground">
               {t('settings.shortcuts.escHint')}
             </p>
@@ -334,7 +334,7 @@ export default function GeneralSettingsPage() {
         </Card>
 
         {/* 麥克風排在「偏好設定」前面：它是錄音鏈路的入口，選錯裝置什麼都錄不到；
-            而下面那三个开关（提示音、静音外放、剪贴板保护）都是可选的锦上添花。 */}
+            而下面那三個開關（提示音、靜音外放、剪貼簿保護）都是可選的錦上添花。 */}
         <MicrophoneSection mics={mics} selectedMic={selectedMic} testing={testing} volumeLevel={volumeLevel}
           virtualDefaultNote={!selectedMic && micPlan?.reason === 'virtual_avoided'
             ? t('mic.virtualDefaultNote', { virtual: micPlan.avoidedName, device: micPlan.chosenName })

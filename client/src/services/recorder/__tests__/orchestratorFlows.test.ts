@@ -250,8 +250,8 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-describe('RecorderOrchestrator 主路径', () => {
-  it('正常一次：按住说话 → 识别 → 插字 → 存历史 → 回到空闲', async () => {
+describe('RecorderOrchestrator 主路徑', () => {
+  it('正常一次：按住說話 → 識別 → 插字 → 存歷史 → 回到空閒', async () => {
     await startedOrchestrator()
     await recordAndRelease(2)
 
@@ -276,8 +276,8 @@ describe('RecorderOrchestrator 主路径', () => {
   })
 })
 
-describe('RecorderOrchestrator 失败与边界路径', () => {
-  it('按住不到 0.5 秒：取消会话，不存历史，不插字', async () => {
+describe('RecorderOrchestrator 失敗與邊界路徑', () => {
+  it('按住不到 0.5 秒：取消會話，不存歷史，不插字', async () => {
     await startedOrchestrator()
     await recordAndRelease(0.2)
 
@@ -288,7 +288,7 @@ describe('RecorderOrchestrator 失败与边界路径', () => {
     expect(orch.getState()).toBe('idle')
   })
 
-  it('识别没出文字：只给提示不弹卡片，历史记一条空记录（no_transcript）', async () => {
+  it('識別沒出文字：只給提示不彈卡片，歷史記一條空記錄（no_transcript）', async () => {
     await startedOrchestrator()
     await recordAndRelease(2)
 
@@ -304,7 +304,7 @@ describe('RecorderOrchestrator 失败与边界路径', () => {
     expect(orch.getState()).toBe('idle')
   })
 
-  it('处理中报错：弹失败卡，历史保留音频和失败原因', async () => {
+  it('處理中報錯：彈失敗卡，歷史保留音訊和失敗原因', async () => {
     await startedOrchestrator()
     await recordAndRelease(2)
 
@@ -320,7 +320,7 @@ describe('RecorderOrchestrator 失败与边界路径', () => {
     expect(orch.getState()).toBe('idle')
   })
 
-  it('stop 没送出去（连接已断）：当场判失败，不进一分钟的等待', async () => {
+  it('stop 沒送出去（連線已斷）：當場判失敗，不進一分鐘的等待', async () => {
     provider.stopAccepted = false
     await startedOrchestrator()
     await recordAndRelease(2)
@@ -332,7 +332,7 @@ describe('RecorderOrchestrator 失败与边界路径', () => {
     expect(orch.getState()).toBe('idle')
   })
 
-  it('录音中按 Esc：取消，不存历史，不插字，提示「已取消」', async () => {
+  it('錄音中按 Esc：取消，不存歷史，不插字，提示「已取消」', async () => {
     await startedOrchestrator()
     emit('ptt-down')
     await flush()
@@ -353,12 +353,12 @@ describe('RecorderOrchestrator 失败与边界路径', () => {
     expect(provider.stop).not.toHaveBeenCalled()
   })
 
-  it('目标不可编辑：不插字，弹兜底卡片让用户复制，历史照存', async () => {
+  it('目標不可編輯：不插字，彈兜底卡片讓使用者複製，歷史照存', async () => {
     h.state.probe = { ...h.state.probe, editable: false, verdict: 'not_editable' }
     await startedOrchestrator()
     await recordAndRelease(2)
 
-    provider.callbacks!.onFinal(finalResult('请帮我复制'))
+    provider.callbacks!.onFinal(finalResult('請幫我複製'))
     await flush(60)
 
     expect(bridge.pasteText).not.toHaveBeenCalled()
@@ -366,12 +366,12 @@ describe('RecorderOrchestrator 失败与边界路径', () => {
     const fallback = [...vi.mocked(bridge.presentOverlay).mock.calls, ...vi.mocked(bridge.updateOverlay).mock.calls]
       .map((c) => c[0] as Record<string, unknown>)
       .find((p) => p.state === 'fallback')
-    expect(JSON.stringify(fallback)).toContain('请帮我复制')
+    expect(JSON.stringify(fallback)).toContain('請幫我複製')
     expect(store.history).toHaveLength(1)
-    expect(store.history[0]).toMatchObject({ asrText: '请帮我复制' })
+    expect(store.history[0]).toMatchObject({ asrText: '請幫我複製' })
   })
 
-  it('重复的 final 只处理一次', async () => {
+  it('重複的 final 只處理一次', async () => {
     await startedOrchestrator()
     await recordAndRelease(2)
 
@@ -383,7 +383,7 @@ describe('RecorderOrchestrator 失败与边界路径', () => {
     expect(store.history).toHaveLength(1)
   })
 
-  it('初始化还没完成就松开：建好后立刻停，时长不足按取消处理', async () => {
+  it('初始化還沒完成就鬆開：建好後立刻停，時長不足按取消處理', async () => {
     await startedOrchestrator()
     emit('ptt-down')
     emit('ptt-up')
@@ -395,7 +395,7 @@ describe('RecorderOrchestrator 失败与边界路径', () => {
     expect(orch.getState()).toBe('idle')
   })
 
-  it('provider 没就绪：不进录音，提示错误并重新建连', async () => {
+  it('provider 沒就緒：不進錄音，提示錯誤並重新建連', async () => {
     await startedOrchestrator()
     provider.ready = false
     provider.connect.mockClear()
@@ -409,7 +409,7 @@ describe('RecorderOrchestrator 失败与边界路径', () => {
   })
 })
 
-describe('RecorderOrchestrator 超时与迟到结果', () => {
+describe('RecorderOrchestrator 超時與遲到結果', () => {
   // 只假造定時器和 Date；performance.now 保持真實，錄音時長按喂進去的取樣數算。
   // 超時兜底裡用的是 window.setTimeout；測試環境沒有 window，指向全域性物件即可拿到假定時器。
   const fake = () => {
@@ -418,7 +418,7 @@ describe('RecorderOrchestrator 超时与迟到结果', () => {
   }
   afterEach(() => { vi.unstubAllGlobals() })
 
-  it('超时后宽限期内等到迟到结果：照样存历史并插字', async () => {
+  it('超時後寬限期內等到遲到結果：照樣存歷史並插字', async () => {
     await startedOrchestrator()
     fake()
     await recordAndRelease(2)
@@ -428,20 +428,20 @@ describe('RecorderOrchestrator 超时与迟到结果', () => {
     expect(orch.getState()).toBe('idle')
     expect(overlayStates()).toContain('thinking') // 寬限期提示「仍在獲取結果」
 
-    provider.callbacks!.onFinal(finalResult('迟到了'))
+    provider.callbacks!.onFinal(finalResult('遲到了'))
     await vi.advanceTimersByTimeAsync(100)
     await flush(60)
 
     expect(bridge.pasteText).toHaveBeenCalledTimes(1)
     expect(store.history).toHaveLength(1)
-    expect(store.history[0]).toMatchObject({ asrText: '迟到了' })
+    expect(store.history[0]).toMatchObject({ asrText: '遲到了' })
 
     // 寬限期結束後不應再補一條超時記錄
     await vi.advanceTimersByTimeAsync(16_000)
     expect(store.history).toHaveLength(1)
   })
 
-  it('超时且宽限期内没等到：弹超时卡，历史记 processing_timeout', async () => {
+  it('超時且寬限期內沒等到：彈超時卡，歷史記 processing_timeout', async () => {
     await startedOrchestrator()
     fake()
     await recordAndRelease(2)
@@ -455,7 +455,7 @@ describe('RecorderOrchestrator 超时与迟到结果', () => {
     expect(bridge.pasteText).not.toHaveBeenCalled()
   })
 
-  it('宽限期里按 Esc 放弃：迟到结果只存历史，不插字', async () => {
+  it('寬限期裡按 Esc 放棄：遲到結果只存歷史，不插字', async () => {
     await startedOrchestrator()
     fake()
     await recordAndRelease(2)
@@ -472,8 +472,8 @@ describe('RecorderOrchestrator 超时与迟到结果', () => {
   })
 })
 
-describe('RecorderOrchestrator 免提与中途断线', () => {
-  it('免提：按一下开始、期间的按住说话事件被忽略、再按一下结束并正常出字', async () => {
+describe('RecorderOrchestrator 擴音與中途斷線', () => {
+  it('擴音：按一下開始、期間的按住說話事件被忽略、再按一下結束並正常出字', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'] })
     await startedOrchestrator()
     emit('hands-free')
@@ -499,7 +499,7 @@ describe('RecorderOrchestrator 免提与中途断线', () => {
     expect(store.history).toHaveLength(1)
   })
 
-  it('录音中途连接断开：立刻报失败，已经说的那段音频存进历史', async () => {
+  it('錄音中途連線斷開：立刻報失敗，已經說的那段音訊存進歷史', async () => {
     await startedOrchestrator()
     emit('ptt-down')
     await flush()
@@ -519,14 +519,14 @@ describe('RecorderOrchestrator 免提与中途断线', () => {
   })
 })
 
-describe('RecorderOrchestrator 麦克风电平提醒', () => {
+describe('RecorderOrchestrator 麥克風電平提醒', () => {
   function warnings(): string[] {
     return vi.mocked(bridge.updateOverlay).mock.calls
       .map((c) => (c[0] as { warning?: string }).warning)
       .filter((w): w is string => Boolean(w))
   }
 
-  it('从开始就全是 0：2 秒后提示「未检测到声音」，停止时统计带 peakAmplitude=0', async () => {
+  it('從開始就全是 0：2 秒後提示「未檢測到聲音」，停止時統計帶 peakAmplitude=0', async () => {
     await startedOrchestrator()
     emit('ptt-down')
     await flush()
@@ -540,7 +540,7 @@ describe('RecorderOrchestrator 麦克风电平提醒', () => {
     expect(stopOpts.audioStats).toMatchObject({ peakAmplitude: 0, silenceRatio: 1 })
   })
 
-  it('有声音但很小：只提示「请靠近麦克风」，不说「未检测到声音」', async () => {
+  it('有聲音但很小：只提示「請靠近麥克風」，不說「未檢測到聲音」', async () => {
     await startedOrchestrator()
     emit('ptt-down')
     await flush()
@@ -549,7 +549,7 @@ describe('RecorderOrchestrator 麦克风电平提醒', () => {
     expect(warnings()).not.toContain('overlay.warnNoSignal')
   })
 
-  it('正常说话后停顿：不报任何电平提醒', async () => {
+  it('正常說話後停頓：不報任何電平提醒', async () => {
     await startedOrchestrator()
     emit('ptt-down')
     await flush()
@@ -558,7 +558,7 @@ describe('RecorderOrchestrator 麦克风电平提醒', () => {
     expect(warnings()).not.toContain('overlay.warnNoSignal')
   })
 
-  it('系统报静音且音频确实全 0：红色高警，3 秒后自动取消录音，不存历史', async () => {
+  it('系統報靜音且音訊確實全 0：紅色高警，3 秒後自動取消錄音，不存歷史', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'] })
     const { invoke } = await import('@tauri-apps/api/core')
     vi.mocked(invoke).mockImplementation(async (cmd: string) =>
@@ -578,7 +578,7 @@ describe('RecorderOrchestrator 麦克风电平提醒', () => {
     vi.mocked(invoke).mockImplementation(async () => undefined)
   })
 
-  it('系统报静音但音频在流动：忽略这个标志，不弹红色高警', async () => {
+  it('系統報靜音但音訊在流動：忽略這個標誌，不彈紅色高警', async () => {
     const { invoke } = await import('@tauri-apps/api/core')
     vi.mocked(invoke).mockImplementation(async (cmd: string) =>
       cmd === 'get_mic_mute_state' ? { matched: true, muted: true } : undefined)
@@ -592,19 +592,19 @@ describe('RecorderOrchestrator 麦克风电平提醒', () => {
   })
 })
 
-describe('RecorderOrchestrator 插入卡住与各模式超时', () => {
+describe('RecorderOrchestrator 插入卡住與各模式超時', () => {
   const fake = () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'] })
     vi.stubGlobal('window', globalThis)
   }
   afterEach(() => { vi.unstubAllGlobals() })
 
-  it('插入一直不返回：15 秒后把文字交还给用户（兜底卡片），回到空闲，能开始下一次', async () => {
+  it('插入一直不返回：15 秒後把文字交還給使用者（兜底卡片），回到空閒，能開始下一次', async () => {
     vi.mocked(bridge.pasteText).mockImplementationOnce(() => new Promise(() => {}))
     await startedOrchestrator()
     fake()
     await recordAndRelease(2)
-    provider.callbacks!.onFinal(finalResult('卡住的这句'))
+    provider.callbacks!.onFinal(finalResult('卡住的這句'))
     await vi.advanceTimersByTimeAsync(100)
     expect(bridge.pasteText).toHaveBeenCalledTimes(1)
     expect(overlayStates()).not.toContain('fallback')
@@ -614,7 +614,7 @@ describe('RecorderOrchestrator 插入卡住与各模式超时', () => {
     const fallback = [...vi.mocked(bridge.presentOverlay).mock.calls, ...vi.mocked(bridge.updateOverlay).mock.calls]
       .map((c) => c[0] as Record<string, unknown>)
       .find((p) => p.state === 'fallback')
-    expect(JSON.stringify(fallback)).toContain('卡住的这句')
+    expect(JSON.stringify(fallback)).toContain('卡住的這句')
     expect(orch.getState()).toBe('idle')
     expect(store.history).toHaveLength(1)
 
@@ -634,7 +634,7 @@ describe('RecorderOrchestrator 插入卡住与各模式超时', () => {
     ['server', 16_000],
     ['local', 30_000],
     ['cloud_api', 31_000],
-  ])('%s 模式 2 秒音频的处理超时是 %i ms', async (mode, timeoutMs) => {
+  ])('%s 模式 2 秒音訊的處理超時是 %i ms', async (mode, timeoutMs) => {
     provider.mode = mode
     await startedOrchestrator()
     fake()
@@ -646,8 +646,8 @@ describe('RecorderOrchestrator 插入卡住与各模式超时', () => {
   })
 })
 
-describe('RecorderOrchestrator 开始录音时出错', () => {
-  it('取上下文和路由那一段抛错：报「开始录音失败」，锁释放，下一次能正常开始', async () => {
+describe('RecorderOrchestrator 開始錄音時出錯', () => {
+  it('取上下文和路由那一段拋錯：報「開始錄音失敗」，鎖釋放，下一次能正常開始', async () => {
     const personalization = await import('../../personalization/store')
     const defaults = await import('../../personalization/defaults')
     // 統計資料格式壞掉時，提示詞路由會拋錯（2026-10 補測試時撞到的真實路徑）

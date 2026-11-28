@@ -2,16 +2,16 @@ import { describe, it, expect } from 'vitest'
 import { uint8ArrayToBase64 } from '../encoding'
 
 describe('uint8ArrayToBase64', () => {
-  it('空数组返回空字符串', () => {
+  it('空陣列返回空字串', () => {
     expect(uint8ArrayToBase64(new Uint8Array(0))).toBe('')
   })
 
-  it('小数据正确编码', () => {
+  it('小資料正確編碼', () => {
     const data = new Uint8Array([72, 101, 108, 108, 111]) // "Hello"
     expect(uint8ArrayToBase64(data)).toBe(btoa('Hello'))
   })
 
-  it('大数据（超过 chunk 大小）正确编码', () => {
+  it('大數據（超過 chunk 大小）正確編碼', () => {
     // 建立 20KB 的資料，超過 8192 的 chunk 大小
     const size = 20000
     const data = new Uint8Array(size)
@@ -28,7 +28,7 @@ describe('uint8ArrayToBase64', () => {
     expect(uint8ArrayToBase64(data)).toBe(expected)
   })
 
-  it('单字节数据', () => {
+  it('單位元組資料', () => {
     const data = new Uint8Array([65]) // "A"
     expect(uint8ArrayToBase64(data)).toBe('QQ==')
   })

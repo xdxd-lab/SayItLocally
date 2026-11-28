@@ -443,7 +443,7 @@ impl WindowState {
         } else {
             0.0
         };
-        // 0.5 CSS px 以下是设备像素取整的正常抖动，不算裁切。
+        // 0.5 CSS px 以下是裝置畫素取整的正常抖動，不算裁切。
         if clipped_top <= 0.5 && shortfall <= 0.5 {
             return;
         }
@@ -633,7 +633,7 @@ impl WindowState {
                     | (OverlayLayout::StreamingWithMicHint, OverlayLayout::BaseWithMicHint)
                     | (OverlayLayout::StreamingWithMicHint, OverlayLayout::Base)
                     // Streaming 這兩支是 2026-09 補的。前端曾有五個警告方法各自手寫
-                    // payload、都漏了 `streaming` 字段，于是低音量警告每 5 秒把布局判成
+                    // payload、都漏了 `streaming` 欄位，於是低音量警告每 5 秒把佈局判成
                     // Base，視窗收縮一幀再被下一次心跳撐回去——開著即時字幕不說話時
                     // 懸浮窗"一閃一閃"。前端已收口到 listeningPayload()，這裡是兜底：
                     // 哪怕將來又有新出口漏帶欄位，視窗也不該在可見期間縮回去。
@@ -974,7 +974,7 @@ fn reassert_overlay_topmost(_app: &AppHandle) {}
 
 /// 顯示懸浮窗且不搶焦點。
 ///
-/// Windows：`show()` + 后面的 SetWindowPos(SWP_NOACTIVATE)（见 reassert_overlay_topmost）。
+/// Windows：`show()` + 後面的 SetWindowPos(SWP_NOACTIVATE)（見 reassert_overlay_topmost）。
 /// macOS：`show()` 會走 makeKeyAndOrderFront 把它設成 key window，這裡改用
 /// `orderFrontRegardless`，不改變鍵盤焦點。
 fn show_overlay_window(overlay: &tauri::WebviewWindow) -> Result<(), String> {
@@ -1383,7 +1383,7 @@ mod tests {
 
     /// 這條是本次故障的迴歸釘子：文本大小放大時視窗必須跟著長高，否則內容從頂部溢位、
     /// 被 overlay.html 的 overflow:hidden 裁平。修復前 height 恆為 84（56×1.5），
-    /// webview 里只有 56 CSS px，装不下 54 + 需要的余量。
+    /// webview 裡只有 56 CSS px，裝不下 54 + 需要的餘量。
     #[test]
     fn base_window_still_fits_pill_when_os_text_scale_enlarges_css_px() {
         let (_, _, _, height) = overlay_bounds_in_work_area(
@@ -1417,7 +1417,7 @@ mod tests {
             ("mic_hint", OverlayLayout::BaseWithMicHint, required_css_height() + 8.0 + 30.0),
             ("fallback", OverlayLayout::Fallback, OVERLAY_ROOT_PADDING_BOTTOM + 149.0),
             // 失敗卡：py-4(32) + 標題 20 + 原因**最多三行** 60 + 恢復提示 20
-            //        + 两处间距 12 + 边框 2 ≈ 146
+            //        + 兩處間距 12 + 邊框 2 ≈ 146
             //
             // ⚠️ 這裡原來按「原因只有一行」算成 110，是錯的：供應商的錯誤文案
             // （「賬戶餘額不足，本次請求未能發出…」）在 520px 寬下就佔兩行，實測內容高 97，
@@ -1730,7 +1730,7 @@ fn overlay_bounds_in_work_area(
     let bottom_gap = (72.0 * scale).round().max(margin as f64) as i64;
     let available_width = (work_width - margin * 2).max(1);
     let available_height = (work_height - margin * 2).max(1);
-    // 用 ceil 而不是 round：宁可多出一个物理像素的透明边，也不要向下取整把本就不多的
+    // 用 ceil 而不是 round：寧可多出一個物理畫素的透明邊，也不要向下取整把本就不多的
     // 垂直餘量吃掉——少一個畫素就是膠囊頂部被裁一條。
     let width = ((design.0 * css_zoom * scale).ceil().max(1.0) as i64).min(available_width);
     let height = ((design.1 * css_zoom * scale).ceil().max(1.0) as i64).min(available_height);

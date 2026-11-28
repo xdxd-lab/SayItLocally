@@ -3,7 +3,7 @@ import { useLayoutEffect, useRef, type RefObject } from 'react'
 /**
  * 一塊"選中底色"在選項之間滑動，而不是舊格褪色、新格變色（單選膠囊 / 歷史頁篩選 / 側欄）。
  *
- * 用法：容器 `position: relative`，里面放一个 `<span ref={indicatorRef} className="sliding-indicator ..." />`
+ * 用法：容器 `position: relative`，裡面放一個 `<span ref={indicatorRef} className="sliding-indicator ..." />`
  * （`space-y-*` 容器裡要放最後，否則它會給第一個真選項加 margin-top），
  * 選項本身不畫選中底色、`position: relative` 蓋在它上面。選中項靠 `activeSelector` 找
  * （預設 `[aria-checked="true"]`，側欄用 NavLink 自帶的 `[aria-current="page"]`）。
@@ -79,7 +79,7 @@ export function useSlidingIndicator(
       const last = geomRef.current
       // ResizeObserver 在 observe() 時**一定**先回撥一次，哪怕什麼都沒變。那一次如果也按
       // "尺寸變了、直接貼過去"處理，會把剛開始的滑動當場掐掉（實測：滑塊一格都不動）。
-      // 所以只有几何真的变了才动它。
+      // 所以只有幾何真的變了才動它。
       if (!allowSlide && last && last.x === geom.x && last.y === geom.y && last.w === geom.w && last.h === geom.h) return
       geomRef.current = geom
 

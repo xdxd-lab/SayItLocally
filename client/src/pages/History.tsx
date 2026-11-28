@@ -392,7 +392,7 @@ async function buildReprocessMetadata(
 }> {
   // AI 那幾個欄位一律取本次執行結果，不再讀當前設定。
   //
-  // 此前只有 server 分支返回 aiSource/aiStatus，cloud_api 与 local 返回 undefined，
+  // 此前只有 server 分支返回 aiSource/aiStatus，cloud_api 與 local 返回 undefined，
   // 而寫回是顯式傳值 —— 於是重跑一次就把記錄裡原有的執行狀態抹成空；同時 aiProvider
   // 照當前設定填，哪怕這次 AI 壓根沒跑，記錄裡也會寫著某個服務商。
   const aiFields = {
@@ -448,7 +448,7 @@ export default function History() {
     setVisibleCount(HISTORY_PAGE_SIZE)
   }, [debouncedKeyword, favoriteOnly])
 
-  // 搜索防抖：输入停止 300ms 后才触发查询
+  // 搜尋防抖：輸入停止 300ms 後才觸發查詢
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedKeyword(keyword), 300)
     return () => clearTimeout(timer)

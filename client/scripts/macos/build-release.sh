@@ -1,5 +1,5 @@
 #!/bin/zsh
-# 构建 macOS 发布包：
+# 構建 macOS 釋出包：
 #   - SayItLocally_<版本>_<架構>.dmg  給使用者下載安裝
 #   - SayItLocally_<版本>_<架構>.zip  + latest.yml  給自動更新（放到伺服器 releases/darwin/<架構>/）
 #
@@ -18,7 +18,7 @@ VERSION=$(node -p "require('./package.json').version")
 case "$(uname -m)" in
   arm64) ARCH=arm64 ;;
   x86_64) ARCH=x64 ;;
-  *) echo "不支持的架构：$(uname -m)"; exit 1 ;;
+  *) echo "不支援的架構：$(uname -m)"; exit 1 ;;
 esac
 
 IDENTITY="${SAYIT_SIGN_IDENTITY:-SayItLocally Self-Signed}"
@@ -112,6 +112,6 @@ echo
 echo "產物在 $CLIENT_DIR/$OUT ："
 ls -la "$OUT"
 echo
-echo "发布："
+echo "釋出："
 echo "  1. $DMG_NAME 上傳到 GitHub Release，給使用者下載"
 echo "  2. $ZIP_NAME 和 latest.yml 放到伺服器的 releases/darwin/$ARCH/ 下，客戶端自動更新從這裡取"

@@ -162,7 +162,7 @@ pub async fn cloud_transcribe(request: CloudTranscribeRequest) -> Result<AsrResu
             )
             .await
         }
-        // Qwen-Audio-ASR-Flash 流式（3.0 / 3.1 共用，具体哪代看 extra.model）：
+        // Qwen-Audio-ASR-Flash 流式（3.0 / 3.1 共用，具體哪代看 extra.model）：
         // 關掉即時字幕、以及設定頁的識別測試都走這條一次性路徑。
         // 用的仍是同一個 duplex 協議，只是整段音訊推完再收結果。
         "qwen_audio_stream" => {
@@ -292,7 +292,7 @@ pub fn dispatch_keys_for_test() -> Vec<&'static str> {
     // （比如 rustfmt 換了臂頭縮排風格），這時要修的是掃描器，不是宣告清單。
     assert!(
         keys.len() >= 10,
-        "从 cloud_transcribe 源码里只抓到 {} 个分发 key，扫描逻辑多半已经失效：{:?}",
+        "從 cloud_transcribe 原始碼裡只抓到 {} 個分發 key，掃描邏輯多半已經失效：{:?}",
         keys.len(),
         keys,
     );
@@ -315,7 +315,7 @@ const CLOUD_TRANSCRIBE_SIGNATURE: &str = concat!("pub async fn ", "cloud_transcr
 fn fn_body<'a>(source: &'a str, signature: &str) -> &'a str {
     let start = source
         .find(signature)
-        .unwrap_or_else(|| panic!("在源码里找不到 `{signature}`，签名被改过？"));
+        .unwrap_or_else(|| panic!("在原始碼裡找不到 `{signature}`，簽名被改過？"));
     let rest = &source[start..];
     let end = rest.find("\n}").map(|at| at + 1).unwrap_or(rest.len());
     &rest[..end]
@@ -324,7 +324,7 @@ fn fn_body<'a>(source: &'a str, signature: &str) -> &'a str {
 /// 從一段原始碼裡提取 match 臂上的字串字面量 key。
 ///
 /// 只認「trim 後以 `"` 或 `|` 開頭、直到出現 `=>`」的行序列，所以：
-///   · `"qwen" | "aliyun" => {` —— 一行抓两个；
+///   · `"qwen" | "aliyun" => {` —— 一行抓兩個；
 ///   · 臂頭換行寫的（`"groq_whisper" | …` 換行後 `| "openai_compat_transcribe" => {`）
 ///     靠累積緩衝抓全；
 ///   · `other => Err(…)` 那條兜底臂不以引號開頭，不會被抓（它不是一個分發 key）；
@@ -473,10 +473,10 @@ mod tests {
         assert!(!fake_keys(FAKE_DISPATCH).contains(&"ghost"));
     }
 
-    /// 兜底臂和臂体里的字符串都不是分发 key。
+    /// 兜底臂和臂體裡的字串都不是分發 key。
     #[test]
     fn the_scanner_skips_the_fallback_arm_and_arm_bodies() {
-        // `other => Err(…)` 不是一个 provider
+        // `other => Err(…)` 不是一個 provider
         assert!(!fake_keys(FAKE_DISPATCH).contains(&"other"));
         // `"connect_failed"` 頂行寫在臂體裡，形狀上很像臂頭
         assert!(!fake_keys(FAKE_DISPATCH).contains(&"connect_failed"));
@@ -489,7 +489,7 @@ mod tests {
     #[test]
     fn removing_a_dispatch_branch_shrinks_the_reference_set() {
         let without = FAKE_DISPATCH.replace("        \"beta\" | \"gamma\" => Ok(()),\n", "");
-        assert_ne!(without, FAKE_DISPATCH, "替换没生效，测试自己失效了");
+        assert_ne!(without, FAKE_DISPATCH, "替換沒生效，測試自己失效了");
 
         let keys = fake_keys(&without);
         assert!(!keys.contains(&"beta"));
@@ -507,7 +507,7 @@ mod tests {
             "        \"alpha\" => Ok(()),\n",
             "        \"alpha\" => Ok(()),\n        \"zeta\" => Ok(()),\n",
         );
-        assert_ne!(with, FAKE_DISPATCH, "替换没生效，测试自己失效了");
+        assert_ne!(with, FAKE_DISPATCH, "替換沒生效，測試自己失效了");
         assert!(fake_keys(&with).contains(&"zeta"));
     }
 
@@ -521,17 +521,17 @@ mod tests {
         // 跨行臂頭：這個 key 寫在 `| "openai_compat_transcribe" => {` 那行的續行上
         assert!(
             keys.contains(&"openai_compat_transcribe"),
-            "跨行写的臂头没抓全：{keys:?}",
+            "跨行寫的臂頭沒抓全：{keys:?}",
         );
         // 單 key 臂
         assert!(keys.contains(&"openai_compat"), "{keys:?}");
-        // 臂体里的字符串不是分发 key
+        // 臂體裡的字串不是分發 key
         assert!(!keys.contains(&"connect_failed"), "{keys:?}");
         // 同一個 key 不該被抓兩次（集合相等斷言會因為重複項失敗，先在這裡定性）
         let mut sorted = keys.clone();
         sorted.sort_unstable();
         let before = sorted.len();
         sorted.dedup();
-        assert_eq!(before, sorted.len(), "抓到了重复的分发 key：{keys:?}");
+        assert_eq!(before, sorted.len(), "抓到了重複的分發 key：{keys:?}");
     }
 }

@@ -24,7 +24,7 @@ import { IS_MAC } from '@/lib/platform'
 const DETECT_COUNTDOWN_SEC = 5
 
 /**
- * 只展示"真正决定命中"的条件。
+ * 只展示"真正決定命中"的條件。
  * 寫了程序名的規則一律只按程序名判定（見 promptRouter.matchesAppPromptRule），
  * 此時再把視窗標題/類名列出來會讓人誤以為它們也會觸發。
  */

@@ -164,7 +164,7 @@ export class OverlayService {
       gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15)
       osc.start(ctx.currentTime)
       osc.stop(ctx.currentTime + 0.15)
-      // 播完就把 AudioContext 挂起。一个处于 running 的 AudioContext 哪怕什么都不播，
+      // 播完就把 AudioContext 掛起。一個處於 running 的 AudioContext 哪怕什麼都不播，
       // 渲染程序和音訊服務程序也會每 10ms 跑一次音訊圖：2026-10 實測空閒 20 秒多耗約 360ms CPU
       // （約 1.8% 個核），而且從第一次錄音起一直耗到退出 —— 正式版「用久了空閒 CPU 變高」就是它。
       // 下次播放前 playReadySound 會先 resume。計數是為了上一聲沒播完時別把下一聲掐掉。
@@ -717,7 +717,7 @@ export class OverlayService {
     this.fallbackHideId = setTimeout(() => this.hide(), 1500)
   }
 
-  /** 用户主动取消处理后的短提示。 */
+  /** 使用者主動取消處理後的短提示。 */
   showCanceled() {
     this.currentState = 'toast'
     this.clearMicSourceHint()

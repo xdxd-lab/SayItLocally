@@ -9,7 +9,7 @@
 //   3. 等 `setupComplete`
 //   4. `realtimeInput.audio` 送 base64 PCM，mimeType 裡帶取樣率
 //   5. 讀 `serverContent.inputTranscription.text`（增量）
-//   6. 收尾发 `realtimeInput.audioStreamEnd`
+//   6. 收尾發 `realtimeInput.audioStreamEnd`
 //
 // ⚠️ 與 asr_openai_realtime.rs 完全不是一套事件名，別互相套用。
 //
@@ -29,7 +29,7 @@
 //   A. **即時字幕的文本在 `interimInputTranscription`**，`inputTranscription` 是
 //      一輪結束時的定稿、整段只來一條。只讀後者的話「即時字幕」這個功能等於不存在 ——
 //      不報錯，字幕就是永遠不出現。
-//   B. **两个字段的 text 都是全量**，不是增量。interim 要覆盖、定稿按轮次追加。
+//   B. **兩個欄位的 text 都是全量**，不是增量。interim 要覆蓋、定稿按輪次追加。
 //      當成增量追加會得到「語音輸入語音 輸入法語音輸入法測試成…」這種疊加串。
 //      注意中間態帶臨時空格（"語音 輸入法"），定稿裡沒有 —— 所以 interim 只能上屏，
 //      最終結果必須用定稿那條。
@@ -120,7 +120,7 @@ fn urlencoding_minimal(raw: &str) -> String {
         .collect()
 }
 
-/// 首条 setup 消息。
+/// 首條 setup 訊息。
 ///
 /// `responseModalities: ["TEXT"]` 是必要的：Live API 預設會**合成語音回話**，
 /// 那會白燒 token、也會讓 serverContent 裡塞滿我們不要的音訊資料。
@@ -211,8 +211,8 @@ fn error_message(ev: &serde_json::Value) -> Option<String> {
 /// 一次會話累積到的文本。
 ///
 /// committed = 已定稿的輪次（inputTranscription），partial = 進行中的那一輪
-/// （interimInputTranscription）。两个字段的 text 都是**全量**，所以 partial 是
-/// 覆盖、committed 是按轮次追加。
+/// （interimInputTranscription）。兩個欄位的 text 都是**全量**，所以 partial 是
+/// 覆蓋、committed 是按輪次追加。
 ///
 /// 一次錄音通常只有一輪，但服務端會按語音活動自己分輪（實測有 voiceActivity 事件），
 /// 所以按多輪處理 —— 只認一輪的話，說話中間停頓一下就會丟掉後半段。
@@ -756,9 +756,9 @@ mod tests {
         });
         assert_eq!(final_transcription(&snake), Some("hi"));
         let interim = serde_json::json!({
-            "serverContent": { "interimInputTranscription": { "text": "进行中" } }
+            "serverContent": { "interimInputTranscription": { "text": "進行中" } }
         });
-        assert_eq!(interim_transcription(&interim), Some("进行中"));
+        assert_eq!(interim_transcription(&interim), Some("進行中"));
         // 兩個欄位必須分得開：interim 不能被當成定稿，否則中間態那些臨時空格會進最終文本
         assert_eq!(final_transcription(&interim), None);
         assert_eq!(interim_transcription(&camel), None);
@@ -783,7 +783,7 @@ mod tests {
     #[test]
     fn replays_the_measured_event_stream() {
         let mut t = Transcript::default();
-        let interims = ["语音输入", "语音 输入法", "语音输入法测试成", "语音输入法测试成 功。"];
+        let interims = ["語音輸入", "語音 輸入法", "語音輸入法測試成", "語音輸入法測試成 功。"];
         for text in interims {
             assert!(matches!(
                 t.apply(&serde_json::json!({
@@ -798,11 +798,11 @@ mod tests {
 
         assert!(matches!(
             t.apply(&serde_json::json!({
-                "serverContent": { "inputTranscription": { "text": "语音输入法测试成功。" } }
+                "serverContent": { "inputTranscription": { "text": "語音輸入法測試成功。" } }
             })),
             Applied::Updated
         ));
-        assert_eq!(t.display(), "语音输入法测试成功。");
+        assert_eq!(t.display(), "語音輸入法測試成功。");
         assert_eq!(t.final_events, 1);
 
         assert!(matches!(

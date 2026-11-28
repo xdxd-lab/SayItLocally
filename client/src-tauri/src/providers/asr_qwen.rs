@@ -12,7 +12,7 @@ const SCOPE: &str = "qwen/asr-flash";
 ///
 /// Qwen3-ASR 支援透過上下文文本（context/corpus）提升專業術語、人名等識別準確率，
 /// 最多 10000 tokens。非流式介面放在 system 訊息文本里，即時介面放在
-/// session.input_audio_transcription.corpus.text 里。
+/// session.input_audio_transcription.corpus.text 裡。
 ///
 /// 詞表用「空格」拼接（與本專案自建後端本地 qwen3 的 context 用法一致：
 /// `" ".join(hotwords)` 傳給 model.transcribe(context=...)，實測偏置效果更好）。
@@ -51,7 +51,8 @@ fn strip_hotword_echo(text: String, hotwords: &[&str]) -> String {
         return text;
     }
     // 去掉常見連線詞，避免它們殘留導致誤判為"有額外內容"
-    for conn in ["和", "与", "跟", "及", "以及", "还有", "and"] {
+    // 「與」「還有」是簡體寫法，以 Unicode 跳脫儲存，並列正體「與」「還有」
+    for conn in ["和", "\u{4e0e}", "與", "跟", "及", "以及", "\u{8fd8}\u{6709}", "還有", "and"] {
         rest = rest.replace(conn, "");
     }
     // 長詞優先，避免子串誤配（如 LiteLLM 含 LLM）

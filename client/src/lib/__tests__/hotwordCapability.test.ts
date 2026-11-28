@@ -37,13 +37,13 @@ function capability(over: Partial<AsrHotwordCapability> = {}): AsrHotwordCapabil
 }
 
 describe('foldHotwordDelivery', () => {
-  it('三种会进请求的传递方式都折成「已发送」', () => {
+  it('三種會進請求的傳遞方式都折成「已傳送」', () => {
     for (const delivery of ['vocabulary', 'context', 'instruction'] as HotwordDelivery[]) {
       expect(foldHotwordDelivery(delivery)).toBe('sent')
     }
   })
 
-  it('协议没位置和我们没接，对用户都是「不发送」', () => {
+  it('協議沒位置和我們沒接，對使用者都是「不傳送」', () => {
     expect(foldHotwordDelivery('protocol_has_no_slot')).toBe('not_sent')
     expect(foldHotwordDelivery('not_wired_up')).toBe('not_sent')
   })
@@ -55,19 +55,19 @@ describe('foldHotwordDelivery', () => {
    * 一旦把它折成 `not_sent`，介面就會平靜地告訴使用者"這家不支援熱詞"，
    * **用一個確定的錯誤答案蓋住一個 bug**，而這正是 issue #67 能藏那麼久的機制。
    */
-  it('声明缺失绝不能显示成「确定不发送」', () => {
+  it('宣告缺失絕不能顯示成「確定不傳送」', () => {
     expect(foldHotwordDelivery('unknown_provider')).toBe('undecided')
     expect(foldHotwordDelivery('unknown_provider')).not.toBe('not_sent')
     expect(foldHotwordDelivery('unknown_provider')).not.toBe('sent')
   })
 
-  it('auto 协议在探测出来之前也是「未确定」，不能猜', () => {
+  it('auto 協議在探測出來之前也是「未確定」，不能猜', () => {
     expect(foldHotwordDelivery('undecided_protocol')).toBe('undecided')
   })
 })
 
 describe('expectedHotwordDelivery', () => {
-  it('没有流式实现的服务只看一次性路径', () => {
+  it('沒有流式實現的服務只看一次性路徑', () => {
     const cap = capability({ buffered: 'not_wired_up', streaming: 'not_wired_up' })
     expect(expectedHotwordDelivery(cap, {
       streamingDisplayEnabled: true,
@@ -79,7 +79,7 @@ describe('expectedHotwordDelivery', () => {
    * OpenAI live 的真實形狀：流式走 Realtime 的 keywords，關掉字幕回落到檔案端點後
    * 一條都不傳。這兩個答案必須跟著開關走，否則必有一半的使用者被告知錯誤結論。
    */
-  it('OpenAI live：开着字幕发送，关掉字幕不发送', () => {
+  it('OpenAI live：開著字幕傳送，關掉字幕不傳送', () => {
     const cap = capability({
       streaming: 'vocabulary',
       buffered: 'not_wired_up',
@@ -98,7 +98,7 @@ describe('expectedHotwordDelivery', () => {
   })
 
   /** Gemini live 與上面**方向相反** —— 這是"不能按 provider 一概而論"的現場證據。 */
-  it('Gemini live：开着字幕不发送，关掉字幕反而发送', () => {
+  it('Gemini live：開著字幕不傳送，關掉字幕反而傳送', () => {
     const cap = capability({
       streaming: 'protocol_has_no_slot',
       buffered: 'instruction',
@@ -119,7 +119,7 @@ describe('expectedHotwordDelivery', () => {
    * 判據必須複用 isStreamingDisplayReady（執行時唯一的那道閘門），
    * 不能只看 streamingDisplayEnabled。
    */
-  it('千问 realtime 缺业务空间 ID 时按回落路径算', () => {
+  it('千問 realtime 缺業務空間 ID 時按回落路徑算', () => {
     // 千問 realtime 兩條路徑本來同檔（都是 context），看不出閘門有沒有生效，
     // 所以這裡刻意用一個兩檔不同的能力去驗：判據必須是 isStreamingDisplayReady，
     // 而不是光看 streamingDisplayEnabled。
@@ -142,7 +142,7 @@ describe('expectedHotwordDelivery', () => {
 })
 
 describe('hotwordDependsOnStreamingPath', () => {
-  it('两条路径结论相同时不提醒（提醒了是噪音）', () => {
+  it('兩條路徑結論相同時不提醒（提醒了是噪音）', () => {
     expect(hotwordDependsOnStreamingPath(capability({
       streaming: 'context',
       buffered: 'context',
@@ -156,7 +156,7 @@ describe('hotwordDependsOnStreamingPath', () => {
     }))).toBe(false)
   })
 
-  it('结论会被回落翻转时必须提醒', () => {
+  it('結論會被回落翻轉時必須提醒', () => {
     expect(hotwordDependsOnStreamingPath(capability({
       streaming: 'vocabulary',
       buffered: 'not_wired_up',
@@ -169,7 +169,7 @@ describe('hotwordDependsOnStreamingPath', () => {
     }))).toBe(true)
   })
 
-  it('没有流式路径的服务不会有这个不确定性', () => {
+  it('沒有流式路徑的服務不會有這個不確定性', () => {
     expect(hotwordDependsOnStreamingPath(capability({
       streaming: 'not_wired_up',
       buffered: 'not_wired_up',
@@ -192,13 +192,13 @@ function parseAllAsrProviders(rustSource: string): string[] {
   const block = /ALL_ASR_PROVIDERS:\s*&\[&str\]\s*=\s*&\[([\s\S]*?)\];/.exec(rustSource)
   if (!block) {
     throw new Error(
-      '在 capabilities.rs 里找不到 ALL_ASR_PROVIDERS 的定义 —— 常量被改名或换了写法，'
-      + '这条跨语言断言已经失效，必须同步改这里的解析',
+      '在 capabilities.rs 裡找不到 ALL_ASR_PROVIDERS 的定義 —— 常量被改名或換了寫法，'
+      + '這條跨語言斷言已經失效，必須同步改這裡的解析',
     )
   }
   const keys = [...block[1].matchAll(/"([^"]+)"/g)].map((match) => match[1])
   if (keys.length === 0) {
-    throw new Error('ALL_ASR_PROVIDERS 解析出 0 个 key，解析逻辑已失效')
+    throw new Error('ALL_ASR_PROVIDERS 解析出 0 個 key，解析邏輯已失效')
   }
   return keys
 }
@@ -234,10 +234,10 @@ pub const ALL_ASR_PROVIDERS: &[&str] = &[
  * 「Rust 宣告 ↔ 真實分發」那一側的相等斷言在 Rust 裡（`capabilities.rs` 的
  * `the_declaration_list_matches_the_dispatch_table`，對照掃的是 `cloud_transcribe` 原始碼）。
  */
-describe('目录里每个模型的运行时 provider 都在 Rust 声明过热词行为', () => {
+describe('目錄裡每個模型的執行時 provider 都在 Rust 宣告過熱詞行為', () => {
   const DECLARED_IN_RUST = declaredProvidersInRust()
 
-  it('读到的声明清单是真实的、非空的', () => {
+  it('讀到的宣告清單是真實的、非空的', () => {
     // 解析器活著的訊號。真實清單有十幾個 key，讀到個位數只可能是解析失效。
     expect(DECLARED_IN_RUST.size).toBeGreaterThanOrEqual(10)
     // 錨點：這個 key 只存在於 Rust 的清單裡（前端目錄選不到它），
@@ -245,7 +245,7 @@ describe('目录里每个模型的运行时 provider 都在 Rust 声明过热词
     expect(DECLARED_IN_RUST.has('openai_chat_audio')).toBe(true)
   })
 
-  it('解析器认得 Rust 的清单写法', () => {
+  it('解析器認得 Rust 的清單寫法', () => {
     expect(parseAllAsrProviders(FAKE_DECLARATION)).toEqual(['alpha', 'beta', 'gamma'])
   })
 
@@ -255,19 +255,19 @@ describe('目录里每个模型的运行时 provider 都在 Rust 声明过热词
    * 這是稽核指出的那個洞在前端這一側：原來 `DECLARED_IN_RUST` 是手抄的，Rust 刪一個
    * key 而副本不動，斷言照樣綠。現在對照來自原始碼，刪除是可見的。
    */
-  it('Rust 清单少一个 key，这边就少一个', () => {
+  it('Rust 清單少一個 key，這邊就少一個', () => {
     const shrunk = FAKE_DECLARATION.replace('    "beta",\n', '')
     expect(shrunk).not.toBe(FAKE_DECLARATION)
     expect(parseAllAsrProviders(shrunk)).toEqual(['alpha', 'gamma'])
   })
 
   /** 常量被改名或換寫法時必須報錯，不能靜默返回空集（空集會讓子集斷言平凡透過）。 */
-  it('解析不到时抛错而不是返回空集', () => {
+  it('解析不到時拋錯而不是返回空集', () => {
     expect(() => parseAllAsrProviders('pub const SOMETHING_ELSE: &[&str] = &["x"];')).toThrow()
     expect(() => parseAllAsrProviders('pub const ALL_ASR_PROVIDERS: &[&str] = &[];')).toThrow()
   })
 
-  it('遍历的是模型上的 provider，不是卡片 id', () => {
+  it('遍歷的是模型上的 provider，不是卡片 id', () => {
     // 卡片 id 是平台（openai / google / openai_compat），真正調 Rust 的是模型的
     // provider（openai_transcribe / openai_live_transcribe…）。按卡片 id 檢查會
     // 漏掉"同一張卡里兩個模型走不同實現"這件事，而那正是 OpenAI 與 Gemini 兩張卡
@@ -281,12 +281,12 @@ describe('目录里每个模型的运行时 provider 都在 Rust 声明过热词
     expect(cardIds.has('openai_transcribe')).toBe(false)
   })
 
-  it('每个模型的 provider 都有声明', () => {
+  it('每個模型的 provider 都有宣告', () => {
     for (const entry of ASR_PROVIDERS) {
       for (const model of asrModelsOf(entry)) {
         expect(
           DECLARED_IN_RUST.has(model.provider),
-          `${entry.id} / ${model.id} 的 provider "${model.provider}" 在 Rust 的热词声明清单里找不到`,
+          `${entry.id} / ${model.id} 的 provider "${model.provider}" 在 Rust 的熱詞宣告清單裡找不到`,
         ).toBe(true)
       }
     }
@@ -310,7 +310,7 @@ describe('expectedClientCap', () => {
     bufferedClientCap: null,
   })
 
-  it('OpenAI live：开着字幕有上限，关掉字幕不该报上限', () => {
+  it('OpenAI live：開著字幕有上限，關掉字幕不該報上限', () => {
     expect(expectedClientCap(openaiLive, {
       streamingDisplayEnabled: true,
       provider: 'openai_live_transcribe',
@@ -322,7 +322,7 @@ describe('expectedClientCap', () => {
   })
 
   /** Gemini live 方向相反：上限只存在於關掉字幕後的檔案轉寫路徑上。 */
-  it('Gemini live：开着字幕没有上限，关掉字幕才有', () => {
+  it('Gemini live：開著字幕沒有上限，關掉字幕才有', () => {
     const geminiLive = capability({
       streaming: 'protocol_has_no_slot',
       buffered: 'instruction',
@@ -341,7 +341,7 @@ describe('expectedClientCap', () => {
   })
 
   /** 上限和 delivery 必須由同一個路徑判斷得出，否則就會出現"不傳送 + 有上限"。 */
-  it('上限和 delivery 永远来自同一条路径', () => {
+  it('上限和 delivery 永遠來自同一條路徑', () => {
     for (const streamingDisplayEnabled of [true, false]) {
       const opts = { streamingDisplayEnabled, provider: 'openai_live_transcribe' }
       const delivery = expectedHotwordDelivery(openaiLive, opts)
@@ -354,7 +354,7 @@ describe('expectedClientCap', () => {
     }
   })
 
-  it('没有流式实现的服务永远取一次性路径那份', () => {
+  it('沒有流式實現的服務永遠取一次性路徑那份', () => {
     const gemini = capability({
       streaming: 'instruction',
       buffered: 'instruction',
@@ -382,16 +382,16 @@ describe('expectedClientCap', () => {
  * 這兩種重複轉寫永遠不會變 —— 那句話會讓使用者一直等一個不會來的結果。
  */
 describe('hotwordUndecidedReason', () => {
-  it('auto 协议未探测是唯一能靠"再用一次"解决的那种', () => {
+  it('auto 協議未探測是唯一能靠"再用一次"解決的那種', () => {
     expect(hotwordUndecidedReason('undecided_protocol')).toBe('protocol')
   })
 
-  it('声明缺失要单独指认，不能说成"等下次识别"', () => {
+  it('宣告缺失要單獨指認，不能說成"等下次識別"', () => {
     expect(hotwordUndecidedReason('unknown_provider')).toBe('declaration_missing')
     expect(hotwordUndecidedReason('unknown_provider')).not.toBe('protocol')
   })
 
-  it('确定的那些档位没有未确定原因', () => {
+  it('確定的那些檔位沒有未確定原因', () => {
     for (const delivery of [
       'vocabulary', 'context', 'instruction', 'not_wired_up', 'protocol_has_no_slot',
     ] as HotwordDelivery[]) {
@@ -400,7 +400,7 @@ describe('hotwordUndecidedReason', () => {
   })
 
   /** 兩個函式對同一批檔位的判斷必須自洽：折成 undecided 的必須給得出原因。 */
-  it('凡是折成「未确定」的档位都能给出原因', () => {
+  it('凡是折成「未確定」的檔位都能給出原因', () => {
     const all: HotwordDelivery[] = [
       'vocabulary', 'context', 'instruction',
       'protocol_has_no_slot', 'not_wired_up',

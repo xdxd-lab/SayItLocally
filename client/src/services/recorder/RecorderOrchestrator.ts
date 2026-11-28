@@ -1105,7 +1105,7 @@ export class RecorderOrchestrator {
         }
         void (async () => {
           // 兩條路的存檔引數本來就完全一樣（同一個 failReasonCode），合併掉那份
-          // 重复的 if/else —— 它正是上面那个漏改能发生的土壤。
+          // 重複的 if/else —— 它正是上面那個漏改能發生的土壤。
           await this.history.writeFailedRun({
             runId,
             audioDurationSec: audioDur,
@@ -1598,7 +1598,7 @@ export class RecorderOrchestrator {
 
     this.run.finalHandledInCurrentRun = false
     // 只在開始新一次錄音時清：resetToIdle 也會在超時路徑上跑，那時寬限期才剛開始，
-    // 清掉它就等于把用户的"我不等了"忘掉。
+    // 清掉它就等於把使用者的"我不等了"忘掉。
     this.lateResultAbandoned = false
     this.lateResultRunId = 0
     this.run.audioSentSamples = 0
@@ -1853,7 +1853,7 @@ export class RecorderOrchestrator {
       this.provider.cancel()
       // 在懸浮窗顯示錯誤資訊，讓使用者知道發生了什麼
       const errMsg = String(error)
-      if (errMsg.includes('麦克风') || errMsg.includes('microphone') || errMsg.includes('audio')) { // i18n-allow: 匹配底層中文錯誤串
+      if (errMsg.includes('\u9ea6\u514b\u98ce') || errMsg.includes('麥克風') || errMsg.includes('microphone') || errMsg.includes('audio')) { // i18n-allow: 匹配底層中文錯誤串
         this.overlayService.showError(t('recorder.microphoneUnavailable'))
       } else {
         this.overlayService.showError(t('recorder.startFailed'))

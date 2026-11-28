@@ -68,7 +68,7 @@ export interface ParsedReplacement {
  * - 原文為空的行忽略。
  */
 export function parseBatchReplacements(input: string): ParsedReplacement[] {
-  const separators = ['\t', '=>', '->', '，', ','] // i18n-allow: 中文批量输入分隔符
+  const separators = ['\t', '=>', '->', '，', ','] // i18n-allow: 中文批次輸入分隔符
   const result: ParsedReplacement[] = []
 
   for (const rawLine of input.split(/\r?\n/)) {

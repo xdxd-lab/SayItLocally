@@ -70,8 +70,8 @@ export class InsertionController {
 
     if (probe.isCurrentAppProcess) {
       // SayIt 自身也是 Chromium 視窗，renderer 直插對 React 受控元件無效
-      // （DOM value 被设置但 React state 不同步，下次 re-render 会覆盖）。
-      // 所以不走 renderer 直插，而是和外部窗口一样走 Rust paste（Ctrl+V）。
+      // （DOM value 被設定但 React state 不同步，下次 re-render 會覆蓋）。
+      // 所以不走 renderer 直插，而是和外部視窗一樣走 Rust paste（Ctrl+V）。
       addRuntimeEvent('info', 'recorder', 'Target is SayIt; using native paste instead of renderer insertion', {
         probeId: probe.probeId,
         editable: probe.editable,

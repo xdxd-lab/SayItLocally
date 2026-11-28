@@ -44,9 +44,9 @@ mod tests {
 
     #[test]
     fn splits_parameters_and_payload() {
-        let body = frame(&json!({ "id": "abc", "hotwords": ["中文热词"] }), &[1, 2, 3, 4]);
+        let body = frame(&json!({ "id": "abc", "hotwords": ["中文熱詞"] }), &[1, 2, 3, 4]);
         let (meta, payload): (Value, Vec<u8>) = split_framed_bytes(&body).unwrap();
-        assert_eq!(meta["hotwords"][0], "中文热词");
+        assert_eq!(meta["hotwords"][0], "中文熱詞");
         assert_eq!(payload, vec![1, 2, 3, 4]);
     }
 

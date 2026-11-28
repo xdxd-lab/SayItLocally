@@ -32,7 +32,7 @@ const claude: ThemeDefinition = {
     '--destructive': '0 72% 51%',
     '--destructive-foreground': '0 0% 100%',
     '--destructive-strong': '0 74% 44%',    // 米白底 5.9:1
-    '--border': '37 18% 84%',            // #ddd9d1 暖边框
+    '--border': '37 18% 84%',            // #ddd9d1 暖邊框
     '--input': '37 18% 84%',
     '--ring': '22 85% 38%',
     '--radius': '0.5rem',

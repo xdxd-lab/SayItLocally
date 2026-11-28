@@ -18,7 +18,7 @@ const WINDOWS_BUILTIN_APP_RULES: AppPromptRule[] = [
     builtin: true,
     enabled: false,
     presetId: 'intent',
-    promptAppend: '适合即时协作聊天。优先输出可以直接发送的短消息，语气自然、清晰、简洁，避免邮件腔。', // i18n-allow: 中文口述整理 Prompt
+    promptAppend: '適合即時協作聊天。優先輸出可以直接傳送的短訊息，語氣自然、清晰、簡潔，避免郵件腔。', // i18n-allow: 中文口述整理 Prompt
     matcher: {
       processNames: ['teams.exe', 'ms-teams.exe'],
     },
@@ -30,7 +30,7 @@ const WINDOWS_BUILTIN_APP_RULES: AppPromptRule[] = [
     builtin: true,
     enabled: false,
     presetId: 'intent',
-    promptAppend: '适合工作邮件草稿。语气正式、完整，必要时自然分段，但不要编造收件人、称呼或任何事实。', // i18n-allow: 中文口述整理 Prompt
+    promptAppend: '適合工作郵件草稿。語氣正式、完整，必要時自然分段，但不要編造收件人、稱呼或任何事實。', // i18n-allow: 中文口述整理 Prompt
     matcher: {
       processNames: ['outlook.exe', 'olk.exe'],
     },
@@ -42,7 +42,7 @@ const WINDOWS_BUILTIN_APP_RULES: AppPromptRule[] = [
     builtin: true,
     enabled: false,
     presetId: 'faithful',
-    promptAppend: '面向开发工具输入。保留代码、命令、文件名、路径、英文标识符和 Markdown 结构，不要把技术词改写成普通中文。', // i18n-allow: 中文口述整理 Prompt
+    promptAppend: '面向開發工具輸入。保留程式碼、命令、檔名、路徑、英文識別符號和 Markdown 結構，不要把技術詞改寫成普通中文。', // i18n-allow: 中文口述整理 Prompt
     matcher: {
       processNames: ['kiro.exe'],
     },
@@ -54,7 +54,7 @@ const WINDOWS_BUILTIN_APP_RULES: AppPromptRule[] = [
     builtin: true,
     enabled: false,
     presetId: 'faithful',
-    promptAppend: '面向 Codex 编码工具，多为用自然语言下达编程指令。保留代码、命令、文件名、路径和英文标识符，把要做的事说清楚，不要把技术词改写成普通中文。', // i18n-allow: 中文口述整理 Prompt
+    promptAppend: '面向 Codex 編碼工具，多為用自然語言下達程式設計指令。保留程式碼、命令、檔名、路徑和英文識別符號，把要做的事說清楚，不要把技術詞改寫成普通中文。', // i18n-allow: 中文口述整理 Prompt
     matcher: {
       processNames: ['codex.exe'],
     },
@@ -66,7 +66,7 @@ const WINDOWS_BUILTIN_APP_RULES: AppPromptRule[] = [
     builtin: true,
     enabled: false,
     presetId: 'faithful',
-    promptAppend: '面向 VSCode 编辑区。保留代码、命令、文件名、API、英文术语和 Markdown 结构，不要过度润色技术内容。', // i18n-allow: 中文口述整理 Prompt
+    promptAppend: '面向 VSCode 編輯區。保留程式碼、命令、檔名、API、英文術語和 Markdown 結構，不要過度潤色技術內容。', // i18n-allow: 中文口述整理 Prompt
     matcher: {
       processNames: ['code.exe'],
     },
@@ -78,7 +78,7 @@ const WINDOWS_BUILTIN_APP_RULES: AppPromptRule[] = [
     builtin: true,
     enabled: false,
     presetId: 'faithful',
-    promptAppend: '面向 Cursor 编辑区。保留代码、命令、路径、技术名词和英文标识符，不要擅自解释或补全技术内容。', // i18n-allow: 中文口述整理 Prompt
+    promptAppend: '面向 Cursor 編輯區。保留程式碼、命令、路徑、技術名詞和英文識別符號，不要擅自解釋或補全技術內容。', // i18n-allow: 中文口述整理 Prompt
     matcher: {
       processNames: ['cursor.exe'],
     },
@@ -90,7 +90,7 @@ const WINDOWS_BUILTIN_APP_RULES: AppPromptRule[] = [
     builtin: true,
     enabled: false,
     presetId: 'intent',
-    promptAppend: '面向 Windows 记事本，适合随手记录的纯文本。输出纯文本，不要使用 Markdown 标记或特殊格式符号。', // i18n-allow: 中文口述整理 Prompt
+    promptAppend: '面向 Windows 記事本，適合隨手記錄的純文本。輸出純文本，不要使用 Markdown 標記或特殊格式符號。', // i18n-allow: 中文口述整理 Prompt
     matcher: {
       processNames: ['notepad.exe'],
     },
@@ -102,7 +102,7 @@ const WINDOWS_BUILTIN_APP_RULES: AppPromptRule[] = [
     builtin: true,
     enabled: false,
     presetId: 'casual',
-    promptAppend: '适合微信聊天。输出可直接发送的自然口语短消息，简洁亲切，不要用书面或邮件腔。', // i18n-allow: 中文口述整理 Prompt
+    promptAppend: '適合微信聊天。輸出可直接傳送的自然口語短訊息，簡潔親切，不要用書面或郵件腔。', // i18n-allow: 中文口述整理 Prompt
     matcher: {
       processNames: ['weixin.exe', 'wechat.exe'],
     },
@@ -114,7 +114,7 @@ const WINDOWS_BUILTIN_APP_RULES: AppPromptRule[] = [
     builtin: true,
     enabled: false,
     presetId: 'casual',
-    promptAppend: '适合 QQ 聊天。输出轻松自然、可直接发送的短消息，口语化、简洁。', // i18n-allow: 中文口述整理 Prompt
+    promptAppend: '適合 QQ 聊天。輸出輕鬆自然、可直接傳送的短訊息，口語化、簡潔。', // i18n-allow: 中文口述整理 Prompt
     matcher: {
       processNames: ['qq.exe'],
     },
@@ -137,7 +137,7 @@ const MAC_RULE_OVERRIDES: Record<string, Partial<AppPromptRule> & { processNames
   // mac 上沒有記事本，對應系統自帶的「文本編輯」
   notepad: {
     name: 'TextEdit',
-    promptAppend: '面向「文本编辑」，适合随手记录的纯文本。输出纯文本，不要使用 Markdown 标记或特殊格式符号。', // i18n-allow: 中文口述整理 Prompt
+    promptAppend: '面向「文本編輯」，適合隨手記錄的純文本。輸出純文本，不要使用 Markdown 標記或特殊格式符號。', // i18n-allow: 中文口述整理 Prompt
     processNames: ['com.apple.TextEdit'],
   },
   weixin: { processNames: ['com.tencent.xinWeChat'] },

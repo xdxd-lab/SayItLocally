@@ -514,7 +514,7 @@ async fn run_realtime_reader(
                     );
                 }
             }
-            // 兼容 OpenAI 风格的增量事件（部分快照/模型可能使用）
+            // 相容 OpenAI 風格的增量事件（部分快照/模型可能使用）
             "conversation.item.input_audio_transcription.delta" => {
                 if let Some(delta) = data.get("delta").and_then(|t| t.as_str()) {
                     if !delta.is_empty() {

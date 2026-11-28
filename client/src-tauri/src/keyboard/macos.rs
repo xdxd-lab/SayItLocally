@@ -4,12 +4,12 @@
 //! 事件入口把 macOS 鍵碼翻譯成同一套內部鍵 ID（Windows VK），之後的 PTT 代次、
 //! 組合鍵點陣圖、Esc / 卡片快捷鍵閘門、看門狗全部複用 mod.rs 裡的實現。
 //!
-//! 与 Windows 不同的几处：
+//! 與 Windows 不同的幾處：
 //! - **修飾鍵永遠放行**。macOS 的修飾狀態在 HID 層維護，吞掉 flagsChanged 並不能讓後續
 //!   按鍵失去該修飾位，反而讓前台程式看到「沒按下就有修飾位」的錯亂狀態；macOS 也沒有
 //!   「單擊 Alt 啟用選單欄」的問題，所以不需要 Windows 那套吞 Alt keyup 的處理。
 //! - **不會被系統靜默摘除**：回撥超時或使用者輸入保護時系統會投遞
-//!   `kCGEventTapDisabledBy*`，收到后立刻重新启用（另有看门狗兜底）。
+//!   `kCGEventTapDisabledBy*`，收到後立刻重新啟用（另有看門狗兜底）。
 //! - **需要「輔助功能」授權**才能建出能吞鍵的 tap。沒授權時每 2 秒重試一次，
 //!   使用者在系統設定裡勾選後不用重啟 SayIt。
 //! - 自己注入的事件（插字用的 ⌘V）帶 `kCGEventSourceUserData` 標記，回撥裡直接放行。
@@ -386,7 +386,7 @@ fn handle_tap_combo(vk: u32, is_kdown: bool, is_kup: bool, flags: CGEventFlags) 
         let _ = TAP_COMBO_HELD_VK.compare_exchange(vk, 0, Ordering::SeqCst, Ordering::SeqCst);
         return false;
     };
-    // 自动重复：同一次按住只触发一次
+    // 自動重複：同一次按住只觸發一次
     if TAP_COMBO_HELD_VK.swap(vk, Ordering::SeqCst) == vk {
         return true;
     }
@@ -598,7 +598,7 @@ fn process_key(vk: u32, is_kdown: bool, is_kup: bool, is_modifier: bool, flags: 
             }
         }
 
-        // 免提：首个按下立即触发，repeat 忽略，抬起重新布防
+        // 擴音：首個按下立即觸發，repeat 忽略，抬起重新佈防
         if is_hf_key {
             if is_kdown && !modifiers_block_down {
                 consumed = true;
@@ -779,8 +779,8 @@ mod tests {
         ]);
         let opt_shift = kCGEventFlagMaskAlternate | kCGEventFlagMaskShift;
 
-        assert!(handle_tap_combo(0x44, true, false, opt_shift)); // 按下：触发并吞掉
-        assert!(handle_tap_combo(0x44, true, false, opt_shift)); // 自动重复：吞掉，不再触发
+        assert!(handle_tap_combo(0x44, true, false, opt_shift)); // 按下：觸發併吞掉
+        assert!(handle_tap_combo(0x44, true, false, opt_shift)); // 自動重複：吞掉，不再觸發
         assert!(handle_tap_combo(0x44, false, true, opt_shift)); // 抬起：吞掉
         assert!(!handle_tap_combo(0x44, true, false, 0)); // 單按 D：照常打字
         assert!(!handle_tap_combo(0x44, false, true, 0));
@@ -794,7 +794,7 @@ mod tests {
         assert!(!handle_tap_combo(0x44, false, true, 0));
 
         let actions: Vec<HookAction> = rx.try_iter().collect();
-        assert_eq!(actions.len(), 3, "按下三次组合键，触发三次");
+        assert_eq!(actions.len(), 3, "按下三次組合鍵，觸發三次");
         assert!(matches!(actions[0], HookAction::HfToggle { vk: 0x44 }));
         assert!(matches!(&actions[1], HookAction::PresetSwitch { preset_id } if preset_id.as_str() == "email"));
         assert!(matches!(actions[2], HookAction::HfToggle { vk: 0x44 }));

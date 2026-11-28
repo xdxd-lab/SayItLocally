@@ -1,7 +1,7 @@
 // 豆包流式語音識別 2.0 — 邊錄邊發的會話管理
 // start 時建連，send 即時傳送音訊，finish 發最後一包等結果
 //
-// 两种模式：
+// 兩種模式：
 //  - 普通模式（realtime=false）：bigmodel_nostream 端點，準確率更高（預設）。
 //  - 即時顯示模式（realtime=true）：bigmodel(_async) 雙向流式端點，邊說邊返回中間結果，
 //    透過 `asr-partial` 事件上拋給前端做懸浮窗即時上屏。
@@ -49,7 +49,7 @@ type WsSink = SplitSink<WsStream, tungstenite::Message>;
 static SINK: once_cell::sync::Lazy<Arc<Mutex<Option<WsSink>>>> =
     once_cell::sync::Lazy::new(|| Arc::new(Mutex::new(None)));
 
-/// 后台 reader 任务句柄（用于中止）。
+/// 後台 reader 任務控制代碼（用於中止）。
 static READER: once_cell::sync::Lazy<Arc<Mutex<Option<JoinHandle<()>>>>> =
     once_cell::sync::Lazy::new(|| Arc::new(Mutex::new(None)));
 
@@ -261,7 +261,7 @@ pub async fn doubao_stream_open(
     }
     let mut ws = connected.ok_or_else(|| diag::fail("doubao/realtime", "connect", format!("WebSocket connection failed: {}", last_err)))?;
 
-    // 发送 full client request
+    // 傳送 full client request
     let client_request = build_client_request_json(&uid, sample_rate, &hotwords);
     let frame = doubao_protocol::build_full_client_request(&client_request);
     ws.send(tungstenite::Message::Binary(frame.into()))
@@ -432,7 +432,7 @@ pub async fn doubao_stream_send(pcm_b64: String) -> Result<(), String> {
 ///
 /// 失敗（服務端報錯、連線提前斷開、超時）一律返回 Err，**不返回半截文本**：前端手裡有完整
 /// 錄音，會改走一次性上傳重新識別。以前超時會把已累計的文本當成功結果返回，使用者拿到的是
-/// 被截掉后半段的文字，而且不会有任何提示。
+/// 被截掉後半段的文字，而且不會有任何提示。
 #[tauri::command]
 pub async fn doubao_stream_finish() -> Result<String, String> {
     if !ACTIVE.load(Ordering::SeqCst) {

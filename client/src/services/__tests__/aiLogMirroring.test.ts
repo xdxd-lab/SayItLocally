@@ -44,29 +44,29 @@ function mirroredMessages(): string[] {
  * 變異驗證：把 debugLog.ts 裡 `source === AI_LOG_SOURCE && AI_KEY_EVENTS.has(...)`
  * 那兩處放行條件去掉，本檔案的前兩條用例必須失敗。若仍全綠，說明測試沒覆蓋過濾機制。
  */
-describe('AI 事件必须真的穿过落盘过滤层', () => {
+describe('AI 事件必須真的穿過落盤過濾層', () => {
   beforeEach(() => {
     mocks.appendDebugLog.mockClear()
     clearRuntimeEvents()
   })
 
-  it.each([AI_EVENT_OUTCOME, AI_EVENT_REQUEST])('%s 会被镜像到主日志', (event) => {
+  it.each([AI_EVENT_OUTCOME, AI_EVENT_REQUEST])('%s 會被映象到主日誌', (event) => {
     addRuntimeEvent('info', AI_LOG_SOURCE, event, { operationId: 'op-x' })
     expect(mirroredMessages()).toContain(event)
   })
 
-  it.each([AI_EVENT_OUTCOME, AI_EVENT_REQUEST])('%s 也会进内存运行事件（两处判据必须同步）', (event) => {
+  it.each([AI_EVENT_OUTCOME, AI_EVENT_REQUEST])('%s 也會進記憶體執行事件（兩處判據必須同步）', (event) => {
     addRuntimeEvent('info', AI_LOG_SOURCE, event, { operationId: 'op-y' })
     const kept = getRuntimeEvents().filter((e) => e.message === event)
     expect(kept.length).toBeGreaterThan(0)
   })
 
-  it('同来源的其它 info 事件仍然被过滤掉（放行面只有这两个，不是整个 ai 来源）', () => {
+  it('同來源的其它 info 事件仍然被過濾掉（放行面只有這兩個，不是整個 ai 來源）', () => {
     addRuntimeEvent('info', AI_LOG_SOURCE, 'ai.some.debug.chatter', { noise: true })
     expect(mirroredMessages()).not.toContain('ai.some.debug.chatter')
   })
 
-  it('旧路径那条按 provider 命名的 info 依然不落盘（说明本轮的修法是必要的）', () => {
+  it('舊路徑那條按 provider 命名的 info 依然不落盤（說明本輪的修法是必要的）', () => {
     // 這幾個 source 就是改之前 polishWithClientAi 用的 logSource
     for (const source of ['server', 'local', 'cloud_api', 'history']) {
       addRuntimeEvent('info', source, 'AI cleanup skipped below duration threshold', {})
@@ -74,7 +74,7 @@ describe('AI 事件必须真的穿过落盘过滤层', () => {
     expect(mirroredMessages()).not.toContain('AI cleanup skipped below duration threshold')
   })
 
-  it('warn 级别不受白名单限制（自配 AI 失败详情靠它落盘）', () => {
+  it('warn 級別不受白名單限制（自配 AI 失敗詳情靠它落盤）', () => {
     addRuntimeEvent('warn', 'server', 'Custom AI cleanup failed; using raw ASR text', { error: 'boom' })
     expect(mirroredMessages()).toContain('Custom AI cleanup failed; using raw ASR text')
   })

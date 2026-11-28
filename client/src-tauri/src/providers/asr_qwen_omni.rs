@@ -16,7 +16,7 @@ use tokio_tungstenite::tungstenite;
 /// —— 使用者看到的是「一直轉圈然後什麼都沒有」，而日誌裡只有一個超時。
 const DEFAULT_MODEL: &str = "qwen3.5-omni-flash-realtime";
 
-/// `session.audio.output.voice` 发什么。
+/// `session.audio.output.voice` 發什麼。
 ///
 /// 我們只要文本，這個值永遠不會被合成出來 —— 它存在的唯一原因是 3.8 會在
 /// `response.create` 那一步校驗音色。取 Tina 是因為官方文件說它是 3.8 的預設音色，
@@ -25,7 +25,7 @@ const OUTPUT_VOICE: &str = "Tina";
 
 const SCOPE: &str = "qwen/omni";
 
-// ── 上行限速：先放一段突发，之后按固定速率发 ──
+// ── 上行限速：先放一段突發，之後按固定速率發 ──
 //
 // 實測（2026-10-09，dev-scripts/probe_qwen_omni_long_audio.py，真實介面，plus 與 flash 都一樣）：
 // DashScope realtime 對上行流量限速，超了直接關連線：
@@ -77,7 +77,7 @@ impl Pacing {
 /// 這樣醒晚了不會累積 —— Windows 定時器精度約 15.6ms，醒來時後面幾包的截止時刻
 /// 往往已經過了，會直接連著發掉，平均速率仍是設定值。
 /// ⚠️ 別改成「每包 sleep 一個固定間隔」：46 倍即時下一包只隔 2ms，按 15.6ms 的精度睡，
-/// 990 包会被拖到 15 秒。
+/// 990 包會被拖到 15 秒。
 fn pacing_due(sent_bytes: u64, next_bytes: u64, pacing: Pacing) -> Option<Duration> {
     let needed = sent_bytes + next_bytes;
     if needed <= pacing.burst_bytes {
@@ -112,7 +112,7 @@ struct AttemptError {
 impl From<String> for AttemptError {
     /// 絕大多數失敗點都是 `diag::fail(...)?`，在這裡按錯誤原文統一判定。
     /// 判據只看服務端說的原因，所以 close 幀在傳送途中讀到、還是 commit 之後才讀到，
-    /// 都走同一条路。
+    /// 都走同一條路。
     fn from(error: String) -> Self {
         let retryable = is_rate_limited(&error);
         AttemptError { error, retryable }
@@ -164,7 +164,7 @@ fn get_instructions(config: &AsrProviderConfig) -> String {
         .get("instructions")
         .and_then(|v| v.as_str())
         .filter(|s| !s.is_empty())
-        .unwrap_or("你是一个语音转文字助手。请将用户的语音内容准确转写为文字，保持原意，适当添加标点符号，不要添加任何额外的解释或评论。")
+        .unwrap_or("你是一個語音轉文字助手。請將使用者的語音內容準確轉寫為文字，保持原意，適當新增標點符號，不要新增任何額外的解釋或評論。")
         .to_string()
 }
 
@@ -286,7 +286,7 @@ fn close_frame_reason(frame: Option<tungstenite::protocol::CloseFrame>) -> Strin
 /// 收尾：把累積結果變成這次呼叫的返回值。
 ///
 /// 單獨抽出來有兩個原因：① 早退路徑和正常路徑必須用同一套判斷，不能各寫一遍；
-/// ② 這樣才測得到 —— 本次修復的行為差別全在這個函式里（空結果到底算失敗還是算
+/// ② 這樣才測得到 —— 本次修復的行為差別全在這個函式裡（空結果到底算失敗還是算
 /// 「使用者真沒說話」）。
 fn finish_omni(
     acc: OmniTranscript,
@@ -355,7 +355,7 @@ pub async fn transcribe(
     let mut instructions = get_instructions(config);
     // 熱詞上下文偏置：追加到 system instructions
     if let Some(ctx) = super::asr_qwen::build_hotword_context_text(hotwords) {
-        instructions.push_str("\n\n请特别注意以下专业术语/词汇的识别：");
+        instructions.push_str("\n\n請特別注意以下專業術語/詞彙的識別：");
         instructions.push_str(&ctx);
     }
     let audio_sec = pcm.len() as f64 / 32000.0; // 16kHz / 16bit / mono
@@ -480,8 +480,8 @@ async fn run_attempt(session: &OmniSession<'_>, pacing: Pacing) -> Result<AsrRes
     wait_for_event(&mut ws, "session.updated", SCOPE).await?;
 
     // 傳送音訊資料（PCM 16kHz 16bit mono，分塊傳送）
-    // Qwen Omni 接受原始 PCM，不需要 WAV 头
-    // 但如果采样率不是 16kHz，需要注意
+    // Qwen Omni 接受原始 PCM，不需要 WAV 頭
+    // 但如果取樣率不是 16kHz，需要注意
     let chunk_size = 3200; // 100ms @ 16kHz 16bit mono
     let total_chunks = pcm.len().div_ceil(chunk_size);
     let mut acc = OmniTranscript::default();
@@ -739,7 +739,7 @@ async fn run_attempt(session: &OmniSession<'_>, pacing: Pacing) -> Result<AsrRes
     Ok(finish_omni(acc, end, elapsed_ms, &context)?)
 }
 
-/// 等待指定类型的事件
+/// 等待指定型別的事件
 async fn wait_for_event(
     ws: &mut (impl StreamExt<Item = Result<tungstenite::Message, tungstenite::Error>> + Unpin),
     expected_type: &str,
@@ -886,13 +886,13 @@ mod tests {
     #[test]
     fn text_deltas_are_appended_and_done_overrides_with_the_full_text() {
         let (acc, steps) = feed(&[
-            json!({ "type": "response.text.delta", "delta": "语音" }),
-            json!({ "type": "response.text.delta", "delta": "输入" }),
-            json!({ "type": "response.text.done", "text": "语音输入法测试成功。" }),
+            json!({ "type": "response.text.delta", "delta": "語音" }),
+            json!({ "type": "response.text.delta", "delta": "輸入" }),
+            json!({ "type": "response.text.done", "text": "語音輸入法測試成功。" }),
             json!({ "type": "response.done" }),
         ]);
         // done 帶全量，優先用它 —— 拼 delta 更容易缺字
-        assert_eq!(acc.result_text, "语音输入法测试成功。");
+        assert_eq!(acc.result_text, "語音輸入法測試成功。");
         assert_eq!(steps.last(), Some(&OmniStep::Completed));
     }
 
@@ -909,10 +909,10 @@ mod tests {
     #[test]
     fn an_empty_done_payload_keeps_the_accumulated_deltas() {
         let (acc, _) = feed(&[
-            json!({ "type": "response.text.delta", "delta": "有内容" }),
+            json!({ "type": "response.text.delta", "delta": "有內容" }),
             json!({ "type": "response.text.done", "text": "" }),
         ]);
-        assert_eq!(acc.result_text, "有内容");
+        assert_eq!(acc.result_text, "有內容");
     }
 
     /// 模型沒回答、只有服務端對輸入音訊的轉寫時走兜底。
@@ -920,18 +920,18 @@ mod tests {
     fn falls_back_to_the_input_transcription_when_the_model_says_nothing() {
         let (acc, _) = feed(&[json!({
             "type": "conversation.item.input_audio_transcription.completed",
-            "transcript": "只有输入转写",
+            "transcript": "只有輸入轉寫",
         })]);
         assert!(!acc.is_empty());
         let (text, used_fallback) = acc.finish();
-        assert_eq!(text, "只有输入转写");
+        assert_eq!(text, "只有輸入轉寫");
         assert!(used_fallback);
     }
 
     #[test]
     fn the_model_answer_wins_over_the_input_transcription() {
         let (acc, _) = feed(&[
-            json!({ "type": "conversation.item.input_audio_transcription.completed", "transcript": "输入" }),
+            json!({ "type": "conversation.item.input_audio_transcription.completed", "transcript": "輸入" }),
             json!({ "type": "response.text.delta", "delta": "回答" }),
         ]);
         let (text, used_fallback) = acc.finish();
@@ -1007,8 +1007,8 @@ mod empty_ending_tests {
             1234,
             "audio_sec=180.0",
         )
-        .expect_err("协议没跑完又一个字都没拿到，必须报错");
-        assert!(err.contains("code=1011"), "错误信息要带上 close code，否则等于没说原因：{err}");
+        .expect_err("協議沒跑完又一個字都沒拿到，必須報錯");
+        assert!(err.contains("code=1011"), "錯誤資訊要帶上 close code，否則等於沒說原因：{err}");
     }
 
     #[test]
@@ -1020,7 +1020,7 @@ mod empty_ending_tests {
     #[test]
     fn a_completed_conversation_with_no_text_stays_a_successful_empty_result() {
         let result = finish_omni(OmniTranscript::default(), OmniEnd::Completed, 1, "ctx")
-            .expect("正常走完的空结果不是错误");
+            .expect("正常走完的空結果不是錯誤");
         assert_eq!(result.text, "");
     }
 
@@ -1028,13 +1028,13 @@ mod empty_ending_tests {
     #[test]
     fn text_already_received_survives_an_abrupt_close() {
         let result = finish_omni(
-            transcript("已经识别出来的内容"),
+            transcript("已經識別出來的內容"),
             OmniEnd::Closed("code=1006".to_string()),
             1,
             "ctx",
         )
         .expect("有文本就算成功");
-        assert_eq!(result.text, "已经识别出来的内容");
+        assert_eq!(result.text, "已經識別出來的內容");
     }
 
     /// 這三條就是本次修復的全部行為差別。
@@ -1049,17 +1049,17 @@ mod empty_ending_tests {
         assert_eq!(
             OmniEnd::Completed.empty_failure_stage(),
             None,
-            "收到过 response.done，空文本才可以解释成「用户没说话」",
+            "收到過 response.done，空文本才可以解釋成「使用者沒說話」",
         );
         assert_eq!(
             OmniEnd::Closed("code=1011 reason=internal".to_string()).empty_failure_stage(),
             Some("closed_before_response"),
-            "服务端掐断连接必须报错，而不是显示「未检测到有效声音」",
+            "服務端掐斷連線必須報錯，而不是顯示「未檢測到有效聲音」",
         );
         assert_eq!(
             OmniEnd::StreamEnded.empty_failure_stage(),
             Some("stream_ended_before_response"),
-            "连 close 帧都没有同样是协议没跑完",
+            "連 close 幀都沒有同樣是協議沒跑完",
         );
     }
 }
@@ -1128,10 +1128,10 @@ mod pacing_tests {
     #[test]
     fn short_recordings_never_wait_and_99_seconds_waits_about_one_second() {
         assert_eq!(last_due(55, Pacing::NORMAL), None);
-        let due = last_due(99, Pacing::NORMAL).expect("99 秒超出了突发额度");
+        let due = last_due(99, Pacing::NORMAL).expect("99 秒超出了突發額度");
         assert!(
             due > Duration::from_millis(800) && due < Duration::from_millis(1100),
-            "99 秒录音的发送应在 1 秒左右结束，实际 {:?}",
+            "99 秒錄音的傳送應在 1 秒左右結束，實際 {:?}",
             due
         );
     }
@@ -1140,7 +1140,7 @@ mod pacing_tests {
     #[test]
     fn the_paced_rate_stays_under_the_server_limit() {
         const SERVER_LIMIT: u64 = 2560 * 1024;
-        assert!(PACING_RATE_BYTES_PER_SEC * 10 <= SERVER_LIMIT * 8, "至少留 20% 余量");
+        assert!(PACING_RATE_BYTES_PER_SEC * 10 <= SERVER_LIMIT * 8, "至少留 20% 餘量");
         // 突發額度要低於實測每次都能過的 2.6MB
         assert!(PACING_BURST_BYTES < 2_600_000);
     }

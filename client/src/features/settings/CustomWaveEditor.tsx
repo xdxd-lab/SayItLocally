@@ -53,7 +53,7 @@ const VIEWPORT_MARGIN = 8
  * 切到 HEX 要點數字旁一個不起眼的箭頭；mac 上又是一塊單獨漂著的系統顏色面板。使用者 2026-11-03 指出
  * 懸停提示寫著 HEX、點進去卻只有 RGB，「完全沒有辦法發現」。兩個平台現在是同一個面板。
  *
- * 面板挂在 body 上、fixed 定位：设置卡片有 overflow，放在卡片里会被裁掉。
+ * 面板掛在 body 上、fixed 定位：設定卡片有 overflow，放在卡片裡會被裁掉。
  * 拖動時連續觸發 onChange，寫盤由上層合併節流。
  */
 function ColorPopover({ color, label, onChange, className, style, children }: {

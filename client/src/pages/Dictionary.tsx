@@ -222,7 +222,7 @@ function HotwordDeliveryNotice({ hotwordCount }: { hotwordCount: number }) {
     void load()
     // 「OpenAI 相容」的 auto 協議要到第一次轉寫才探測出來（探測發生在 cloud_transcribe
     // 內部）。不重查的話，熱詞頁一直開著的使用者會永遠看到"還沒探測出來"——
-    // 而答案在他第一次口述之后就已经有了。
+    // 而答案在他第一次口述之後就已經有了。
     const onCapabilityMaybeChanged = () => { void load() }
     window.addEventListener(bridge.ASR_CAPABILITY_MAYBE_CHANGED_EVENT, onCapabilityMaybeChanged)
     return () => {
@@ -242,10 +242,10 @@ function HotwordDeliveryNotice({ hotwordCount }: { hotwordCount: number }) {
   return (
     <div className={cn('mb-4 -mt-1 space-y-1 text-xs leading-relaxed', tone)}>
       {/* 完整對照的入口跟在結論後面，同一行 —— 使用者讀完"當前這套會不會傳送"，
-          紧接着最想问的就是"那别的呢"。
+          緊接著最想問的就是"那別的呢"。
           原來這裡寫的是「完整對照見上游的語音辨識設定文件」，那句話沒有落點：
           文件在倉庫裡，使用者在 App 內點不到。[自訂] 該文件已自本 fork 移除。
-          现在改成应用内打开，表格现问 Rust 现渲染（见 HotwordSupportTable）。 */}
+          現在改成應用內開啟，表格現問 Rust 現渲染（見 HotwordSupportTable）。 */}
       <p>
         <RichText text={t(deliveryMessageKey(state.ui, state.undecidedReason))} />
         <button
@@ -257,27 +257,27 @@ function HotwordDeliveryNotice({ hotwordCount }: { hotwordCount: number }) {
         </button>
       </p>
       {/* 回落會翻轉結論的那兩家（OpenAI live / Gemini live）必須說明，否則使用者看到的
-          结论会在建连失败那一次悄悄失效，而他不会知道。 */}
+          結論會在建連失敗那一次悄悄失效，而他不會知道。 */}
       {state.pathDependent && (
         <p><RichText text={t('dict.delivery.pathDependent')} /></p>
       )}
       {/* 客戶端截斷：說清是 SayIt 傳送時的上限，不是服務端限制。
-          clientCap 已经是**当前路径**上那份（见 expectedClientCap）—— 按 provider 取
-          一个数会让 OpenAI live 关掉字幕时同时显示"不发送"和"最多发 100 个"。 */}
+          clientCap 已經是**當前路徑**上那份（見 expectedClientCap）—— 按 provider 取
+          一個數會讓 OpenAI live 關掉字幕時同時顯示"不傳送"和"最多發 100 個"。 */}
       {state.clientCap !== null && hotwordCount > state.clientCap && (
         <p className="text-amber-500">
           <RichText text={t('dict.delivery.clientCap', { cap: state.clientCap, count: hotwordCount })} />
         </p>
       )}
       {/* 不進 ASR 時給替代路徑，但必須說清它要兩個開關都開著 —— 「熱詞注入提示詞」
-          默认关闭，且依赖 AI 整理（AI 整理本身还可能因短录音跳过或调用失败）。
-          不能让用户以为有自动兜底。 */}
+          預設關閉，且依賴 AI 整理（AI 整理本身還可能因短錄音跳過或呼叫失敗）。
+          不能讓使用者以為有自動兜底。 */}
       {state.ui === 'not_sent' && (
         <p><RichText text={t('dict.delivery.fallbackHint')} /></p>
       )}
       {/* 雲端這條路熱詞還有一個無條件用途：轉寫完成後還原被拆開的寫法
-          （restoreHotwordSpacing，把 "Say It" 还原成 "SayIt"）。不说的话，
-          「不进 ASR」会被读成「热词完全没用」。 */}
+          （restoreHotwordSpacing，把 "Say It" 還原成 "SayIt"）。不說的話，
+          「不進 ASR」會被讀成「熱詞完全沒用」。 */}
       {state.hasSpacingRestore && state.ui !== 'sent' && (
         <p className="text-muted-foreground"><RichText text={t('dict.delivery.spacingRestore')} /></p>
       )}
@@ -415,10 +415,10 @@ function HotwordSupportTable({ onClose }: { onClose: () => void }) {
       title={t('dict.table.title')}
       onClose={onClose}
       showCloseButton
-      /* 780 而不是更窄：模型名最长的那个有 34 个字符
-         （qwen-audio-3.0-asr-flash-streaming），再加上「开实时字幕：不发送」两行式的
-         状态列和说明列，600 下说明列会被挤到折行。Modal 自带
-         max-w-[calc(100vw-2rem)]，小窗口下不会溢出。 */
+      /* 780 而不是更窄：模型名最長的那個有 34 個字元
+         （qwen-audio-3.0-asr-flash-streaming），再加上「開即時字幕：不傳送」兩行式的
+         狀態列和說明列，600 下說明列會被擠到折行。Modal 自帶
+         max-w-[calc(100vw-2rem)]，小視窗下不會溢位。 */
       panelClassName="w-[780px]"
     >
       <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
@@ -453,7 +453,7 @@ function HotwordSupportTable({ onClose }: { onClose: () => void }) {
                     </tr>
                   )}
                   {/* 當前在用的那一行高亮 —— 使用者來查表多半就是想確認自己這一行。
-                      原来那张静态表做不到这件事（它压根不知道用户选了谁）。 */}
+                      原來那張靜態表做不到這件事（它壓根不知道使用者選了誰）。 */}
                   <tr className={cn('align-top', isCurrent && 'bg-accent/50')}>
                     <td className="py-1 pr-3">
                       {row.model}
@@ -474,9 +474,9 @@ function HotwordSupportTable({ onClose }: { onClose: () => void }) {
       )}
 
       {/* 本地與伺服器模式不在服務目錄裡，但使用者同樣會問，所以單獨兩行補上。
-          这两条的依据不在 Rust 矩阵里（矩阵只覆盖云端分发 key），是前端硬写的 ——
-          能这么写是因为它们各自只有一个答案：服务器模式随 start 消息发送热词，
-          本地引擎迁到 GGML 后没有热词通道（models/ 下搜 hotword 零命中）。 */}
+          這兩條的依據不在 Rust 矩陣裡（矩陣只覆蓋雲端分發 key），是前端硬寫的 ——
+          能這麼寫是因為它們各自只有一個答案：伺服器模式隨 start 訊息傳送熱詞，
+          本地引擎遷到 GGML 後沒有熱詞通道（models/ 下搜 hotword 零命中）。 */}
       <p className="mt-4 text-xs leading-relaxed text-muted-foreground">
         <RichText text={t('dict.table.otherModes')} />
       </p>
@@ -608,7 +608,7 @@ export default function Dictionary() {
         <p className="mb-2 text-sm text-muted-foreground">{exportMessage}</p>
       )}
 
-      {/* ===== 文本处理 Tab ===== */}
+      {/* ===== 文本處理 Tab ===== */}
       {tab === 'replacement' && (
         <>
           <TextFormatSection />
@@ -634,9 +634,9 @@ export default function Dictionary() {
           </p>
 
           {/* 當前這套配置拿熱詞做什麼。
-              取代了原来那张硬编码的「各模型对热词的支持」表：那张表漏了 6 家云服务，
-              而且永远显示同一份内容、不看用户选的是谁（issue #67）。用户在这一页要
-              回答的问题只有一个 —— 我配的热词现在有用吗。全模型對照改由 App 內的
+              取代了原來那張硬編碼的「各模型對熱詞的支援」表：那張表漏了 6 家雲服務，
+              而且永遠顯示同一份內容、不看使用者選的是誰（issue #67）。使用者在這一頁要
+              回答的問題只有一個 —— 我配的熱詞現在有用嗎。全模型對照改由 App 內的
               HotwordSupportTable 顯示（[自訂] 上游的設定文件已自本 fork 移除）。 */}
           <HotwordDeliveryNotice hotwordCount={hotwords.length} />
 
@@ -687,7 +687,7 @@ export default function Dictionary() {
             <p className="py-8 text-center text-muted-foreground">{t('dict.loading')}</p>
           ) : (
             <div className="space-y-4">
-              {/* 自定义分类 */}
+              {/* 自定義分類 */}
               {customThemes.length > 1 && !search && (
                 <p className="text-xs text-muted-foreground/70">
                   {t('dict.orderHint')}
@@ -803,8 +803,8 @@ export default function Dictionary() {
                         </div>
                         <div className="flex shrink-0 items-center gap-3">
                           {/* 和自建分類的刪除鍵同一種小圖示按鈕。詞表沒改過時置灰、點不了（藏起來的話使用者以為按鈕丟了）；
-                              改过之后要点两下：第一下变成「确认恢复」，3 秒内再点才执行 —— 它会清掉用户加的词，
-                              以前是个带文字的大按钮，挨着开关，很容易误点。 */}
+                              改過之後要點兩下：第一下變成「確認恢復」，3 秒內再點才執行 —— 它會清掉使用者加的詞，
+                              以前是個帶文字的大按鈕，挨著開關，很容易誤點。 */}
                           {resetArmedKey === key && modified ? (
                             <button
                               type="button"

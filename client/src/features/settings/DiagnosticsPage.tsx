@@ -89,7 +89,7 @@ export default function DiagnosticsPage() {
     answer: (
       <>
         {/* 每條都是「**症狀** ：動作」—— 加粗的是症狀，使用者掃一眼粗體就能對上自己
-            的情况，不必逐条读完。加粗位置交给译文决定（见 i18n/RichText）。 */}
+            的情況，不必逐條讀完。加粗位置交給譯文決定（見 i18n/RichText）。 */}
         <ol className="list-decimal space-y-1.5 pl-5">
           <li><RichText text={t('diagnostics.faq.insert1')} /></li>
           <li><RichText text={t('diagnostics.faq.insert2')} /></li>
@@ -98,7 +98,7 @@ export default function DiagnosticsPage() {
           <li><RichText text={t('diagnostics.faq.insert5')} /></li>
         </ol>
         {/* 收尾這句刻意放在列表外：前五條是使用者能自己處理的，這句是"處理不了時
-            该怎么把现场交给我们"。合进列表会让它看起来像第六种排查手段。 */}
+            該怎麼把現場交給我們"。合進列表會讓它看起來像第六種排查手段。 */}
         <p className="mt-2.5">{t('diagnostics.faq.insertFooter')}</p>
       </>
     ),
@@ -264,7 +264,7 @@ export default function DiagnosticsPage() {
       if (!content) {
         setLogContent(t('diagnostics.fileEmpty'))
       } else {
-        // 最新的日志放上面
+        // 最新的日誌放上面
         const lines = content.split('\n').filter(Boolean)
         setLogContent(lines.reverse().join('\n'))
       }
@@ -360,7 +360,7 @@ export default function DiagnosticsPage() {
           </CardContent>
         </Card>
 
-        {/* 运行日志 */}
+        {/* 執行日誌 */}
         <Card>
           <CardContent className="p-6">
             <div className="mb-3 flex items-center justify-between">

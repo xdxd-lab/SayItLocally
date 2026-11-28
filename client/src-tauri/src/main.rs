@@ -36,7 +36,7 @@ use std::thread;
 // PermissionRequested 處理器負責（顯式 Allow → 變為持久 granted → 恢復裝置列舉）。
 // 也不要加回 --ignore-certificate-errors：它讓所有主機都不校驗證書，網路被截獲時
 // 識別結果和更新清單都能被換掉。自建伺服器的自簽名證書改由主窗的
-// ServerCertificateErrorDetected 处理器按地址放行（见 net_policy::cert_error_allowed）。
+// ServerCertificateErrorDetected 處理器按地址放行（見 net_policy::cert_error_allowed）。
 #[cfg_attr(not(windows), allow(dead_code))]
 const WEBVIEW2_BROWSER_ARGS: &str =
     "--disable-backgrounding-occluded-windows --disable-renderer-backgrounding \

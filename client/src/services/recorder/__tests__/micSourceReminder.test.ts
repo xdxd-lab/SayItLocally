@@ -8,13 +8,13 @@ import {
 } from '../micSourceReminder'
 
 /** 本機日誌裡的真實形狀：結尾還掛著 USB 的 VID:PID。 */
-const HEADSET_RAW = '耳机式麦克风 (Plantronics Blackwire 5220 Series) (047f:c053)'
+const HEADSET_RAW = '耳機式麥克風 (Plantronics Blackwire 5220 Series) (047f:c053)'
 /** 兩處都該顯示的這一串：剝掉本地化字首與 USB 標識，括號裡的型號保留。 */
-const HEADSET_SHOWN = '耳机式麦克风 (Plantronics Blackwire 5220 Series)'
+const HEADSET_SHOWN = '耳機式麥克風 (Plantronics Blackwire 5220 Series)'
 
 const headsetSnapshot: MicEndpoint[] = [
-  { deviceId: 'default', groupId: 'plt-group', label: `默认值 - ${HEADSET_RAW}` },
-  { deviceId: 'communications', groupId: 'plt-group', label: `通信设备 - ${HEADSET_RAW}` },
+  { deviceId: 'default', groupId: 'plt-group', label: `預設值 - ${HEADSET_RAW}` },
+  { deviceId: 'communications', groupId: 'plt-group', label: `通訊裝置 - ${HEADSET_RAW}` },
   { deviceId: 'real-headset', groupId: 'plt-group', label: HEADSET_RAW },
 ]
 
@@ -22,7 +22,7 @@ function followingSystemDefault(devices = headsetSnapshot) {
   return {
     deviceId: 'default',
     groupId: 'plt-group',
-    label: `默认值 - ${HEADSET_RAW}`,
+    label: `預設值 - ${HEADSET_RAW}`,
     devices,
   }
 }
@@ -80,10 +80,10 @@ describe('microphone source reminder', () => {
       // 那個 —— 這條斷言就是為了把兩邊釘在一起，改任何一邊都會在這裡失敗。
       const fromOverlay = describeMicSource(followingSystemDefault(), '', 'Microphone').label
       const fromSettings = buildMicOptions(headsetSnapshot, '', {
-        systemDefault: '系统默认',
-        systemDefaultWith: (device) => `系统默认（${device}）`,
-        unnamed: (idPrefix) => `麦克风 ${idPrefix}`,
-        unavailable: '上次选的麦克风当前不可用',
+        systemDefault: '系統預設',
+        systemDefaultWith: (device) => `系統預設（${device}）`,
+        unnamed: (idPrefix) => `麥克風 ${idPrefix}`,
+        unavailable: '上次選的麥克風當前不可用',
       }).find((option) => option.value === 'real-headset')?.label
 
       expect(fromOverlay).toBe(HEADSET_SHOWN)
@@ -105,7 +105,7 @@ describe('microphone source reminder', () => {
 
     it('falls back to suffix matching when the pseudo device carries no group id', () => {
       const snapshot: MicEndpoint[] = [
-        { deviceId: 'default', groupId: '', label: `默认值 - ${HEADSET_RAW}` },
+        { deviceId: 'default', groupId: '', label: `預設值 - ${HEADSET_RAW}` },
         { deviceId: 'real-headset', groupId: 'plt-group', label: HEADSET_RAW },
       ]
       const source = describeMicSource(
@@ -136,8 +136,8 @@ describe('microphone source reminder', () => {
       expect(describeMicSource(
         { deviceId: '', groupId: '', label: '', devices: [] },
         '',
-        '麦克风',
-      ).label).toBe('麦克风')
+        '麥克風',
+      ).label).toBe('麥克風')
     })
 
     it('still strips the usb id when the device snapshot is unavailable', () => {

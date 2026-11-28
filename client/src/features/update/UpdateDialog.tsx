@@ -1,5 +1,5 @@
 /**
- * 安装中的遮罩。
+ * 安裝中的遮罩。
  *
  * 只在 installing 那一態出現 —— 此刻應用即將退出、被安裝程式覆蓋，使用者必須知道
  * "別動它"，遮住介面是合理的。
@@ -31,7 +31,7 @@ export default function UpdateDialog() {
       <div className="w-full max-w-sm rounded-2xl border border-border bg-card p-6 shadow-xl">
         <div className="flex flex-col items-center text-center">
           {/* 用主題的 success 令牌而不是寫死 emerald-500：和左下角那枚更新徽標同一個綠，
-              而且深浅主题下各自有合适的明度（写死的 emerald 在暗色主题上偏闷）。 */}
+              而且深淺主題下各自有合適的明度（寫死的 emerald 在暗色主題上偏悶）。 */}
           <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-success/10">
             <RefreshCw className="h-7 w-7 animate-spin text-success" />
           </div>

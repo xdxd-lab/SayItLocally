@@ -104,7 +104,7 @@ pub fn transport_type(id: AudioObjectID) -> Option<u32> {
     unsafe { get_u32(id, &addr) }
 }
 
-/// 有输入流的设备（麦克风）。
+/// 有輸入流的裝置（麥克風）。
 pub fn input_devices() -> Vec<AudioObjectID> {
     let addr = address(kAudioHardwarePropertyDevices, kAudioObjectPropertyScopeGlobal, kAudioObjectPropertyElementMain);
     unsafe {
@@ -161,7 +161,7 @@ pub enum SavedOutputState {
 /// 靜音預設輸出裝置。返回之前的狀態（還原用）。
 pub fn mute_default_output() -> Result<SavedOutputState, String> {
     let device = default_device(false).ok_or("no default output device")?;
-    // 1. Mute 属性（主元素或各通道）
+    // 1. Mute 屬性（主元素或各通道）
     let mut mute_elements = Vec::new();
     for element in MUTE_ELEMENTS {
         let addr = address(kAudioDevicePropertyMute, kAudioDevicePropertyScopeOutput, element);

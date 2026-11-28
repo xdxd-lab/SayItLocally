@@ -42,7 +42,7 @@ function payloadsFrom(): Payload[] {
  * 所以這裡斷言的不是"警告能顯示"，而是"每一次 listening 更新都帶著佈局判據" ——
  * 前者在出 bug 的那個版本上也全綠。
  */
-describe('listening 更新必须始终携带布局判据', () => {
+describe('listening 更新必須始終攜帶佈局判據', () => {
   const emitters: Array<[string, (service: InstanceType<typeof OverlayService>) => void]> = [
     ['showLowVolumeWarning', (s) => s.showLowVolumeWarning()],
     ['showNoSignalWarning', (s) => s.showNoSignalWarning()],
@@ -57,10 +57,10 @@ describe('listening 更新必须始终携带布局判据', () => {
     mocks.presentOverlay.mockClear()
   })
 
-  it.each(emitters)('%s 带上 streaming 与 streamingText', (_name, emit) => {
+  it.each(emitters)('%s 帶上 streaming 與 streamingText', (_name, emit) => {
     const service = new OverlayService(() => 7)
     service.setStreamingActive(true)
-    service.setStreamingText('实时字幕中')
+    service.setStreamingText('即時字幕中')
 
     emit(service)
 
@@ -70,12 +70,12 @@ describe('listening 更新必须始终携带布局判据', () => {
       expect(payload).toMatchObject({
         state: 'listening',
         streaming: true,
-        streamingText: '实时字幕中',
+        streamingText: '即時字幕中',
       })
     }
   })
 
-  it.each(emitters)('%s 在未开启流式时不硬塞 streaming 字段', (_name, emit) => {
+  it.each(emitters)('%s 在未開啟流式時不硬塞 streaming 欄位', (_name, emit) => {
     const service = new OverlayService(() => 7)
     service.setStreamingActive(false)
 
@@ -94,7 +94,7 @@ describe('listening 更新必须始终携带布局判据', () => {
    * 但它從此不再跟著 listeningPayload 演進 —— 下次往 payload 里加欄位又會漏掉它一個。
    * 這條能當場把那種退化照出來。
    */
-  it('所有 listening 出口都经由 listeningPayload，而非各自复制一份', () => {
+  it('所有 listening 出口都經由 listeningPayload，而非各自複製一份', () => {
     const service = new OverlayService(() => 7)
     const spy = vi.spyOn(
       service as unknown as { listeningPayload: (overrides?: Record<string, unknown>) => unknown },
@@ -105,7 +105,7 @@ describe('listening 更新必须始终携带布局判据', () => {
     for (const [name, emit] of emitters) {
       spy.mockClear()
       emit(service)
-      expect(spy, `${name} 绕过了 listeningPayload`).toHaveBeenCalled()
+      expect(spy, `${name} 繞過了 listeningPayload`).toHaveBeenCalled()
     }
   })
 })
@@ -117,7 +117,7 @@ describe('listening 更新必须始终携带布局判据', () => {
  * 斷言必須落在「帶 bars 的幀」上，不能只數總次數：0.2.3 裡定時器與波形共用 33ms 閾值，
  * 每輪都是定時器先搶到名額，總數 30 次/秒照樣達標，波形卻一幀沒發出去（issue #90）。
  */
-describe('listening 更新频率', () => {
+describe('listening 更新頻率', () => {
   beforeEach(() => {
     mocks.updateOverlay.mockClear()
     mocks.presentOverlay.mockClear()
@@ -125,7 +125,7 @@ describe('listening 更新频率', () => {
   })
 
   // 3ms ≈ AudioWorklet 每 128 取樣一幀（48kHz）；8/10ms ≈ 音訊執行緒按塊批次投遞
-  it.each([3, 8, 10])('PCM 每 %dms 一帧时，更新全部由波形那一路发出', (stepMs) => {
+  it.each([3, 8, 10])('PCM 每 %dms 一幀時，更新全部由波形那一路發出', (stepMs) => {
     const service = new OverlayService(() => 7)
     service.startListeningTicker(0)
     mocks.updateOverlay.mockClear()
@@ -143,7 +143,7 @@ describe('listening 更新频率', () => {
     vi.useRealTimers()
   })
 
-  it('没有 PCM 时定时器照样推进计时', () => {
+  it('沒有 PCM 時定時器照樣推進計時', () => {
     const service = new OverlayService(() => 7)
     service.startListeningTicker(0)
     mocks.updateOverlay.mockClear()
@@ -160,7 +160,7 @@ describe('listening 更新频率', () => {
  * 提示音播完必須把 AudioContext 掛起：running 狀態的 AudioContext 空閒時也持續耗 CPU，
  * 正式版從第一次錄音起一直多耗約 1.8% 個核（2026-10 實測）。
  */
-describe('就绪提示音的 AudioContext', () => {
+describe('就緒提示音的 AudioContext', () => {
   class FakeOscillator {
     onended: (() => void) | null = null
     frequency = { value: 0 }
@@ -187,7 +187,7 @@ describe('就绪提示音的 AudioContext', () => {
     vi.stubGlobal('AudioContext', FakeAudioContext)
   })
 
-  it('播完挂起，下次播放前恢复，只建一个 AudioContext', async () => {
+  it('播完掛起，下次播放前恢復，只建一個 AudioContext', async () => {
     const service = new OverlayService(() => 0)
     service.startListeningTicker(0)
     service.stopListeningTicker()
@@ -212,12 +212,12 @@ describe('就绪提示音的 AudioContext', () => {
  * 自定義配色必須隨每幀下發，不管當前主題是不是 custom：原生側對 payload 是整份替換，
  * 只在部分幀裡帶的話，重放底稿時懸浮窗會回落到預設配色。
  */
-describe('自定义波形配色', () => {
+describe('自定義波形配色', () => {
   beforeEach(() => {
     mocks.updateOverlay.mockClear()
   })
 
-  it('listening 更新带着规整过的 customWave', async () => {
+  it('listening 更新帶著規整過的 customWave', async () => {
     const service = new OverlayService(() => 7)
     await service.refreshSettings()
     service.pushListeningBars([3, 5, 8], true)

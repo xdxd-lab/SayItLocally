@@ -65,9 +65,9 @@ interface FeedbackProps {
   tone: FeedbackTone
   /** 主文案：說清發生了什麼，以及下一步該往哪查 */
   message: ReactNode
-  /** 原始异常等排查信息，次要字号；能看懂的人需要它，看不懂的人可以忽略 */
+  /** 原始異常等排查資訊，次要字號；能看懂的人需要它，看不懂的人可以忽略 */
   detail?: string
-  /** 直接可点的下一步，最多两个 */
+  /** 直接可點的下一步，最多兩個 */
   actions?: FeedbackAction[]
   className?: string
 }
@@ -105,8 +105,8 @@ export function Feedback({ tone, message, detail, actions, className }: Feedback
           <p className={cn('text-sm leading-relaxed', style.text)}>{message}</p>
 
           {/* detail 原來是 font-mono：在中文 Windows 上 CJK 會落到宋體，一整塊提示裡
-              突然冒出一段宋体，比等宽带来的好处难看得多（而且它现在承载的多是中文短句，
-              不只是原始异常）。改回正文字体 + 保留换行，长 URL 用 break-words 兜住。 */}
+              突然冒出一段宋體，比等寬頻來的好處難看得多（而且它現在承載的多是中文短句，
+              不只是原始異常）。改回正文字型 + 保留換行，長 URL 用 break-words 兜住。 */}
           {detail && (
             <p className="mt-1.5 whitespace-pre-line break-words text-xs leading-relaxed text-muted-foreground">
               {detail}

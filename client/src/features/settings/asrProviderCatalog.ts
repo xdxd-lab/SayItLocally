@@ -5,7 +5,7 @@
 //
 // 和 AI 服務的唯一實質差別：供應商只能從內建清單裡選，不能填任意地址 —— 每家 ASR 的
 // 協議都要一份專門的 Rust 實現（asr_doubao / asr_qwen / asr_qwen_omni / asr_mimo），
-// 不像 AI 整理那边只要是 OpenAI 兼容端点就能接。
+// 不像 AI 整理那邊只要是 OpenAI 相容端點就能接。
 //
 // 「同平台重複粘金鑰」的問題不靠"按平台存"解決（那樣一張卡就不再是一份完整配置了），
 // 而是照 AI 服務的做法：新建時若該平台已有配置，自動把金鑰帶過來，介面上說明它從哪來。
@@ -57,7 +57,7 @@ export const ASR_PLATFORMS: Record<AsrPlatform, AsrPlatformInfo> = {
  * 這兩套協議都被叫做「OpenAI 相容」，但地址、請求體、響應形狀完全不同：
  *   · `transcriptions` → `/audio/transcriptions`，multipart 傳檔案，響應 `{"text": ...}`。
  *     OpenAI 自己、Groq、矽基流動、whisper.cpp / faster-whisper / FunASR 的包裝都是這套。
- *   · `chat`           → `/chat/completions`，阿里云百炼 data URL 字符串。
+ *   · `chat`           → `/chat/completions`，阿里雲百鍊 data URL 字串。
  *   · `chat_standard`  → `/chat/completions`，標準 OpenAI `input_audio.data`（裸 base64）
  *     與 `input_audio.format`。相容 Gemini 等使用標準 OpenAI 格式的閘道器。
  *
@@ -79,7 +79,7 @@ export function parseAsrCompatProtocol(value: unknown): AsrCompatProtocol {
  *
  * **關鍵在 `provider`：同一張卡里的模型可以走完全不同的後端實現。**
  * 千問那五個就是四種協議（DashScope duplex / HTTP 一次性 / OpenAI-Realtime 風格 /
- * chat+base64），OpenAI 与 Gemini 也各是「HTTP 一次性」加「WebSocket 流式」两种。
+ * chat+base64），OpenAI 與 Gemini 也各是「HTTP 一次性」加「WebSocket 流式」兩種。
  *
  * 這個欄位的存在就是為了讓「介面按平台歸攏」和「後端按協議分發」兩件事同時成立 ——
  * 早先的做法是一個模型佔一張卡（`qwen_audio_stream`、`qwen_realtime`… 各一張），
@@ -122,7 +122,7 @@ export interface AsrModelOption {
   streaming?: boolean
   /** 識別與 AI 整理一步完成，不需要單獨配 AI 服務 */
   omni?: boolean
-  /** 需要百炼「业务空间 ID」才能用 */
+  /** 需要百鍊「業務空間 ID」才能用 */
   needsWorkspaceId?: boolean
   /**
    * 這個模型的地址可以由使用者覆蓋（填了就用他的，空著就用實現裡內建的官方地址）。
@@ -134,7 +134,7 @@ export interface AsrModelOption {
    * 為什麼內建卡也要開放：中轉站/反代很常見（尤其 OpenAI 和 Gemini），
    * 使用者拿的是官方協議、只是換了個域名。不給填就等於逼他們用不了。
    *
-   * 安全边界靠两件事守住，缺一不可：
+   * 安全邊界靠兩件事守住，缺一不可：
    *  1. 這個標記為假的模型，`asrEndpointUrl` 一律返回空串 —— 檔案裡即使殘留了
    *     地址也發不出去（切過供應商就會留下殘值）；
    *  2. WebSocket 那幾份實現壓根不讀 `extra.baseUrl`。
@@ -178,16 +178,16 @@ export interface AsrProviderEntry {
    * 理由見那邊的註釋。
    */
   customEndpoint?: boolean
-  /** 「接口地址」输入框的占位示例 */
+  /** 「介面地址」輸入框的佔位示例 */
   urlPlaceholder?: string
 }
 
 /**
  * OpenRouter 上的全部轉寫模型（拉取自 `/api/v1/models?output_modalities=transcription`，
- * 2026-09-16，共 21 个）。
+ * 2026-09-16，共 21 個）。
  *
  * **這些 slug 是從那個介面原樣抄下來的，不是照模型頁的展示名推的。**
- * 展示名和 slug 经常不是一回事（"Whisper Large V3 Turbo" 的 slug 是
+ * 展示名和 slug 經常不是一回事（"Whisper Large V3 Turbo" 的 slug 是
  * `openai/whisper-large-v3-turbo`，但 "Grok STT 1.0" 是 `x-ai/grok-stt-1.0`、
  * "Qwen3 ASR Flash" 帶日期字尾 `qwen/qwen3-asr-flash-2026-02-10`）。
  * 猜錯的表現是 404 "model not found" —— 看著像模型下線了，其實是名字寫錯。
@@ -221,7 +221,7 @@ const OPENROUTER_SLUGS = [
   'openai/whisper-large-v3-turbo',
   'openai/whisper-large-v3',
   'openai/whisper-1',
-  // 其余厂商
+  // 其餘廠商
   'deepgram/nova-3',
   'meta/muse-voice-transcribe-1.0',
   'x-ai/grok-stt-1.0',
@@ -346,7 +346,7 @@ export const ASR_PROVIDERS: AsrProviderEntry[] = [
          * 再取文本）兩者結果一樣，差別在計費口徑和能不能換地址。
          *
          * 排在 realtime 那個前面：HTTP 那條路能配中轉站/業務空間專屬域名，
-         * 适用面更广。
+         * 適用面更廣。
          */
         id: 'qwen3.8-omni-flash',
         provider: 'qwen_chat_audio',
@@ -358,13 +358,13 @@ export const ASR_PROVIDERS: AsrProviderEntry[] = [
       },
       {
         /**
-         * 同一代 Omni 的 realtime 版，走 asr_qwen_omni.rs 那条 WebSocket。
+         * 同一代 Omni 的 realtime 版，走 asr_qwen_omni.rs 那條 WebSocket。
          *
          * ⚠️ 它曾經被判成「加不了」，理由是它在我們的程式碼路徑上會被拒
          * （`Voice 'Chelsie' is not supported`）。那個結論**錯在沒做對照實驗**：
          * 當時"帶 voice"和"不發 response.create"兩個變數一起變了，所以分不清是哪個
          * 起的作用。固定發 `response.create`、只變音色欄位重測之後結論很乾脆 ——
-         * 加一个 `session.audio.output.voice` 就能用，而且 3.5 两代也接受同一个字段，
+         * 加一個 `session.audio.output.voice` 就能用，而且 3.5 兩代也接受同一個欄位，
          * 一份會話形狀通吃。實測指令碼：`dev-scripts/probe_qwen38_omni_voice.py`。
          *
          * 所以這裡沒有任何特殊欄位：那個音色欄位是 asr_qwen_omni.rs 對所有 Omni
@@ -426,7 +426,7 @@ export const ASR_PROVIDERS: AsrProviderEntry[] = [
    *
    * **流式那個模型在檔案端點上不存在**，所以它關掉即時字幕時會回落到
    * `gpt-transcribe` —— 那層換名在 asr_groq.rs 的 OPENAI_FILE_FALLBACK 檔裡做，
-   * 用户不会看到「模型不存在」。
+   * 使用者不會看到「模型不存在」。
    */
   {
     id: 'openai',
@@ -607,7 +607,7 @@ const RETIRED_MODELS: Record<string, string> = {
 }
 
 /**
- * 把存量条目的 provider 迁移成（卡片 id, 模型 id）。
+ * 把存量條目的 provider 遷移成（卡片 id, 模型 id）。
  *
  * ── 判據必須是「provider + model 這一對是否自洽」，不能只看其中一個 ──
  * 早先寫成「有 model 就是新資料」，結果把使用者的卡片全弄丟了：`model` 欄位是**上一個
@@ -818,7 +818,7 @@ export interface AsrProfile {
    */
   name: string
   /**
-   * 自定义接口地址。
+   * 自定義介面地址。
    *
    * 協議卡必填；內建卡**可選** —— 空著就用實現裡的官方地址，填了就走使用者的
    * （中轉站 / 反代很常見，尤其 OpenAI 和 Gemini）。只對選中模型標了
@@ -1037,7 +1037,7 @@ export function effectiveAsrCredentials(profile: AsrProfile): { apiKey: string; 
 /**
  * 這份檔案還缺什麼才能用（空串 = 齊了）。文案直接可展示。
  *
- * 豆包那套直接委托 describeDoubaoMissing，不再自己抄一遍：抄的那版曾经把
+ * 豆包那套直接委託 describeDoubaoMissing，不再自己抄一遍：抄的那版曾經把
  * 「還沒填 API Key」寫成沒有空格的「還沒填API Key」，而同一句話會和左下角就緒指示
  * 同屏出現，差一個空格就露餡。同一句使用者可見文案只該有一個出處。
  */

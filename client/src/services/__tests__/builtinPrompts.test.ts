@@ -26,10 +26,10 @@ import {
   type PromptPreset,
 } from '../store'
 
-describe('内置 Prompt 语言', () => {
+describe('內建 Prompt 語言', () => {
   beforeEach(() => bridgeState.values.clear())
 
-  it('默认使用中文，非法持久化值也安全回落到中文', () => {
+  it('預設使用中文，非法持久化值也安全回落到中文', () => {
     expect(getDefault('ai.builtinPromptLanguage')).toBe('zh-TW')
     expect(normalizeBuiltinPromptLanguage('zh-TW')).toBe('zh-TW')
     // [自訂] SC-65：舊版存的簡體中文 Prompt 語言遷移成正體中文（台灣）。
@@ -40,7 +40,7 @@ describe('内置 Prompt 语言', () => {
     }
   })
 
-  it('中英文定义的 id 和顺序一致，且四份英文 Prompt 均已提供', () => {
+  it('中英文定義的 id 和順序一致，且四份英文 Prompt 均已提供', () => {
     const zh = getBuiltinPromptPresets('zh-TW')
     const en = getBuiltinPromptPresets('en')
 
@@ -62,7 +62,7 @@ describe('内置 Prompt 语言', () => {
     }
   })
 
-  it('持久化选择后按对应语言加载', async () => {
+  it('持久化選擇後按對應語言載入', async () => {
     await setBuiltinPromptLanguage('en')
     const presets = await getPromptPresets()
 
@@ -70,11 +70,11 @@ describe('内置 Prompt 语言', () => {
     expect(presets.every((preset) => !preset.builtin || preset.builtinPromptLanguage === 'en')).toBe(true)
   })
 
-  it('中英文内置修改分开保存，恢复默认只清理当前语言', async () => {
+  it('中英文內建修改分開儲存，恢復預設只清理當前語言', async () => {
     const zhIntent = getBuiltinPromptPresets('zh-TW')[0]
     const enIntent = getBuiltinPromptPresets('en')[0]
 
-    await savePromptPreset({ ...zhIntent, systemPrompt: '中文自定义 Prompt' })
+    await savePromptPreset({ ...zhIntent, systemPrompt: '中文自定義 Prompt' })
     await savePromptPreset({ ...enIntent, systemPrompt: 'Custom English prompt' })
 
     const stored = bridgeState.values.get('promptPresets') as PromptPreset[]
@@ -83,7 +83,7 @@ describe('内置 Prompt 语言', () => {
     expect(stored.find((preset) => preset.builtinPromptLanguage === 'en')?.builtinPromptBaseHash)
       .toBe(builtinPromptContentHash(enIntent.systemPrompt))
 
-    expect((await getPromptPresets('zh-TW'))[0].systemPrompt).toBe('中文自定义 Prompt')
+    expect((await getPromptPresets('zh-TW'))[0].systemPrompt).toBe('中文自定義 Prompt')
     expect((await getPromptPresets('en'))[0].systemPrompt).toBe('Custom English prompt')
 
     await savePromptPreset(zhIntent)
@@ -91,11 +91,11 @@ describe('内置 Prompt 语言', () => {
     expect((await getPromptPresets('en'))[0].systemPrompt).toBe('Custom English prompt')
   })
 
-  it('旧版无语言字段的 override 只归入中文', async () => {
+  it('舊版無語言欄位的 override 只歸入中文', async () => {
     const legacyOverride: PromptPreset = {
       id: 'intent',
-      name: '旧名称',
-      systemPrompt: '旧中文 Prompt',
+      name: '舊名稱',
+      systemPrompt: '舊中文 Prompt',
     }
     bridgeState.values.set('promptPresets', [legacyOverride])
 
@@ -106,7 +106,7 @@ describe('内置 Prompt 语言', () => {
       .toBe(getBuiltinPromptPresets('en')[0].systemPrompt)
   })
 
-  it('保存基线与当前内置定义不同时提示有更新', async () => {
+  it('儲存基線與當前內建定義不同時提示有更新', async () => {
     bridgeState.values.set('promptPresets', [{
       id: 'intent',
       name: 'Intent cleanup',
@@ -120,11 +120,11 @@ describe('内置 Prompt 语言', () => {
     expect(preset.builtinPromptUpdateAvailable).toBe(true)
   })
 
-  it('读取时清理与当前官方内容完全相同的旧快照', async () => {
+  it('讀取時清理與當前官方內容完全相同的舊快照', async () => {
     const current = getBuiltinPromptPresets('zh-TW')[0]
     bridgeState.values.set('promptPresets', [{
       id: current.id,
-      name: '旧名称',
+      name: '舊名稱',
       systemPrompt: current.systemPrompt,
     } satisfies PromptPreset])
 

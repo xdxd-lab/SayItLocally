@@ -28,7 +28,7 @@ export const BUILTIN_SETS: Record<string, { label: string; description: string; 
     // i18n-allow-start: 內建中文熱詞資料，不是介面文案
     words: [
       'ChatGPT', 'GPT', 'OpenAI', 'Claude', 'DeepSeek', '豆包', 'Gemini',
-      'LLM', 'Token', 'Prompt', 'Agent', 'Ollama', '千问', '大模型',
+      'LLM', 'Token', 'Prompt', 'Agent', 'Ollama', '千問', '大模型',
       'OpenClaw', 'ASR', 'Codex', 'Claude Code', 'SayIt', 'Hermes',
       'Vibe Coding', 'Typeless', 'Vibe',
     ],

@@ -127,12 +127,12 @@ export default function WorkModeSection({ value, onChange }: Props) {
                   aria-hidden
                 />
                 {/* 選中態原來只有顏色（1px 邊框 + 圖示變色 + 5% 的淡底）。加一個對勾，
-                    让"当前是哪个"不依赖颜色感知。
-                    用 CheckCircle2 + success-strong 而不是裸 Check + primary，是为了和
-                    「语音识别服务」卡片上的「使用中」标记完全一致 —— 两页都是在选一张卡，
-                    同一个含义不该长成两个样子。别顺手把它统一回 primary。
-                    图标保持 aria-hidden：选中状态已经由外层 role="radio" 的 aria-checked
-                    如实报给读屏，再给图标加一个 label 只会让它念两遍。 */}
+                    讓"當前是哪個"不依賴顏色感知。
+                    用 CheckCircle2 + success-strong 而不是裸 Check + primary，是為了和
+                    「語音識別服務」卡片上的「使用中」標記完全一致 —— 兩頁都是在選一張卡，
+                    同一個含義不該長成兩個樣子。別順手把它統一回 primary。
+                    圖示保持 aria-hidden：選中狀態已經由外層 role="radio" 的 aria-checked
+                    如實報給讀屏，再給圖示加一個 label 只會讓它念兩遍。 */}
                 <div className="flex items-center gap-1.5 pr-7 text-sm font-medium">
                   {isActive && <CheckCircle2 className="h-4 w-4 shrink-0 text-success-strong" aria-hidden />}
                   {t(m.labelKey)}

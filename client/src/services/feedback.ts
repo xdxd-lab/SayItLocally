@@ -168,7 +168,7 @@ export async function _disabledSubmitFeedback(feedbackText: string, options?: { 
     context,
   }
 
-  // 发送
+  // 傳送
   const baseUrl = getBackendBaseUrl()
   const res = await fetch(`${baseUrl}/api/feedback`, {
     method: 'POST',

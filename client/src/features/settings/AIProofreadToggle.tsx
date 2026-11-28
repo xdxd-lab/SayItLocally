@@ -85,7 +85,7 @@ export default function AIProofreadToggle() {
             </p>
           </div>
           {/* 開關原來既沒有 label 也沒有 aria-label，相鄰的標題也沒關聯——讀屏唸到的是
-              一个没有名字的「切换按钮」 */}
+              一個沒有名字的「切換按鈕」 */}
           <Switch
             checked={aiEnabled}
             onChange={() => { void toggleAiEnabled() }}
@@ -104,9 +104,9 @@ export default function AIProofreadToggle() {
             description={t('aiProofread.shortcutDesc')}
           />
           {/* 這一項只在 AI 整理開啟時才有意義。關閉時不能只是留著讓人填 ——
-              原来照样可编辑，用户填完一个数字，它却根本不参与判断，界面还一声不响。
-              所以关闭时真的 disabled（读屏也能听到），并把说明换成「不生效」的原因。
-              上面的快捷键那行不跟着灰：它正是用来把 AI 整理打开的手段。 */}
+              原來照樣可編輯，使用者填完一個數字，它卻根本不參與判斷，介面還一聲不響。
+              所以關閉時真的 disabled（讀屏也能聽到），並把說明換成「不生效」的原因。
+              上面的快捷鍵那行不跟著灰：它正是用來把 AI 整理開啟的手段。 */}
           <div>
             <div className="flex items-center justify-between gap-5">
               <div className="min-w-0">

@@ -31,7 +31,7 @@ interface ServiceResult {
 export default function ServerSection() {
   const t = useT()
   const [backendBaseUrl, setBackendBaseUrl] = useState('')
-  /** 已保存的地址。输入框与它不一致就是「未保存」 */
+  /** 已儲存的地址。輸入框與它不一致就是「未儲存」 */
   const [savedBaseUrl, setSavedBaseUrl] = useState('')
   const [defaultBaseUrl, setDefaultBaseUrl] = useState('')
   const [result, setResult] = useState<ServiceResult | null>(null)
@@ -193,7 +193,7 @@ export default function ServerSection() {
                 {t('server.title')}
               </label>
               {/* 輸入框內容只活在 local state 裡，切頁就沒了。原來這件事完全無提示，
-                  用户会以为改完就生效了。 */}
+                  使用者會以為改完就生效了。 */}
               {isDirty && (
                 <span className="rounded-full bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning-strong">
                   {t('server.unsaved')}
@@ -224,9 +224,9 @@ export default function ServerSection() {
           </div>
 
           {/* 這裡原來在失敗提示裡再掛一個「恢復預設地址（https://…）」按鈕：
-              一是把整条 URL 塞进按钮文字，全应用没有第二处这么写；
-              二是它和输入框旁边那个「恢复默认」完全同义——而后者在地址被改过时一直都在，
-              正好覆盖会出现这条失败提示的全部情况。留一个就够。 */}
+              一是把整條 URL 塞進按鈕文字，全應用沒有第二處這麼寫；
+              二是它和輸入框旁邊那個「恢復預設」完全同義——而後者在地址被改過時一直都在，
+              正好覆蓋會出現這條失敗提示的全部情況。留一個就夠。 */}
           {result && (
             <Feedback
               className="mt-3"

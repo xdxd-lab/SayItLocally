@@ -98,7 +98,7 @@ impl HotwordDelivery {
 ///
 /// 而且走哪條是**執行時**才定的：沒開即時字幕、這家沒有流式實現、配置沒就緒
 /// （千問 realtime 缺業務空間 ID）、或者建連失敗，都會回落到一次性路徑
-/// （见 `CloudAPIProvider.ts::tryStartRealtimeStream`）。所以设置页只能展示
+/// （見 `CloudAPIProvider.ts::tryStartRealtimeStream`）。所以設定頁只能展示
 /// 「配置預期」，本次真正走了哪條要看日誌。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -124,13 +124,13 @@ pub struct AsrHotwordCapability {
     /// `openai_live_transcribe`：流式的 `keywords` 有 100 條上限，關掉即時字幕後
     /// 回落到檔案端點則一條都不發。只給一個欄位的話，前端在關字幕時會同時顯示
     /// 「不傳送」和「最多傳送 100 個，其餘不發出」—— 兩句話互相矛盾。
-    /// 反方向同理：`gemini_live_transcribe` 的上限只存在于回落那条路上。
+    /// 反方向同理：`gemini_live_transcribe` 的上限只存在於回落那條路上。
     pub buffered_client_cap: Option<usize>,
 }
 
 /// 全部 ASR 分發 key。**必須與 `registry.rs::cloud_transcribe` 的 match 一致。**
 ///
-/// 含三类：
+/// 含三類：
 ///   · 前端目錄裡選得到的（`asrProviderCatalog.ts` 各模型的 `provider`）
 ///   · 內部 key（`openai_compat_transcribe` / `openai_chat_audio`，由
 ///     `asr_openai_compat` 探測後分發）
@@ -200,7 +200,7 @@ fn buffered_delivery(provider: &str, extra: &Value) -> HotwordDelivery {
         // asr_groq：`/audio/transcriptions` 的 `prompt` 欄位是熱詞的天然位置
         //（OpenAI 的 prompting 指南把專有名詞和標點列在一起），但我們拿它換了中文
         // 標點。組合兩者尚未驗證 —— 驗證工具是現成的
-        //（dev-scripts 里那两个 groq-asr-*-probe.mjs 打真实接口）。
+        //（dev-scripts 裡那兩個 groq-asr-*-probe.mjs 打真實介面）。
         "groq_whisper" | "openai_transcribe" | "openai_compat_transcribe" => {
             HotwordDelivery::NotWiredUp
         }
@@ -274,7 +274,7 @@ fn client_cap(provider: &str, path_delivery: HotwordDelivery) -> Option<usize> {
         "openai_live_transcribe" => Some(OPENAI_KEYWORD_CAP),
         // asr_gemini::build_prompt 的 .take(HOTWORD_LIMIT)。兩個 key 都要寫：
         // gemini_live_transcribe 關掉即時字幕就走這份檔案轉寫實現（見 registry.rs
-        // 里它和 gemini_transcribe 并在同一个分支）。它流式那条路是
+        // 裡它和 gemini_transcribe 並在同一個分支）。它流式那條路是
         // ProtocolHasNoSlot，上面的 reaches_asr 守衛會自己把上限擋掉。
         "gemini_transcribe" | "gemini_live_transcribe" => Some(GEMINI_PROMPT_CAP),
         _ => None,
@@ -301,7 +301,7 @@ pub fn hotword_capability(provider: &str, extra: &Value) -> AsrHotwordCapability
     }
 }
 
-/// 供前端查询的能力接口。
+/// 供前端查詢的能力介面。
 ///
 /// 前端不再自己維護一份「哪家支援熱詞」的表 —— 那正是 issue #67 的成因。
 #[tauri::command]
@@ -350,7 +350,7 @@ mod tests {
         hotword_capability(provider, &Value::Null)
     }
 
-    /// 每个分发 key 都要有明确声明。
+    /// 每個分發 key 都要有明確宣告。
     ///
     /// 這條是防漂移的主力：加一家 provider 忘了在這裡宣告，它會落到
     /// `UnknownProvider`，測試當場紅。**判據刻意不是「不等於某個具體檔位」**，
@@ -363,13 +363,13 @@ mod tests {
             assert_ne!(
                 c.buffered,
                 HotwordDelivery::UnknownProvider,
-                "{} 没有声明一次性路径的热词行为",
+                "{} 沒有宣告一次性路徑的熱詞行為",
                 provider,
             );
             assert_ne!(
                 c.streaming,
                 HotwordDelivery::UnknownProvider,
-                "{} 没有声明流式路径的热词行为",
+                "{} 沒有宣告流式路徑的熱詞行為",
                 provider,
             );
         }
@@ -451,7 +451,7 @@ mod tests {
         let auto = hotword_capability("openai_compat", &json!({ "protocol": "auto" }));
         assert_eq!(auto.buffered, HotwordDelivery::UndecidedProtocol);
         assert!(!auto.buffered.reaches_asr());
-        // 缺省等于 auto
+        // 預設等於 auto
         assert_eq!(
             hotword_capability("openai_compat", &Value::Null).buffered,
             HotwordDelivery::UndecidedProtocol,
@@ -496,14 +496,14 @@ mod tests {
         assert_eq!(openai.streaming_client_cap, Some(100));
         assert_eq!(
             openai.buffered_client_cap, None,
-            "回落路径一条热词都不发，却报了发送上限",
+            "回落路徑一條熱詞都不發，卻報了傳送上限",
         );
 
         // Gemini live 反向：流式沒有熱詞欄位，回落到檔案轉寫才有 100 條截斷
         let gemini_live = cap("gemini_live_transcribe");
         assert_eq!(
             gemini_live.streaming_client_cap, None,
-            "Live API 没有热词字段，却报了发送上限",
+            "Live API 沒有熱詞欄位，卻報了傳送上限",
         );
         assert_eq!(gemini_live.buffered_client_cap, Some(100));
     }
@@ -534,14 +534,14 @@ mod tests {
             if !c.streaming.reaches_asr() {
                 assert_eq!(
                     c.streaming_client_cap, None,
-                    "{} 的流式路径不发热词，却报了发送上限",
+                    "{} 的流式路徑不發熱詞，卻報了傳送上限",
                     provider,
                 );
             }
             if !c.buffered.reaches_asr() {
                 assert_eq!(
                     c.buffered_client_cap, None,
-                    "{} 的一次性路径不发热词，却报了发送上限",
+                    "{} 的一次性路徑不發熱詞，卻報了傳送上限",
                     provider,
                 );
             }
@@ -585,7 +585,7 @@ mod tests {
         dispatched.sort_unstable();
         assert_eq!(
             declared, dispatched,
-            "capabilities.rs 的声明清单和 registry.rs 的分发 key 不一致",
+            "capabilities.rs 的宣告清單和 registry.rs 的分發 key 不一致",
         );
     }
 
@@ -621,7 +621,7 @@ mod tests {
         for provider in ALL_ASR_PROVIDERS {
             let row = matrix
                 .get(*provider)
-                .unwrap_or_else(|| panic!("对照表缺了 {}", provider));
+                .unwrap_or_else(|| panic!("對照表缺了 {}", provider));
             assert_ne!(row.buffered, HotwordDelivery::UnknownProvider, "{}", provider);
             assert_ne!(row.streaming, HotwordDelivery::UnknownProvider, "{}", provider);
         }

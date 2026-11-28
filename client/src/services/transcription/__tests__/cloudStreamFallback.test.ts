@@ -55,7 +55,7 @@ async function record(finish: () => Promise<unknown>) {
 describe('cloud streaming finish failure', () => {
   beforeEach(() => {
     mocks.invoke.mockReset()
-    mocks.transcribe.mockReset().mockResolvedValue({ text: '完整的识别结果', elapsed_ms: 5100 })
+    mocks.transcribe.mockReset().mockResolvedValue({ text: '完整的識別結果', elapsed_ms: 5100 })
     mocks.settings = {
       'cloudAsr.provider': 'doubao_v2',
       'cloudAsr.apiKey': 'key',
@@ -74,14 +74,14 @@ describe('cloud streaming finish failure', () => {
     expect((pcm as Uint8Array).byteLength).toBe(32000)
     expect(request).toMatchObject({ asr_config: { provider: 'doubao_v2' } })
     expect(onError).not.toHaveBeenCalled()
-    expect(onFinal.mock.calls[0][0]).toMatchObject({ asrText: '完整的识别结果' })
+    expect(onFinal.mock.calls[0][0]).toMatchObject({ asrText: '完整的識別結果' })
   })
 
   it('keeps the streamed result and does not upload twice when finish succeeds', async () => {
-    const { onFinal } = await record(async () => '流式结果')
+    const { onFinal } = await record(async () => '流式結果')
 
     expect(mocks.transcribe).not.toHaveBeenCalled()
-    expect(onFinal.mock.calls[0][0]).toMatchObject({ asrText: '流式结果' })
+    expect(onFinal.mock.calls[0][0]).toMatchObject({ asrText: '流式結果' })
   })
 
   it('reports the error when the buffered retry fails too', async () => {

@@ -6,7 +6,7 @@
 // 面板的 stopPropagation 根本不在這條冒泡路徑裡，壓不住，於是彈窗被關掉、草稿全丟。
 // 使用者反饋的原話是「拖動全選時把滑鼠移到小視窗外，鬆開後視窗就自己關了」。
 //
-// 判据改成「**按下**那一刻就落在背板本身，并且 click 也落在背板本身」，两个条件都要。
+// 判據改成「**按下**那一刻就落在背板本身，並且 click 也落在背板本身」，兩個條件都要。
 //
 // 用 `target === currentTarget` 而不是 `!panel.contains(target)`，是為了對 portal 天然
 // 安全：portal 出去的浮層其 DOM target 不是背板，照樣判成「不在背板上」，不會誤關。
@@ -43,7 +43,7 @@ export function reduceBackdropDismiss(
  * 返回一對要掛在**背板元素**上的事件處理器。
  *
  * ⚠️ 必須掛在背板（那個 `fixed inset-0` 的 div）上，不是面板上 ——
- * `currentTarget` 要等于背板，判据才成立。
+ * `currentTarget` 要等於背板，判據才成立。
  */
 export function useBackdropDismiss(onDismiss: () => void) {
   const armedRef = useRef(false)

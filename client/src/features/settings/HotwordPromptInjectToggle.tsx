@@ -47,7 +47,7 @@ export default function HotwordPromptInjectToggle() {
             </p>
           </div>
           {/* 熱詞只注入 AI 整理的提示詞，AI 整理關著時這項不生效：畫成關閉 + 停用，
-              不显示"开着却不生效"。保存的值不动，AI 整理打开后照旧。 */}
+              不顯示"開著卻不生效"。儲存的值不動，AI 整理開啟後照舊。 */}
           <Switch checked={enabled && aiEnabled} onChange={toggle} disabled={!aiEnabled} noAnimation={!animate} hidden={!ready} />
         </div>
       </CardContent>

@@ -217,7 +217,7 @@ async function runCheckAndDownload(): Promise<void> {
     // 無條件記一條：這是判斷"更新到底跑沒跑、看到了什麼"的唯一依據。
     // source 是**實際**取到 manifest 的地址：與配置裡的地址不一致就說明發生了回落
     // （配置的伺服器上沒有 manifest）。少了它，"回落了"和"配置的地址就是官方"
-    // 在日志里长得一模一样。
+    // 在日誌裡長得一模一樣。
     addRuntimeEvent(info.error ? 'warn' : 'info', 'update', 'update check finished', {
       current,
       latest: info.latestVersion,

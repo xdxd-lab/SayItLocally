@@ -50,7 +50,7 @@ const TITLE: &str = "SayIt";
 
 /// 將 16kHz 單聲道 16-bit PCM 封裝為 WAV 容器。
 ///
-/// 与 asr_groq / asr_mimo / asr_gemini 里那几份是同一个 WAV 头，刻意各留一份：
+/// 與 asr_groq / asr_mimo / asr_gemini 裡那幾份是同一個 WAV 頭，刻意各留一份：
 /// 抽成公共函式後任何一家改取樣格式都會牽動其餘幾家，而它們本來毫無關係。
 fn pcm_to_wav(pcm: &[u8], sr: u32) -> Vec<u8> {
     let ds = pcm.len() as u32;
@@ -172,7 +172,7 @@ pub async fn transcribe(
     hotwords: &[String],
 ) -> Result<AsrResult, String> {
     // OpenRouter 這條路沒有任何地方能放熱詞：原生 JSON 的參數列裡沒有 prompt，
-    // 它也接受的那套 multipart 里 prompt 是「收下后忽略」（见文件头）。
+    // 它也接受的那套 multipart 裡 prompt 是「收下後忽略」（見檔案頭）。
     // 所以 capabilities.rs 把它記作 ProtocolHasNoSlot —— 和「我們沒接」是兩件事。
     // 留痕理由同 asr_groq.rs。
     if !hotwords.is_empty() {
@@ -405,7 +405,7 @@ mod tests {
     }
 
     /// body 的形狀是這份實現的全部前提。尤其 input_audio 是**物件**（data + format），
-    /// 不是 OpenAI 那种 multipart 的 file 字段。
+    /// 不是 OpenAI 那種 multipart 的 file 欄位。
     #[test]
     fn body_matches_the_documented_shape() {
         let body = build_body(DEFAULT_MODEL, "QUJD".to_string(), None);
@@ -413,7 +413,7 @@ mod tests {
         assert_eq!(body["input_audio"]["data"], "QUJD");
         assert_eq!(body["input_audio"]["format"], "wav");
         assert_eq!(body["temperature"], 0);
-        // json 而不是 verbose_json：后者会被一部分模型直接 400 拒掉
+        // json 而不是 verbose_json：後者會被一部分模型直接 400 拒掉
         assert_eq!(body["response_format"], "json");
         // auto 時絕不能出現 language 欄位
         assert!(body.get("language").is_none());
@@ -436,8 +436,8 @@ mod tests {
 
     #[test]
     fn extracts_text_field() {
-        let data = serde_json::json!({ "text": "  语音输入法测试成功。  " });
-        assert_eq!(extract_text(&data), "语音输入法测试成功。");
+        let data = serde_json::json!({ "text": "  語音輸入法測試成功。  " });
+        assert_eq!(extract_text(&data), "語音輸入法測試成功。");
         assert_eq!(extract_text(&serde_json::json!({})), "");
     }
 
@@ -467,7 +467,7 @@ mod tests {
     #[test]
     fn usage_reports_numbers_only() {
         let data = serde_json::json!({
-            "text": "秘密内容",
+            "text": "秘密內容",
             "usage": { "seconds": 3.05, "total_tokens": 143, "cost": 0.00012 }
         });
         let summary = describe_usage(&data);

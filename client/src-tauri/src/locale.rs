@@ -7,7 +7,7 @@
 //! windows feature 列表裡，需要的 API 直接可用。這是 Windows 獨佔應用，
 //! 沒必要為一次讀取多背一個 crate。
 //!
-//! ⚠️ **不要和 `commands/system.rs` 的 `get_system_locale()` 合并**，那个用的是
+//! ⚠️ **不要和 `commands/system.rs` 的 `get_system_locale()` 合併**，那個用的是
 //! `GetUserDefaultLocaleName`（**區域格式**，如日期貨幣怎麼寫），報給診斷用；
 //! 這裡用 `GetUserDefaultUILanguage`（**顯示語言**，Windows 介面本身什麼語言）。
 //! 兩者可以不一致 —— 英文版 Windows 把區域設成中國是很常見的組合。
@@ -94,7 +94,7 @@ pub fn lang_from_language_tag(tag: &str) -> Lang {
 
 #[cfg(not(any(windows, target_os = "macos")))]
 pub fn system_ui_lang() -> Lang {
-    // 其它平台目前只有 cargo test 会走到。
+    // 其它平台目前只有 cargo test 會走到。
     lang_from_language_tag(&std::env::var("LANG").unwrap_or_default())
 }
 

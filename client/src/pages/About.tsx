@@ -48,7 +48,7 @@ export default function About() {
   //     if (checking) return t('about.checking')
   //     if (!versionInfo) return null
   //     if (versionInfo.error) return t('about.checkFailed')
-  //     // String() 而不是 ?? ''：保持与改造前 `${...}` 完全一致的输出，
+  //     // String() 而不是 ?? ''：保持與改造前 `${...}` 完全一致的輸出，
   //     // 這輪只做翻譯，不順手改 latestVersion 為空時的表現。
   //     if (downloading) return t('about.downloading', { version: String(versionInfo.latestVersion), percent: Math.round(state.downloadPercent ?? 0) })
   //     if (hasUpdate) return t('about.updateAvailable', { version: String(versionInfo.latestVersion) })
@@ -75,7 +75,7 @@ export default function About() {
               <p className="mt-0.5 text-xs text-muted-foreground/60">by Liu Qianglong & Claude</p>
               <div className="mt-1.5 flex items-center gap-2">
                 {/* 版本號做成和右邊 GitHub 圖示同一種藥丸按鈕：點開 releases 頁，
-                    想看历史版本或某一版改了什么的人第一反应就是点这里的版本号。 */}
+                    想看歷史版本或某一版改了什麼的人第一反應就是點這裡的版本號。 */}
                 <button
                   type="button"
                   onClick={() => void shellOpen(RELEASES_URL)}

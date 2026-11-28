@@ -1,4 +1,4 @@
-// WebDAV 备份的前端封装。
+// WebDAV 備份的前端封裝。
 //
 // 備份檔位（是否含歷史/音訊）**只存在設定裡**，不作為引數傳給 Rust：手動「立即備份」
 // 和後台定時備份走同一個命令、讀同一份設定，介面上勾了什麼就一定是上傳的內容。
@@ -21,7 +21,7 @@ export const JIANGUOYUN_DAV_BASE = 'https://dav.jianguoyun.com/dav'
  * **必須是 `/dav` 下的一個子目錄，不能是 `/dav` 本身。** 堅果雲的 `/dav` 根只列同步
  * 資料夾，往根上 PUT 檔案會被拒 —— 各家 WebDAV 客戶端的堅果雲配置說明都要求先建
  * 一個一級目錄再把地址指向它。目錄不存在時我們自己 MKCOL 出來，所以使用者不用先去
- * 网页上手动建。
+ * 網頁上手動建。
  */
 export const DEFAULT_DAV_URL = `${JIANGUOYUN_DAV_BASE}/SayIt`
 

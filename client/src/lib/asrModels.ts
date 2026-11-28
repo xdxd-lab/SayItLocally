@@ -11,7 +11,7 @@ const QWEN_OMNI_MODEL_MAP: Record<string, string> = {
   // 所以改指向同族還活著的 flash。**不能只是刪掉這兩行** —— 刪了以後
   // resolveQwenOmniModel 返回 undefined、extra.model 不帶值，後端會用它自己的
   // 預設模型，等於把落點交給另一處程式碼去定，兩邊一漂就查不出來。
-  // 落点要和 asrProviderCatalog 的 RETIRED_MODELS / LEGACY_PROVIDERS 一致。
+  // 落點要和 asrProviderCatalog 的 RETIRED_MODELS / LEGACY_PROVIDERS 一致。
   qwen_omni_flash: 'qwen3.5-omni-flash-realtime',
   qwen_omni_turbo: 'qwen3.5-omni-flash-realtime',
 }
@@ -119,7 +119,7 @@ export function buildAsrExtra(
 /**
  * 有流式實現的供應商（不含執行時前置條件）。
  *
- * 注意 qwen3-asr-flash（`qwen`）与 `openai_transcribe` / `gemini_transcribe` 都是
+ * 注意 qwen3-asr-flash（`qwen`）與 `openai_transcribe` / `gemini_transcribe` 都是
  * 一次性 HTTP 模型，不在此列 —— 它們對應的流式版本是各自單獨的一張卡。
  */
 const STREAMING_CAPABLE = new Set([
@@ -222,7 +222,7 @@ export function foldHotwordDelivery(delivery: HotwordDelivery): HotwordUiState {
  * 折成同一個 `undecided` 是對的（三種都不能說"生效"或"不生效"），但原來三種都套用
  * 同一句文案「等第一次識別或測試連線之後才能確定」—— 那句話只對 `protocol` 成立。
  * 另兩種再錄一百次也不會變：
- *   · `declaration_missing`：Rust 返回 `unknown_provider`，是 SayIt 漏了声明（bug），
+ *   · `declaration_missing`：Rust 返回 `unknown_provider`，是 SayIt 漏了宣告（bug），
  *     該讓使用者知道這不是他的配置問題、可以反饋；
  *   · `query_failed`：命令本身沒調通（舊版本二進位制沒有這個命令、IPC 異常），
  *     該提示重啟或更新。
@@ -264,7 +264,7 @@ export interface HotwordPathOptions {
  *
  * **只有這一處判斷。** delivery 和條數上限都得按同一條路徑取值，各判一次就會漂
  * —— 上限曾經按 provider 取一個數，於是 OpenAI live 關掉字幕時同時顯示
- * 「不发送」和「最多发送 100 个」。
+ * 「不傳送」和「最多傳送 100 個」。
  */
 export function willUseStreamingPath(
   capability: AsrHotwordCapability,

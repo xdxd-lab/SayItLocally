@@ -70,7 +70,7 @@ export default function RecordingOrb({
     else onStart()
   }
 
-  // Blob 动画
+  // Blob 動畫
   useEffect(() => {
     if (!isRecording) {
       cancelAnimationFrame(rafRef.current)

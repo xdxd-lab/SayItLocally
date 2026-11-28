@@ -43,7 +43,7 @@ describe('topUpProfiles', () => {
    * 這條規則變過兩次，兩次的理由都寫在 topUpProfiles 的註釋裡。現在是「每平台一張卡」，
    * 而且這次不會丟東西 —— 該平台的全部模型都在那張卡的下拉里。
    */
-  it('一个平台填了密钥，就给这个平台建一张卡', () => {
+  it('一個平台填了金鑰，就給這個平台建一張卡', () => {
     const r = topUpProfiles([], { qwen: creds({ apiKey: 'sk-1' }) })
     expect(r.profiles.map((p) => p.provider)).toEqual(['qwen'])
     expect(r.added).toEqual(['qwen'])
@@ -51,20 +51,20 @@ describe('topUpProfiles', () => {
     expect(asrModelsOf(findAsrProvider('qwen')!).length).toBeGreaterThanOrEqual(5)
   })
 
-  it('三个平台都有密钥时补出三张卡', () => {
+  it('三個平台都有金鑰時補出三張卡', () => {
     const r = topUpProfiles([], {
       doubao: creds(), qwen: creds({ apiKey: 'sk-1' }), mimo: creds(),
     })
     expect(r.profiles.map((p) => p.provider)).toEqual(['doubao', 'qwen', 'mimo'])
   })
 
-  it('没填密钥的平台不建卡 —— 新用户应看到空状态引导，而不是一堆空卡', () => {
+  it('沒填金鑰的平台不建卡 —— 新使用者應看到空狀態引導，而不是一堆空卡', () => {
     expect(topUpProfiles([], {}).profiles).toEqual([])
     expect(topUpProfiles([], { qwen: creds({ apiKey: '   ' }) }).profiles).toEqual([])
     expect(topUpProfiles([], { mimo: creds({ apiKey: '', otherKey: '' }) }).profiles).toEqual([])
   })
 
-  it('只补缺的平台，已有档案原样不动（幂等）', () => {
+  it('只補缺的平台，已有檔案原樣不動（冪等）', () => {
     const existing = [profile('qwen', { apiKey: 'MY-OWN' })]
     const r = topUpProfiles(existing, {
       qwen: creds({ apiKey: 'sk-1' }), doubao: creds(),
@@ -74,7 +74,7 @@ describe('topUpProfiles', () => {
     expect(r.added).toEqual(['doubao'])
   })
 
-  it('重复调用不会越补越多', () => {
+  it('重複呼叫不會越補越多', () => {
     const once = topUpProfiles([], { doubao: creds() })
     const twice = topUpProfiles(once.profiles, { doubao: creds() })
     expect(twice.profiles).toEqual(once.profiles)
@@ -85,7 +85,7 @@ describe('topUpProfiles', () => {
    * 使用者主動刪掉的卡不該被"救回來"。
    * 記「補過誰」而不是「補完了」，就是為了同時滿足自愈與尊重刪除這兩件事。
    */
-  it('已经自动补过又被删掉的卡不再重建', () => {
+  it('已經自動補過又被刪掉的卡不再重建', () => {
     const r = topUpProfiles([], { qwen: creds({ apiKey: 'sk-1' }) }, ['qwen'])
     expect(r.added).toEqual([])
   })
@@ -94,14 +94,14 @@ describe('topUpProfiles', () => {
    * 存量的「補過誰」那份記賬裡存的是**舊的分發 key**（`qwen_audio_stream` 之類）。
    * 不換算成卡片 id 的話新程式碼認不出來，會把老使用者主動刪掉的卡在升級後補回來一次。
    */
-  it('存量记账里的旧 provider id 也算已补过', () => {
+  it('存量記賬裡的舊 provider id 也算已補過', () => {
     const r = topUpProfiles([], { qwen: creds({ apiKey: 'sk-1' }) }, ['qwen_audio_stream'])
     expect(r.added).toEqual([])
     const other = topUpProfiles([], { doubao: creds() }, ['doubao_v2'])
     expect(other.added).toEqual([])
   })
 
-  it('豆包的控制台代次与两代密钥都带过去', () => {
+  it('豆包的控制台代次與兩代金鑰都帶過去', () => {
     const { profiles: [p] } = topUpProfiles([], {
       doubao: creds({ apiKey: 'TOKEN', otherKey: 'APPKEY', appId: '123', console: 'legacy' }),
     })
@@ -111,7 +111,7 @@ describe('topUpProfiles', () => {
     expect(p.appId).toBe('123')
   })
 
-  it('只有豆包侧填了 App ID + Access Token（apiKey 为空）也算有密钥', () => {
+  it('只有豆包側填了 App ID + Access Token（apiKey 為空）也算有金鑰', () => {
     // 舊版控制台使用者可能只有 otherKey 那一側有值，不能因此判成"沒配置"
     const r = topUpProfiles([], { doubao: creds({ apiKey: '', otherKey: 'APPKEY' }) })
     expect(r.profiles).toHaveLength(1)
@@ -123,7 +123,7 @@ describe('topUpProfiles', () => {
    * 它是 profile 級欄位、只在使用者真選了 Omni 模型時才生效，所以千問那張卡先備著；
    * 豆包那張卡沒有 Omni 模型，帶上就是一個永遠用不到的欄位。
    */
-  it('System Prompt 只给有 Omni 模型的平台', () => {
+  it('System Prompt 只給有 Omni 模型的平台', () => {
     const { profiles } = topUpProfiles([], {
       qwen: creds({ apiKey: 'sk-1', omniPrompt: 'MY PROMPT' }),
       doubao: creds({ omniPrompt: 'MY PROMPT' }),
@@ -133,12 +133,12 @@ describe('topUpProfiles', () => {
     expect(byId.get('doubao')!.omniPrompt).toBe('')
   })
 
-  it('业务空间 ID 跟着千问平台走', () => {
+  it('業務空間 ID 跟著千問平台走', () => {
     const { profiles } = topUpProfiles([], { qwen: creds({ apiKey: 'sk-1', workspaceId: 'ws-abc' }) })
     expect(profiles.every((p) => p.workspaceId === 'ws-abc')).toBe(true)
   })
 
-  it('补出来的档案 id 互不相同', () => {
+  it('補出來的檔案 id 互不相同', () => {
     const { profiles } = topUpProfiles([], { doubao: creds(), qwen: creds(), mimo: creds() })
     expect(new Set(profiles.map((p) => p.id)).size).toBe(profiles.length)
   })
@@ -150,7 +150,7 @@ describe('topUpProfiles', () => {
    * 既是舊分發 key 又是新卡片 id，光看 provider 分不出來）。留空會讓這些新建的條目
    * 下次載入時被當成存量資料走遷移，於是模型被換成遷移表裡那個。
    */
-  it('补出来的档案显式写上默认模型', () => {
+  it('補出來的檔案顯式寫上預設模型', () => {
     const { profiles } = topUpProfiles([], { doubao: creds(), qwen: creds() })
     const byId = new Map(profiles.map((p) => [p.provider, p]))
     expect(byId.get('doubao')!.model).toBe('Doubao-Seed-ASR-2.0')
@@ -167,12 +167,12 @@ describe('topUpProfiles', () => {
  * 解析側的斷言照樣全綠，而使用者的金鑰又丟一次（已經發生過一次，丟的是 Gemini 與
  * OpenRouter 兩張卡）。所以判據釘在**儲存裡最終有什麼**，不是解析函式返回了什麼。
  */
-describe('loadAsrProfiles / saveAsrProfiles 的落盘往返', () => {
+describe('loadAsrProfiles / saveAsrProfiles 的落盤往返', () => {
   beforeEach(() => {
     store.clear()
   })
 
-  it('解析不出来的条目在写回之后依然躺在存储里', async () => {
+  it('解析不出來的條目在寫回之後依然躺在儲存裡', async () => {
     // 未來版本寫的卡片 / 手改壞的條目 —— 現在這份程式碼認不出來
     const alien = { id: 'p-alien', provider: 'some-future-platform', model: 'x', apiKey: 'SECRET' }
     store.set(ASR_PROFILES_KEY, [
@@ -192,7 +192,7 @@ describe('loadAsrProfiles / saveAsrProfiles 的落盘往返', () => {
     expect(written).toHaveLength(2)
   })
 
-  it('全都认得时不会往存储里塞多余条目', async () => {
+  it('全都認得時不會往儲存裡塞多餘條目', async () => {
     store.set(ASR_PROFILES_KEY, [
       { id: 'p-1', provider: 'doubao', model: 'Doubao-Seed-ASR-2.0', apiKey: 'TOKEN' },
     ])
@@ -206,7 +206,7 @@ describe('loadAsrProfiles / saveAsrProfiles 的落盘往返', () => {
    * 執行時鍵寫的是**選中模型**的分發 key，不是卡片 id。寫成卡片 id 的話
    * Rust 側會報 "ASR provider not implemented"（一張卡里的模型可以走不同協議）。
    */
-  it('写回时把选中模型的分发 key 同步进运行时键', async () => {
+  it('寫回時把選中模型的分發 key 同步進執行時鍵', async () => {
     store.set(ASR_PROFILES_KEY, [
       { id: 'p-1', provider: 'qwen', model: 'qwen3-asr-flash', apiKey: 'sk-1' },
     ])

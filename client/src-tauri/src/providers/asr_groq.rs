@@ -10,7 +10,7 @@
 // （豆包 / 千問 / MiMo）要麼是 WebSocket 協議，要麼是 chat/completions + base64
 // data URL，都不是這個端點。
 //
-// 与 asr_mimo.rs 的差异：
+// 與 asr_mimo.rs 的差異：
 //   · 鑑權是 Bearer（MiMo 是 api-key 頭）；
 //   · 音訊以 multipart 的 file 欄位上傳，不是塞進 JSON 的 data URL —— 十幾秒的音訊
 //     用 base64 塞 JSON 會膨脹 1/3，multipart 是原始位元組；
@@ -19,7 +19,7 @@
 // 端點寫死在這裡而不做成可配置項：ASR 側的約定是「供應商只能從內建清單裡選」，
 // 因為每家的協議都要一份專門實現，能填任意地址只會讓使用者以為隨便填個地址就能用。
 // 模型則是可選的（extra.model），因為換模型不改協議 —— 前端目錄裡那份清單說明了
-// 每家有哪些，见 features/settings/asrProviderCatalog.ts 的 AsrProviderEntry.models。
+// 每家有哪些，見 features/settings/asrProviderCatalog.ts 的 AsrProviderEntry.models。
 
 use super::diag;
 use super::types::{AsrProviderConfig, AsrResult, TestResult};
@@ -40,7 +40,7 @@ struct Endpoint {
     /// 400 —— 而使用者完全不知道自己發了個檔案端點不認識的模型。所以這一檔忽略
     /// 選定值，一律用 default_model。
     honors_selected_model: bool,
-    /// 用户填了 `extra.baseUrl` 就用他的，空着用上面的 `url`。
+    /// 使用者填了 `extra.baseUrl` 就用他的，空著用上面的 `url`。
     ///
     /// 為什麼內建幾家也開：拿中轉站 / 反代接 OpenAI 很常見 —— 協議是官方那套，
     /// 只是換了個域名。不給填等於逼這些使用者用不了。
@@ -119,9 +119,9 @@ fn endpoint_for(provider: &str) -> &'static Endpoint {
 /// 把使用者填的 base URL 接成完整的轉寫地址。
 ///
 /// 使用者會填成什麼樣無法預設，實際見過這三種，都要能用：
-///   · `http://127.0.0.1:8000/v1`            → 补 `/audio/transcriptions`
+///   · `http://127.0.0.1:8000/v1`            → 補 `/audio/transcriptions`
 ///   · `http://127.0.0.1:8000/v1/`           → 同上，先去掉尾斜杠
-///   · `http://.../v1/audio/transcriptions`  → 已经是完整地址，原样用
+///   · `http://.../v1/audio/transcriptions`  → 已經是完整地址，原樣用
 /// 不做第四種猜測（比如自動補 `/v1`）：猜錯會打到一個存在但語義不同的路徑上，
 /// 那種失敗比「404 地址不對」難查得多。
 fn join_transcriptions_url(base: &str) -> String {
@@ -196,7 +196,7 @@ fn resolve_model(config: &AsrProviderConfig, endpoint: &Endpoint) -> String {
 /// 半形轉全形在前端 textPostProcess.ts 的 normalizeChinesePunctuation 裡做。
 ///
 /// 另外驗證過靜音不會把這段文字當成轉寫結果吐回來（那會被直接插進使用者的文件）。
-const PUNCTUATION_PROMPT: &str = "以下是中文转写，使用全角标点，例如逗号、句号和问号。The following is an English transcript with half-width punctuation, such as commas, periods, and question marks.";
+const PUNCTUATION_PROMPT: &str = "以下是中文轉寫，使用全形標點，例如逗號、句號和問號。The following is an English transcript with half-width punctuation, such as commas, periods, and question marks.";
 
 /// 將 16kHz 單聲道 16-bit PCM 封裝為 WAV 容器。
 ///
@@ -675,8 +675,8 @@ mod tests {
         assert!(!endpoint_for("openai_transcribe").requires_custom_url);
         assert!(!endpoint_for("openai_live_transcribe").requires_custom_url);
 
-        assert_eq!(extract_text_or_plain(r#"{"text":"来自 JSON"}"#), "来自 JSON");
-        assert_eq!(extract_text_or_plain("  裸文本响应  "), "裸文本响应");
+        assert_eq!(extract_text_or_plain(r#"{"text":"來自 JSON"}"#), "來自 JSON");
+        assert_eq!(extract_text_or_plain("  裸文本響應  "), "裸文本響應");
     }
 
     /// 兩家共用這份實現，分發只靠 provider id —— 認錯一家就會把請求打到另一家的
@@ -732,7 +732,7 @@ mod tests {
     }
 
     /// 沒選、空串、只有空白，一律回落到該家的預設，絕不把空模型名發出去
-    /// （服务端只会回一个含义模糊的 400）。
+    /// （服務端只會回一個含義模糊的 400）。
     #[test]
     fn blank_model_falls_back_to_default() {
         let groq = endpoint_for("groq_whisper");
@@ -792,13 +792,13 @@ mod tests {
     /// 有人圖省事把它改短時，這條會攔住。
     ///
     /// 注意它**不負責**全形/半形 —— 實測改 prompt 對寬度毫無影響，
-    /// 那件事在前端 normalizeChinesePunctuation 里做。
+    /// 那件事在前端 normalizeChinesePunctuation 裡做。
     #[test]
     fn punctuation_prompt_demonstrates_punctuation_in_both_scripts() {
-        assert!(PUNCTUATION_PROMPT.contains('。'), "缺中文句号，中文转写会没有标点");
-        assert!(PUNCTUATION_PROMPT.contains('，'), "缺中文逗号");
-        assert!(PUNCTUATION_PROMPT.contains('.'), "缺英文句号");
-        assert!(PUNCTUATION_PROMPT.contains(','), "缺英文逗号");
+        assert!(PUNCTUATION_PROMPT.contains('。'), "缺中文句號，中文轉寫會沒有標點");
+        assert!(PUNCTUATION_PROMPT.contains('，'), "缺中文逗號");
+        assert!(PUNCTUATION_PROMPT.contains('.'), "缺英文句號");
+        assert!(PUNCTUATION_PROMPT.contains(','), "缺英文逗號");
         assert!(
             PUNCTUATION_PROMPT.chars().any(|c| ('\u{4e00}'..='\u{9fff}').contains(&c)),
             "缺中文字符"

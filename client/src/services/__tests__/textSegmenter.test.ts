@@ -8,31 +8,31 @@ describe('segmentAsrText', () => {
   })
 
   it('不足 40 字不分段', () => {
-    const text = '这是一段不到四十个字的文本。'
+    const text = '這是一段不到四十個字的文本。'
     expect(segmentAsrText(text)).toBe(text)
   })
 
-  it('在话题转换词处分段', () => {
+  it('在話題轉換詞處分段', () => {
     // 前段需要 ≥ 20 字才會在話題轉換詞處切分
-    const text = '我今天做了很多事情，完成了项目的第一个版本，还做了很多测试工作。另外我还修复了几个重要的 bug，提交了代码。'
+    const text = '我今天做了很多事情，完成了專案的第一個版本，還做了很多測試工作。另外我還修復了幾個重要的 bug，提交了程式碼。'
     const result = segmentAsrText(text)
     expect(result).toContain('\n\n')
     expect(result.split('\n\n')).toHaveLength(2)
   })
 
-  it('超过 250 字在句末标点处强制切', () => {
+  it('超過 250 字在句末標點處強制切', () => {
     // 構造一段超過 250 字的無話題轉換詞文本
-    const sentence = '这是一段很长的文本内容用来测试强制分段的逻辑'
+    const sentence = '這是一段很長的文本內容用來測試強制分段的邏輯'
     let text = ''
     while (text.length < 260) {
       text += sentence
     }
-    text += '。后面还有一些内容。'
+    text += '。後面還有一些內容。'
     const result = segmentAsrText(text)
     expect(result).toContain('\n\n')
   })
 
-  it('null/undefined 安全处理', () => {
+  it('null/undefined 安全處理', () => {
     expect(segmentAsrText(null as unknown as string)).toBeFalsy()
     expect(segmentAsrText(undefined as unknown as string)).toBeFalsy()
   })

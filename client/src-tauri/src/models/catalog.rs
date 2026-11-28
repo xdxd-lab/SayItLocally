@@ -49,7 +49,7 @@ pub struct ModelInfo {
     /// 留作資料：離線下載指引的檔名裡有它，將來放 Tooltip 也用得上。
     #[serde(default)]
     pub quant: String,
-    /// 是否直接展示在模型列表里。恰好三个：小（最快）/ 中（均衡）/ 大（最准），
+    /// 是否直接展示在模型列表裡。恰好三個：小（最快）/ 中（均衡）/ 大（最準），
     /// 其餘摺疊進「更多」——五個平鋪使用者反而不知道選哪個。
     #[serde(default)]
     pub featured: bool,
@@ -277,7 +277,7 @@ fn build_catalog() -> Vec<ModelInfo> {
             sources: QWEN3_17B_Q4.sources(),
         },
         // ── Qwen3-ASR 1.7B GGUF Q5_K_M（精度上限）──
-        // 上游 WER 1.65%（Q8_0 是 1.61%，但要下 2.19 GB，性价比不值）；Q5_K_M
+        // 上游 WER 1.65%（Q8_0 是 1.61%，但要下 2.19 GB，性價比不值）；Q5_K_M
         // 也是上游對 1.7B 的預設檔。解碼成本約 0.6B 的 2 倍。
         ModelInfo {
             id: "qwen3-asr-1.7b-gguf".into(),
@@ -427,17 +427,17 @@ mod tests {
             // 否則刪除確認框、當前模型提示這些只顯示 name 的地方會分不清
             assert!(names.insert(m.name.clone()), "模型展示名重复: {}", m.name);
             // id 決定權重的落盤目錄，重名會讓兩個量化檔下到同一個資料夾裡
-            assert!(m.id.ends_with("-gguf"), "{} 的 id 应以 -gguf 结尾", m.id);
-            assert!(!m.sources.is_empty(), "{} 没有下载源", m.id);
+            assert!(m.id.ends_with("-gguf"), "{} 的 id 應以 -gguf 結尾", m.id);
+            assert!(!m.sources.is_empty(), "{} 沒有下載源", m.id);
 
             // 引數行三件套：加新模型時漏填其中一個，UI 上就是一截空白
-            assert!(m.memory_mb > 0, "{} 缺 memory_mb（实测值，见字段注释）", m.id);
+            assert!(m.memory_mb > 0, "{} 缺 memory_mb（實測值，見欄位註釋）", m.id);
             assert!(!m.languages_label.is_empty(), "{} 缺 languages_label", m.id);
             assert!(!m.quant.is_empty(), "{} 缺 quant", m.id);
             // 展示名不該再帶術語字尾（GGUF/量化檔都在 quant 欄位裡）
             assert!(
                 !m.name.contains("GGUF") && !m.name.contains("Q8") && !m.name.contains("Q4") && !m.name.contains("Q5"),
-                "{} 的展示名还带着量化档术语: {}",
+                "{} 的展示名還帶著量化檔術語: {}",
                 m.id,
                 m.name
             );
@@ -446,7 +446,7 @@ mod tests {
                 let sum: u64 = s.files.iter().map(|f| f.size_bytes).sum();
                 assert_eq!(
                     sum, m.total_size_bytes,
-                    "{} 的源 {} 文件体积合计 {} 与 total_size_bytes {} 不一致",
+                    "{} 的源 {} 檔案體積合計 {} 與 total_size_bytes {} 不一致",
                     m.id, s.source, sum, m.total_size_bytes
                 );
                 for f in &s.files {
@@ -461,7 +461,7 @@ mod tests {
         assert_eq!(
             models.iter().filter(|m| m.recommended).count(),
             1,
-            "推荐模型必须且只能有一个"
+            "推薦模型必須且只能有一個"
         );
 
         // 直接展示的模型恰好三個（小/中/大），其餘摺疊進「更多」；
@@ -469,11 +469,11 @@ mod tests {
         assert_eq!(
             models.iter().filter(|m| m.featured).count(),
             3,
-            "featured 模型应恰好三个（小/中/大）"
+            "featured 模型應恰好三個（小/中/大）"
         );
         assert!(
             models.iter().any(|m| m.recommended && m.featured),
-            "推荐模型必须是 featured"
+            "推薦模型必須是 featured"
         );
     }
 
@@ -529,7 +529,7 @@ mod tests {
         let expected: Vec<&str> = models[0].sources.iter().map(|s| s.source.as_str()).collect();
         for m in &models {
             let got: Vec<&str> = m.sources.iter().map(|s| s.source.as_str()).collect();
-            assert_eq!(got, expected, "{} 的下载源与第一个模型不一致", m.id);
+            assert_eq!(got, expected, "{} 的下載源與第一個模型不一致", m.id);
         }
         // defaults.ts 裡 localAsr.downloadSource 的預設值必須能對上其中一個
         // [自訂] S25/S56：只允許官方 HuggingFace（原斷言 contains "HuggingFace Mirror"）
@@ -558,7 +558,7 @@ mod tests {
         for w in models.windows(2) {
             assert!(
                 w[0].speed >= w[1].speed,
-                "{} 的 speed 应不低于其后的 {}",
+                "{} 的 speed 應不低於其後的 {}",
                 w[0].id,
                 w[1].id
             );

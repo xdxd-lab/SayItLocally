@@ -42,7 +42,7 @@ pub fn os_version() -> String {
     }
 }
 
-/// 主版本号（14 = Sonoma、15 = Sequoia、26 = Tahoe）。
+/// 主版本號（14 = Sonoma、15 = Sequoia、26 = Tahoe）。
 pub fn os_major_version() -> Option<u32> {
     sysctl_string("kern.osproductversion")?.split('.').next()?.parse().ok()
 }
@@ -51,7 +51,7 @@ pub fn total_memory_mb() -> u64 {
     sysctl_u64("hw.memsize").map(|b| b / (1024 * 1024)).unwrap_or(0)
 }
 
-/// CPU 型号，例如 "Apple M3 Pro"。
+/// CPU 型號，例如 "Apple M3 Pro"。
 pub fn cpu_brand() -> String {
     sysctl_string("machdep.cpu.brand_string").unwrap_or_default()
 }

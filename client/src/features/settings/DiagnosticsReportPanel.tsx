@@ -260,8 +260,8 @@ export default function DiagnosticsReportPanel({ embedded = false }: Diagnostics
                 {t('diagnosticsReport.issueType')}<span className="ml-0.5 text-red-500">*</span>
               </label>
               {/* 用 aria-pressed 的切換按鈕組，而不是 role="radiogroup" —— 後者的互動
-                  契约是「Tab 进入组、方向键切换」，这里没实现方向键，声明了反而会让
-                  读屏用户按方向键无反应。aria-pressed 的 Tab 逐个遍历是自洽的。 */}
+                  契約是「Tab 進入組、方向鍵切換」，這裡沒實現方向鍵，宣告瞭反而會讓
+                  讀屏使用者按方向鍵無反應。aria-pressed 的 Tab 逐個遍歷是自洽的。 */}
               <div className="flex flex-wrap gap-2">
                 {issueTypeOptions.map((option) => {
                   const selected = issueType === option.value
@@ -284,7 +284,7 @@ export default function DiagnosticsReportPanel({ embedded = false }: Diagnostics
             </div>
 
             {/* 摺疊時右側摘要寫著當前時間範圍，所以不展開也知道要發的是哪段日誌。
-                选了「其他」时强制展开（描述必填），此时按钮置灰而不是点了没反应。 */}
+                選了「其他」時強制展開（描述必填），此時按鈕置灰而不是點了沒反應。 */}
             <button
               type="button"
               disabled={issueType === 'other'}
@@ -450,7 +450,7 @@ export default function DiagnosticsReportPanel({ embedded = false }: Diagnostics
             )}
 
             {/* 非伺服器模式沒有「傳送」按鈕 —— 不解釋的話使用者只會以為按鈕壞了。
-                选了问题类型才提示：一进页面就挂一条提示纯属噪音。 */}
+                選了問題型別才提示：一進頁面就掛一條提示純屬噪音。 */}
             {!isServerMode && issueType && (
               <div className="flex items-start gap-2 rounded-md border border-border bg-muted/40 px-3 py-2 text-xs leading-relaxed text-muted-foreground">
                 <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />

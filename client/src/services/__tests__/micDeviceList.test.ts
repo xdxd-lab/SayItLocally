@@ -12,7 +12,7 @@ import {
  * 自己擺的兩個偽裝置（default / communications），label 帶本地化字首。
  * 取樣自本機日誌，不是編的。
  */
-const HEADSET = '耳机式麦克风 (Plantronics Blackwire 5220 Series) (047f:c053)'
+const HEADSET = '耳機式麥克風 (Plantronics Blackwire 5220 Series) (047f:c053)'
 
 function device(deviceId: string, label: string, kind = 'audioinput') {
   return { deviceId, groupId: 'plt-group', kind, label, toJSON: () => ({}) }
@@ -58,8 +58,8 @@ describe('microphone device list', () => {
     // 偽裝置攜帶唯一一條「系統預設現在指向誰」的資訊，這一層不能替呼叫方丟掉；
     // 「哪些該進下拉」是產品判斷，歸 buildMicOptions。
     stubEnumerate([
-      device('default', `默认值 - ${HEADSET}`),
-      device('communications', `通信设备 - ${HEADSET}`),
+      device('default', `預設值 - ${HEADSET}`),
+      device('communications', `通訊裝置 - ${HEADSET}`),
       device('real-headset', HEADSET),
       device('speaker', 'Speakers', 'audiooutput'),
     ])
@@ -71,7 +71,7 @@ describe('microphone device list', () => {
 
   it('resolves which real endpoint the system default currently points at', async () => {
     const devices = [
-      { deviceId: 'default', groupId: 'plt-group', label: `默认值 - ${HEADSET}` },
+      { deviceId: 'default', groupId: 'plt-group', label: `預設值 - ${HEADSET}` },
       { deviceId: 'real-headset', groupId: 'plt-group', label: HEADSET },
     ]
 
@@ -79,7 +79,7 @@ describe('microphone device list', () => {
     // 真實 deviceId 直接按 id 命中，不走那兩層回落。
     expect(matchRealEndpoint(devices[1], devices)?.deviceId).toBe('real-headset')
     // 指向一個已經消失的裝置時返回 null，呼叫方據此退回樸素文案，而不是顯示空括號。
-    expect(matchRealEndpoint({ deviceId: 'default', groupId: 'gone', label: '默认值 - 没了' }, devices))
+    expect(matchRealEndpoint({ deviceId: 'default', groupId: 'gone', label: '預設值 - 沒了' }, devices))
       .toBeNull()
   })
 

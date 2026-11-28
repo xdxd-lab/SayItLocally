@@ -26,7 +26,7 @@ import {
  * 斷言裡出現任何一句人類語言時都要先問：這條會不會在文案改一個字之後就掛？
  */
 describe('locale 表', () => {
-  it('en 与 zh-TW 的 key 集合完全一致', () => {
+  it('en 與 zh-TW 的 key 集合完全一致', () => {
     // 型別層面已經保證 en 不缺 key（i18n/index.ts 的 Record<TranslationKey, string>），
     // 這裡補的是另一半：en 裡**多出來**的 key 型別查不出來，只能靠測試。
     const zhKeys = Object.keys(zhTW).sort()
@@ -34,7 +34,7 @@ describe('locale 表', () => {
     expect(enKeys).toEqual(zhKeys)
   })
 
-  it('没有空文案', () => {
+  it('沒有空文案', () => {
     for (const [locale, table] of [['zh-TW', zhTW], ['en', en]] as const) {
       for (const [key, value] of Object.entries(table)) {
         expect(value.trim(), `${locale} 的 ${key} 是空的`).not.toBe('')
@@ -42,7 +42,7 @@ describe('locale 表', () => {
     }
   })
 
-  it('两边的插值占位符一一对应', () => {
+  it('兩邊的插值佔位符一一對應', () => {
     // 漏掉一個 {name} 不會報錯，只會在介面上少顯示一個東西 —— 典型的靜默失敗。
     const placeholders = (text: string) => (text.match(/\{(\w+)\}/g) ?? []).sort()
     for (const key of Object.keys(zhTW) as (keyof typeof zhTW)[]) {
@@ -94,7 +94,7 @@ describe('normalizePreference', () => {
     expect(normalizePreference('zh-CN')).toBe('zh-TW')
   })
 
-  it('脏数据回落 auto', () => {
+  it('髒資料回落 auto', () => {
     for (const value of ['zh', 'EN', 'zh-HK', '', null, undefined, 42, {}]) {
       expect(normalizePreference(value), String(value)).toBe('auto')
     }
@@ -113,7 +113,7 @@ describe('t', () => {
 
   // 斷言對照 JSON 表本身，不寫死具體文案：改一個字就掛的測試沒人願意維護，
   // 而這裡要鎖的是「t 有沒有按當前語言查表」這個機制。
-  it('按当前语言取文案', () => {
+  it('按當前語言取文案', () => {
     setLocale('zh-TW')
     expect(t('nav.home')).toBe(zhTW['nav.home'])
     setLocale('en')
@@ -121,24 +121,24 @@ describe('t', () => {
     expect(en['nav.home']).not.toBe(zhTW['nav.home'])
   })
 
-  it('替换插值占位符', () => {
+  it('替換插值佔位符', () => {
     setLocale('en')
     const rendered = t('titleBar.presetTooltip', { name: 'Faithful' })
     expect(rendered).toBe(en['titleBar.presetTooltip'].replace('{name}', 'Faithful'))
     expect(rendered).not.toContain('{name}')
   })
 
-  it('未提供的占位符原样保留，不吐 undefined', () => {
+  it('未提供的佔位符原樣保留，不吐 undefined', () => {
     setLocale('en')
     expect(t('titleBar.presetTooltip')).toContain('{name}')
     expect(t('titleBar.presetTooltip')).not.toContain('undefined')
   })
 })
 
-describe('内置名称显示', () => {
+describe('內建名稱顯示', () => {
   afterEach(() => setLocale('zh-TW'))
 
-  it('内置 preset 与应用规则按稳定 id 切换语言', () => {
+  it('內建 preset 與應用規則按穩定 id 切換語言', () => {
     const preset = { id: 'intent', name: 'legacy name', builtin: true }
     const rule = { id: 'notepad', appId: 'notepad', name: 'legacy name', builtin: true }
 
@@ -153,7 +153,7 @@ describe('内置名称显示', () => {
     expect(recordedAppDisplayName('notepad', 'legacy name')).toBe(en['builtinApp.notepad'])
   })
 
-  it('用户自建名称与未知历史名称保持原样', () => {
+  it('使用者自建名稱與未知歷史名稱保持原樣', () => {
     setLocale('en')
     expect(promptPresetDisplayName({ id: 'custom', name: 'My preset', builtin: false })).toBe('My preset')
     expect(appPromptRuleDisplayName({ id: 'slack', appId: 'slack', name: 'My Slack', builtin: false })).toBe('My Slack')
@@ -162,10 +162,10 @@ describe('内置名称显示', () => {
   })
 })
 
-describe('本地模型目录显示', () => {
+describe('本地模型目錄顯示', () => {
   afterEach(() => setLocale('zh-TW'))
 
-  it('已知模型按稳定 id 切换名称、简介和语种', () => {
+  it('已知模型按穩定 id 切換名稱、簡介和語種', () => {
     const model = {
       id: 'qwen3-asr-1.7b-gguf',
       name: 'raw name',
@@ -184,7 +184,7 @@ describe('本地模型目录显示', () => {
     expect(localModelDisplayLanguages(model)).toBe(en['localModel.qwen17Accurate.languages'])
   })
 
-  it('未知或用户侧载模型保留目录原文', () => {
+  it('未知或使用者側載模型保留目錄原文', () => {
     setLocale('en')
     const model = {
       id: 'custom-local-model',
@@ -198,11 +198,11 @@ describe('本地模型目录显示', () => {
   })
 })
 
-describe('历史失败原因显示', () => {
+describe('歷史失敗原因顯示', () => {
   afterEach(() => setLocale('zh-TW'))
 
-  it('新记录按稳定 code 跟随当前界面语言', () => {
-    const record = { failReasonCode: 'provider_bad_key' as const, failReason: '底层原文' }
+  it('新記錄按穩定 code 跟隨當前介面語言', () => {
+    const record = { failReasonCode: 'provider_bad_key' as const, failReason: '底層原文' }
 
     setLocale('zh-TW')
     expect(historyFailureReasonDisplay(record)).toBe(zhTW['err.provider.badKey'])
@@ -210,16 +210,16 @@ describe('历史失败原因显示', () => {
     expect(historyFailureReasonDisplay(record)).toBe(en['err.provider.badKey'])
   })
 
-  it('老记录没有 code 时原样显示', () => {
+  it('老記錄沒有 code 時原樣顯示', () => {
     setLocale('en')
-    expect(historyFailureReasonDisplay({ failReason: '旧版失败原因' })).toBe('旧版失败原因')
+    expect(historyFailureReasonDisplay({ failReason: '舊版失敗原因' })).toBe('舊版失敗原因')
   })
 })
 
-describe('locale 状态', () => {
+describe('locale 狀態', () => {
   afterEach(() => setLocale('zh-TW'))
 
-  it('isLocale 只认受支持的值', () => {
+  it('isLocale 只認受支援的值', () => {
     expect(LOCALES.every(isLocale)).toBe(true)
     for (const value of ['zh', 'zh-CN', 'en-US', '', null, 1]) {
       expect(isLocale(value), String(value)).toBe(false)

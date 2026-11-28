@@ -32,7 +32,7 @@ export interface SelectProps {
   /**
    * 彈出列表的寬度。stretch（預設）= 與觸發器同寬；end = 右對齊、按內容撐開，
    * 最寬 20rem。觸發器放在一行右側又比較窄時用 end：列表往左長，不會伸出卡片，
-   * 长名字也不用截得只剩半截。
+   * 長名字也不用截得只剩半截。
    */
   menuAlign?: 'stretch' | 'end'
 }

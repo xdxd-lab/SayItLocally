@@ -311,7 +311,7 @@ export function useHotwordsManager() {
   /**
    * 拖拽調整自定義熱詞分類的順序。
    * 順序不只是好看：合併後的熱詞表會按順序截斷到 MAX_HOTWORDS，且部分模型只吃前一小段，
-   * 所以越靠前的分类越容易真正生效。
+   * 所以越靠前的分類越容易真正生效。
    */
   const moveTheme = useCallback(async (from: number, to: number) => {
     if (from === to || from < 0 || to < 0 || from >= customThemes.length || to >= customThemes.length) return

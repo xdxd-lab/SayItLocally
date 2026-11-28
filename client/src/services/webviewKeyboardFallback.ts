@@ -312,7 +312,7 @@ export function setShortcutCaptureActive(active: boolean) {
   labKeyDown = false
 }
 
-/** PTT Lab 启用/禁用 */
+/** PTT Lab 啟用/停用 */
 export function setLabEnabled(enabled: boolean) {
   labEnabled = enabled
   if (!enabled) labKeyDown = false
@@ -322,7 +322,7 @@ export function setLabEnabled(enabled: boolean) {
 export async function startWebviewKeyboardFallback() {
   if (started) return
   // macOS 的 CGEventTap 在 SayIt 自己聚焦時也能收到按鍵（不像 WebView2 會吞掉低階鉤子），
-  // 再从 DOM 补发一遍就会重复触发 ptt-down / toggle-hands-free。
+  // 再從 DOM 補發一遍就會重複觸發 ptt-down / toggle-hands-free。
   if (IS_MAC) return
   started = true
 

@@ -315,7 +315,7 @@ mod tests {
         // 「約翰・史密斯說」的簡體寫法 → 約翰・史密斯說
         let name = "\u{7ea6}\u{7ff0}\u{30fb}\u{53f2}\u{5bc6}\u{65af}\u{8bf4}";
         assert_eq!(to_taiwan(name, "auto"), "約翰・史密斯說");
-        // 「卡ー车」的簡體寫法：含長音符號但沒有假名字母，照樣轉換
+        // 「卡ー車」的簡體寫法：含長音符號但沒有假名字母，照樣轉換
         let long_mark = "\u{5361}\u{30fc}\u{8f66}";
         assert_eq!(to_taiwan(long_mark, "auto"), "卡ー車");
         // 真正的假名字母仍然擋下：カ（片假名）

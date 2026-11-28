@@ -33,7 +33,7 @@ const teal: ThemeDefinition = {
     '--destructive': '0 72% 51%',
     '--destructive-foreground': '0 0% 100%',
     '--destructive-strong': '0 74% 44%',
-    '--border': '36 22% 85%',             // #ddd8cc 暖米边框
+    '--border': '36 22% 85%',             // #ddd8cc 暖米邊框
     '--input': '36 22% 85%',
     '--ring': '182 80% 26%',
     '--radius': '0.5rem',

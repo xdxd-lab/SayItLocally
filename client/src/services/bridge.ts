@@ -707,7 +707,7 @@ export function asrHotwordCapability(provider: string, extra?: Record<string, un
  * 表格漏了 6 家、還把「不支援」說成只是本地模型的問題，而沒人會在改實現時想起它。
  *
  * 失敗返回 null，呼叫方據此顯示"暫時取不到"，不要退化成一張空表（空表看起來像
- * "所有服务都不支持"）。
+ * "所有服務都不支援"）。
  */
 export function asrHotwordCapabilityMatrix() {
   return invoke<Record<string, AsrHotwordCapability>>('asr_hotword_capability_matrix')

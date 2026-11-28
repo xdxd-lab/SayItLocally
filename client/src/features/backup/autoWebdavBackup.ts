@@ -106,7 +106,7 @@ export async function runBackupNow(trigger: 'manual' | 'schedule'): Promise<WebD
       return result
     } catch (error) {
       // 失敗必須留聲，而且要能和「沒開啟備份」區分開。一個靜默失敗幾個月的備份
-      // 在界面上和一个正常工作的备份长得一模一样。
+      // 在介面上和一個正常工作的備份長得一模一樣。
       addRuntimeEvent('error', 'webdav', 'backup failed', { trigger, error: String(error) })
       return null
     }

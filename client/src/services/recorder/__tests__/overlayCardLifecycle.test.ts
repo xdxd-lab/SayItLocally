@@ -51,7 +51,7 @@ function lastPayload(fn: { mock: { calls: unknown[][] } }): Record<string, unkno
   return calls[calls.length - 1][0] as Record<string, unknown>
 }
 
-describe('悬浮窗卡片的生命周期', () => {
+describe('懸浮窗卡片的生命週期', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     mocks.presentOverlay.mockClear()
@@ -74,9 +74,9 @@ describe('悬浮窗卡片的生命周期', () => {
    *
    * 所以斷言取半小時 —— 任何"到時自動隱藏"的實現都過不了這條。中間一次都不許 hide。
    */
-  it('结果卡永不自动消失', () => {
+  it('結果卡永不自動消失', () => {
     const service = newService()
-    service.showFallback('今天天气怎么样', 'not_editable', 7)
+    service.showFallback('今天天氣怎麼樣', 'not_editable', 7)
 
     vi.advanceTimersByTime(30 * 60 * 1000)
     expect(mocks.hideOverlay).not.toHaveBeenCalled()
@@ -88,7 +88,7 @@ describe('悬浮窗卡片的生命周期', () => {
    * 5 秒而不是原先的 60 秒：錄音已經在歷史記錄裡、原因也在日誌裡，錯過這張卡不丟東西。
    * 60 秒實測的結果是使用者手動去關它 —— 那等於把一條通知做成了待辦事項。
    */
-  it('失败卡 5 秒后自动收起', () => {
+  it('失敗卡 5 秒後自動收起', () => {
     const service = newService()
     service.showFailure({ title: 'recorder.emptyAfterProcessingTitle', recovery: 'none', token: 8 })
 
@@ -105,7 +105,7 @@ describe('悬浮窗卡片的生命周期', () => {
    * （舊實現是卡片，60 秒後照樣隱藏）。這裡要求 presentOverlay 收到的 state 是 toast、
    * 並且整個過程沒有註冊過任何全域性按鍵接管 —— 卡片一定會註冊 Esc。
    */
-  it('识别没出文字时只弹 toast，不建卡片、不接管按键', () => {
+  it('識別沒出文字時只彈 toast，不建卡片、不接管按鍵', () => {
     for (const reason of ['silent', 'no_text'] as const) {
       mocks.presentOverlay.mockClear()
       mocks.setEscapeActionMode.mockClear()
@@ -130,9 +130,9 @@ describe('悬浮窗卡片的生命周期', () => {
    * 在沒有續期的實現上也會全綠（TTL 內本來就能用）。這裡要求在超過 TTL 的時刻
    * 之後仍有新的註冊呼叫發出去。
    */
-  it('卡片可见期间会持续续期，续期间隔小于原生 TTL', () => {
+  it('卡片可見期間會持續續期，續期間隔小於原生 TTL', () => {
     const service = newService()
-    service.showFallback('今天天气怎么样', 'not_editable', 7)
+    service.showFallback('今天天氣怎麼樣', 'not_editable', 7)
 
     const initialHotkeys = hotkeyCalls().length
     const initialEscapes = escapeModes().length
@@ -150,9 +150,9 @@ describe('悬浮窗卡片的生命周期', () => {
     }
   })
 
-  it('结果卡注册 Ctrl+C 与 Esc；失败卡只要 Esc', () => {
+  it('結果卡註冊 Ctrl+C 與 Esc；失敗卡只要 Esc', () => {
     const service = newService()
-    service.showFallback('今天天气怎么样', 'not_editable', 7)
+    service.showFallback('今天天氣怎麼樣', 'not_editable', 7)
     expect(hotkeyCalls()[0]).toEqual([['copy'], 7])
     expect(escapeModes()).toContain('dismiss_fallback')
 
@@ -164,16 +164,16 @@ describe('悬浮窗卡片的生命周期', () => {
     expect(escapeModes()).toContain('dismiss_fallback')
   })
 
-  it('没有文本的结果卡不注册 Ctrl+C', () => {
+  it('沒有文本的結果卡不註冊 Ctrl+C', () => {
     const service = newService()
     service.showFallback('', 'not_editable', 7)
     expect(hotkeyCalls().every(([actions]) => actions.length === 0)).toBe(true)
   })
 
   /** PTT Lab 的預覽卡片沒有 Orchestrator 代次，絕不能開啟無人消費的全域性按鍵接管。 */
-  it('token=0 的预览卡片不接管任何按键', () => {
+  it('token=0 的預覽卡片不接管任何按鍵', () => {
     const service = newService()
-    service.showFallback('预览文本', 'not_editable', 0)
+    service.showFallback('預覽文本', 'not_editable', 0)
 
     expect(hotkeyCalls().every(([actions]) => actions.length === 0)).toBe(true)
     expect(escapeModes().every((mode) => mode === 'off')).toBe(true)
@@ -192,9 +192,9 @@ describe('悬浮窗卡片的生命周期', () => {
    * 把新錄音剛設好的 cancel_recording 覆蓋掉 —— 使用者在錄音中按 Esc，取消的是
    * 一張已經不存在的卡片。
    */
-  it('开始新一轮显示会解除上一张卡片的按键接管', () => {
+  it('開始新一輪顯示會解除上一張卡片的按鍵接管', () => {
     const service = newService()
-    service.showFallback('今天天气怎么样', 'not_editable', 7)
+    service.showFallback('今天天氣怎麼樣', 'not_editable', 7)
 
     mocks.setCardHotkeys.mockClear()
     mocks.setEscapeActionMode.mockClear()
@@ -212,9 +212,9 @@ describe('悬浮窗卡片的生命周期', () => {
     service.stopListeningTicker()
   })
 
-  it('hide 会解除按键接管', () => {
+  it('hide 會解除按鍵接管', () => {
     const service = newService()
-    service.showFallback('今天天气怎么样', 'not_editable', 7)
+    service.showFallback('今天天氣怎麼樣', 'not_editable', 7)
 
     mocks.setCardHotkeys.mockClear()
     service.hide()
@@ -233,9 +233,9 @@ describe('悬浮窗卡片的生命周期', () => {
    * 斷言方式是"此後不再出現任何非空的註冊"，而不是"解除被呼叫過一次" ——
    * 後者在有 bug 的實現上也會全綠（它確實調過一次，只是隨後又註冊回來了）。
    */
-  it('悬浮窗收起卡片后不再续期', () => {
+  it('懸浮窗收起卡片後不再續期', () => {
     const service = newService()
-    service.showFallback('今天天气怎么样', 'not_editable', 7)
+    service.showFallback('今天天氣怎麼樣', 'not_editable', 7)
 
     service.noteCardDismissed(7)
     mocks.setCardHotkeys.mockClear()
@@ -247,7 +247,7 @@ describe('悬浮窗卡片的生命周期', () => {
   })
 
   /** 上一張卡片的關閉回報遲到時，不能把現在這張的按鍵接管一起撤掉。 */
-  it('关闭回报只认当前卡片', () => {
+  it('關閉回報只認當前卡片', () => {
     const service = newService()
     service.showFallback('第一段', 'not_editable', 7)
     service.showFallback('第二段', 'not_editable', 9)
@@ -265,7 +265,7 @@ describe('悬浮窗卡片的生命周期', () => {
    * 失敗卡上那句"可在歷史記錄裡重新識別"必須由實際存檔結果決定，所以分兩步下發：
    * 先 present（此刻還不知道存沒存下來），存檔有結論後再 update。
    */
-  it('恢复结论是随后补发的，且只认当前卡片的 token', () => {
+  it('恢復結論是隨後補發的，且只認當前卡片的 token', () => {
     const service = newService()
     service.showFailure({ title: 'recorder.protocolIncompleteTitle', recovery: 'unknown', token: 8 })
     expect(lastPayload(mocks.presentOverlay)).toMatchObject({
@@ -297,7 +297,7 @@ describe('悬浮窗卡片的生命周期', () => {
    * 所以這條斷言釘的是**下發的欄位**，不是介面效果：只斷言"介面正常"在出 bug 的版本上
    * 也是綠的。
    */
-  it('补发恢复结论时重新带上标题与原因，不留下残缺的最近状态', () => {
+  it('補發恢復結論時重新帶上標題與原因，不留下殘缺的最近狀態', () => {
     const service = newService()
     service.showFailure({
       title: 'recorder.recognitionFailedTitle',
@@ -315,9 +315,9 @@ describe('悬浮窗卡片的生命周期', () => {
     })
   })
 
-  it('卡片收起后不再把上一张的标题带进新的下发', () => {
+  it('卡片收起後不再把上一張的標題帶進新的下發', () => {
     const service = newService()
-    service.showFailure({ title: 'recorder.recognitionFailedTitle', detail: '余额不足', recovery: 'none', token: 8 })
+    service.showFailure({ title: 'recorder.recognitionFailedTitle', detail: '餘額不足', recovery: 'none', token: 8 })
     service.hide()
 
     // 新一張卡自帶標題；關鍵是 hide 之後舊標題不許殘留。
@@ -330,7 +330,7 @@ describe('悬浮窗卡片的生命周期', () => {
   })
 
   /** 寬限期提示是膠囊形態的 thinking 變體，Esc 的語義是"放棄等待"而不是"關卡片"。 */
-  it('宽限期等待用独立的 Esc 语义', () => {
+  it('寬限期等待用獨立的 Esc 語義', () => {
     const service = newService()
     service.showAwaitingLateResult(15, 11)
 

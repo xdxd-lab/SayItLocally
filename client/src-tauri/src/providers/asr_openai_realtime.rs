@@ -108,7 +108,7 @@ fn build_keywords(hotwords: &[String]) -> Vec<String> {
         .collect()
 }
 
-/// 首条 session.update。
+/// 首條 session.update。
 ///
 /// `turn_detection: null` 是刻意的：我們自己知道使用者什麼時候鬆開熱鍵，由
 /// `input_audio_buffer.commit` 明確收一輪。交給服務端 VAD 斷句會在說話停頓處

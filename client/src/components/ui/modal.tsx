@@ -25,7 +25,7 @@ const EXIT_MS = 140
  *
  * 所以換個做法：解除安裝那一刻把整層 DOM 複製一份（真身照常被 React 移除，焦點、事件都跟著走），
  * 讓這份不可互動的複製品淡出後自己刪掉。React 解除安裝時先跑元件的 layout effect 清理、
- * 再移除宿主節點，所以清理函式里拿到的 DOM 還是完整的。
+ * 再移除宿主節點，所以清理函式裡拿到的 DOM 還是完整的。
  *
  * 複製品掛上去之前等一個 microtask：開發模式的 StrictMode 會在掛載後立刻模擬一次
  * 解除安裝再掛載，那次不是真關閉；等到 microtask 時元件已經重新掛上了，就不留複製品。
@@ -111,7 +111,7 @@ export function Modal({
    * 包過的（正常寫法就不是），每次重渲染都是新函式 → effect 重跑 → 焦點被搶回第一個控制元件。
    * 表現就是"在輸入框裡每打一個字，游標就跳回上面的下拉框"。
    *
-   * 想指定落焦点的控件，在它（或它的容器）上加 data-modal-autofocus。
+   * 想指定落焦點的控制元件，在它（或它的容器）上加 data-modal-autofocus。
    */
   useEffect(() => {
     const previouslyFocused = document.activeElement as HTMLElement | null

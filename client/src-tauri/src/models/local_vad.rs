@@ -72,7 +72,7 @@ pub fn detect_speech_segments(
 }
 
 /// 截到音訊長度以內、丟掉空段、按起點排序，並把重疊或首尾相接的段合併。
-/// 加了留白之后相邻两段可能互相覆盖，后面切块要求段与段之间不重叠。
+/// 加了留白之後相鄰兩段可能互相覆蓋，後面切塊要求段與段之間不重疊。
 fn normalize_segments(
     segments: impl IntoIterator<Item = Range<usize>>,
     len: usize,
@@ -208,7 +208,7 @@ mod tests {
         let speech = read_test_speech();
         assert!(
             !detect_speech_segments(&speech, SR).unwrap().is_empty(),
-            "真实中文语音不应被 VAD 拒绝",
+            "真實中文語音不應被 VAD 拒絕",
         );
     }
 
@@ -217,7 +217,7 @@ mod tests {
         let speech: Vec<f32> = read_test_speech().into_iter().map(|s| s * 0.2).collect();
         assert!(
             !detect_speech_segments(&speech, SR).unwrap().is_empty(),
-            "降低约 14dB 的轻声语音不应被 VAD 拒绝",
+            "降低約 14dB 的輕聲語音不應被 VAD 拒絕",
         );
     }
 
@@ -237,14 +237,14 @@ mod tests {
         let audio = vec![0.1; 220 * S];
         let segments: Vec<_> = (0..18).map(|i| (i * 12) * S..(i * 12 + 10) * S).collect();
         let chunks = plan_chunks(&audio, &segments, 30 * S);
-        assert!(chunks.len() >= 8, "220 s 应该切成多块，实际 {}", chunks.len());
+        assert!(chunks.len() >= 8, "220 s 應該切成多塊，實際 {}", chunks.len());
         for c in &chunks {
-            assert!(c.end - c.start <= 30 * S, "块超长：{:?}", c);
+            assert!(c.end - c.start <= 30 * S, "塊超長：{:?}", c);
             // 切口都落在某段話的邊界上，不會把話切成兩半
             assert!(segments.iter().any(|s| s.start == c.start));
             assert!(segments.iter().any(|s| s.end == c.end));
         }
-        // 所有人声都被覆盖，一段不漏
+        // 所有人聲都被覆蓋，一段不漏
         for s in &segments {
             assert!(chunks.iter().any(|c| c.start <= s.start && s.end <= c.end));
         }
@@ -296,9 +296,9 @@ mod tests {
 
         // 走生產路徑：分段 → 拼塊。幾秒的錄音只有一塊，句中 2 s 的停頓留在塊裡
         let segments = detect_speech_segments(&audio, SR).unwrap();
-        assert!(!segments.is_empty(), "前后两段真实语音应被检测到");
+        assert!(!segments.is_empty(), "前後兩段真實語音應被檢測到");
         let chunks = plan_chunks(&audio, &segments, 30 * SR);
-        assert_eq!(chunks.len(), 1, "短录音应只有一块：{chunks:?}");
+        assert_eq!(chunks.len(), 1, "短錄音應只有一塊：{chunks:?}");
         let span = chunks[0].clone();
         assert!(span.start < pause_start);
         assert!(span.end > pause_end);

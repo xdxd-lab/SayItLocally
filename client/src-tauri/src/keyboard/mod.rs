@@ -89,7 +89,7 @@ static HOOK_REFRESH_COUNT: AtomicU32 = AtomicU32::new(0);
 /// 判據：系統記錄的「最後一次輸入」比鉤子最後一次被呼叫晚了 5 秒以上，說明有輸入沒經過我們。
 /// 會誤報：沒綁滑鼠鍵時不裝滑鼠鉤子，只動滑鼠也算輸入。誤報的代價只是重灌一次鉤子
 /// （幾微秒，在鉤子執行緒裡先裝新的再卸舊的，中間不會處理任何按鍵，所以不會漏也不會重複），
-/// 所以宁可多装，每分钟最多一次。
+/// 所以寧可多裝，每分鐘最多一次。
 #[cfg_attr(not(windows), allow(dead_code))]
 fn hook_looks_removed(callback_age_ms: i64, input_age_ms: i64) -> bool {
     callback_age_ms >= 0 && input_age_ms >= 0 && callback_age_ms - input_age_ms > 5_000
@@ -120,7 +120,7 @@ fn needs_mouse_hook(ptt: &[u32], hf: &[u32], ai_toggle: &[u32], capturing: bool)
     capturing || ptt.iter().chain(hf).chain(ai_toggle).any(|vk| is_mouse_vk(*vk))
 }
 
-// ── 全局 Esc 动作 ──
+// ── 全域性 Esc 動作 ──
 // overlay 不搶焦點，使用者按鍵仍發給原應用，因此必須在現有 WH_KEYBOARD_LL 中捕獲。
 // 僅由前端在 recording/processing/fallback 可見期間短暫開啟，並設定硬截止時間作為安全網。
 const ESCAPE_MODE_OFF: u32 = 0;
@@ -203,7 +203,7 @@ static CARD_HOTKEY_DEADLINE_MS: AtomicI64 = AtomicI64::new(0);
 /// （漏判只讓使用者改用滑鼠點，誤吞會搶走他在別處的複製）。
 static CARD_HOTKEY_FOREGROUND: AtomicIsize = AtomicIsize::new(0);
 /// 一次物理按下只投遞一個動作；同時保證配對的 keyup 也被吞掉，否則目標程式會
-/// 收到一个孤立的 C 抬起事件（与 ESCAPE_KEY_DOWN 同一个理由）。
+/// 收到一個孤立的 C 抬起事件（與 ESCAPE_KEY_DOWN 同一個理由）。
 static CARD_HOTKEY_C_DOWN: AtomicBool = AtomicBool::new(false);
 
 /// 卡片快捷鍵的硬截止。
@@ -363,7 +363,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 ///
 /// ⚠️ 必須與前端 `client/src/lib/shortcutKeys.ts` 的 `SINGLE_KEYS` 保持一致
 /// （Rust 無法直接引用 TS，新增/修改單鍵時兩邊都要改）。
-/// `setting` 取值等于 DOM KeyboardEvent.code。
+/// `setting` 取值等於 DOM KeyboardEvent.code。
 const SINGLE_KEY_TABLE: &[(&str, u32)] = &[
     ("AltLeft", 0xA4),
     ("AltRight", 0xA5),
@@ -400,7 +400,7 @@ const SINGLE_KEY_TABLE: &[(&str, u32)] = &[
 /// - 單獨的 ⌘（Windows 上是 Win 鍵，單按會彈開始選單，所以 Windows 不允許）；
 ///   mac 上右 ⌘ 單按沒有系統動作，是擴音的預設鍵。
 /// - Fn / 🌐：Windows 沒有對應的虛擬鍵；mac 的 event tap 把它翻譯成保留值 0xFF
-///   （见 platform::macos::keycodes::VK_FN）。
+///   （見 platform::macos::keycodes::VK_FN）。
 /// ⚠️ 與前端 lib/shortcutKeys.ts 裡 IS_MAC 時追加的單鍵保持一致。
 #[cfg(target_os = "macos")]
 const PLATFORM_EXTRA_SINGLE_KEYS: &[(&str, u32)] = &[("MetaLeft", 0x5B), ("MetaRight", 0x5C), ("Fn", 0xFF)];
@@ -1890,7 +1890,7 @@ impl KeyboardHookManager {
         }
     }
 
-    /// macOS：CGEventTap，见 keyboard/macos.rs。
+    /// macOS：CGEventTap，見 keyboard/macos.rs。
     #[cfg(target_os = "macos")]
     fn hook_thread(state: Arc<HookSharedState>, tx: std::sync::mpsc::Sender<u32>) {
         macos::hook_thread(state, tx);
@@ -2317,7 +2317,7 @@ unsafe extern "system" fn low_level_keyboard_proc(
                         || (is_hf_key && !state.hf_key_down.load(Ordering::SeqCst)));
                 if should_log_hotkey_down {
                     // 兩種名字要分開：不然「按 Alt+F4 沒反應」和「熱鍵壓根沒送到」
-                    // 在日誌里長得一模一樣，排查時無從下手。
+                    // 在日誌裡長得一模一樣，排查時無從下手。
                     // 組合鍵 PTT 命中時 modifiers_block_down 也可能為真（它就是要修飾鍵），
                     // 那種情況按下面 bare_press_violated 的規則放行，這條日誌只作提示。
                     let msg_name = if modifiers_block_down {
@@ -2445,7 +2445,7 @@ unsafe extern "system" fn low_level_keyboard_proc(
                     // 帶修飾鍵按下時整條放行。不 begin_hf_press ⇒ hf_key_down 仍是 false
                     // ⇒ 下面的 end_hf_press 也返回 false，配對的 keyup 同樣不吞。
                     if is_down && !modifiers_block_down {
-                        consumed = true; // 吞掉 keydown 防止系统处理
+                        consumed = true; // 吞掉 keydown 防止系統處理
                         if begin_hf_press(&state.hf_key_down) {
                             HOOK_ACTION_TX.with(|tx| {
                                 if let Some(sender) = tx.borrow().as_ref() {
@@ -2789,7 +2789,7 @@ mod tests {
                 listed_as_mouse,
                 is_mouse_vk(*vk),
                 "{code} (vk={vk:#04x}): is_mouse_button_setting={listed_as_mouse} \
-                 但 is_mouse_vk={}，两处判定必须一致",
+                 但 is_mouse_vk={}，兩處判定必須一致",
                 is_mouse_vk(*vk),
             );
         }
@@ -2812,7 +2812,7 @@ mod tests {
                 single_key_requires_bare_press(*vk),
                 expected,
                 "{code} (vk={vk:#04x})：modifier={is_modifier} mouse={is_mouse}，\
-                 应当 requires_bare_press={expected}",
+                 應當 requires_bare_press={expected}",
             );
         }
     }
@@ -2820,12 +2820,12 @@ mod tests {
     /// 幾個點名的鍵，防止上面那條迴圈因為清單本身寫錯而一起錯。
     #[test]
     fn bare_press_rule_named_cases() {
-        assert!(single_key_requires_bare_press(0x73), "F4 是主键，必须要求裸按");
-        assert!(single_key_requires_bare_press(0x20), "Space 是主键");
-        assert!(single_key_requires_bare_press(0xA6), "BrowserBack 走键盘钩子，算主键");
-        assert!(!single_key_requires_bare_press(0xA3), "右 Ctrl 是「按住说话」默认键，不能套");
-        assert!(!single_key_requires_bare_press(0xA5), "右 Alt 是免提默认键，也是 AltGr 的一半");
-        assert!(!single_key_requires_bare_press(0x05), "鼠标侧键走鼠标钩子，不套这条");
+        assert!(single_key_requires_bare_press(0x73), "F4 是主鍵，必須要求裸按");
+        assert!(single_key_requires_bare_press(0x20), "Space 是主鍵");
+        assert!(single_key_requires_bare_press(0xA6), "BrowserBack 走鍵盤鉤子，算主鍵");
+        assert!(!single_key_requires_bare_press(0xA3), "右 Ctrl 是「按住說話」預設鍵，不能套");
+        assert!(!single_key_requires_bare_press(0xA5), "右 Alt 是擴音預設鍵，也是 AltGr 的一半");
+        assert!(!single_key_requires_bare_press(0x05), "滑鼠側鍵走滑鼠鉤子，不套這條");
     }
 
     /// 滑鼠按鍵只允許單鍵格式。兩個看門狗跳過滑鼠成員時依賴這一點：
@@ -2836,13 +2836,13 @@ mod tests {
             let config = ptt_key_config(combo);
             assert_ne!(
                 config.setting, combo,
-                "{combo} 不该被接受为有效组合（鼠标键只允许单键）",
+                "{combo} 不該被接受為有效組合（滑鼠鍵只允許單鍵）",
             );
         }
         for single in ["XButton1", "XButton2", "MButton"] {
             let config = ptt_key_config(single);
-            assert_eq!(config.setting, single, "{single} 应当是有效的单键设置");
-            assert_eq!(config.vk_codes.len(), 1, "{single} 应当只有一个成员");
+            assert_eq!(config.setting, single, "{single} 應當是有效的單鍵設定");
+            assert_eq!(config.vk_codes.len(), 1, "{single} 應當只有一個成員");
         }
     }
 
@@ -2861,17 +2861,17 @@ mod tests {
                 .iter()
                 .find(|(setting, _)| *setting == code.as_str());
             let Some((_, vk)) = found else {
-                panic!("{code} 不在 SINGLE_KEY_TABLE 里（前端 SINGLE_KEYS 有 F1–F24，两边必须一致）");
+                panic!("{code} 不在 SINGLE_KEY_TABLE 裡（前端 SINGLE_KEYS 有 F1–F24，兩邊必須一致）");
             };
             assert_eq!(
                 *vk, expected_vk,
-                "{code} 的 vk 应当是 {expected_vk:#04x}（VK_F1..VK_F24 是连续的）",
+                "{code} 的 vk 應當是 {expected_vk:#04x}（VK_F1..VK_F24 是連續的）",
             );
 
             // 解析必須真的接受它，而不是回落到預設鍵。
             let config = ptt_key_config(&code);
-            assert_eq!(config.setting, code, "{code} 应当被接受为有效单键，而不是回落");
-            assert_eq!(config.vk_codes, vec![expected_vk], "{code} 应当解析出对应 vk");
+            assert_eq!(config.setting, code, "{code} 應當被接受為有效單鍵，而不是回落");
+            assert_eq!(config.vk_codes, vec![expected_vk], "{code} 應當解析出對應 vk");
         }
     }
 
@@ -2882,16 +2882,16 @@ mod tests {
     #[test]
     fn injection_exempt_vks_cover_f13_to_f24_and_side_button_remaps() {
         for vk in 0x7C..=0x87_u32 {
-            assert!(is_injection_exempt_vk(vk), "{vk:#04x}（F13–F24 段）必须开例外");
+            assert!(is_injection_exempt_vk(vk), "{vk:#04x}（F13–F24 段）必須開例外");
         }
-        assert!(is_injection_exempt_vk(0xA6), "BrowserBack 必须开例外");
-        assert!(is_injection_exempt_vk(0xA7), "BrowserForward 必须开例外");
+        assert!(is_injection_exempt_vk(0xA6), "BrowserBack 必須開例外");
+        assert!(is_injection_exempt_vk(0xA7), "BrowserForward 必須開例外");
 
         // 邊界：F12 及以下是物理真鍵，注入的 F12 沒有正常來源，維持幻影過濾。
-        assert!(!is_injection_exempt_vk(0x7B), "F12 不该开例外");
-        assert!(!is_injection_exempt_vk(0x88), "0x88 已越过 F24，不该开例外");
+        assert!(!is_injection_exempt_vk(0x7B), "F12 不該開例外");
+        assert!(!is_injection_exempt_vk(0x88), "0x88 已越過 F24，不該開例外");
         // 幻影過濾本來要防的就是合成 Alt，絕不能被例外放進來。
-        assert!(!is_injection_exempt_vk(0xA4), "左 Alt 绝不能开例外");
-        assert!(!is_injection_exempt_vk(0xA5), "右 Alt 绝不能开例外");
+        assert!(!is_injection_exempt_vk(0xA4), "左 Alt 絕不能開例外");
+        assert!(!is_injection_exempt_vk(0xA5), "右 Alt 絕不能開例外");
     }
 }

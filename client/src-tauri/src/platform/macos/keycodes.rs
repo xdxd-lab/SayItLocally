@@ -251,7 +251,7 @@ mod tests {
 
     #[test]
     fn modifier_sides_are_told_apart_by_device_bits() {
-        // 只按着左 ⌥：右 ⌥ 不算按着
+        // 只按著左 ⌥：右 ⌥ 不算按著
         let left_only = kCGEventFlagMaskAlternate | NX_DEVICELALTKEYMASK;
         assert!(modifier_is_down(0x3A, left_only));
         assert!(!modifier_is_down(0x3D, left_only));

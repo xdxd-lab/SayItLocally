@@ -366,7 +366,7 @@ pub fn pasteboard_restore(snapshot: &PasteboardSnapshot, transient: bool, expect
     })
 }
 
-// ─── 系统提示框 ───
+// ─── 系統提示框 ───
 
 /// 彈一個系統警告框（對應 Windows 的 MessageBoxW）。走 osascript 獨立程序：
 /// 不佔主執行緒，Tauri 還沒起來（例如資料庫損壞、在 Builder 之前）也能彈。
@@ -512,7 +512,7 @@ pub fn disable_relaunch_on_login() {
     });
 }
 
-// ─── WKWebView 文字输入 ───
+// ─── WKWebView 文字輸入 ───
 
 /// WebKit 的「智慧引號」「智慧破折號」開關在 NSUserDefaults 裡的鍵名（見 WebKit 的 TextCheckerMac.mm）。
 const WEBKIT_SMART_SUBSTITUTION_KEYS: [&str; 2] = [

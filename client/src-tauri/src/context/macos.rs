@@ -1,6 +1,6 @@
 //! macOS 前台應用與焦點元素採集（對應 Windows 的 GetGUIThreadInfo + UI Automation）。
 //!
-//! 字段沿用 Windows 的 AppContext，含义按 mac 填：
+//! 欄位沿用 Windows 的 AppContext，含義按 mac 填：
 //! - `hwnd`：前台應用的 pid（不透明 token，前端只會原樣傳回 paste_text）
 //! - `processName`：執行檔名；`exePath`：執行檔路徑；`bundleId`：Bundle ID
 //! - `windowClass`：Bundle ID（mac 沒有視窗類，借這個欄位讓日誌/診斷能看到是哪個應用）

@@ -285,7 +285,7 @@ export class HistoryWriter {
     }
     if (mode === 'server') {
       let asrProvider = finalResult?.asrModel || finalResult?.asrEngine || 'server'
-      // 后端返回 HuggingFace repo 全名如 "Qwen/Qwen3-ASR-1.7B"，只取模型名
+      // 後端返回 HuggingFace repo 全名如 "Qwen/Qwen3-ASR-1.7B"，只取模型名
       const slashIdx = asrProvider.lastIndexOf('/')
       if (slashIdx >= 0) asrProvider = asrProvider.slice(slashIdx + 1)
       if (finalResult?.aiSource === 'custom') {

@@ -109,7 +109,7 @@ export default function TextReplacementSection() {
     })
   }, [])
 
-  // 每次 rules 变化后持久化
+  // 每次 rules 變化後持久化
   const initialized = useRef(false)
   useEffect(() => {
     if (!initialized.current) {
@@ -233,7 +233,7 @@ export default function TextReplacementSection() {
         {/* 規則列表 — 兩列布局 */}
         {rules.length > 0 && (
           <div className="mt-4 rounded-lg border border-border overflow-hidden">
-            {/* 列头 */}
+            {/* 列頭 */}
             <div className="flex items-center border-b border-border bg-muted/30 px-3 py-1.5">
               <span className="w-[22px] shrink-0" />
               <span className="flex-1 pl-2 text-xs text-muted-foreground">{t('textReplace.from')}</span>

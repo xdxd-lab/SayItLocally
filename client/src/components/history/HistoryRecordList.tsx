@@ -257,7 +257,7 @@ function HistoryItem({
                   className="w-full resize-y rounded-md border border-input-border bg-input-bg px-2.5 py-1.5 text-sm leading-relaxed focus:border-input-focus-border focus:outline-none"
                   onBlur={() => { void commitEdit() }}
                   onKeyDown={(e) => {
-                    // Esc 取消（不保存）；Ctrl/Cmd+Enter 立即保存（失焦触发提交）
+                    // Esc 取消（不儲存）；Ctrl/Cmd+Enter 立即儲存（失焦觸發提交）
                     if (e.key === 'Escape') { e.preventDefault(); cancelEdit() }
                     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); (e.target as HTMLTextAreaElement).blur() }
                   }}
@@ -362,7 +362,7 @@ function HistoryItem({
           </div>
 
           {/* 展開動畫：grid 0fr→1fr，200ms ease-out。中途試過實測高度 + 自定義曲線 +
-              内容淡入位移，叠得越多反而越碎，已经撤掉，别再往上加。 */}
+              內容淡入位移，疊得越多反而越碎，已經撤掉，別再往上加。 */}
           <div
             className="col-span-2 grid grid-cols-subgrid transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none"
             style={{ gridTemplateRows: open ? '1fr' : '0fr' }}
@@ -371,7 +371,7 @@ function HistoryItem({
             <div className="col-span-2 grid grid-cols-subgrid overflow-hidden">
               <div className="col-span-2 mt-2 grid grid-cols-subgrid gap-y-2 text-xs">
                 {/* 空結果的成因。摺疊行只能顯示「無有效聲音」，真實原因（額度耗盡、
-                    资源未开通、服务端断连、文本处理清空）放这里。老记录没有这个字段。 */}
+                    資源未開通、服務端斷連、文本處理清空）放這裡。老記錄沒有這個欄位。 */}
                 {isEmpty && (record.failReasonCode || record.failReason) && (
                   <div className="col-span-2 text-muted-foreground">
                     <span className="font-medium">{t('record.reasonLabel')}</span>
@@ -406,8 +406,8 @@ function HistoryItem({
                   <span>{t('record.recognizeTime', { total: ((record.asrMs + record.llmMs) / 1000).toFixed(1), asr: record.asrMs, llm: record.llmMs })}</span>
 
                   {/* 四個操作按鈕單獨收成一組：它們原來和左邊的文字共用外層的 gap-2(8px)，
-                      按钮之间也就被撑到 8px，比右上角那排（gap-0.5）散得多。
-                      这里组内用 gap-0.5 与上排统一，组与文字之间仍由外层的 gap-2 分隔。 */}
+                      按鈕之間也就被撐到 8px，比右上角那排（gap-0.5）散得多。
+                      這裡組內用 gap-0.5 與上排統一，組與文字之間仍由外層的 gap-2 分隔。 */}
                   <div className="flex items-center gap-0.5">
                     {!isEmpty && onEdit && !editing && (
                       <Tooltip content={t('record.editText')}>

@@ -173,7 +173,7 @@ pub async fn transcribe(
     }
 
     // 先試 multipart 那套：它是這兩者裡更常見的一種（OpenAI 自己、Groq、
-    // 以及所有自建 whisper 服务都是它）。
+    // 以及所有自建 whisper 服務都是它）。
     diag::log(SCOPE, "probe", "trying /audio/transcriptions first");
     let first = run(AS_TRANSCRIPTIONS, audio_pcm_b64, sample_rate, config, hotwords).await;
     let first_error = match first {
@@ -402,7 +402,7 @@ mod tests {
         assert_eq!(cached_protocol(key), Some(AS_CHAT));
     }
 
-    /// 「路由不存在」的判据要窄。
+    /// 「路由不存在」的判據要窄。
     ///
     /// 放寬了會把「金鑰錯」也當成協議問題，於是提示變成「換個協議試試」，
     /// 而使用者真正該做的是去改金鑰。

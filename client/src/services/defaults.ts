@@ -39,7 +39,7 @@ export const DEFAULTS: Record<string, unknown> = {
   // AI 整理總開關。留空 = 不註冊，避免升級時意外佔用使用者已有的全域性組合鍵。
   shortcutToggleAi: '',
 
-  // ── 麦克风 ──
+  // ── 麥克風 ──
   selectedMic: '', // 裝置 ID，空字串 = 系統預設
   muteSystemAudioWhileRecording: false, // 按住說話期間靜音系統其他聲音（防外放被麥克風回採）。預設關閉
   // 瀏覽器降噪。預設開（底噪大的機器需要）；降噪按"人聽得舒服"最佳化，
@@ -75,7 +75,7 @@ export const DEFAULTS: Record<string, unknown> = {
   // 沒有這個標記，使用者刪光列表後下次進頁面又會被"救回來"。老鍵一律不刪，方便降級。
   'cloudAi.profilesMigrated': false,
 
-  // ── ASR（云 API）──
+  // ── ASR（雲 API）──
   // 可選值以 features/settings/asrProviderCatalog.ts 的 ASR_PROVIDERS 為準：
   // 'doubao_v2' | 'qwen' | 'qwen_audio_stream' | 'qwen_realtime' | 'qwen_omni_35_*'
   // | 'mimo' | 'groq_whisper' | 'openai_transcribe' | 'openai_live_transcribe'
@@ -102,7 +102,7 @@ export const DEFAULTS: Record<string, unknown> = {
   // ── ASR（本地）──
   // 可選值就是 catalog.rs 裡那幾個 id：'sensevoice-small-gguf'（預設，最快）
   // | 'funasr-nano-2512-gguf' | 'qwen3-asr-0.6b-gguf'
-  // | 'qwen3-asr-1.7b-q4-gguf' | 'qwen3-asr-1.7b-gguf'（最准）
+  // | 'qwen3-asr-1.7b-q4-gguf' | 'qwen3-asr-1.7b-gguf'（最準）
   'localAsr.modelId': 'sensevoice-small-gguf',
   'localAsr.language': 'auto', // 可選: 'auto' | 'zh' | 'en' | 'ja' | 'ko'
   // GGUF 權重目前只發在 HuggingFace（handy-computer 組織下），國內走映象更穩。
@@ -122,7 +122,7 @@ export const DEFAULTS: Record<string, unknown> = {
   // 本地模式設定中選擇空閒 10 / 30 / 60 分鐘後自動釋放。
   'localAsr.unloadIdleMinutes': 0,
 
-  // ── 服务器 ──
+  // ── 伺服器 ──
   // 可選: 'auto' | 'zh' | 'en'。隨每次識別發給服務端，由 asr.py 的 _resolve_language
   // 對映成 Chinese / English；'auto' = 交給模型自檢。
   // （註釋原來寫的是 'Chinese' | 'English' | 'Cantonese'，那是服務端內部的取值，
@@ -163,7 +163,7 @@ export const DEFAULTS: Record<string, unknown> = {
   audioRetentionDays: 7, // [自訂] S61：預設由 -1（永久）改為 7 天。錄音保留天數。可選: 7 | 30 | 90 | -1（永久）
   logRetentionDays: 30, // 日誌保留天數。可選: 7 | 15 | 30 | 90
 
-  // ── WebDAV 备份 ──
+  // ── WebDAV 備份 ──
   // 備份包一定含配置，歷史與錄音可選。兩個都預設 false：錄音庫能有幾個 GB，而網盤
   // （尤其堅果雲免費版）有月流量額度，預設開啟等於替使用者做了一個很貴的決定。
   // ⚠️ Rust 側在 src-tauri/src/defaults.rs 有一份（includeHistory / includeAudio / keepCount），

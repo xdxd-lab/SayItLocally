@@ -15,18 +15,18 @@ import { segmentAsrText } from './textSegmenter'
 // ── 中文數字字元表 ──
 // i18n-allow-start: 中文數字解析演算法的輸入與輸出標記
 const CN_DIGITS: Record<string, number> = {
-  '零': 0, '〇': 0, '一': 1, '二': 2, '两': 2, '三': 3, '四': 4,
-  '五': 5, '六': 6, '七': 7, '八': 8, '九': 9, '幺': 1,
+  '零': 0, '〇': 0, '一': 1, '二': 2, '\u4e24': 2, '三': 3, '四': 4,
+  '五': 5, '六': 6, '七': 7, '八': 8, '九': 9, '\u5e7a': 1,
 }
 const CN_SMALL_UNITS: Record<string, number> = { '十': 10, '百': 100, '千': 1000 }
-const CN_BIG_UNITS: Record<string, number> = { '万': 10000, '亿': 100000000 }
+const CN_BIG_UNITS: Record<string, number> = { '\u4e07': 10000, '\u4ebf': 100000000 }
 
 /** 所有中文數字字元（含單位） */
-const NUM_CHARS = '零〇一二两三四五六七八九十百千万亿幺'
+const NUM_CHARS = '零〇一二\u4e24三四五六七八九十百千\u4e07\u4ebf\u5e7a'
 /** 純數字字元（不含單位），用於小數部分逐位讀取 */
-const DIGIT_CHARS = '零〇一二两三四五六七八九幺'
+const DIGIT_CHARS = '零〇一二\u4e24三四五六七八九\u5e7a'
 /** 位值單位字元 */
-const UNIT_CHARS = '十百千万亿'
+const UNIT_CHARS = '十百千\u4e07\u4ebf'
 
 /**
  * 連續單位詞構成的固定詞/成語黑名單：這些透過了「長度≥2 且含單位」的過濾，
@@ -35,7 +35,7 @@ const UNIT_CHARS = '十百千万亿'
  * 這裡只列舉「多個單位/數字連續」的高頻誤傷詞。可按需擴充。
  */
 const INTEGER_BLACKLIST = new Set([
-  '千万', '万一', '万万', '千千万万', '亿万', '万千', '十万八千',
+  '千\u4e07', '\u4e07一', '\u4e07\u4e07', '千千\u4e07\u4e07', '\u4ebf\u4e07', '\u4e07千', '十\u4e07八千',
 ])
 
 /** 解析一段中文整數為數值；無法解析返回 null。支援口語省略（三千二=3200、一萬五=15000）。 */
@@ -85,7 +85,7 @@ function parseChineseInteger(s: string): number | null {
 
 /** 解析可能帶小數點的中文數字表達為字串；失敗返回 null。 */
 function parseNumberExpr(s: string): string | null {
-  const dotIdx = s.indexOf('点')
+  const dotIdx = s.indexOf('\u70b9')
   if (dotIdx === -1) {
     const n = parseChineseInteger(s)
     return n === null ? null : String(n)
@@ -122,22 +122,23 @@ function maybeSpace(str: string, offset: number, replacement: string): string {
  */
 export function convertChineseNumbers(text: string): string {
   if (!text) return text
-  // [自訂] SC-67：辨識輸出已轉成台灣正體。下面的規則以簡體字（點兩萬億鍾時）撰寫，
-  // 正體輸入先對應成簡體再套規則，產出的標記（如「9点半」）再換回正體。
+  // [自訂] SC-67：辨識輸出已轉成台灣正體。下面的規則以「點、兩、萬、億、鐘、時」的簡體寫法撰寫，
+  // 這些簡體字在原始碼中以 Unicode 跳脫儲存（\u70b9 點、\u4e24 兩、\u4e07 萬、\u4ebf 億、\u949f 鐘、\u65f6 時；\u5e7a 是口語的「一」，Big5 沒有此字形），
+  // 正體輸入先對應成簡體再套規則，產出的標記（如「9點半」）再換回正體。
   // 逐句判斷（與 Rust 端相同）：含假名（日文）或本來就含這些簡體字的句子維持原行為，不做對應。
   // 不以半形「.」切句，避免切開小數。
   return text.split(/(?<=[。！？!?；;…\n])/).map(convertChineseNumbersSentence).join('')
 }
 
 function convertChineseNumbersSentence(text: string): string {
-  if (/[\u3041-\u3096\u30a1-\u30fa\u31f0-\u31ff\uff66-\uff6f\uff71-\uff9d]/.test(text) || /[点两万亿钟时]/.test(text)) return convertChineseNumbersCore(text)
+  if (/[\u3041-\u3096\u30a1-\u30fa\u31f0-\u31ff\uff66-\uff6f\uff71-\uff9d]/.test(text) || /[\u70b9\u4e24\u4e07\u4ebf\u949f\u65f6]/.test(text)) return convertChineseNumbersCore(text)
   const mapped = text.replace(/[點兩萬億鐘時]/g, (c) => TRAD_NUMBER_CHARS[c] ?? c)
   if (mapped === text) return convertChineseNumbersCore(text)
-  return convertChineseNumbersCore(mapped).replace(/[点两万亿钟时]/g, (c) => SIMP_NUMBER_CHARS[c] ?? c)
+  return convertChineseNumbersCore(mapped).replace(/[\u70b9\u4e24\u4e07\u4ebf\u949f\u65f6]/g, (c) => SIMP_NUMBER_CHARS[c] ?? c)
 }
 
 const TRAD_NUMBER_CHARS: Record<string, string> = {
-  '點': '点', '兩': '两', '萬': '万', '億': '亿', '鐘': '钟', '時': '时',
+  '點': '\u70b9', '兩': '\u4e24', '萬': '\u4e07', '億': '\u4ebf', '鐘': '\u949f', '時': '\u65f6',
 }
 const SIMP_NUMBER_CHARS: Record<string, string> = Object.fromEntries(
   Object.entries(TRAD_NUMBER_CHARS).map(([trad, simp]) => [simp, trad]),
@@ -148,7 +149,7 @@ function convertChineseNumbersCore(text: string): string {
 
   // 1. 百分之X → X%
   result = result.replace(
-    new RegExp(`百分之([${NUM_CHARS}点]+)`, 'g'),
+    new RegExp(`百分之([${NUM_CHARS}\u70b9]+)`, 'g'),
     (m: string, expr: string, offset: number, str: string) => {
       const val = parseNumberExpr(expr)
       return val === null ? m : maybeSpace(str, offset, `${val}%`)
@@ -167,9 +168,9 @@ function convertChineseNumbersCore(text: string): string {
 
   // 2.5 時間表達：必須在小數規則之前處理，避免「點」被當成小數點。
   //     時/分數字轉阿拉伯，保留「點/分/半」標記（如 九點三十二分 → 9點32分）。
-  const TIME_HOUR = '零一二两三四五六七八九十'
-  const TIME_MIN = '零一二两三四五六七八九十'
-  const DIGITS_NO_TEN = '零一二两三四五六七八九'
+  const TIME_HOUR = '零一二\u4e24三四五六七八九十'
+  const TIME_MIN = '零一二\u4e24三四五六七八九十'
+  const DIGITS_NO_TEN = '零一二\u4e24三四五六七八九'
 
   // 合法小時：單字數字，或含「十」的複合（十 / 十二 / 二十三…），範圍 0–24。
   // 借「含十」排除「一二三」這類逐位串（parseChineseInteger 對它們會給出誤導性結果）。
@@ -182,20 +183,20 @@ function convertChineseNumbersCore(text: string): string {
   // 2.5a 時間：X點半 / X點Y分 / X點[含十的分鐘]（九點半→9點半、九點三十二分→9點32分、九點三十→9點30）
   result = result.replace(
     new RegExp(
-      `([${TIME_HOUR}]+)点(半|[${TIME_MIN}]+分(?!之)|[${DIGITS_NO_TEN}]*十[${DIGITS_NO_TEN}]*)`,
+      `([${TIME_HOUR}]+)\u70b9(半|[${TIME_MIN}]+分(?!之)|[${DIGITS_NO_TEN}]*十[${DIGITS_NO_TEN}]*)`,
       'g',
     ),
     (m: string, hourStr: string, tail: string) => {
       const hour = validHour(hourStr)
       if (hour === null) return m
-      if (tail === '半') return `${hour}点半`
+      if (tail === '半') return `${hour}\u70b9半`
       if (tail.endsWith('分')) {
         const min = parseChineseInteger(tail.slice(0, -1))
-        return min === null || min < 0 || min > 59 ? m : `${hour}点${min}分`
+        return min === null || min < 0 || min > 59 ? m : `${hour}\u70b9${min}分`
       }
-      // 含「十」的分钟、无「分」（九点三十 → 9点30）
+      // 含「十」的分鐘、無「分」（九點三十 → 9點30）
       const min = parseChineseInteger(tail)
-      return min === null || min < 0 || min > 59 ? m : `${hour}点${min}`
+      return min === null || min < 0 || min > 59 ? m : `${hour}\u70b9${min}`
     },
   )
 
@@ -209,32 +210,32 @@ function convertChineseNumbersCore(text: string): string {
   //        ② 後面緊跟「鍾」（一點鐘）；
   //        ③ 小時是含「十」的兩位（十點 / 十二點，幾乎只作時間用）。
   //      無訊號時寧可不轉，交給 AI 整理處理歧義場景（與整體「盡力而為」取向一致）。
-  const TIME_OF_DAY_PREFIX = /(凌晨|清晨|早晨|早上|上午|中午|下午|傍晚|晚上|夜里|夜裡|半夜|今早|今晚|明早|明晚|昨晚)$/
+  const TIME_OF_DAY_PREFIX = /(凌晨|清晨|早晨|早上|上午|中午|下午|傍晚|晚上|夜\u91cc|夜裡|半夜|今早|今晚|明早|明晚|昨晚)$/
   result = result.replace(
-    new RegExp(`([${TIME_HOUR}]+)点(?![${DIGIT_CHARS}点])`, 'g'),
+    new RegExp(`([${TIME_HOUR}]+)\u70b9(?![${DIGIT_CHARS}\u70b9])`, 'g'),
     (m: string, hourStr: string, offset: number, str: string) => {
       const hour = validHour(hourStr)
       if (hour === null) return m
       const hasTenUnit = hourStr.includes('十')
-      const hasClockSuffix = (str[offset + m.length] || '') === '钟'
+      const hasClockSuffix = (str[offset + m.length] || '') === '\u949f'
       const hasTimePrefix = TIME_OF_DAY_PREFIX.test(str.slice(0, offset))
       if (!hasTenUnit && !hasClockSuffix && !hasTimePrefix) return m
-      return maybeSpace(str, offset, `${hour}点`)
+      return maybeSpace(str, offset, `${hour}\u70b9`)
     },
   )
 
   // 3. 小數 / 多段點分數字：數字點數字(點數字)* → N.N 或 N.N.N
   //    單段是普通小數（三點一四 → 3.14）；多段是版本號等（零點一點零 → 0.1.0），每段逐位讀。
   result = result.replace(
-    new RegExp(`([${NUM_CHARS}]+)((?:点[${DIGIT_CHARS}]+)+)`, 'g'),
+    new RegExp(`([${NUM_CHARS}]+)((?:\u70b9[${DIGIT_CHARS}]+)+)`, 'g'),
     (m: string, intp: string, rest: string, offset: number, str: string) => {
       // 護欄：小數尾數若緊跟位值詞/時間詞（說明被截斷，或其實是時間/量詞），不轉，保留中文。
       // 例：九點三十（無「分」）→ 匹配到「九點三」，其後是「十」→ 跳過，寧留中文也不產出 9.3十。
       const after = str[offset + m.length] || ''
-      if (after && '十百千万亿分时点刻秒'.includes(after)) return m
+      if (after && '十百千\u4e07\u4ebf分\u65f6\u70b9刻秒'.includes(after)) return m
       const intVal = parseChineseInteger(intp)
       if (intVal === null) return m
-      const groups = rest.split('点').filter((g: string) => g.length > 0)
+      const groups = rest.split('\u70b9').filter((g: string) => g.length > 0)
       let out = String(intVal)
       for (const g of groups) {
         let dec = ''
@@ -327,9 +328,9 @@ const CJK_CHAR = /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/
  *
  * 判據只有一條：**前一個字元是漢字**。這一條把所有危險場景擋在外面 ——
  *   · `3,000` / `3.14`：前一個字元是數字，不動
- *   · `Hello, world`：前一个字符是字母，不动
- *   · `example.com` / `v1.2`：同上，且句号根本不在表里
- *   · `中文A,B`：逗号前是 `A`，不动
+ *   · `Hello, world`：前一個字元是字母，不動
+ *   · `example.com` / `v1.2`：同上，且句號根本不在表裡
+ *   · `中文A,B`：逗號前是 `A`，不動
  * 而 `今天不錯,我們走吧` 裡兩個逗號前面都是漢字，轉成全形。
  *
  * 已知缺口（刻意保留）：標點夾在「數字/字母」和漢字之間時不轉，例如
@@ -369,14 +370,14 @@ export function stripTrailingPunctuation(text: string): string {
 export function replacePunctuationWithSpace(text: string): string {
   if (!text) return text
   let result = text.replace(
-    /(?<!\d)\.(?!\d)|[，。、；：！？…⋯""''‘’“”（）《》〈〉「」『』【】—－~～·!?,;:"'`()\[\]{}<>_=+|\\@#^&*-]/gu, // i18n-allow: 中文标点数据
+    /(?<!\d)\.(?!\d)|[，。、；：！？…⋯""''‘’“”（）《》〈〉「」『』【】—－~～·!?,;:"'`()\[\]{}<>_=+|\\@#^&*-]/gu, // i18n-allow: 中文\u6807\u70b9\u6570\u636e
     ' ',
   )
   result = result.replace(/[^\S\n]+/g, ' ').replace(/ *\n */g, '\n').trim()
   return result
 }
 
-// ── 设置持久化 ──
+// ── 設定持久化 ──
 
 export interface TextPostProcessOptions {
   /** 智慧分段（僅在關閉 AI 整理的極速模式下生效），預設開啟 */

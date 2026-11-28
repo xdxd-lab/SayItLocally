@@ -132,7 +132,7 @@ export default function ContextAwareSection() {
               </button>
             </div>
             {/* AI 整理關著時錄音器根本不讀文本框（見 RecorderOrchestrator 的 includeTextContext），
-                所以开关画成关闭 + 禁用，不显示一个"开着却不生效"的状态；保存的值不动，AI 整理打开后照旧。 */}
+                所以開關畫成關閉 + 停用，不顯示一個"開著卻不生效"的狀態；儲存的值不動，AI 整理開啟後照舊。 */}
             <Switch
               checked={enabled && aiEnabled}
               labelledBy="context-aware-title"
@@ -143,7 +143,7 @@ export default function ContextAwareSection() {
             />
           </div>
           {/* 只有開關真正生效時才給選模型：關著時錄音器不讀選區，這個選擇不會被用到。
-              ready 之前也不渲染，免得读回已保存值前先闪出一行再消失。 */}
+              ready 之前也不渲染，免得讀回已儲存值前先閃出一行再消失。 */}
           {ready && enabled && aiEnabled && <ContextSelectionModelSetting />}
         </CardContent>
       </Card>

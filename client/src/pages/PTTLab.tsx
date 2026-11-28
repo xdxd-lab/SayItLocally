@@ -326,7 +326,7 @@ export default function PTTLab() {
                 <div>editable: <span className={lastProbe.editable ? 'text-success font-medium' : 'text-destructive font-medium'}>{String(lastProbe.editable)}</span></div>
                 <div>verdict: {lastProbe.verdict || '-'}</div>
                 {/* gate = 結論由哪一層判據給出。no_signal 表示四層全空，這時要看下面
-                    那几行是哪一项没给出信号，而不是去怀疑 SendInput。 */}
+                    那幾行是哪一項沒給出訊號，而不是去懷疑 SendInput。 */}
                 <div>gate: {lastProbe.gate || '-'}</div>
                 <div>process: {lastProbe.process || '-'} (pid: {lastProbe.pid ?? '-'})</div>
                 <div>hwnd: {lastProbe.hwnd || '-'} / focus: {lastProbe.focusHwnd || '-'}</div>

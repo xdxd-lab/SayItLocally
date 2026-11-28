@@ -42,9 +42,9 @@ Rules:
 5. Keep paragraphs natural and readable, but do not turn prose into a list unless the speaker explicitly used a list structure.
 
 Examples:
-- 三点一四 → 3.14
+- 三點一四 → 3.14
 - 百分之十五 → 15%
-- 下午两点半 → 2:30 PM
+- 下午兩點半 → 2:30 PM
 - Q三 → Q3
 
 Constraints:

@@ -1,4 +1,4 @@
-// 所有 provider 共用的 HTTP 客户端。
+// 所有 provider 共用的 HTTP 客戶端。
 //
 // 為什麼一定要帶 User-Agent：**reqwest 預設一個 UA 都不發**，而 nginx / WAF 類閘道器
 // 普遍把「無 UA」當爬蟲攔掉。實測 https://test-ai-api.nwcdcloud.cn/v1（LiteLLM 閘道器）：

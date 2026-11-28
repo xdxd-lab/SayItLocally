@@ -22,7 +22,7 @@
 //   · **響應形狀與通用模型不同**：轉寫專用模型把結果放在
 //     `parts[0].audioTranscription.text`，不是 `parts[0].text`。
 //     照通用模型那樣只讀 `text` 會得到「HTTP 200 但一個字都沒有」——
-//     而 finishReason=STOP、promptFeedback=null，看上去毫无异常。见 extract_text。
+//     而 finishReason=STOP、promptFeedback=null，看上去毫無異常。見 extract_text。
 //   · `audio/wav` + inline_data 被接受（原 note B 確認）。
 //   · 模型不答話、不加字首，直接給出帶句尾標點的純轉寫（原 note C 確認）。
 //     它的返回欄位本身就是專用的 audioTranscription，說明這個模型壓根不走"回答"那條路。
@@ -72,7 +72,7 @@ pub fn hotword_limit_for_docs() -> usize {
 
 /// 將 16kHz 單聲道 16-bit PCM 封裝為 WAV 容器。
 ///
-/// 与 asr_groq.rs / asr_mimo.rs 里那两份是同一个 WAV 头，刻意各留一份：
+/// 與 asr_groq.rs / asr_mimo.rs 裡那兩份是同一個 WAV 頭，刻意各留一份：
 /// 抽成公共函式後任何一家改取樣格式都會牽動另外兩家，而它們本來毫無關係。
 fn pcm_to_wav(pcm: &[u8], sr: u32) -> Vec<u8> {
     let ds = pcm.len() as u32;
@@ -534,14 +534,14 @@ mod tests {
         let data = serde_json::json!({
             "candidates": [{
                 "content": {
-                    "parts": [{ "audioTranscription": { "text": "语音输入法测试成功。" } }],
+                    "parts": [{ "audioTranscription": { "text": "語音輸入法測試成功。" } }],
                     "role": "model"
                 },
                 "finishReason": "STOP"
             }],
             "modelVersion": "gemini-3.5-transcribe"
         });
-        assert_eq!(extract_text(&data), "语音输入法测试成功。");
+        assert_eq!(extract_text(&data), "語音輸入法測試成功。");
     }
 
     /// 兩種形狀混在一起也要按順序拼全（真出現分段時不至於丟半截）。
@@ -550,10 +550,10 @@ mod tests {
         let data = serde_json::json!({
             "candidates": [{ "content": { "parts": [
                 { "audioTranscription": { "text": "前半" } },
-                { "text": "后半" }
+                { "text": "後半" }
             ] } }]
         });
-        assert_eq!(extract_text(&data), "前半后半");
+        assert_eq!(extract_text(&data), "前半後半");
     }
 
     /// 空結果的原因必須能區分：被審查攔掉是「重試也沒用」，和「沒說話」完全不同。

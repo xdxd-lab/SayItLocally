@@ -1,5 +1,5 @@
 // 轉寫 Provider 抽象層型別定義
-// 所有工作模式（服务器 / 云 API / 本地）共享此接口
+// 所有工作模式（伺服器 / 雲 API / 本地）共享此介面
 
 import type { ActiveAppContext, TextContext } from '../../types/appContext'
 import type { ClientRuntimeInfo } from '../../types/appApi'

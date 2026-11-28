@@ -1,8 +1,8 @@
 // 「AI 服務」—— 一張卡 = 一份完整可用的配置（供應商 + 地址 + 金鑰 + 模型）。
 //
 // 為什麼不是原來的「先選供應商、再填一套」：那個形狀下儲存按供應商分槽
-// （`cloudAi.<provider>.*`），于是
-//   1. 两个不同端点的「OpenAI 兼容」物理上存不下第二份——点模型只改 model 字段、
+// （`cloudAi.<provider>.*`），於是
+//   1. 兩個不同端點的「OpenAI 相容」物理上存不下第二份——點模型只改 model 欄位、
 //      地址和金鑰不動，兩個模型實際都打向同一個端點，其中一個必然是錯的；
 //   2. 候選模型按當前供應商過濾，想比較 DeepSeek 和千問哪個出字快，得來回撥下拉，
 //      而出字快慢是口述場景裡選 LLM 唯一壓倒性重要的指標。
@@ -107,7 +107,7 @@ interface CardStatus {
   box: string
   /** 讀屏用的完整說法：數字之外還念出結論詞（可用 · 很快），補上視力使用者靠顏色獲得的資訊 */
   spoken: string
-  /** tooltip 文案。空串 = 不挂 tooltip */
+  /** tooltip 文案。空串 = 不掛 tooltip */
   hint: string
 }
 
@@ -335,7 +335,7 @@ export default function AIProviderSection() {
       setActiveId(state.activeId)
       setLoaded(true)
     })()
-    // 两个值一起等（Promise.all + 各自 catch 兜底），到齐后同一批渲染。
+    // 兩個值一起等（Promise.all + 各自 catch 兜底），到齊後同一批渲染。
     // 分兩次落值會出兩種假象：預設是伺服器模式，本地/雲模式的使用者會看見這一段先出現再消失；
     // 來源預設 managed，已儲存 custom 的使用者會看見開關自己滑一下（pitfalls #11）。
     // 只在值到齊後才首次渲染，兩者都不存在，也就不需要 ready/animate 那套過渡開關。
@@ -711,7 +711,7 @@ export default function AIProviderSection() {
    * 還可能撞上限流被記成「不可用」。所以批次結果裡會註明這批耗時不宜橫向比較；
    * 要拿準數字，用卡上的單張測試。
    *
-   * 另外两个决定：
+   * 另外兩個決定：
    *  · **一次性落盤**，不逐張寫。併發下每個回撥拿到的都是同一份舊 profiles，
    *    逐張 persist 會互相覆蓋，只剩最後一個的結論。
    *  · **跳過沒填完的**，不給它們寫「不可用」——它們缺的是配置而不是可用性，
@@ -804,7 +804,7 @@ export default function AIProviderSection() {
         )}
       >
         {/* 鋪滿整卡的單選按鈕：卡上還有自己的圖示按鈕，所以不能把整張卡做成 <button>
-            （按钮套按钮，读屏和键盘都会错）。文字是静态的，点哪儿都落到这个按钮上。 */}
+            （按鈕套按鈕，讀屏和鍵盤都會錯）。文字是靜態的，點哪兒都落到這個按鈕上。 */}
         <button
           type="button"
           role="radio"
@@ -820,15 +820,15 @@ export default function AIProviderSection() {
 
         <div className="flex items-center gap-1.5">
           {/* 「使用中」用實心綠勾，和診斷頁表示"正常"的 CheckCircle2 是同一個圖示。
-              它和右边的状态标签分工不同：勾说的是"这份在被用"，标签说的是"上次测得如何"，
-              所以勾旁边挂一个 tooltip 明说，避免又被读成"能用" */}
+              它和右邊的狀態標籤分工不同：勾說的是"這份在被用"，標籤說的是"上次測得如何"，
+              所以勾旁邊掛一個 tooltip 明說，避免又被讀成"能用" */}
           {isActive && (
             <Tooltip className="pointer-events-auto relative z-10 shrink-0" content={t('common.inUse')}>
               <CheckCircle2 className="h-4 w-4 shrink-0 cursor-help text-success-strong" aria-label={t('common.inUse')} />
             </Tooltip>
           )}
           {/* 字號壓到 12px：模型名動輒 20 多個字元（doubao-seed-2-0-lite-260215），
-              三列排布下 14px 装不住 */}
+              三列排佈下 14px 裝不住 */}
           <span className="min-w-0 flex-1 truncate text-xs font-medium" title={profileTitle(profile)}>
             {profileTitle(profile)}
           </span>
@@ -837,7 +837,7 @@ export default function AIProviderSection() {
 
         <div className="mt-1 flex items-center gap-1.5">
           {/* 供應商 · 主機名合成一行；主機名只在不是該供應商預設地址時才出現
-              （两张都叫「OpenAI 兼容」的卡靠它区分）。完整地址悬停可见，也在编辑弹窗里 */}
+              （兩張都叫「OpenAI 相容」的卡靠它區分）。完整地址懸停可見，也在編輯彈窗裡 */}
           <span
             className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground"
             title={profile.apiUrl}
@@ -846,8 +846,8 @@ export default function AIProviderSection() {
           </span>
           <div className="pointer-events-none relative z-10 flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
             {/* 圖示 tooltip 一律是"這個按鈕叫什麼"，兩三個字（對齊診斷頁的「重新整理狀態」等）。
-                「会真实调用一次、按供应商计费」这种前提不属于 tooltip：它太长，
-                而且用户按下按钮的那一刻已经知道自己在测一个云服务了 */}
+                「會真實呼叫一次、按供應商計費」這種前提不屬於 tooltip：它太長，
+                而且使用者按下按鈕的那一刻已經知道自己在測一個雲服務了 */}
             <Tooltip className="pointer-events-auto" content={t('common.test')}>
               <button
                 type="button"
@@ -889,17 +889,17 @@ export default function AIProviderSection() {
     <Card>
       <CardContent className="p-6">
         {/* 只在伺服器模式出現：本地/雲 API 模式下 AI 整理本來就走下面選中的服務，沒有第二個
-            选项可选，摆一个恒定生效的开关只会让人以为它还管着别的事。
-            形态用设置页里那 8 处同构的开关行 —— 分段控件在本应用表示页面/短枚举切换，
-            而两个短选项撑成等宽卡会留一大片空白，还会和下方真正的服务卡争层级。
-            说明文字跟着开关状态走，直接说“当前由谁整理”，比让用户从「关」反推更省事。 */}
+            選項可選，擺一個恆定生效的開關只會讓人以為它還管著別的事。
+            形態用設定頁裡那 8 處同構的開關行 —— 分段控制元件在本應用表示頁面/短列舉切換，
+            而兩個短選項撐成等寬卡會留一大片空白，還會和下方真正的服務卡爭層級。
+            說明文字跟著開關狀態走，直接說“當前由誰整理”，比讓使用者從「關」反推更省事。 */}
         {serverAiSourceLoaded && isServerMode && (
           <section className="mb-4 border-b border-border pb-4" aria-labelledby="server-ai-source-heading">
             <div className="flex items-start justify-between gap-4">
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   {/* 字號與圖示間距都對齊下面的「AI 服務」標題：兩者是同一層級的兩塊內容，
-                      标题小一号会让它看着像附属于下面那块 */}
+                      標題小一號會讓它看著像附屬於下面那塊 */}
                   <h2 id="server-ai-source-heading" className="text-lg font-semibold">
                     {t('ai.serverSource.title')}
                   </h2>
@@ -951,7 +951,7 @@ export default function AIProviderSection() {
           </div>
           <div className="flex shrink-0 items-center gap-2">
             {/* 併發跑，所以沒有「停止」：invoke 發出去的請求沒法撤回，
-                摆一颗停不掉任何东西的按钮比没有更糟。整批只等最慢那个，很快。 */}
+                擺一顆停不掉任何東西的按鈕比沒有更糟。整批只等最慢那個，很快。 */}
             <Button
               variant="outline"
               size="sm"
@@ -963,7 +963,7 @@ export default function AIProviderSection() {
               {batch ? t('ai.testingBatch', { done: batch.done, total: batch.total }) : t('ai.testAll')}
             </Button>
             {/* 「新建」回到卡頭右上角（和「潤色模式」頁同一個位置）。
-                它开的是弹窗，所以不会再出现"点了按钮、变化发生在屏幕外"的问题 */}
+                它開的是彈窗，所以不會再出現"點了按鈕、變化發生在螢幕外"的問題 */}
             <Button
               variant="outline"
               size="sm"
@@ -1071,10 +1071,10 @@ export default function AIProviderSection() {
                   </p>
                 )}
                 {/* 金鑰入口放在金鑰這一格里。
-                    这里原来还有一个「怎么申请密钥？看配置文档」的链接，去掉了：AI 服务
-                    要做的只有「去控制台复制一把 Key」，上面那个控制台链接就是最短路径，
-                    再挂一篇文档反而暗示这件事很复杂。
-                    （语音识别那边保留了，但只对豆包显示 —— 只有它要在新旧两代控制台之间选。）*/}
+                    這裡原來還有一個「怎麼申請金鑰？看配置文件」的連結，去掉了：AI 服務
+                    要做的只有「去控制台複製一把 Key」，上面那個控制台連結就是最短路徑，
+                    再掛一篇文件反而暗示這件事很複雜。
+                    （語音識別那邊保留了，但只對豆包顯示 —— 只有它要在新舊兩代控制台之間選。）*/}
                 <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1">
                   {SHOW_CLOUD_CONSOLE_LINKS && draftProvider.consoleUrl && (
                     <button
@@ -1093,7 +1093,7 @@ export default function AIProviderSection() {
             <div>
               <label htmlFor="ai-model" className="mb-1 block text-sm text-muted-foreground">{t('ai.model')}</label>
               {/* 原來這裡是 <input list=...>：Chromium 會畫一個下拉箭頭，但它其實是個自由文本框，
-                  "又是下拉又要我填"两头都不像。现在拆开——输入框只管输入，推荐名做成可点的小按钮 */}
+                  "又是下拉又要我填"兩頭都不像。現在拆開——輸入框只管輸入，推薦名做成可點的小按鈕 */}
               <div className="flex items-center gap-2">
                 <input
                   id="ai-model"
@@ -1140,8 +1140,8 @@ export default function AIProviderSection() {
               )}
 
               {/* 這裡原來還有一排「推薦模型」小按鈕，去掉了：新建時該供應商的推薦模型
-                  已经预先躺在上面的清单里，输入框的 placeholder 也写着它，
-                  再摆一排按钮是把同一件事说第三遍。 */}
+                  已經預先躺在上面的清單裡，輸入框的 placeholder 也寫著它，
+                  再擺一排按鈕是把同一件事說第三遍。 */}
               <p className="mt-1.5 text-[11px] text-muted-foreground">
                 {t('ai.multiModelHint')}
               </p>
@@ -1152,10 +1152,10 @@ export default function AIProviderSection() {
             )}
 
             {/* 只留一個主按鈕。關閉走右上角那個叉（Esc、點背板也行），
-                不用再摆一个和它同义的「取消」 */}
+                不用再擺一個和它同義的「取消」 */}
             {/* 兩個入口：「儲存」只落盤，「儲存並測試」額外真調一次。
-                此前只有后者——想改个地址、或者先把几个模型填上待会儿再测，
-                都被强迫付一次计费调用。关闭走右上角那个叉（Esc、点背板也行）。 */}
+                此前只有後者——想改個地址、或者先把幾個模型填上待會兒再測，
+                都被強迫付一次計費呼叫。關閉走右上角那個叉（Esc、點背板也行）。 */}
             <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border pt-3">
               <Button
                 variant="outline"

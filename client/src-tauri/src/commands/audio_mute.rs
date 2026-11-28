@@ -177,7 +177,17 @@ pub fn restore_system_output() -> Result<bool, String> {
 fn normalize_mic_label(label: &str) -> String {
     let trimmed = label.trim();
     let lower = trimmed.to_lowercase();
-    let without_route_prefix = ["default", "communications", "默认值", "默认", "通信"]
+    let without_route_prefix = [
+        "default",
+        "communications",
+        // Windows 簡體系統的路由字首（預設值、預設、通訊）以 Unicode 跳脫保存，後面是正體系統的寫法
+        "\u{9ed8}\u{8ba4}\u{503c}",
+        "\u{9ed8}\u{8ba4}",
+        "\u{901a}\u{4fe1}",
+        "預設值",
+        "預設",
+        "通訊",
+    ]
         .iter()
         .find_map(|prefix| {
             let prefix_lower = prefix.to_lowercase();
@@ -242,7 +252,7 @@ unsafe fn get_device_string_property(
 
 /// 一個處於啟用狀態的錄音端點。
 ///
-/// `name` 是 Windows 的端点友好名（`耳机式麦克风 (Plantronics Blackwire 5220 Series)`），
+/// `name` 是 Windows 的端點友好名（`耳機式麥克風 (Plantronics Blackwire 5220 Series)`），
 /// 與 Chromium 的 MediaDeviceInfo.label 去掉結尾 `(vid:pid)` 後相同，前端按它對應。
 /// macOS 上是 CoreAudio 的裝置名，與 WebKit 的 label 相同（靜音查詢也按它對應）。
 #[derive(Debug, Clone, Serialize)]

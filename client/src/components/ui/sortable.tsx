@@ -61,7 +61,7 @@ export function useSortable({ onMove }: SortableOptions) {
     },
   })
 
-  /** 加在每一行（拖拽的落点）上 */
+  /** 加在每一行（拖拽的落點）上 */
   const rowProps = (index: number) => ({
     ref: registerRow(index),
     onDragOver: (event: DragEvent) => {

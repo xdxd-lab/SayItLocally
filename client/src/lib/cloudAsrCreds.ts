@@ -12,7 +12,7 @@ export type DoubaoConsole = 'new' | 'legacy'
 export const DOUBAO_KEYS = {
   /** 使用者選的控制台代次 */
   console: 'cloudAsr.doubao.console',
-  /** 新版控制台的 APP Key（发 X-Api-Key） */
+  /** 新版控制台的 APP Key（發 X-Api-Key） */
   consoleKey: 'cloudAsr.doubao.consoleKey',
   /** 舊版控制台的 Access Token（發 X-Api-Access-Key）——歷史鍵，語義不變 */
   accessToken: 'cloudAsr.doubao.apiKey',

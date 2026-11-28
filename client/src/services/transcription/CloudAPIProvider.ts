@@ -1,4 +1,4 @@
-// 云 API 模式 Provider
+// 雲 API 模式 Provider
 //
 // 兩條路，按供應商分：
 //   · 有流式實現的（見下面 STREAM_COMMANDS）→ 邊錄邊發 WebSocket，可出即時字幕；
@@ -68,7 +68,7 @@ interface StreamCommandSet {
  * 它們是各不相同的 WebSocket 協議，不是同一個介面的幾個模型名，所以 Rust 側
  * 各有一份實現：
  *   · doubao_v2               → 火山流式語音識別 2.0（自有二進位制分幀協議）
- *   · qwen_realtime           → OpenAI-Realtime 风格（/api-ws/v1/realtime）
+ *   · qwen_realtime           → OpenAI-Realtime 風格（/api-ws/v1/realtime）
  *   · qwen_audio_stream       → DashScope duplex run-task（/api-ws/v1/inference）
  *   · openai_live_transcribe  → OpenAI Realtime 轉寫會話（/v1/realtime?intent=transcription）
  *   · gemini_live_transcribe  → Gemini Live API（BidiGenerateContent）
@@ -609,7 +609,7 @@ export class CloudAPIProvider implements TranscriptionProvider {
       // 傳送 ASR 中間結果
       this.callbacks.onASR?.({ text: asrText, asrMs, durationSec })
 
-      // 与其它模式共用同一份判据。isQwenOmni 走 integrated_asr 路由：它表达的是
+      // 與其它模式共用同一份判據。isQwenOmni 走 integrated_asr 路由：它表達的是
       // "識別引擎自帶整理，沒有另外調獨立 AI"，而不是"使用者的預設已經執行過"。
       const policy = policyFromSnapshot(startOpts.aiConfig, 'cloud_api', durationSec, isQwenOmni)
       const outcomeContext: AiOutcomeContext = {

@@ -97,7 +97,7 @@ struct TimelineEntry {
     trace_id: Option<String>,
 }
 
-/// 解析日志行，格式: [2025-03-20 14:30:00.123] [LEVEL] [module] message
+/// 解析日誌行，格式: [2025-03-20 14:30:00.123] [LEVEL] [module] message
 fn parse_log_line(line: &str) -> Option<TimelineEntry> {
     // 最少需要 [timestamp] [LEVEL] [module] msg
     let line = line.trim();
@@ -322,7 +322,7 @@ pub async fn create_diagnostics_zip(data: Value) -> Result<String, String> {
 /// 同 create_diagnostics_zip，但截圖以原始位元組發過來（見 ipc_body），按 images[].size 依次切開。
 ///
 /// 原來截圖在前端被 `Array.from(new Uint8Array(...))` 轉成 JSON 數字陣列，一張 20 MB 的圖
-/// 变成六七十 MB 的字符串再解析一遍。
+/// 變成六七十 MB 的字串再解析一遍。
 #[tauri::command]
 pub async fn create_diagnostics_zip_raw(request: tauri::ipc::Request<'_>) -> Result<String, String> {
     let (mut req, payload): (DiagnosticsZipRequest, Vec<u8>) = crate::ipc_body::split_framed(&request)?;
@@ -549,7 +549,7 @@ fn write_diagnostics_zip(
     let json = masked_json(&req.settings)?;
     write_deflated_entry(&mut zip, "settings.json", json.as_bytes())?;
 
-    // 3. 日志文件
+    // 3. 日誌檔案
     // [自訂] SCAN1-5（L-75）：原始日誌也依使用者選的問題時段過濾，和預覽一致；
     // 原本是逐位元組收錄全部日誌（含更早的路徑與事件）。時段外的檔案整個不放。
     let cutoff = occurrence_cutoff(&req.issue_occurrence);

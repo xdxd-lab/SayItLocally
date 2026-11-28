@@ -295,7 +295,7 @@ const MAX_LOGGED_OUTCOMES = 200
 function markLogged(operationId: string): boolean {
   if (loggedOutcomes.has(operationId)) return false
   if (loggedOutcomes.size >= MAX_LOGGED_OUTCOMES) {
-    // Set 保持插入序，删最早的那个即可
+    // Set 保持插入序，刪最早的那個即可
     const oldest = loggedOutcomes.values().next().value
     if (oldest !== undefined) loggedOutcomes.delete(oldest)
   }

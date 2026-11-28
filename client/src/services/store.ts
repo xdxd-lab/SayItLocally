@@ -147,7 +147,7 @@ export interface ManualCorrectionRecord {
 }
 
 // Fixed user prompt prefix - prepended to ASR text when sending to LLM
-export const USER_PROMPT_PREFIX = '请处理以下语音转写文本：\n\n' // i18n-allow: 中文口述整理 Prompt
+export const USER_PROMPT_PREFIX = '請處理以下語音轉寫文本：\n\n' // i18n-allow: 中文口述整理 Prompt
 
 // Built-in presets
 // i18n-allow-start: 內建中文口述整理 Prompt；介面名稱由穩定 id 單獨翻譯

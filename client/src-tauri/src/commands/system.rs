@@ -686,7 +686,7 @@ pub fn set_auto_launch(app: AppHandle, _enable: bool) -> Result<(), String> {
     }
 }
 
-// ─── 自动更新 ───
+// ─── 自動更新 ───
 //
 // 分工：版本檢查在前端（updateChecker.ts 拉 manifest 比版本號），Rust 只負責
 // 下載、校驗完整性、以及把安裝程式拉起來。四個入口：
@@ -994,7 +994,7 @@ async fn fetch_installer_part(
             Err(_) => {
                 let msg = "Download stalled: no data for 60 seconds".to_string();
                 progress(downloaded, total, "failed", Some(&msg));
-                // .part 留着，下次接着下
+                // .part 留著，下次接著下
                 return Err(msg);
             }
         };
@@ -1785,19 +1785,19 @@ mod macos_installer_tests {
         let script = macos_installer_script(&pkg.to_string_lossy(), &installed.to_string_lossy(), pid, false);
         std::fs::write(&script_path, script).unwrap();
         let status = Command::new("/bin/sh").arg(&script_path).status().unwrap();
-        assert!(status.success(), "更新脚本失败");
+        assert!(status.success(), "更新指令碼失敗");
 
         let plist = std::fs::read_to_string(installed.join("Contents").join("Info.plist")).unwrap();
-        assert!(plist.contains("2.0.0"), "旧版没被换掉");
+        assert!(plist.contains("2.0.0"), "舊版沒被換掉");
         assert!(!installed_dir.join("SayIt.app.sayit-new").exists());
         assert!(!installed_dir.join("SayIt.app.sayit-old").exists());
-        assert!(!script_path.exists(), "脚本结束时应删掉自己");
+        assert!(!script_path.exists(), "指令碼結束時應刪掉自己");
         let verified = Command::new("/usr/bin/codesign")
             .args(["--verify", "--deep", "--strict"])
             .arg(&installed)
             .status()
             .unwrap();
-        assert!(verified.success(), "换上去的 .app 签名应完好");
+        assert!(verified.success(), "換上去的 .app 簽名應完好");
 
         let _ = std::fs::remove_dir_all(&root);
     }

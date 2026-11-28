@@ -19,7 +19,7 @@ const tauriConf = JSON.parse(
 // 正式構建不會設這個變數；設了會打一行醒目的警告。
 const fakeVersion = process.env.SAYIT_FAKE_APP_VERSION
 if (fakeVersion) {
-  console.warn(`\n[vite] SAYIT_FAKE_APP_VERSION=${fakeVersion} — 应用会自报这个版本（真实版本 ${tauriConf.version}）。仅用于测更新，别拿来打包。\n`)
+  console.warn(`\n[vite] SAYIT_FAKE_APP_VERSION=${fakeVersion} — 應用會自報這個版本（真實版本 ${tauriConf.version}）。僅用於測更新，別拿來打包。\n`)
 }
 const appVersion = fakeVersion || tauriConf.version || '0.0.0'
 

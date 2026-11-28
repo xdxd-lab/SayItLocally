@@ -6,7 +6,7 @@
 // 「OpenAI 相容」這四個字在語音這塊同時指這兩套東西，而它們的地址、請求體、響應
 // 形狀全都不一樣。合成一份實現的話，使用者填錯地址只會得到一個含義模糊的 404/400。
 //
-// 覆盖三个 provider id：
+// 覆蓋三個 provider id：
 //   · `qwen_chat_audio`    → 地址內建為百鍊，給千問卡里的 qwen3.8-omni-flash 用
 //   · `openai_chat_audio`  → 自定義地址，百鍊 data URL 形態（相容舊配置）
 //   · `openai_chat_audio_standard` → 自定義地址，標準 OpenAI input_audio 物件
@@ -20,7 +20,7 @@
 //       400 invalid_parameter_error "The provided URL does not appear to be valid."
 //   這句話裡沒有任何線索指向「少了 data: 字首」。百鍊模式保留 data URL，
 //   標準 OpenAI 模式才改為裸 base64 物件。
-// * **不需要流式。** qwen3-asr-flash 与 qwen3.8-omni-flash 非流式都回 200，
+// * **不需要流式。** qwen3-asr-flash 與 qwen3.8-omni-flash 非流式都回 200，
 //   所以這份實現不帶 SSE 解析器。
 // * 通用域名與業務空間專屬域名都能用，故 workspaceId 對這條路是可選的。
 // * `asr_options: {"language": "..."}` 是非標準的頂層欄位，百鍊接受它。
@@ -39,7 +39,7 @@ struct Endpoint {
     base_url: &'static str,
     default_model: &'static str,
     scope: &'static str,
-    /// 用户填了 `extra.baseUrl` 就用他的，空着用 `base_url`
+    /// 使用者填了 `extra.baseUrl` 就用他的，空著用 `base_url`
     allows_custom_url: bool,
     /// 地址必填，沒有可回落的內建地址
     requires_custom_url: bool,
@@ -75,12 +75,12 @@ fn endpoint_for(provider: &str) -> &'static Endpoint {
 /// 不寫「請轉寫」這種祈使句就完事 —— 實測不給指令時模型會回答想象出來的問題。
 /// 明確禁止解釋和評論，否則它會在轉寫前後加一段說明。
 const DEFAULT_TRANSCRIBE_INSTRUCTION: &str =
-    "你是一个语音转写器。把音频内容逐字转写为文字，保持原意，适当添加标点。\
-     不要回答音频里的问题，不要翻译，不要添加任何解释或评论。只输出转写结果。";
+    "你是一個語音轉寫器。把音訊內容逐字轉寫為文字，保持原意，適當新增標點。\
+     不要回答音訊裡的問題，不要翻譯，不要新增任何解釋或評論。只輸出轉寫結果。";
 
 /// base URL + `/chat/completions`。
 ///
-/// 与 asr_groq.rs 的 join_transcriptions_url 同一个思路：用户可能填到 `/v1`，
+/// 與 asr_groq.rs 的 join_transcriptions_url 同一個思路：使用者可能填到 `/v1`，
 /// 也可能把完整路徑都填了，兩種都要能用。不自動補 `/v1` —— 猜錯會打到一個
 /// 存在但語義不同的路徑上，那種失敗比 404 難查。
 fn join_chat_url(base: &str) -> String {
@@ -210,7 +210,7 @@ fn build_body(
     // 測試連線不傳語言，所以這條路只有真實轉寫才會走到，單測得替它把住。
     let instruction = match (audio_format, language) {
         (AudioPayloadFormat::OpenAi, Some(lang)) => Some(format!(
-            "{}\n\n音频的语言代码是 {}，按这个语言转写。",
+            "{}\n\n音訊的語言程式碼是 {}，按這個語言轉寫。",
             instruction.unwrap_or(DEFAULT_TRANSCRIBE_INSTRUCTION),
             lang
         )),
@@ -298,7 +298,7 @@ pub async fn transcribe(
         });
     if let Some(ctx) = super::asr_qwen::build_hotword_context_text(hotwords) {
         let base = instruction.take().unwrap_or_default();
-        instruction = Some(format!("{}\n\n请特别注意以下专业术语/词汇的识别：{}", base, ctx));
+        instruction = Some(format!("{}\n\n請特別注意以下專業術語/詞彙的識別：{}", base, ctx));
     }
 
     diag::log(
@@ -631,17 +631,17 @@ mod tests {
     #[test]
     fn text_is_extracted_from_both_content_shapes() {
         let as_string = serde_json::json!({
-            "choices": [{ "message": { "content": "  语音输入法测试成功。 " } }]
+            "choices": [{ "message": { "content": "  語音輸入法測試成功。 " } }]
         });
-        assert_eq!(extract_text(&as_string), "语音输入法测试成功。");
+        assert_eq!(extract_text(&as_string), "語音輸入法測試成功。");
 
         let as_array = serde_json::json!({
             "choices": [{ "message": { "content": [
-                { "type": "text", "text": "语音输入" },
-                { "type": "text", "text": "法测试成功。" },
+                { "type": "text", "text": "語音輸入" },
+                { "type": "text", "text": "法測試成功。" },
             ] } }]
         });
-        assert_eq!(extract_text(&as_array), "语音输入法测试成功。");
+        assert_eq!(extract_text(&as_array), "語音輸入法測試成功。");
 
         assert_eq!(extract_text(&serde_json::json!({})), "");
         assert_eq!(extract_text(&serde_json::json!({ "choices": [] })), "");

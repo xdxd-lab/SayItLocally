@@ -99,8 +99,11 @@ fn classify_failure(stage: &str, message: &str) -> &'static str {
         || lower.contains("unauthorized")
         || lower.contains("invalid api key")
         || lower.contains("invalid_api_key")
-        || message.contains("认证失败")
-        || message.contains("鉴权")
+        // 供應商回傳的簡體原文（認證失敗、鑑權）以 Unicode 跳脫保存，並列正體寫法
+        || message.contains("\u{8ba4}\u{8bc1}\u{5931}\u{8d25}")
+        || message.contains("\u{9274}\u{6743}")
+        || message.contains("認證失敗")
+        || message.contains("鑑權")
     {
         return "provider_bad_key";
     }
@@ -117,15 +120,18 @@ fn classify_failure(stage: &str, message: &str) -> &'static str {
         || lower.contains("insufficient balance")
         || lower.contains("in balance")
         || lower.contains("insufficient_quota")
-        || message.contains("余额不足")
+        || message.contains("\u{4f59}\u{989d}\u{4e0d}\u{8db3}") // 餘額不足（簡體原文）
+        || message.contains("餘額不足")
     {
         return "provider_insufficient_balance";
     }
     if contains_http_status(message, &[429])
         || lower.contains("rate limit")
         || lower.contains("quota")
-        || message.contains("欠费")
-        || message.contains("余额")
+        || message.contains("\u{6b20}\u{8d39}") // 欠費（簡體原文）
+        || message.contains("\u{4f59}\u{989d}") // 餘額（簡體原文）
+        || message.contains("欠費")
+        || message.contains("餘額")
     {
         return "provider_rate_limit";
     }
@@ -139,7 +145,9 @@ fn classify_failure(stage: &str, message: &str) -> &'static str {
     {
         return "provider_no_model";
     }
-    if lower.contains("timeout") || lower.contains("timed out") || message.contains("超时") {
+    if lower.contains("timeout") || lower.contains("timed out") || message.contains("\u{8d85}\u{65f6}") // 超時（簡體原文）
+        || message.contains("超時")
+    {
         return "provider_timeout";
     }
     if matches!(
@@ -241,7 +249,7 @@ pub fn describe_json(raw: &str) -> String {
 /// 供應商常用的服務端追蹤 ID 頭。使用者報問題時帶著它才能找供應商定位，沒有就只能猜。
 const TRACE_HEADERS: &[&str] = &[
     "X-Tt-Logid",      // 火山引擎（豆包）
-    "x-request-id",    // 阿里云 DashScope / OpenAI 兼容服务通用
+    "x-request-id",    // 阿里雲 DashScope / OpenAI 相容服務通用
     "x-ds-trace-id",   // DeepSeek
     "req-id",
 ];
@@ -302,10 +310,10 @@ mod tests {
     /// 各有一份 `&s[..n]` 的實現，只要供應商回一段中文報錯就崩 —— 而那正是出錯的時刻。
     #[test]
     fn truncates_multibyte_without_panicking() {
-        let body = "请求失败：资源未开通，请到控制台确认";
+        let body = "請求失敗：資源未開通，請到控制台確認";
         // 若按位元組切，7 會落在某個漢字中間
         let out = truncate(body, 7);
-        assert_eq!(out, "请求失败：资源…");
+        assert_eq!(out, "請求失敗：資源…");
     }
 
     #[test]
@@ -331,11 +339,11 @@ mod tests {
     /// 描述響應體時一個字都不能帶出來。
     #[test]
     fn describe_json_never_leaks_recognized_text() {
-        let body = r#"{"choices":[{"message":{"content":"我的银行卡密码是一二三四"},
+        let body = r#"{"choices":[{"message":{"content":"我的銀行卡密碼是一二三四"},
             "finish_reason":"stop"}],"request_id":"req-42"}"#;
         let out = describe_json(body);
-        assert!(!out.contains("银行卡"), "识别文本泄漏进日志: {}", out);
-        assert!(!out.contains("密码"), "识别文本泄漏进日志: {}", out);
+        assert!(!out.contains("銀行卡"), "識別文本洩漏進日誌: {}", out);
+        assert!(!out.contains("密碼"), "識別文本洩漏進日誌: {}", out);
         // 該帶的診斷資訊要帶上
         assert!(out.contains("request_id=req-42"), "{}", out);
         assert!(out.contains("finish_reason=stop"), "{}", out);
@@ -344,16 +352,16 @@ mod tests {
     /// `message` 是字串時它就是服務端的錯誤說明，這種要保留。
     #[test]
     fn describe_json_keeps_scalar_message() {
-        let out = describe_json(r#"{"code":45000030,"message":"资源未开通"}"#);
+        let out = describe_json(r#"{"code":45000030,"message":"資源未開通"}"#);
         assert!(out.contains("code=45000030"), "{}", out);
-        assert!(out.contains("message=资源未开通"), "{}", out);
+        assert!(out.contains("message=資源未開通"), "{}", out);
     }
 
     /// 頂層 text / utterances 一律不取。
     #[test]
     fn describe_json_skips_text_fields() {
-        let out = describe_json(r#"{"result":{"text":"这是识别出来的句子"}}"#);
-        assert!(!out.contains("识别出来"), "{}", out);
+        let out = describe_json(r#"{"result":{"text":"這是識別出來的句子"}}"#);
+        assert!(!out.contains("識別出來"), "{}", out);
         assert!(out.contains("keys=[result]"), "{}", out);
     }
 

@@ -31,7 +31,7 @@ const DOMAIN_SCENE_RULES: DomainSceneRule[] = [
       'studio64',
       'kiro',
     ],
-    promptSnippet: '该用户具有深厚的软件开发背景，遇到发音模糊的词汇请优先推测为 IT 术语、API 名称、命令行参数或英文变量。', // i18n-allow: 中文口述整理 Prompt
+    promptSnippet: '該使用者具有深厚的軟體開發背景，遇到發音模糊的詞彙請優先推測為 IT 術語、API 名稱、命令列引數或英文變數。', // i18n-allow: 中文口述整理 Prompt
   },
   {
     id: 'communication',
@@ -39,13 +39,13 @@ const DOMAIN_SCENE_RULES: DomainSceneRule[] = [
     // weixin：微信 4.1 起 exe 從 WeChat.exe 改名為 Weixin.exe，只留 wechat 會把
     // 新版微信整個漏掉（personalization/defaults.ts 的內建規則同樣列了兩個名字）
     matchers: ['wechat', 'weixin', 'wecom', 'qq', 'teams', 'slack', 'discord', 'telegram', 'dingtalk'],
-    promptSnippet: '该用户长期处于即时沟通场景，遇到模糊表达时优先整理成简洁、可直接发送的消息。', // i18n-allow: 中文口述整理 Prompt
+    promptSnippet: '該使用者長期處於即時溝通場景，遇到模糊表達時優先整理成簡潔、可直接傳送的訊息。', // i18n-allow: 中文口述整理 Prompt
   },
   {
     id: 'office',
     get label() { return t('userScene.office') },
     matchers: ['outlook', 'word', 'excel', 'powerpnt', 'wps', 'onenote', 'notion'],
-    promptSnippet: '该用户长期处于办公写作场景，遇到模糊表达时优先采用正式、完整、结构清晰的书面语，但不要新增事实。', // i18n-allow: 中文口述整理 Prompt
+    promptSnippet: '該使用者長期處於辦公寫作場景，遇到模糊表達時優先採用正式、完整、結構清晰的書面語，但不要新增事實。', // i18n-allow: 中文口述整理 Prompt
   },
   {
     id: 'browser',

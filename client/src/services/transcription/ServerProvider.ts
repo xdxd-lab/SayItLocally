@@ -117,7 +117,7 @@ export class ServerProvider implements TranscriptionProvider {
         }
 
         // 伺服器內建 AI 路線。此前這裡按 `llmMs > 0` 反推成功失敗 —— 服務端異常時
-        // 返回原文 + 0ms，於是"呼叫失敗"被誤記成"不可用"，兩者在介面和日誌里長得一樣。
+        // 返回原文 + 0ms，於是"呼叫失敗"被誤記成"不可用"，兩者在介面和日誌裡長得一樣。
         // 現在用服務端回傳的證據判斷（error / provider），耗時只作輔助。
         const policy = this.resolvePolicy(result.durationSec)
         const outcome = resolveAndLogAiOutcome(this.outcomeContext(), policy, {

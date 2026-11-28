@@ -30,7 +30,7 @@ export interface AiProvider {
   urlOptional?: boolean
   /** 建議的模型，第一個作為新建時的預設值；同時作為表單裡的快速選擇 */
   defaultModels: string[]
-  /** 不需要 API Key（目前只有本机 Ollama） */
+  /** 不需要 API Key（目前只有本機 Ollama） */
   keyless?: boolean
   /** 申請金鑰的控制台地址 */
   consoleUrl?: string
@@ -82,7 +82,7 @@ export const AI_PROVIDERS: AiProvider[] = [
      *
      * 之前沒有這張卡，使用者只能選「OpenAI 相容」自己填地址，而這個地址**幾乎必然填錯**：
      * 智譜文件裡出現的是完整端點 `.../v4/chat/completions`，照抄過來會被再拼一次；
-     * 只填到 `.../api/paas` 又会被补成 `/api/paas/v1`。两种都是 404，用户看到的就是
+     * 只填到 `.../api/paas` 又會被補成 `/api/paas/v1`。兩種都是 404，使用者看到的就是
      * 「智譜接不上」。做成內建卡之後沒有可填錯的餘地。
      */
     defaultUrl: 'https://open.bigmodel.cn/api/paas/v4',
@@ -95,7 +95,7 @@ export const AI_PROVIDERS: AiProvider[] = [
     value: 'groq',
     // 品牌名，中英文都寫 Groq，不需要 locale 鍵（同 DeepSeek 的處理）
     label: 'Groq',
-    // 末段已经是 /v1，normalize_base_url 会原样保留、不再追加版本段
+    // 末段已經是 /v1，normalize_base_url 會原樣保留、不再追加版本段
     defaultUrl: 'https://api.groq.com/openai/v1',
     defaultModels: ['openai/gpt-oss-20b', 'openai/gpt-oss-120b', 'llama-3.3-70b-versatile'],
     consoleUrl: 'https://console.groq.com/keys',
@@ -167,7 +167,7 @@ export function providerLabel(value: string): string {
 }
 
 /**
- * 一条已配置的 AI 服务。
+ * 一條已配置的 AI 服務。
  *
  * 為什麼是這個形狀：原來的模型是「供應商」為主軸、模型只是它下面的一串字串，
  * 而地址和金鑰掛在供應商上。後果有兩個：
@@ -254,7 +254,7 @@ export function profileTitle(profile: AiProfile): string {
   return profile.model.trim() || t('aiProvider.noModel')
 }
 
-/** 一条服务是否填齐了能用的东西 */
+/** 一條服務是否填齊了能用的東西 */
 export function isProfileComplete(profile: AiProfile): boolean {
   if (!profile.apiUrl.trim() || !profile.model.trim()) return false
   if (!findProvider(profile.provider).keyless && !profile.apiKey.trim()) return false
@@ -361,15 +361,15 @@ export function checkApiUrl(url: string): string {
 }
 
 /**
- * 从后端 detail 里取那句「回复: xxx」。
+ * 從後端 detail 裡取那句「Reply: xxx」。
  *
- * detail 的完整內容是 `耗時/模型/傳送/回覆` 四行（見 ai_openai_compat.rs 的
- * test_connection），其中「傳送」那行會把內部測試提示詞
+ * detail 的完整內容是 `Elapsed/Model/Sent/Reply` 四行（見 ai_openai_compat.rs 的
+ * test_connection），其中「Sent」那行會把內部測試提示詞
  * （`system="只回復「連線正常」四個字…"`）原樣展示給使用者——那是後端的除錯資訊，
- * 不該出現在成功提示裡。這裡只取「回覆」，耗時和模型名走結構化欄位。
+ * 不該出現在成功提示裡。這裡只取「Reply」，耗時和模型名走結構化欄位。
  */
 export function extractTestReply(detail?: string): string {
-  const match = detail?.match(/^回复:\s*(.*)$/m) // i18n-allow: 匹配供應商返回的中文響應欄位
+  const match = detail?.match(/^Reply:\s*(.*)$/m)
   return match?.[1]?.trim() ?? ''
 }
 

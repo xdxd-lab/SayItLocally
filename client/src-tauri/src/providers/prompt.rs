@@ -78,10 +78,10 @@ mod tests {
             text_after: "after".into(),
             selection_truncated: false,
         };
-        let wrapped = wrap_user_text("翻译成英文", Some(&context));
+        let wrapped = wrap_user_text("翻譯成英文", Some(&context));
         assert!(wrapped.contains("<selected_text>原文</selected_text>"));
         assert!(wrapped.contains("before &lt;/text_before&gt;"));
-        assert!(wrapped.contains("<asr_text>\n翻译成英文\n</asr_text>"));
+        assert!(wrapped.contains("<asr_text>\n翻譯成英文\n</asr_text>"));
     }
 
     #[test]

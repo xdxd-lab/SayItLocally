@@ -81,7 +81,7 @@ export function applyTheme(id: string): string {
   const theme = getTheme(id)
   const root = document.documentElement
 
-  // 注入全局变量
+  // 注入全域性變數
   const allVars = { ...theme.vars, ...(theme.extras || {}) }
   for (const [key, value] of Object.entries(allVars)) {
     root.style.setProperty(key, value)

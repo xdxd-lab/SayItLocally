@@ -136,7 +136,7 @@ export default function AsrTestSection({ workMode }: { workMode: WorkMode }) {
           audioDurationSec,
         })
       } else {
-        // 服务器模式
+        // 伺服器模式
         const { getWSUrl } = await import('@/services/runtimeConfig')
         const { getClientRuntimeInfo } = await import('@/services/bridge')
         const wsUrl = getWSUrl()
@@ -207,8 +207,8 @@ export default function AsrTestSection({ workMode }: { workMode: WorkMode }) {
           <div className="min-w-0">
             <h2 className="text-lg font-semibold">{t('asrTest.title')}</h2>
             {/* 這張卡只測 ASR。伺服器模式下請求裡寫著 disable_ai: true，本地和雲 API 也
-                不经过 AI 整理——原来界面上还渲染一个恒为 0 的「LLM 0ms」，会让人以为
-                AI 整理坏了。现在把范围说清，并不再展示那个假字段。 */}
+                不經過 AI 整理——原來介面上還渲染一個恆為 0 的「LLM 0ms」，會讓人以為
+                AI 整理壞了。現在把範圍說清，並不再展示那個假欄位。 */}
             <p className="mt-1 text-xs text-muted-foreground">
               {t('asrTest.desc')}
             </p>

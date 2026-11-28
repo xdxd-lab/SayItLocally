@@ -432,7 +432,7 @@ fn windows_editability_gate(ctx: &context::AppContext) -> EditableGate {
         // 微信自 4.x 起整個介面用 Qt 重寫（視窗類 Qt51514QWindowIcon，輸入框自繪）：
         // 沒有 Win32 caret、沒有子控制元件 HWND（focusClass 就等於視窗類）、UIA 只能看到
         // 頂層 Window 且無 ValuePattern —— 上面三層判據對它全部為空，程序名是唯一
-        // 的放行依据。而 4.1 又把 exe 从 WeChat.exe 改名成 Weixin.exe（装到
+        // 的放行依據。而 4.1 又把 exe 從 WeChat.exe 改名成 Weixin.exe（裝到
         // Tencent\Weixin\），只寫 "wechat" 的話使用者升級後就靜默退化成兜底卡片
         // （2026-09-20 實測 4.1.13.65）。兩個名字都要留：3.9 老版本和微信開發者
         // 工具（wechatdevtools.exe）仍然叫 wechat。
@@ -551,7 +551,7 @@ unsafe fn do_inject(target: HWND, focus: HWND, text: &str, restore_clipboard: bo
         paste_id,
     );
 
-    // Step 1.5: 经典控制台窗口（conhost，类名 ConsoleWindowClass）——用控制台
+    // Step 1.5: 經典控制台視窗（conhost，類名 ConsoleWindowClass）——用控制台
     // 宿主自帶的「貼上」命令，而不是模擬 Ctrl+V 按鍵。
     //
     // 原因：當控制台裡執行 TUI 程式（如 Claude Code）時，控制台被切到 raw 模式，
@@ -648,7 +648,7 @@ unsafe fn do_inject(target: HWND, focus: HWND, text: &str, restore_clipboard: bo
         make_key_input(vk_ctrl, KEYEVENTF_KEYUP),
     ];
     let sent = SendInput(&inputs, std::mem::size_of::<INPUT>() as i32);
-    // 立刻抓 GetLastError（后面的 sleep/release_modifiers 会把它冲掉）。
+    // 立刻抓 GetLastError（後面的 sleep/release_modifiers 會把它沖掉）。
     // sent=0 且 err=5(ERROR_ACCESS_DENIED) => UIPI 攔截：目標視窗許可權比 SayIt 高
     // （目標以管理員執行而 SayIt 沒有），解決辦法是讓 SayIt 以管理員身份執行。
     let last_err = windows::Win32::Foundation::GetLastError().0;
@@ -1507,7 +1507,7 @@ unsafe fn mark_clipboard_history_excluded() {
     // 一直是無條件跳過（ClipboardViewer.cpp 的 GetIgnoreClipboardChange）。所以別以為
     // 有了上面三個就可以刪掉它。只要存在就生效，值不限。KeePass 早年預設不開它，是因為
     // 配 .NET/OLE 剪貼簿介面時會讓 Office 剪貼簿擴充套件崩潰；我們走原生 SetClipboardData，
-    // 不是那条路。（issue #84）
+    // 不是那條路。（issue #84）
     let viewer_ignore: Vec<u16> = "Clipboard Viewer Ignore\0".encode_utf16().collect();
     write_dword_format(&viewer_ignore, 0);
 }
@@ -1779,12 +1779,12 @@ mod tests {
     #[test]
     fn describe_editability_never_leaks_title_or_path() {
         let mut ctx = weixin_4x_ctx("Weixin.exe");
-        ctx.window_title = "文件传输助手 - 季度奖金方案".to_string();
+        ctx.window_title = "檔案傳輸助手 - 季度獎金方案".to_string();
         ctx.exe_path = r"C:\Users\zhangsan\AppData\Local\Programs\Weixin.exe".to_string();
 
         let line = describe_editability(&ctx, editability_gate(&ctx));
 
-        assert!(!line.contains("季度奖金"), "window title leaked: {line}");
+        assert!(!line.contains("季度獎金"), "window title leaked: {line}");
         assert!(!line.contains("zhangsan"), "exe path leaked: {line}");
         // 同時確認該有的還在，別把這條測試變成"什麼都不記也能過"
         assert!(line.contains("gate=process_allowlist"), "{line}");

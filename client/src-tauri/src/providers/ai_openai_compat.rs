@@ -1,5 +1,5 @@
 // OpenAI 相容 AI 供應商
-// 覆盖所有支持 /v1/chat/completions 的服务：DeepSeek、通义、豆包（火山方舟）等
+// 覆蓋所有支援 /v1/chat/completions 的服務：DeepSeek、通義、豆包（火山方舟）等
 
 use super::diag;
 use super::prompt::wrap_user_text;
@@ -185,7 +185,13 @@ fn forced_thinking_error(body: &str) -> bool {
         return true;
     }
     // 中文原文（措辭可能隨版本微調，取兩個最穩的片段）
-    if body.contains("始终思考") || body.contains("不支持关闭思考") {
+    // 簡體原文「始終思考」「不支援關閉思考」以 Unicode 跳脫保存，並列正體寫法
+    if body.contains("\u{59cb}\u{7ec8}\u{601d}\u{8003}")
+        || body.contains("\u{4e0d}\u{652f}\u{6301}\u{5173}\u{95ed}\u{601d}\u{8003}")
+        || body.contains("始終思考")
+        || body.contains("不支援關閉思考")
+        || body.contains("不支持關閉思考")
+    {
         return true;
     }
     // 英文/其它閘道器的等價說法
@@ -507,7 +513,7 @@ pub async fn test_connection(config: &AiProviderConfig) -> TestResult {
     //   2) 推理型模型會先花掉一部分 output token 想事情，額度太小時 content 是空的，
     //      測試就會顯示「連線成功，回覆：(空)」，等於白測。
     // 曾經是 64。改成 512 是因為**強制思考的模型**（智譜 GLM-5.3 那一檔）連最低強度
-    // 也要先想一轮，64 个 token 基本全花在 reasoning 上、content 什么都不剩 ——
+    // 也要先想一輪，64 個 token 基本全花在 reasoning 上、content 什麼都不剩 ——
     // 那種「連上了但回覆是空的」比報錯更難判斷。max_tokens 只是上限，不按它計費。
     let base_body = serde_json::json!({
         "model": config.model,
@@ -695,15 +701,19 @@ fn extract_chat_completion_text(data: &serde_json::Value) -> Option<String> {
 /// 去除 <think>...</think> 標籤
 fn strip_thinking(text: &str) -> String {
     let re = regex::Regex::new(r"(?is)<think>.*?</think>").unwrap_or_else(|_| {
-        // fallback: 不做处理
+        // fallback: 不做處理
         regex::Regex::new(r"^$").unwrap()
     });
     let cleaned = re.replace_all(text, "");
     let cleaned = cleaned.trim();
 
     // 如果有"最終答案"標記，取其後面的內容
-    if let Some(pos) = cleaned.find("最终答案") {
-        let after = &cleaned[pos + "最终答案".len()..];
+    // 模型輸出的簡體標記「最終答案」以 Unicode 跳脫保存，並列正體寫法
+    let marker = ["\u{6700}\u{7ec8}\u{7b54}\u{6848}", "最終答案"]
+        .into_iter()
+        .find_map(|m| cleaned.find(m).map(|pos| (pos, m)));
+    if let Some((pos, m)) = marker {
+        let after = &cleaned[pos + m.len()..];
         let after = after.trim_start_matches(|c: char| c == ':' || c == '：' || c.is_whitespace());
         return after.trim().to_string();
     }
@@ -829,21 +839,22 @@ mod tests {
     /// 所以舊判據（響應體裡有沒有我們注入的鍵名）一次都不命中 —— 降級不執行、
     /// 400 原樣拋給使用者、介面顯示「連線失敗」。這條測試就是釘住"按語義認"這件事。
     const ZHIPU_5_3_FORCED: &str =
-        r#"{"error":{"code":"1210","message":"该模型始终思考，不支持关闭思考；请使用 low、high 或 max。"}}"#;
+        // 簡體原文以 Unicode 跳脫保存：「該模型始終思考，不支援關閉思考；請使用 low、high 或 max。」
+        "{\"error\":{\"code\":\"1210\",\"message\":\"\u{8be5}\u{6a21}\u{578b}\u{59cb}\u{7ec8}\u{601d}\u{8003}\u{ff0c}\u{4e0d}\u{652f}\u{6301}\u{5173}\u{95ed}\u{601d}\u{8003}\u{ff1b}\u{8bf7}\u{4f7f}\u{7528} low\u{3001}high \u{6216} max\u{3002}\"}}";
 
     #[test]
     fn zhipu_forced_thinking_error_is_recognized_without_the_word_thinking() {
         // 先確認前提：這個錯誤體確實不含 "thinking"，否則這條測試證明不了什麼
         assert!(
             !ZHIPU_5_3_FORCED.to_ascii_lowercase().contains("thinking"),
-            "样本里出现了 thinking，这条测试的前提不成立了，请换一个真实样本"
+            "樣本里出現了 thinking，這條測試的前提不成立了，請換一個真實樣本"
         );
         // 舊判據對它無效 —— 這就是使用者看到「連線失敗」的直接原因
         let old_signal = rejected_thinking_field(
             ZHIPU_5_3_FORCED,
             &serde_json::json!({ "thinking": { "type": "disabled" } }),
         );
-        assert!(old_signal.is_none(), "旧判据本来就认不出它");
+        assert!(old_signal.is_none(), "舊判據本來就認不出它");
         // 新判據必須認出來
         assert!(forced_thinking_error(ZHIPU_5_3_FORCED));
     }
@@ -855,13 +866,13 @@ mod tests {
             r#"{"error":{"message":"Incorrect API key provided","code":"invalid_api_key"}}"#,
             r#"{"error":{"message":"The model `glm-9` does not exist","code":"model_not_found"}}"#,
             r#"{"error":{"message":"Rate limit reached","code":"rate_limit_exceeded"}}"#,
-            r#"{"error":{"message":"余额不足","code":"1113"}}"#,
+            r#"{"error":{"message":"餘額不足","code":"1113"}}"#,
         ] {
-            assert!(!forced_thinking_error(body), "不该命中: {}", body);
+            assert!(!forced_thinking_error(body), "不該命中: {}", body);
         }
     }
 
-    /// 强制思考的模型要发「最低强度」，不是「什么都不发」。
+    /// 強制思考的模型要發「最低強度」，不是「什麼都不發」。
     ///
     /// 直接不發引數會落到 GLM-5.3 的預設 `reasoning_effort=max`（深度推理），
     /// 對語音輸入是最差結果 —— 比不降級還慢。
